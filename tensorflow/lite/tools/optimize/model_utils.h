@@ -53,6 +53,9 @@ bool IsQuantized(const SubGraphT* subgraph, int tensor_index);
 
 bool HasMinMax(const TensorT* tensor);
 
+// Set version of OperatorCode.
+TfLiteStatus SetOperatorCodeVersion(ModelT* model);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

@@ -135,6 +135,7 @@ message SavedVariable {
   bool trainable = 3;
   VariableSynchronization synchronization = 4;
   VariableAggregation aggregation = 5;
+  string name = 6;
 }
 
 // Represents `FunctionSpec` used in `Function`. This represents a

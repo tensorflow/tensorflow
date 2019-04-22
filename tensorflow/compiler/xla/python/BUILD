@@ -38,6 +38,16 @@ py_test(
 )
 
 cc_library(
+    name = "worker_thread",
+    srcs = ["worker_thread.cc"],
+    hdrs = ["worker_thread.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -106,11 +116,13 @@ tf_pybind_extension(
     module_name = "xla_extension",
     deps = [
         ":types",
+        ":worker_thread",
         ":xrt",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -133,7 +145,9 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:cpu_plugin",

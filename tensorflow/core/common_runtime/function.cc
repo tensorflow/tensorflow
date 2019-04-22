@@ -821,11 +821,11 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 
 void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
-  VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
+  VLOG(2) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
           << g->num_edges();
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(4)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
-      VLOG(2) << "|| " << line;
+      VLOG(4) << "|| " << line;
     }
   }
 }
@@ -1485,13 +1485,25 @@ using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 string InlineFunctionBodyOptions::DebugString() const {
   const auto true_false = [](bool b) { return b ? "true" : "false"; };
-  return absl::StrCat("disable_inlining=", true_false(disable_inlining),
-                      ", ignore_noinline=", true_false(ignore_noinline),
-                      ", override_device=", true_false(ignore_noinline),
-                      ", output_control_src=",
-                      output_control_src == OutputControlSrc::kDataOutputs
-                          ? "DataOutputs"
-                          : "ControlOutputs");
+
+  const auto keep_caller_node_str = [this]() -> string {
+    switch (keep_caller_node) {
+      case KeepCallerNode::kDoNotKeep:
+        return "DoNotKeep";
+      case KeepCallerNode::kFetchable:
+        return "Fetchable";
+      case KeepCallerNode::kTargetable:
+        return "Targetable";
+    }
+  };
+
+  return absl::StrCat(
+      "disable_inlining=", true_false(disable_inlining),
+      ", ignore_noinline=", true_false(ignore_noinline),
+      ", override_device=", true_false(ignore_noinline),
+      ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
+      output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
+                                                           : "ControlOutputs");
 }
 
 Status ValidateInlining(const Node* node, const FunctionBody* fbody,
@@ -1803,10 +1815,15 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   }
 
   Node* output_control_node = nullptr;
-  bool has_control_outputs = absl::c_any_of(
+  const bool has_control_outputs = absl::c_any_of(
       caller->out_edges(), [](const Edge* e) { return e->IsControlEdge(); });
 
-  if (has_control_outputs || options.keep_caller_fetchable) {
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
+  const bool keep_caller_node =
+      options.keep_caller_node == KeepCallerNode::kFetchable ||
+      options.keep_caller_node == KeepCallerNode::kTargetable;
+
+  if (has_control_outputs || keep_caller_node) {
     output_control_node = no_op("output_control_node");
     if (options.output_control_src == OutputControlSrc::kDataOutputs) {
       for (Node* n : outputs) {
@@ -1846,27 +1863,29 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   // ------------------------------------------------------------------------ //
   // Add an IdentityN or NoOp node in-place of caller node to keep `caller`
-  // fetchable.
+  // fetchable or targetable.
 
-  if (options.keep_caller_fetchable) {
+  if (keep_caller_node) {
     std::vector<NodeBuilder::NodeOut> output_tensors;
     absl::c_transform(outputs, std::back_inserter(output_tensors),
                       [](Node* n) { return NodeBuilder::NodeOut(n, 0); });
 
-    Node* fetchable_node;
-    if (output_tensors.empty()) {
+    Node* caller_substitute_node;
+    if (options.keep_caller_node == KeepCallerNode::kTargetable ||
+        output_tensors.empty()) {
       // IdentityN node must have at least one data input. If function has no
-      // data outputs, it still could be used as a callable target.
+      // data outputs, we can't keep it fetchable.
       TF_CHECK_OK(NodeBuilder(caller->name(), "NoOp")
                       .Device(caller->requested_device())
                       .ControlInput(output_control_node)
-                      .Finalize(g, &fetchable_node));
-    } else {
+                      .Finalize(g, &caller_substitute_node));
+
+    } else if (options.keep_caller_node == KeepCallerNode::kFetchable) {
       TF_CHECK_OK(NodeBuilder(caller->name(), "IdentityN")
                       .Device(caller->requested_device())
                       .Input(output_tensors)
                       .ControlInput(output_control_node)
-                      .Finalize(g, &fetchable_node));
+                      .Finalize(g, &caller_substitute_node));
     }
   }
 

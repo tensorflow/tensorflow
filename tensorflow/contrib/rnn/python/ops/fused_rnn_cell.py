@@ -136,7 +136,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
   For example,
 
   ```python
-  cell = tf.contrib.rnn.BasicRNNCell(10)
+  cell = tf.compat.v1.nn.rnn_cell.BasicRNNCell(10)
   fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
   bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
   fw_out, fw_state = fw_lstm(inputs)

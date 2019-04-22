@@ -76,6 +76,16 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
+
+    # TFLite/Toco does not support BatchMatMul(V2) broadcasting semantic yet.
+    # Simple broadcast.
+    r"unroll_batch_matmul.*shape=\[\(1,2,3\),\(3,5\).*": "130887526",
+    # Empty batch broadcast.
+    r"unroll_batch_matmul.*shape=\[\(2,5,3\),\(3,7\).*": "130887526",
+    # Single batch with non-empty batch broadcast.
+    r"unroll_batch_matmul.*shape=\[\(1,5,3\),\(4,3,7\).*": "130887526",
+    # Broadcast both operands
+    r"unroll_batch_matmul.*shape=\[\(3,1,5,3\),\(1,4,3,7\).*": "130887526",
 }
 
 
@@ -251,19 +261,8 @@ def write_test_cases(fp, model_name, examples):
       fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
-
-      # In these tests, TFLite produces output shapes which are different from
-      # TensorFlow. It's complicated to construct a regular expression to
-      # blacklist exactly broken cases. Therefore a quick hack is put here to
-      # disable output shape check for all of these tests.
-      # TODO(b/130328328): Investigate Pack tests.
-      # TODO(b/130328180): Investigate LSTM and RNN tests.
-      # When resolving these todo items, please remove the hack in the
-      # following line.
-      if not re.match(r".*/(unidirectional_sequence_(lstm|rnn))_.*",
-                      model_name):
-        fp.write("  output_shape: \"" +
-                 ",".join([str(dim) for dim in t.shape]) + "\"\n")
+      fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
+               "\"\n")
     fp.write("}\n")
 
 
@@ -636,7 +635,7 @@ def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.
 
   Args:
-    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool`.
+    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool2d`.
 
   Returns:
     A function representing the true generator (after curried pool_op_in).
@@ -3870,7 +3869,7 @@ def make_conv2d_transpose_tests(options):
 
 
 # Since compute output_shape is fairly complicated for
-# tf.nn.conv2d_backprop_input input_sizes argument, so we here first perform a
+# tf.nn.conv2d_transpose input_sizes argument, so we here first perform a
 # "conv2d" operation to get the output, then we use the output to feed in
 # tf.nn.conv2d_backprop_input.
 # This test will depend on the "conv2d" operation's correctness.
@@ -4387,31 +4386,58 @@ def make_mirror_pad_tests(options):
 def make_unroll_batch_matmul_tests(options):
   """Make a set of tests to test unroll_batch_matmul."""
 
+  # The test cases below requires broadcasting support (BatchMatMulV2 semantic),
+  # whis isn't supported as of this change.
+  broadcast_shape_params = [
+      # Simple broadcast.
+      [(1, 2, 3), (3, 5), False, False],
+      # Empty batch broadcast.
+      [(2, 5, 3), (3, 7), False, False],
+      # Single batch with non-empty batch broadcast.
+      [(1, 5, 3), (4, 3, 7), False, False],
+      # Broadcast both operands
+      [(3, 1, 5, 3), (1, 4, 3, 7), False, False],
+  ]
+
   test_parameters = [{
       "dtype": [tf.float32],
-      "shape": [[(2, 2, 3), (2, 3, 2), False, False],
-                [(2, 2, 3), (2, 3, 2), True, True],
-                [(2, 2, 3), (2, 2, 3), False, True],
-                [(2, 2, 3), (2, 2, 3), True, False],
-                [(4, 2, 2, 3), (4, 2, 3, 2), False, False],
-                [(4, 2, 2, 3), (4, 2, 3, 2), True, True],
-                [(4, 2, 2, 3), (4, 2, 2, 3), False, True],
-                [(4, 2, 2, 3), (4, 2, 2, 3), True, False]]
+      "shape": [
+          [(2, 2, 3), (2, 3, 2), False, False],
+          [(2, 2, 3), (2, 3, 2), True, True],
+          [(2, 2, 3), (2, 2, 3), False, True],
+          [(2, 2, 3), (2, 2, 3), True, False],
+          [(4, 2, 2, 3), (4, 2, 3, 2), False, False],
+          [(4, 2, 2, 3), (4, 2, 3, 2), True, True],
+          [(4, 2, 2, 3), (4, 2, 2, 3), False, True],
+          [(4, 2, 2, 3), (4, 2, 2, 3), True, False]
+      ] + broadcast_shape_params,
+      # TODO(b/130887442): Improve the forward compatibility tests for every
+      # ops.
+      "forward_compatibility_test": [False, True],
   }]
 
   def build_graph(parameters):
     """Build the batch_matmul op testing graph."""
-    input_tensor1 = tf.placeholder(
-        dtype=parameters["dtype"], shape=parameters["shape"][0])
-    input_tensor2 = tf.placeholder(
-        dtype=parameters["dtype"], shape=parameters["shape"][1])
-    # Should be unrolled and replaced with fully_connected ops in the end.
-    out = tf.matmul(
-        input_tensor1,
-        input_tensor2,
-        transpose_a=parameters["shape"][2],
-        transpose_b=parameters["shape"][3])
-    return [input_tensor1, input_tensor2], [out]
+    def _build_graph():
+      input_tensor1 = tf.placeholder(
+          dtype=parameters["dtype"], shape=parameters["shape"][0])
+      input_tensor2 = tf.placeholder(
+          dtype=parameters["dtype"], shape=parameters["shape"][1])
+      # Should be unrolled and replaced with fully_connected ops in the end.
+      out = tf.matmul(
+          input_tensor1,
+          input_tensor2,
+          transpose_a=parameters["shape"][2],
+          transpose_b=parameters["shape"][3])
+      return [input_tensor1, input_tensor2], [out]
+    if parameters["forward_compatibility_test"]:
+      # This is hardcoded to the date after MatMulV2 is activated.
+      # TODO(b/130887442): Improve the forward compatibility tests for every
+      # ops, and remove the hardcoded date.
+      with tf.compat.forward_compatibility_horizon(2019, 4, 26):
+        return _build_graph()
+    else:
+      return _build_graph()
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_value1 = create_tensor_data(
@@ -4421,7 +4447,9 @@ def make_unroll_batch_matmul_tests(options):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      options, test_parameters, build_graph, build_inputs,
+      expected_tf_failures=len(broadcast_shape_params))
 
 
 @register_make_test_function()
@@ -4578,7 +4606,7 @@ def make_reverse_sequence_tests(options):
 
 @register_make_test_function()
 def make_matrix_diag_tests(options):
-  """Make a set of tests for tf.matrix_diag op."""
+  """Make a set of tests for tf.linalg.diag op."""
 
   test_parameters = [
       {
@@ -4606,7 +4634,7 @@ def make_matrix_diag_tests(options):
 
 @register_make_test_function()
 def make_matrix_set_diag_tests(options):
-  """Make a set of tests for tf.matrix_set_diag op."""
+  """Make a set of tests for tf.linalg.set_diag op."""
 
   test_parameters = [
       {

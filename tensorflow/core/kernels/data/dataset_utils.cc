@@ -29,69 +29,19 @@ Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
                   GraphDef* graph_def) {
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* input_node = nullptr;
+  Node* output_node = nullptr;
   SerializationContext serialization_ctx({});
   TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &input_node));
+      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
+  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
+  // represents this Dataset.
+  ops::UnaryOp("_Retval", output_node,
+               b.opts()
+                   .WithName("dataset")
+                   .WithAttr("T", DT_VARIANT)
+                   .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
   return Status::OK();
-}
-
-Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
-                                  const NameAttrList& func,
-                                  std::vector<int>* indices) {
-  FunctionLibraryRuntime::Handle fn_handle;
-  TF_RETURN_IF_ERROR(ctx->function_library()->Instantiate(
-      func.name(), AttrSlice(&func.attr()), &fn_handle));
-  auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
-    Status s = ctx->function_library()->ReleaseHandle(fn_handle);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to release handle: " << s.error_message();
-    }
-  });
-
-  // If the function contains any stateful operations, we conservatively execute
-  // the entire function.
-  if (ctx->function_library()->IsStateful(func.name())) {
-    indices->clear();
-    return Status::OK();
-  }
-
-  const FunctionBody* fn_body =
-      ctx->function_library()->GetFunctionBody(fn_handle);
-  indices->resize(fn_body->ret_nodes.size());
-
-  for (size_t i = 0; i < fn_body->ret_nodes.size(); ++i) {
-    Node* ret_node = fn_body->ret_nodes[i];
-    Node* ret_input_node;
-    TF_RETURN_IF_ERROR(ret_node->input_node(0, &ret_input_node));
-
-    while (ret_input_node->def().op() == "Identity") {
-      TF_RETURN_IF_ERROR(ret_input_node->input_node(0, &ret_input_node));
-    }
-
-    if (ret_input_node->def().op() == FunctionLibraryDefinition::kArgOp) {
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(ret_input_node->def(), "index", &((*indices)[i])));
-    } else {
-      indices->clear();
-      break;
-    }
-  }
-  return Status::OK();
-}
-
-std::vector<bool> ComputeMoveVector(const std::vector<int>& indices) {
-  std::map<int, int> last_use;
-  for (size_t i = 0; i < indices.size(); ++i) {
-    last_use[indices[i]] = i;
-  }
-  std::vector<bool> can_move;
-  can_move.resize(indices.size());
-  for (size_t i = 0; i < indices.size(); ++i) {
-    can_move[i] = last_use[indices[i]] == i;
-  }
-  return can_move;
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -268,21 +218,6 @@ std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
         runner(std::move(scoped_fn));
       },
       std::move(runner), std::placeholders::_1);
-}
-
-Status CreateFunctionLibraryDefinition(
-    const FunctionLibraryDefinition* lib_def, const string& func_name,
-    std::shared_ptr<FunctionLibraryDefinition>* result) {
-  DCHECK(lib_def != nullptr);
-  const FunctionDef* fdef = lib_def->Find(func_name);
-  if (TF_PREDICT_FALSE(fdef == nullptr)) {
-    return tensorflow::errors::FailedPrecondition(tensorflow::strings::StrCat(
-        "Could not find required function definition ", func_name));
-  }
-  *result = std::make_shared<FunctionLibraryDefinition>(
-      lib_def->ReachableDefinitions(*fdef));
-  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
-  return Status::OK();
 }
 
 }  // namespace data

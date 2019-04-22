@@ -25,6 +25,9 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 
 
 class InputIterationTest(test.TestCase, parameterized.TestCase):
@@ -91,6 +94,48 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       output = f_train_step(x)
       results.append(output)
     self._validate_outputs(results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu,
+          mode=["eager"]
+      ))
+  def testDatasetIterationInFunction(self, distribution):
+    with distribution.scope():
+      a = variables.Variable(
+          1.0, aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+
+    def train_step(_):
+      a.assign_add(1.0)
+
+    @def_function.function
+    def f_train_step(dist_dataset):
+      number_of_steps = constant_op.constant(0.0)
+      product_of_means = constant_op.constant(2.0)
+      for x in dist_dataset:  # loop with values modified each iteration
+        number_of_steps += 1
+        product_of_means *= math_ops.cast(
+            distribution.reduce("MEAN", x, axis=0), product_of_means.dtype)
+
+      for y in dist_dataset:  # loop with no intermediate state
+        distribution.experimental_run_v2(train_step, args=(y,))
+
+      return number_of_steps, product_of_means
+
+    dataset = self._get_dataset()
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    number_of_steps, product_of_means = f_train_step(dist_dataset)
+    self.assertEqual(5, number_of_steps.numpy())
+
+    # 2.0 * (0+1)/2 * (2+3)/2 * (4+5)/2 * (6+7)/2 * (8+9)/2
+    #  = (5 * 9 * 13 * 17) / 16
+    self.assertNear((5 * 9 * 13 * 17) / 16, product_of_means.numpy(), 1e-3)
+
+    # We set the initial value of `a` to 1 and iterate through the dataset 5
+    # times(10/2 where 10 is the number of dataset elements and 2 is the batch
+    # size). Hence the final result is 6.
+    self.assertEqual(6.0, (a.numpy()))
 
   @combinations.generate(
       combinations.combine(

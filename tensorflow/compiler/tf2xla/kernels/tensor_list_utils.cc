@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -32,6 +33,17 @@ Status BuildTensorList(const xla::XlaOp& buffer, const xla::XlaOp& push_index,
                        xla::XlaOp* output_list) {
   TF_RET_CHECK(buffer.builder());
   *output_list = xla::Tuple(buffer.builder(), {buffer, push_index});
+  return Status::OK();
+}
+
+Status GetTensorListPrimitiveType(const xla::XlaOp& op,
+                                  xla::PrimitiveType* type) {
+  TF_RET_CHECK(op.builder());
+  TF_ASSIGN_OR_RETURN(const xla::Shape& list_tuple_shape,
+                      op.builder()->GetShape(op));
+  xla::Shape buffer_shape =
+      xla::ShapeUtil::GetTupleElementShape(list_tuple_shape, 0);
+  *type = buffer_shape.element_type();
   return Status::OK();
 }
 
@@ -95,6 +107,14 @@ Status InitializeTensorList(const xla::XlaOp& uninitialized_list,
   xla::XlaOp push_index;
   TF_RETURN_IF_ERROR(GetTensorListPushIndex(uninitialized_list, &push_index));
   return BuildTensorList(new_buffer, push_index, output_list);
+}
+
+Status CreateZerosList(XlaOpKernelContext* ctx, const TensorShape& buffer_shape,
+                       xla::PrimitiveType type, xla::XlaOp* list) {
+  auto zero =
+      xla::ConstantLiteral(ctx->builder(), xla::LiteralUtil::Zero(type));
+  *list = xla::Broadcast(zero, buffer_shape.dim_sizes());
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 

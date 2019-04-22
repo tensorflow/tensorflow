@@ -147,7 +147,7 @@ def gather_nd(params, indices, batch_dims=0, name=None):
 
   #### Examples:
     ```python
-    >>> params = tf.ragged.constant_value(
+    >>> params = tf.compat.v1.ragged.constant_value(
     ...     [ [ ['000', '001'], ['010'              ]          ],
     ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
     ...       [ [            ], ['210'              ]          ] ])

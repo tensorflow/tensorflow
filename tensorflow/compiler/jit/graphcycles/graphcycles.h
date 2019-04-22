@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
 #define TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
 
+#include <vector>
+
 // GraphCycles detects the introduction of a cycle into a directed
 // graph that is being built up incrementally.
 //
@@ -119,6 +121,15 @@ class GraphCycles {
 
   std::unordered_set<int32> Successors(int32 node) const;
   std::unordered_set<int32> Predecessors(int32 node) const;
+
+  // Returns all nodes in post order.
+  //
+  // If there is a path from X to Y then X appears after Y in the
+  // returned vector.
+  std::vector<int32> AllNodesInPostOrder() const;
+
+  // Returns the graph in graphviz format.
+  string DebugString() const;
 
   // ----------------------------------------------------
   struct Rep;

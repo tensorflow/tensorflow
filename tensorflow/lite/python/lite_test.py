@@ -84,7 +84,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
     self.assertTrue(converter._has_valid_tensors())
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -564,8 +564,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -610,8 +609,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter.inference_input_type = lite_constants.INT8
     quantized_converter.inference_output_type = lite_constants.INT8
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -716,50 +714,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
-  def testRankAndShapeWithResizeInput(self):
-    # This is a regression test to ensure `Rank` and `Shape` ops work well with
-    # the reize input tensor API.
-    input_tensor = array_ops.placeholder(
-        shape=[None, 4, 4, 3], dtype=dtypes.float32)
-    reshaped_tensor = array_ops.reshape(input_tensor, [1, -1])
-    output_rank = array_ops.rank(reshaped_tensor, name='output_rank')
-    output_shape = array_ops.shape(reshaped_tensor, name='output_shape')
 
-    sess = session.Session()
-    converter = lite.TFLiteConverter.from_session(sess, [input_tensor],
-                                                  [output_rank, output_shape])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    interpreter = Interpreter(model_content=tflite_model)
-
-    def verify_rank_and_shape(expected_shape):
-      expected_rank = len(expected_shape)
-      output_details = interpreter.get_output_details()
-      self.assertEqual(2, len(output_details))
-      self.assertEqual('output_rank', output_details[0]['name'])
-      self.assertEqual(np.int32, output_details[0]['dtype'])
-      self.assertEqual('output_shape', output_details[1]['name'])
-      self.assertEqual(np.int32, output_details[1]['dtype'])
-      self.assertEqual(
-          expected_shape,
-          interpreter.get_tensor(output_details[1]['index']).tolist())
-      self.assertEqual(
-          expected_rank,
-          interpreter.get_tensor(output_details[0]['index']).tolist())
-
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    verify_rank_and_shape([1, 48])
-
-    input_details = interpreter.get_input_details()
-    interpreter.resize_tensor_input(input_details[0]['index'], [1, 4, 4, 4])
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    verify_rank_and_shape([1, 64])
-
-
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -899,7 +855,30 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
         'Unable to parse input file \'{}\'.'.format(graph_def_file),
         str(error.exception))
 
-  # TODO(nupurgarg): Test model loading in open source.
+  def testFloatTocoConverter(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the model is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+
+class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
+
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
     # Looks for the model file which is saved in a different location internally
@@ -985,29 +964,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
         'input_shapes must contain a value for each item in input_array.',
         str(error.exception))
 
-  def testFloatTocoConverter(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
 
-    # Write graph to file.
-    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
-    write_graph(sess.graph_def, '', graph_def_file, False)
-    sess.close()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
-                                                     ['Placeholder'], ['add'])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Ensure the model is able to load.
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-
-
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSavedModel(self, shape):
@@ -1167,7 +1125,7 @@ class MyAddLayer(keras.layers.Layer):
     return config
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):

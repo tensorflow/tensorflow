@@ -311,7 +311,7 @@ def convert(entity, program_ctx):
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
-def is_whitelisted_for_graph(o):
+def is_whitelisted_for_graph(o, check_call_override=True):
   """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
@@ -319,6 +319,9 @@ def is_whitelisted_for_graph(o):
 
   Args:
     o: A Python entity.
+    check_call_override: Reserved for internal use. When set to `False`, it
+      disables the rule according to which classes are whitelisted if their
+      __call__ method is whitelisted.
 
   Returns:
     Boolean
@@ -355,7 +358,7 @@ def is_whitelisted_for_graph(o):
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
-  if hasattr(o, '__call__'):
+  if check_call_override and hasattr(o, '__call__'):
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
@@ -387,7 +390,9 @@ def is_whitelisted_for_graph(o):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(owner_class):
+      is_call_override = (o.__name__ == '__call__')
+      if is_whitelisted_for_graph(
+          owner_class, check_call_override=not is_call_override):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True

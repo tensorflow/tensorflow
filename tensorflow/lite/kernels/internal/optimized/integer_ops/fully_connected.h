@@ -308,7 +308,6 @@ struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   int32 output_activation_max_;
   const RuntimeShape& output_shape_;
   int8_t* output_data_;
-  gemmlowp::GemmContext* gemm_context_;
   int row_start_;
   int row_end_;
 };
@@ -320,14 +319,14 @@ inline void FullyConnectedAsGEMV(
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    int8_t* output_data, gemmlowp::GemmContext* gemm_context) {
+    int8_t* output_data, gemmlowp::GemmContext* gemmlowp_context) {
   const int output_dim_count = output_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
   const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemm_context->max_num_threads(), output_rows, batches, input_size);
+      gemmlowp_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -355,7 +354,7 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemm_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks);
 }
 #endif  // USE_NEON
 
@@ -392,7 +391,7 @@ inline void FullyConnected(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    gemmlowp::GemmContext* gemm_context) {
+    gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedInt8/8bit");
 
 #ifdef USE_NEON
@@ -421,7 +420,7 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data, gemm_context);
+          output_activation_max, output_shape, output_data, gemmlowp_context);
     }
   }
 #endif  // USE_NEON
@@ -446,8 +445,8 @@ inline void FullyConnected(
 
   gemmlowp::GemmWithOutputPipeline<
       int8, int8, gemmlowp::SignedL8R8WithLhsNonzeroBitDepthParams>(
-      gemm_context, filter_matrix, input_matrix, &output_matrix, filter_offset,
-      input_offset, output_pipeline);
+      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
+      filter_offset, input_offset, output_pipeline);
   return;
 #endif  // GEMMLOWP_NEON
 
@@ -455,7 +454,7 @@ inline void FullyConnected(
   // implementation.
   reference_integer_ops::FullyConnected(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-      bias_data, output_shape, output_data, gemm_context);
+      bias_data, output_shape, output_data, gemmlowp_context);
 }
 
 }  // namespace optimized_integer_ops

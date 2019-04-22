@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/device_tracer.h"
-
 #if GOOGLE_CUDA
 
 #include <stdlib.h>
@@ -39,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -325,7 +323,6 @@ class CuptiCallbackHook {
 
   CUpti_SubscriberHandle subscriber_;
 };
-}  // namespace
 
 class TraceCollectorImpl : public tracing::TraceCollector {
  public:
@@ -337,11 +334,13 @@ class TraceCollectorImpl : public tracing::TraceCollector {
    private:
     profiler::TraceMe trace_me_;
   };
-  TraceCollectorImpl() { tracing::SetTraceCollector(this); }
+  TraceCollectorImpl() : active_trace_session_(false) {
+    tracing::SetTraceCollector(this);
+  }
 
   ~TraceCollectorImpl() override {
     DCHECK(!active_trace_session_)
-        << "Unexpected active trace session detected. ";
+        << "Unexpected active trace session detected.";
   }
 
   // Note the method can be called after a call to Stop().
@@ -378,7 +377,7 @@ class TraceCollectorImpl : public tracing::TraceCollector {
 
   void Start() {
     DCHECK(!active_trace_session_)
-        << "Unexpected active trace session detected. ";
+        << "Unexpected active trace session detected.";
     active_trace_session_ = true;
   }
 
@@ -400,15 +399,20 @@ TraceCollectorImpl* GlobalDefaultTraceCollector() {
   return instance;
 }
 
-class DeviceTracerImpl : public DeviceTracer {
+// 'DeviceTracer' is an interface for collecting low-level execution timings
+// of hardware accelerator (e.g. GPU) computation and DMA transfers.
+class DeviceTracer : public profiler::ProfilerInterface {
  public:
-  DeviceTracerImpl();
-  ~DeviceTracerImpl() override;
+  DeviceTracer();
+  ~DeviceTracer() override;
 
-  // DeviceTracer interface:
+  // ProfilerInterface interface:
   Status Start() override;
   Status Stop() override;
-  Status Collect(StepStatsCollector* collector) override;
+  // Collect trace results.  Results are added to the specified
+  // StepStatsCollector.  Does not clear any existing stats.
+  // It is an error to call 'Collect' while a trace is running.
+  Status CollectData(RunMetadata* run_metadata) override;
 
  private:
   std::unique_ptr<CudaEventRecorder> recorder_;
@@ -416,22 +420,20 @@ class DeviceTracerImpl : public DeviceTracer {
 
   mutex mu_;
   bool enabled_ GUARDED_BY(mu_);
-  std::unique_ptr<profiler::cpu::HostTracer> host_tracer_ GUARDED_BY(mu_);
 };
 
-DeviceTracerImpl::DeviceTracerImpl() : recorder_(new CudaEventRecorder()) {
+DeviceTracer::DeviceTracer()
+    : recorder_(new CudaEventRecorder()), enabled_(false) {
   VLOG(1) << "DeviceTracer created.";
-  host_tracer_ = profiler::cpu::HostTracer::Create(2);
-  enabled_ = false;
 }
 
-DeviceTracerImpl::~DeviceTracerImpl() {
+DeviceTracer::~DeviceTracer() {
   // Unregister the CUPTI callbacks if needed to prevent them from accessing
   // freed memory.
   Stop().IgnoreError();
 }
 
-Status DeviceTracerImpl::Start() {
+Status DeviceTracer::Start() {
   VLOG(1) << "DeviceTracer::Start";
   mutex_lock l(mu_);
   if (enabled_) {
@@ -443,12 +445,11 @@ Status DeviceTracerImpl::Start() {
   // Register as a TraceEngine to receive ScopedAnnotations.
   GlobalDefaultTraceCollector()->Start();
 
-  host_tracer_->Start().IgnoreError();
   enabled_ = true;
   return Status::OK();
 }
 
-Status DeviceTracerImpl::Stop() {
+Status DeviceTracer::Stop() {
   VLOG(1) << "DeviceTracer::Stop";
   mutex_lock l(mu_);
   if (!enabled_) {
@@ -458,11 +459,9 @@ Status DeviceTracerImpl::Stop() {
   GlobalDefaultTraceCollector()->Stop();
 
   enabled_ = false;
-  host_tracer_->Stop().IgnoreError();
   return Status::OK();
 }
 
-namespace {
 class CudaEventCollector {
   struct DeviceInfo {
     int ordinal;
@@ -722,34 +721,36 @@ class CudaEventCollector {
   absl::flat_hash_map<StreamKey, StreamInfo, hash<StreamKey>> stream_infos_;
   int64 end_walltime_us_;
 };
-}  // namespace
 
-Status DeviceTracerImpl::Collect(StepStatsCollector* collector) {
+Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
   mutex_lock l(mu_);
   if (enabled_) {
     return errors::FailedPrecondition("DeviceTracer is still enabled.");
   }
 
-  TF_RETURN_IF_ERROR(CudaEventCollector::Collect(recorder_.get(), collector));
-  host_tracer_->CollectDataToCollector(collector).IgnoreError();
+  StepStatsCollector step_stats_collector(run_metadata->mutable_step_stats());
+  TF_RETURN_IF_ERROR(
+      CudaEventCollector::Collect(recorder_.get(), &step_stats_collector));
+  step_stats_collector.Finalize();
   return Status::OK();
 }
+}  // namespace
 
-std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
+// Not in anonymous namespace for testing purposes.
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
+    const ProfilerContext*) {
   auto status = cuInit(0);
   if (status != CUDA_SUCCESS) {
     LogIfError(ToStatus(status));
     return nullptr;
   }
-  return absl::make_unique<DeviceTracerImpl>();
+  return absl::make_unique<DeviceTracer>();
 }
+
+auto register_device_tracer_factory = [] {
+  RegisterProfilerFactory(&CreateDeviceTracer);
+  return 0;
+}();
+
 }  // namespace tensorflow
-#else  // GOOGLE_CUDA
-
-namespace tensorflow {
-
-std::unique_ptr<DeviceTracer> CreateDeviceTracer() { return nullptr; }
-
-}  // namespace tensorflow
-
 #endif  // GOOGLE_CUDA

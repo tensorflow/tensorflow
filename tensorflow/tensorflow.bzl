@@ -1299,7 +1299,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda_is_configured_compat([
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_lib"),

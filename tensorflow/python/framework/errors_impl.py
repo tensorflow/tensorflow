@@ -420,7 +420,7 @@ class UnimplementedError(OpError):
 
   Some operations may raise this error when passed otherwise-valid
   arguments that it does not currently support. For example, running
-  the `tf.nn.max_pool` operation
+  the `tf.nn.max_pool2d` operation
   would raise this error if pooling was requested on the batch dimension,
   because this is not yet supported.
 

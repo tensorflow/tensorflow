@@ -454,7 +454,7 @@ class PoolGradTest(xla_test.XLATestCase):
     """Verifies the output values of the pooling function.
 
     Args:
-      pool_func: Pooling function to be called, e.g., tf.nn.max_pool
+      pool_func: Pooling function to be called, e.g., tf.nn.max_pool2d
       pool_grad_func: Corresponding pooling gradient function.
       input_sizes: Input tensor dimensions.
       ksize: The kernel size dimensions

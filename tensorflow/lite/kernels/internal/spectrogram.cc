@@ -29,10 +29,10 @@ namespace {
 // Returns the default Hann window function for the spectrogram.
 void GetPeriodicHann(int window_length, std::vector<double>* window) {
   // Some platforms don't have M_PI, so define a local constant here.
-  const double pi = std::atan(1) * 4;
+  const double pi = std::atan(1.0) * 4.0;
   window->resize(window_length);
   for (int i = 0; i < window_length; ++i) {
-    (*window)[i] = 0.5 - 0.5 * cos((2 * pi * i) / window_length);
+    (*window)[i] = 0.5 - 0.5 * cos((2.0 * pi * i) / window_length);
   }
 }
 }  // namespace

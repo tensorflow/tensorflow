@@ -68,7 +68,7 @@ look at following code:
 
 Above user code leads to following execution:
   call hooks.begin()
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
   call hooks.after_create_session()
   while not stop is requested:
     call hooks.before_run()

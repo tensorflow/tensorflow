@@ -311,6 +311,15 @@ class GroupByWindowTest(test_base.DatasetTestBase):
         counts.append(tight_result.shape[0])
     self.assertEqual(len(components), sum(counts))
 
+  def testShortCircuit(self):
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        grouping.group_by_window(lambda x: x, lambda _, window: window.batch(1),
+                                 1))
+    self.assertDatasetProduces(
+        dataset, expected_output=[[i] for i in range(10)])
+
 
 if __name__ == "__main__":
   test.main()

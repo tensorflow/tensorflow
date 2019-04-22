@@ -295,6 +295,47 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      multiply0 = f32[] multiply(p0, c0)
+      ROOT multiply1 = f32[] multiply(multiply0, c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0),
+                                     m::Multiply(m::ConstantScalar(2.0),
+                                                 m::ConstantScalar(3.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      multiply0 = f32[4] multiply(p0, b0)
+      ROOT multiply1 = f32[4] multiply(multiply0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Parameter(0), m::Broadcast(m::Multiply(m::ConstantScalar(2.0),
+                                                    m::ConstantScalar(3.0))))));
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -444,6 +485,27 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   EXPECT_THAT(root, GmockMatch(m::Add(
                         m::Op().Is(param0),
                         m::Add(m::Op().Is(constant1), m::Op().Is(constant2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(1.0)
+      c1 = f32[] constant(2.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      add0 = f32[4] add(p0, b0)
+      ROOT add1 = f32[4] add(add0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0),
+                                m::Broadcast(m::Add(m::ConstantScalar(1.0),
+                                                    m::ConstantScalar(2.0))))));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
@@ -638,6 +700,25 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
                                       m::Negate(m::Op().Is(constant)))));
+}
+
+// Test that A - Broadcast(Const) is canonicalized to A + Broadcast(-Const).
+TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c = f32[] constant(0.125)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT sub = f32[4] subtract(p0, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(m::Parameter(0),
+                        m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).

@@ -113,12 +113,6 @@ class DenseLayerTest(test.TestCase):
 
   def testDenseLayerJitScopeUndefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
-
-    Dense layer uses shape op to get shape of input tensor if its shape is not
-    fully defined. XLA does not cluster shape op with other operators. But in
-    experimental_jit_scope, XLA is forced to compile shape op into its own
-    cluster, causing dense layer to be split into TWO XlaCompile/XlaRun op
-    pairs.
     """
 
     with self.cached_session() as sess:
@@ -136,7 +130,7 @@ class DenseLayerTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
     labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(2, self.countXlaOps(labels))
+    self.assertEqual(1, self.countXlaOps(labels))
     self.assertFalse(InLabels(labels, "MatMult"))
 
 

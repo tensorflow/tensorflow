@@ -196,8 +196,9 @@ py_library(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/tools:component_api_helper",
+        "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//third_party/py/numpy",
     ],
 )
@@ -2874,6 +2875,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
+        "//tensorflow/python/distribute:distribute_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2894,7 +2896,7 @@ py_test(
 
 py_test(
     name = "loss_scale_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/experimental/loss_scale_test.py"],
     deps = [
         ":loss_scale",
@@ -2902,6 +2904,29 @@ py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "mixed_precision",
+    srcs = ["training/experimental/mixed_precision.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":config",
+        ":loss_scale",
+        ":loss_scale_optimizer",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "mixed_precision_test",
+    size = "small",
+    srcs = ["training/experimental/mixed_precision_test.py"],
+    additional_deps = [
+        ":mixed_precision",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -4012,6 +4037,7 @@ py_library(
         ":loss_scale",
         ":loss_scale_optimizer",
         ":math_ops",
+        ":mixed_precision",
         ":platform",
         ":pywrap_tensorflow",
         ":random_ops",
@@ -4206,6 +4232,7 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
+        "//tensorflow/tools/compatibility:all_renames_v2",
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",
         "@protobuf_archive//:protobuf_python",
@@ -4342,6 +4369,7 @@ tf_py_test(
         ":client_testlib",
         ":util",
         "@six_archive//:six",
+        "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
 
@@ -6339,8 +6367,7 @@ tf_py_test(
     ],
 )
 
-# (TODO: b/130419137)
-tf_py_test(
+cuda_py_test(
     name = "auto_mixed_precision_test",
     size = "small",
     srcs = [

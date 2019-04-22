@@ -1058,8 +1058,8 @@ class StridedSliceAssignChecker(object):
         var = variables.Variable(self.x)
       sess.run(variables.variables_initializer([var]))
       val = sess.run(var[index].assign(value))
-      # val_copy is used to check that tf.assign works equivalently to the
-      # assign method above.
+      # val_copy is used to check that tf.compat.v1.assign works equivalently
+      # to the assign method above.
       val_copy = sess.run(state_ops.assign(var[index], value))
       valnp = np.copy(self.x_np)
       valnp[index] = np.array(value)

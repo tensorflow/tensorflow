@@ -681,15 +681,16 @@ class ReduceDatasetOp : public AsyncOpKernel {
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
         background_worker_(ctx->env(), "tf_data_reduce_dataset") {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &reduce_func_));
+    bool use_inter_op_parallelism;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &use_inter_op_parallelism));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    params.use_inter_op_parallelism = use_inter_op_parallelism;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
-                                     &use_inter_op_parallelism_));
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       reduce_func_.name(), &lib_def_));
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -706,14 +707,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
       std::vector<Tensor> state(inputs.begin(), inputs.end());
 
       std::unique_ptr<CapturedFunction> captured_func;
-      CapturedFunction::Params fn_params;
-      fn_params.use_inter_op_parallelism = use_inter_op_parallelism_;
-      fn_params.is_multi_device_function = true;
-      fn_params.lib_def = lib_def_;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          CapturedFunction::Create(reduce_func_, ctx, "other_arguments",
-                                   fn_params, &captured_func),
+          CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                   &captured_func),
           done);
 
       IteratorContext::Params params(ctx);
@@ -795,12 +792,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
   }
 
  private:
-  NameAttrList reduce_func_;
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  bool use_inter_op_parallelism_;
   BackgroundWorker background_worker_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 class OneShotIteratorOp : public AsyncOpKernel {

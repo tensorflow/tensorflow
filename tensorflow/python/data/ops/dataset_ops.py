@@ -21,12 +21,14 @@ import abc
 import functools
 import threading
 import warnings
+import weakref
 
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -59,18 +61,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->wrap_function->dataset->autograph->tf.function).
+wrap_function = LazyLoader(
+    "wrap_function", globals(),
+    "tensorflow.python.eager.wrap_function")
 
 ops.NotDifferentiable("ReduceDataset")
 
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(object):
+class DatasetV2(tracking_base.Trackable):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -89,6 +98,16 @@ class DatasetV2(object):
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
     self._variant_tensor_attr = variant_tensor
+    weak_self = weakref.proxy(self)
+    self._variant_tracker = self._track_trackable(
+        _VariantTracker(
+            self._variant_tensor,
+            # _trace_variant_creation only works when executing eagerly, so we
+            # don't want to run it immediately. We also want the _VariantTracker
+            # to have a weak reference to the Dataset to avoid creating
+            # reference cycles and making work for the garbage collector.
+            lambda: weak_self._trace_variant_creation()()),  # pylint: disable=unnecessary-lambda,protected-access
+        name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
 
   @property
@@ -107,6 +126,42 @@ class DatasetV2(object):
       serialized graph.
     """
     return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
+
+  def _trace_variant_creation(self):
+    """Traces a function which outputs a variant `tf.Tensor` for this dataset.
+
+    Note that creating this function involves evaluating an op, and is currently
+    only supported when executing eagerly.
+
+    Returns:
+      A zero-argument `ConcreteFunction` which outputs a variant `tf.Tensor`.
+    """
+    variant = self._variant_tensor
+    if not isinstance(variant, ops.EagerTensor):
+      raise NotImplementedError(
+          "Can only export Datasets which were created executing eagerly. "
+          "Please file a feature request if this is important to you.")
+    with context.eager_mode():
+      graph_def = graph_pb2.GraphDef().FromString(
+          self._as_serialized_graph().numpy())  # pylint: disable=protected-access
+    output_node_name = None
+    for node in graph_def.node:
+      if node.op == "_Retval":
+        if output_node_name is not None:
+          raise AssertionError(
+              "Found multiple return values from the dataset's graph, expected "
+              "only one.")
+        output_node_name, = node.input
+    if output_node_name is None:
+      raise AssertionError("Could not find the dataset's output node.")
+    # Add functions used in this Dataset to the function's graph, since they
+    # need to follow it around (and for example be added to a SavedModel which
+    # references the dataset).
+    variant_function = wrap_function.function_from_graph_def(
+        graph_def, inputs=[], outputs=output_node_name + ":0")
+    for used_function in self._functions():
+      used_function.function.add_to_graph(variant_function.graph)
+    return variant_function
 
   @abc.abstractmethod
   def _inputs(self):
@@ -566,27 +621,25 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6 }
-    c = { (7, 8), (9, 10), (11, 12) }
-    d = { 13, 14 }
+    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    b = Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
+    c = Dataset.range(7, 13).batch(2)  # ==> [ [7, 8], [9, 10], [11, 12] ]
+    d = Dataset.range(13, 15)  # ==> [ 13, 14 ]
 
     # The nested structure of the `datasets` argument determines the
     # structure of elements in the resulting dataset.
-    Dataset.zip((a, b)) == { (1, 4), (2, 5), (3, 6) }
-    Dataset.zip((b, a)) == { (4, 1), (5, 2), (6, 3) }
+    Dataset.zip((a, b))  # ==> [ (1, 4), (2, 5), (3, 6) ]
+    Dataset.zip((b, a))  # ==> [ (4, 1), (5, 2), (6, 3) ]
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
-                                (2, 5, (9, 10)),
-                                (3, 6, (11, 12)) }
+    Dataset.zip((a, b, c))  # ==> [ (1, 4, [7, 8]),
+                            #       (2, 5, [9, 10]),
+                            #       (3, 6, [11, 12]) ]
 
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
-    Dataset.zip((a, d)) == { (1, 13), (2, 14) }
+    Dataset.zip((a, d))  # ==> [ (1, 13), (2, 14) ]
     ```
 
     Args:
@@ -601,18 +654,16 @@ class DatasetV2(object):
     """Creates a `Dataset` by concatenating given dataset with this dataset.
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6, 7 }
+    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    b = Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
 
     # Input dataset and dataset to be concatenated should have same
     # nested structures and output types.
-    # c = { (8, 9), (10, 11), (12, 13) }
-    # d = { 14.0, 15.0, 16.0 }
+    # c = Dataset.range(8, 14).batch(2)  # ==> [ [8, 9], [10, 11], [12, 13] ]
+    # d = Dataset.from_tensor_slices([14.0, 15.0, 16.0])
     # a.concatenate(c) and a.concatenate(d) would result in error.
 
-    a.concatenate(b) == { 1, 2, 3, 4, 5, 6, 7 }
+    a.concatenate(b)  # ==> [ 1, 2, 3, 4, 5, 6, 7 ]
     ```
 
     Args:
@@ -936,17 +987,17 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
 
-    a.map(lambda x: x + 1) = { 2, 3, 4, 5, 6 }
+    a.map(lambda x: x + 1)  # ==> [ 2, 3, 4, 5, 6 ]
     ```
 
     The input signature of `map_func` is determined by the structure of each
     element in this dataset. For example:
 
     ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
     # Each element is a `tf.Tensor` object.
     a = { 1, 2, 3, 4, 5 }
     # `map_func` takes a single argument of type `tf.Tensor` with the same
@@ -1032,12 +1083,10 @@ class DatasetV2(object):
     dataset of their elements:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset. '[...]' represents a tensor.
-    a = {[1,2,3,4,5], [6,7,8,9], [10]}
+    a = Dataset.from_tensor_slices([ [1, 2, 3], [4, 5, 6], [7, 8, 9] ])
 
-    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) ==
-      {[1,2,3,4,5,6,7,8,9,10]}
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x + 1)) # ==>
+    #  [ 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
     ```
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
@@ -1088,24 +1137,20 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
 
     # NOTE: New lines indicate "block" boundaries.
     a.interleave(lambda x: Dataset.from_tensors(x).repeat(6),
-                 cycle_length=2, block_length=4) == {
-        1, 1, 1, 1,
-        2, 2, 2, 2,
-        1, 1,
-        2, 2,
-        3, 3, 3, 3,
-        4, 4, 4, 4,
-        3, 3,
-        4, 4,
-        5, 5, 5, 5,
-        5, 5,
-    }
+                cycle_length=2, block_length=4)  # ==> [1, 1, 1, 1,
+                                                 #      2, 2, 2, 2,
+                                                 #      1, 1,
+                                                 #      2, 2,
+                                                 #      3, 3, 3, 3,
+                                                 #      4, 4, 4, 4,
+                                                 #      3, 3,
+                                                 #      4, 4,
+                                                 #      5, 5, 5, 5,
+                                                 #      5, 5]
     ```
 
     NOTE: The order of elements yielded by this transformation is
@@ -1143,13 +1188,13 @@ class DatasetV2(object):
     ```python
     d = tf.data.Dataset.from_tensor_slices([1, 2, 3])
 
-    d = d.filter(lambda x: x < 3) # [1, 2]
+    d = d.filter(lambda x: x < 3)  # ==> [1, 2]
 
     # `tf.math.equal(x, y)` is required for equality comparison
     def filter_fn(x):
       return tf.math.equal(x, 1)
 
-    d = d.filter(filter_fn) # [1]
+    d = d.filter(filter_fn)  # ==> [1]
     ```
 
     Args:
@@ -1195,22 +1240,33 @@ class DatasetV2(object):
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Combines input elements into a dataset of windows.
+    """Combines (nests of) input elements into a dataset of (nests of) windows.
 
-    Each window is a dataset itself and contains `size` elements (or
-    possibly fewer if there are not enough input elements to fill the window
-    and `drop_remainder` evaluates to false).
+    A "window" is a finite dataset of flat elements of size `size` (or possibly
+    fewer if there are not enough input elements to fill the window and
+    `drop_remainder` evaluates to false).
 
-    The `stride` argument determines the stride of the input elements,
-    and the `shift` argument determines the shift of the window.
+    The `stride` argument determines the stride of the input elements, and the
+    `shift` argument determines the shift of the window.
 
-    For example:
+    For example, letting {...} to represent a Dataset:
+
     - `tf.data.Dataset.range(7).window(2)` produces
       `{{0, 1}, {2, 3}, {4, 5}, {6}}`
     - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
       `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
     - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
       `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+
+    Note that when the `window` transformation is applied to a dataset of
+    nested elements, it produces a dataset of nested windows.
+
+    For example:
+
+    - `tf.data.Dataset.from_tensor_slices((range(4), range(4)).window(2)`
+      produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
+    - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
+      produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
@@ -1225,9 +1281,9 @@ class DatasetV2(object):
         `window_size`.
 
     Returns:
-      Dataset: A `Dataset` of windows, each of which is a nested `Dataset` with
-        the same structure as this dataset, but a finite subsequence of its
-        elements.
+      Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
+        elements created from the (nests of) input elements.
+
     """
     if shift is None:
       shift = size
@@ -2819,6 +2875,31 @@ class BatchDataset(UnaryDataset):
   @property
   def _element_structure(self):
     return self._structure
+
+
+class _VariantTracker(tracking.TrackableResource):
+  """Allows export of functions capturing a Dataset in SavedModels.
+
+  When saving a SavedModel, `tf.saved_model.save` traverses the object
+  graph. Since Datasets reference _VariantTracker objects, that traversal will
+  find a _VariantTracker for each Dataset and so know how to save and restore
+  functions which reference the Dataset's variant Tensor.
+  """
+
+  def __init__(self, variant_tensor, resource_creator):
+    """Record that `variant_tensor` is associated with `resource_creator`.
+
+    Args:
+      variant_tensor: The variant-dtype Tensor associated with the Dataset. This
+        Tensor will be a captured input to functions which use the Dataset, and
+        is used by saving code to identify the corresponding _VariantTracker.
+      resource_creator: A zero-argument function which creates a new
+        variant-dtype Tensor. This function will be included in SavedModels and
+        run to re-create the Dataset's variant Tensor on restore.
+    """
+    super(_VariantTracker, self).__init__()
+    self._resource_handle = variant_tensor
+    self._create_resource = resource_creator
 
 
 def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
