@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
-#include "tensorflow/core/platform/monitoring.h"
-
 namespace tensorflow {
 
 namespace {
@@ -106,12 +104,7 @@ WorkerSession::WorkerSession(const string& session_name,
       cluster_flr(
           new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
       device_mgr_(std::move(device_mgr)),
-      borrowed_device_mgr_(nullptr) {
-  // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
-  // currently a no-op.
-  monitoring::StartExporter();
-}
+      borrowed_device_mgr_(nullptr) {}
 
 /* static */
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
@@ -135,12 +128,7 @@ WorkerSession::WorkerSession(const string& session_name,
       cluster_flr(
           new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
       device_mgr_(nullptr),
-      borrowed_device_mgr_(borrowed_device_mgr) {
-  // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
-  // currently a no-op.
-  monitoring::StartExporter();
-}
+      borrowed_device_mgr_(borrowed_device_mgr) {}
 
 WorkerSession::~WorkerSession() {
   if (graph_mgr) {
