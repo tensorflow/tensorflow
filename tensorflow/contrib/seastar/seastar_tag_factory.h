@@ -2,9 +2,6 @@
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_
 
 #include "core/temporary_buffer.hh"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 
 namespace seastar {
 class channel;
@@ -30,6 +27,6 @@ private:
   SeastarWorkerService* worker_service_;
 };
 
-} // end of namespace tensorflow
+} // namespace tensorflow
 
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_

@@ -15,7 +15,7 @@ namespace tensorflow {
 namespace {
   const static int DEFAULT_CORE_NUM = 4;
   const static int kWaitTimeInUs = 50000;
-  const static int kRetryCount = 100;
+  const static int kRetryCount = 10000;
 
   // sesatar can't use localhost directly
   string LocalhostToIp(const string& ip) {
@@ -105,7 +105,7 @@ void SeastarEngine::GetCpuset(char** av) {
   }
 
   *av = new char[cpuset_.size() + 1];
-  memcpy(*av, cpuset_.c_str(), cpuset_.size());
+  memcpy(*av, cpuset_.c_str(), cpuset_.size() + 1);
 }
 
 void SeastarEngine::ConstructArgs(int* argc, char*** argv) {

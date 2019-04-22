@@ -206,7 +206,6 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
 
 private:
     seastar::channel* seastar_channel_;
-    // Support for logging.
     WorkerCacheLogger* logger_;
     WorkerEnv* env_;
     

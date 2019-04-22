@@ -1,5 +1,4 @@
 #include "core/channel.hh"
-
 #include "tensorflow/contrib/seastar/seastar_client_tag.h"
 #include "tensorflow/contrib/seastar/seastar_message.h"
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
@@ -16,7 +15,7 @@ SeastarClientTag* SeastarTagFactory::CreateSeastarClientTag(
     seastar::temporary_buffer<char>& header) {
   char* p = const_cast<char*>(header.get());
 
-  SeastarClientTag* tag = NULL;
+  SeastarClientTag* tag = nullptr;
   memcpy(&tag, p + 8, 8);
   // igonre the method segment
   // memcpy(&tag->method_, p + 16, 4);
@@ -27,7 +26,6 @@ SeastarClientTag* SeastarTagFactory::CreateSeastarClientTag(
     memcpy(&tag->resp_body_buf_.len_, p + 24, 8);
     tag->resp_body_buf_.data_ = new char[tag->resp_body_buf_.len_];
   }
-  
   return tag;
 }
 
@@ -48,5 +46,5 @@ SeastarServerTag* SeastarTagFactory::CreateSeastarServerTag(
   return tag;
 }
 
-} // end of namespace tensorflow
+} // namespace tensorflow
 

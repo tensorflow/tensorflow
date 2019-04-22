@@ -57,8 +57,8 @@ seastar::future<> SeastarClient::Connection::Read() {
         return _read_buf.read_exactly(tensor_size)
             .then([this, tag, tensor_size, tensor_buffer] (auto&& tensor) {
           if (tensor.size() != tensor_size) {
-            LOG(WARNING) << "warning expected read size is:" << tensor_size
-                         << ", actual read tensor size:"     << tensor.size();
+            LOG(WARNING) << "Expected read size is:" << tensor_size
+                         << ", but real tensor size:"     << tensor.size();
             tag->RecvRespDone(Status(error::UNKNOWN,
                                      "Seastar Client: read invalid tensorbuf"));
             return seastar::make_ready_future();
@@ -80,9 +80,11 @@ seastar::future<> SeastarClient::Connection::Read() {
       return _read_buf.read_exactly(resp_body_size)
           .then([this, tag, resp_body_size, resp_body_buffer](auto&& body) {
         if (body.size() != resp_body_size) {
-          LOG(WARNING) << "warning expected read size is:" << resp_body_size
-                       << ", body size:" << body.size();
-          tag->RecvRespDone(tensorflow::Status(error::UNKNOWN, "Seastar Client: read invalid msgbuf"));
+          LOG(WARNING) << "Expected read size is:" << resp_body_size
+                       << ", but real size is:" << body.size();
+          tag->RecvRespDone(
+              tensorflow::Status(error::UNKNOWN,
+                                 "Seastar Client: read invalid msgbuf"));
           return seastar::make_ready_future();
         }
         memcpy(resp_body_buffer, body.get(), body.size());
