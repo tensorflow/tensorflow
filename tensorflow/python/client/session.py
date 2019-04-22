@@ -27,6 +27,7 @@ import warnings
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device
@@ -36,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -668,6 +670,19 @@ class BaseSession(SessionInterface):
     if not isinstance(config, config_pb2.ConfigProto):
       raise TypeError(
           'config must be a tf.ConfigProto, but got %s' % type(config))
+
+    if (mixed_precision_global_state.mixed_precision_is_enabled and
+        config.graph_options.rewrite_options.auto_mixed_precision !=
+        rewriter_config_pb2.RewriterConfig.OFF):
+      new_config = config_pb2.ConfigProto()
+      new_config.CopyFrom(config)
+      new_config.graph_options.rewrite_options.auto_mixed_precision = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      config = new_config
+    elif (config.graph_options.rewrite_options.auto_mixed_precision !=
+          rewriter_config_pb2.RewriterConfig.ON):
+      mixed_precision_global_state.non_mixed_precision_session_created = True
+
     self._config = config
     self._add_shapes = config.graph_options.infer_shapes
 
