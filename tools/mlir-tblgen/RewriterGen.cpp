@@ -166,9 +166,9 @@ private:
   std::string handleRewritePattern(DagNode resultTree, int resultIndex,
                                    int depth);
 
-  // Emits the C++ statement to replace the matched DAG with a native C++ built
-  // value.
-  std::string emitReplaceWithNativeBuilder(DagNode resultTree);
+  // Emits the C++ statement to replace the matched DAG with a value built via
+  // calling native C++ code.
+  std::string emitReplaceWithNativeCodeCall(DagNode resultTree);
 
   // Returns the C++ expression referencing the old value serving as the
   // replacement.
@@ -192,9 +192,6 @@ private:
   // Returns the C++ expression to build an argument from the given DAG `leaf`.
   // `patArgName` is used to bound the argument to the source pattern.
   std::string handleOpArgument(DagLeaf leaf, llvm::StringRef patArgName);
-
-  // Returns the C++ expression to build an argument from the given DAG `tree`.
-  std::string handleOpArgument(DagNode tree);
 
   // Marks the symbol attached to DagNode `node` as bound. Aborts if the symbol
   // is already bound.
@@ -515,8 +512,8 @@ std::string PatternEmitter::getUniqueValueName(const Operator *op) {
 
 std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
                                                  int resultIndex, int depth) {
-  if (resultTree.isNativeCodeBuilder())
-    return emitReplaceWithNativeBuilder(resultTree);
+  if (resultTree.isNativeCodeCall())
+    return emitReplaceWithNativeCodeCall(resultTree);
 
   if (resultTree.isVerifyUnusedValue()) {
     if (depth > 0) {
@@ -584,22 +581,18 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
   if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
     return result;
   }
-  if (leaf.isAttrTransformer()) {
-    return tgfmt(leaf.getTransformationTemplate(),
-                 &rewriteCtx.withSelf(result));
+  if (leaf.isNativeCodeCall()) {
+    return tgfmt(leaf.getNativeCodeTemplate(), &rewriteCtx.withSelf(result));
   }
   PrintFatalError(loc, "unhandled case when rewriting op");
 }
 
-std::string PatternEmitter::handleOpArgument(DagNode tree) {
-  if (!tree.isAttrTransformer()) {
-    PrintFatalError(loc, "only tAttr is supported in nested dag attribute");
-  }
-  auto fmt = tree.getTransformationTemplate();
+std::string PatternEmitter::emitReplaceWithNativeCodeCall(DagNode tree) {
+  auto fmt = tree.getNativeCodeTemplate();
   // TODO(fengliuai): replace formatv arguments with the exact specified args.
   SmallVector<std::string, 8> attrs(8);
   if (tree.getNumArgs() > 8) {
-    PrintFatalError(loc, "unsupported tAttr argument numbers: " +
+    PrintFatalError(loc, "unsupported NativeCodeCall argument numbers: " +
                              Twine(tree.getNumArgs()));
   }
   for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i) {
@@ -692,7 +685,9 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   // Create the builder call for the result.
   // Add operands.
   int i = 0;
-  for (auto operand : resultOp.getOperands()) {
+  for (int e = resultOp.getNumOperands(); i < e; ++i) {
+    const auto &operand = resultOp.getOperand(i);
+
     // Start each operand on its own line.
     (os << ",\n").indent(6);
 
@@ -702,11 +697,15 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     if (tree.isNestedDagArg(i)) {
       os << childNodeNames[i];
     } else {
-      os << resolveSymbol(tree.getArgName(i));
+      DagLeaf leaf = tree.getArgAsLeaf(i);
+      auto symbol = resolveSymbol(tree.getArgName(i));
+      if (leaf.isNativeCodeCall()) {
+        os << tgfmt(leaf.getNativeCodeTemplate(), &rewriteCtx.withSelf(symbol));
+      } else {
+        os << symbol;
+      }
     }
-
     // TODO(jpienaar): verify types
-    ++i;
   }
 
   // Add attributes.
@@ -716,7 +715,11 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     // The argument in the op definition.
     auto opArgName = resultOp.getArgName(i);
     if (auto subTree = tree.getArgAsNestedDag(i)) {
-      os << formatv("/*{0}=*/{1}", opArgName, handleOpArgument(subTree));
+      if (!subTree.isNativeCodeCall())
+        PrintFatalError(loc, "only NativeCodeCall allowed in nested dag node "
+                             "for creating attribute");
+      os << formatv("/*{0}=*/{1}", opArgName,
+                    emitReplaceWithNativeCodeCall(subTree));
     } else {
       auto leaf = tree.getArgAsLeaf(i);
       // The argument in the result DAG pattern.
@@ -737,36 +740,6 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   os << "\n    );\n";
 
   return resultValue;
-}
-
-std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
-  // The variable's name for holding the result of this native builder call
-  std::string value = formatv("v{0}", nextValueId++).str();
-
-  os.indent(4) << "auto " << value << " = " << resultTree.getNativeCodeBuilder()
-               << "(op, {";
-  const auto &boundedValues = pattern.getSourcePatternBoundArgs();
-  bool first = true;
-  bool printingAttr = false;
-  for (int i = 0, e = resultTree.getNumArgs(); i != e; ++i) {
-    auto name = resultTree.getArgName(i);
-    pattern.ensureBoundInSourcePattern(name);
-    const auto &val = boundedValues.find(name);
-    if (val->second.dyn_cast<NamedAttribute *>() && !printingAttr) {
-      os << "}, {";
-      first = true;
-      printingAttr = true;
-    }
-    if (!first)
-      os << ",";
-    os << getBoundSymbol(name);
-    first = false;
-  }
-  if (!printingAttr)
-    os << "},{";
-  os << "}, rewriter);\n";
-
-  return value;
 }
 
 void PatternEmitter::emit(StringRef rewriteName, Record *p,

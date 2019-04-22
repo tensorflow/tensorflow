@@ -44,8 +44,8 @@ bool tblgen::DagLeaf::isAttrMatcher() const {
   return isSubClassOf("AttrConstraint");
 }
 
-bool tblgen::DagLeaf::isAttrTransformer() const {
-  return isSubClassOf("tAttr");
+bool tblgen::DagLeaf::isNativeCodeCall() const {
+  return isSubClassOf("NativeCodeCall");
 }
 
 bool tblgen::DagLeaf::isConstantAttr() const {
@@ -76,12 +76,9 @@ std::string tblgen::DagLeaf::getConditionTemplate() const {
   return getAsConstraint().getConditionTemplate();
 }
 
-std::string tblgen::DagLeaf::getTransformationTemplate() const {
-  assert(isAttrTransformer() && "the DAG leaf must be attribute transformer");
-  return cast<llvm::DefInit>(def)
-      ->getDef()
-      ->getValueAsString("attrTransform")
-      .str();
+llvm::StringRef tblgen::DagLeaf::getNativeCodeTemplate() const {
+  assert(isNativeCodeCall() && "the DAG leaf must be NativeCodeCall");
+  return cast<llvm::DefInit>(def)->getDef()->getValueAsString("expression");
 }
 
 bool tblgen::DagLeaf::isSubClassOf(StringRef superclass) const {
@@ -90,19 +87,17 @@ bool tblgen::DagLeaf::isSubClassOf(StringRef superclass) const {
   return false;
 }
 
-bool tblgen::DagNode::isAttrTransformer() const {
-  auto op = node->getOperator();
-  if (!op || !isa<llvm::DefInit>(op))
-    return false;
-  return cast<llvm::DefInit>(op)->getDef()->isSubClassOf("tAttr");
+bool tblgen::DagNode::isNativeCodeCall() const {
+  if (auto *defInit = dyn_cast_or_null<llvm::DefInit>(node->getOperator()))
+    return defInit->getDef()->isSubClassOf("NativeCodeCall");
+  return false;
 }
 
-std::string tblgen::DagNode::getTransformationTemplate() const {
-  assert(isAttrTransformer() && "the DAG leaf must be attribute transformer");
+llvm::StringRef tblgen::DagNode::getNativeCodeTemplate() const {
+  assert(isNativeCodeCall() && "the DAG leaf must be NativeCodeCall");
   return cast<llvm::DefInit>(node->getOperator())
       ->getDef()
-      ->getValueAsString("attrTransform")
-      .str();
+      ->getValueAsString("expression");
 }
 
 llvm::StringRef tblgen::DagNode::getOpName() const {
@@ -154,17 +149,6 @@ bool tblgen::DagNode::isReplaceWithValue() const {
 bool tblgen::DagNode::isVerifyUnusedValue() const {
   auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
   return dagOpDef->getName() == "verifyUnusedValue";
-}
-
-bool tblgen::DagNode::isNativeCodeBuilder() const {
-  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
-  return dagOpDef->isSubClassOf("cOp");
-}
-
-llvm::StringRef tblgen::DagNode::getNativeCodeBuilder() const {
-  assert(isNativeCodeBuilder());
-  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
-  return dagOpDef->getValueAsString("function");
 }
 
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)

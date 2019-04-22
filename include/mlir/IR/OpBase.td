@@ -984,42 +984,25 @@ class Pat<dag pattern, dag result, list<dag> preds = [],
   dag benefitAdded = (addBenefit 0)> :
   Pattern<pattern, [result], preds, benefitAdded>;
 
-// Attribute transformation. This is the base class to specify a transformation
-// of matched attributes. Used on the output attribute of a rewrite rule.
+// Native code call wrapper. This allows invoking an arbitrary C++ expression
+// to create an op operand/attribute or replace an op result.
 //
 // ## Placeholders
 //
-// The following special placeholders are supported
+// If used as a DAG leaf, i.e., `(... NativeCodeCall<"...">:$arg, ...)`,
+// the wrapped expression can take special placeholders listed below:
 //
 // * `$_builder` will be replaced by the current `mlir::PatternRewriter`.
 // * `$_self` will be replaced with the entity this transformer is attached to.
 //   E.g., with the definition `def transform : tAttr<$_self...>`, `$_self` in
 //   `transform:$attr` will be replaced by  the value for `$att`.
-
-// Besides, if this is used as a DAG node, i.e., `(tAttr <arg0>, ..., <argN>)`,
-// then positional placeholders are supported and placholder `$N` will be
-// replaced by `<argN>`.
-class tAttr<code transform> {
-  code attrTransform = transform;
-}
-
-// Native code op creation method. This allows performing an arbitrary op
-// creation/replacement by invoking a C++ function with the operands and
-// attributes. The function specified needs to have the signature:
 //
-//   void f(Operation *op, ArrayRef<Value *> operands,
-//          ArrayRef<Attribute> attrs, PatternRewriter &rewriter);
-//
-// The operands and attributes are passed to this function in the order of
-// the DAG specified. It is the responsibility of this function to replace the
-// matched op(s) using the rewriter. This is intended for the long tail op
-// creation and replacement.
-// TODO(antiagainst): Unify this and tAttr into a single creation mechanism.
-class cOp<string f> {
-  // Function to invoke with the given arguments to construct a new op. The
-  // operands will be passed to the function first followed by the attributes
-  // (as in the function signature above and required by Op arguments).
-  string function = f;
+// If used as a DAG node, i.e., `(NativeCodeCall<"..."> <arg0>, ..., <argN>)`,
+// then positional placeholders are also supported; placeholder `$N` in the
+// wrapped C++ expression will be replaced by `<argN>`.
+
+class NativeCodeCall<string expr> {
+  string expression = expr;
 }
 
 //===----------------------------------------------------------------------===//

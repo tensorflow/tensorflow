@@ -77,8 +77,8 @@ public:
   // specifies an attribute constraint.
   bool isAttrMatcher() const;
 
-  // Returns true if this DAG leaf is transforming an attribute.
-  bool isAttrTransformer() const;
+  // Returns true if this DAG leaf is wrapping native code call.
+  bool isNativeCodeCall() const;
 
   // Returns true if this DAG leaf is specifying a constant attribute.
   bool isConstantAttr() const;
@@ -100,9 +100,9 @@ public:
   // leaf is an operand/attribute matcher and asserts otherwise.
   std::string getConditionTemplate() const;
 
-  // Returns the transformation template inside this DAG leaf. Assumes the
-  // leaf is an attribute transformation and asserts otherwise.
-  std::string getTransformationTemplate() const;
+  // Returns the native code call template inside this DAG leaf.
+  // Precondition: isNativeCodeCall()
+  llvm::StringRef getNativeCodeTemplate() const;
 
 private:
   // Returns true if the TableGen Init `def` in this DagLeaf is a DefInit and
@@ -162,10 +162,6 @@ public:
   // Returns the specified name of the `index`-th argument.
   llvm::StringRef getArgName(unsigned index) const;
 
-  // Returns the native builder for the pattern.
-  // Precondition: isNativeCodeBuilder.
-  llvm::StringRef getNativeCodeBuilder() const;
-
   // Returns true if this DAG construct means to replace with an existing SSA
   // value.
   bool isReplaceWithValue() const;
@@ -173,16 +169,12 @@ public:
   // Returns true if this DAG node is the `verifyUnusedValue` directive.
   bool isVerifyUnusedValue() const;
 
-  // Returns true if this DAG construct is meant to invoke a native code
-  // constructor.
-  bool isNativeCodeBuilder() const;
+  // Returns true if this DAG node is wrapping native code call.
+  bool isNativeCodeCall() const;
 
-  // Returns true if this DAG construct is transforming attributes.
-  bool isAttrTransformer() const;
-
-  // Returns the transformation template inside this DAG construct.
-  // Precondition: isAttrTransformer.
-  std::string getTransformationTemplate() const;
+  // Returns the native code call template inside this DAG node.
+  // Precondition: isNativeCodeCall()
+  llvm::StringRef getNativeCodeTemplate() const;
 
 private:
   const llvm::DagInit *node; // nullptr means null DagNode

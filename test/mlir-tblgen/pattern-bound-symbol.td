@@ -23,10 +23,11 @@ def OpD : Op<"op_d", []> {
 }
 
 def hasOneUse: Constraint<CPred<"$0->hasOneUse()">, "has one use">;
+def getResult0 : NativeCodeCall<"$_self->getResult(0)">;
 
 def : Pattern<(OpA:$res_a $operand, $attr),
               [(OpC:$res_c (OpB:$res_b $operand)),
-               (OpD $res_b, $res_c, $res_a, $attr)],
+               (OpD $res_b, $res_c, getResult0:$res_a, $attr)],
               [(hasOneUse $res_a)]>;
 
 // CHECK-LABEL: GeneratedConvert0
@@ -59,5 +60,5 @@ def : Pattern<(OpA:$res_a $operand, $attr),
 // CHECK:   auto vOpD0 = rewriter.create<OpD>(
 // CHECK:     /*input1=*/res_b,
 // CHECK:     /*input2=*/res_c,
-// CHECK:     /*input3=*/s.res_a,
+// CHECK:     /*input3=*/s.res_a->getResult(0),
 // CHECK:     /*attr=*/s.attr
