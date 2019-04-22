@@ -383,7 +383,7 @@ class FuncGraph(ops.Graph):
       else:
         op = ops.get_default_graph().create_op(
             op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_device)
+            op_def, compute_device=compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
