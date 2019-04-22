@@ -425,7 +425,7 @@ Status AddNewChooseFastestNode(const NodeDef* input_dataset_node,
   DCHECK_EQ(branches.size(), other_arguments_lengths.size());
 
   AddNodeAttr("Targuments", t_arguments, &choose_fastest_node);
-  AddNodeAttr("num_elements_per_branch", 10, &choose_fastest_node);
+  AddNodeAttr("num_elements_per_branch", 100, &choose_fastest_node);
   AddNodeAttr("branches", branches, &choose_fastest_node);
   AddNodeAttr("other_arguments_lengths", other_arguments_lengths,
               &choose_fastest_node);

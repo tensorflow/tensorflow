@@ -304,6 +304,18 @@ class RaggedReduceOpsTest(ragged_test_util.RaggedTensorTestCase,
           rt_input=[[[1, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=2,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
+
+      # Test case for GitHub issue 27497, multiple negative axes.
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[-2, -1],
+          expected=[1 + 2 + 3 + 4 + 5, 6 + 7 + 8, 0, 9]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[-3, -2, -1],
+          expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
   )
   def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
     rt_input = ragged_factory_ops.constant(rt_input)

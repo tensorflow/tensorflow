@@ -654,6 +654,9 @@ class FunctionLibraryRuntime {
 
     // If True, allow returning dead tensors.
     bool allow_dead_tensors = false;
+
+    // Returns a human readable representation of this.
+    string DebugString() const;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -673,10 +676,11 @@ class FunctionLibraryRuntime {
   // NOTE(mrry): This method assumes that the runtime is associated with a
   // default function library, and looks up `function_name` in that library.
   // It does not support overriding the function library.
-  virtual bool IsStateful(const string& function_name) = 0;
+  virtual bool IsStateful(const string& function_name) const = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+  virtual const Device* device() const = 0;
 
   // Returns the default runner in which the ops should be launched. If the
   // device on which the function executes has a private thread pool, return
@@ -703,13 +707,28 @@ class FunctionLibraryRuntime {
   virtual string DebugString(Handle handle) = 0;
 
   // Returns the graph version number.
-  virtual int graph_def_version() = 0;
+  virtual int graph_def_version() const = 0;
 
   typedef uint64 LocalHandle;
 
+  // Creates a copy of ProcessFunctionLibraryRuntime (transferring ownership to
+  // the caller), FunctionLibraryRuntime (owned by the returned
+  // ProcessFunctionLibraryRuntime), FunctionLibraryDefinition (transferring
+  // ownership to the caller). Note that both the ProcessFunctionLibraryRuntime
+  // and FunctionLibraryRuntime borrow a pointer to the
+  // FunctionLibraryDefinition and so the FunctionLibraryDefinition should
+  // outlive both.
+  //
+  // The `skip_flib_def` argument controls whether the method should clone the
+  // FunctionLibraryDefinition (default behavior) or return an empty function
+  // library. The latter is used by tf.data, which manages
+  // FunctionLibraryDefinitions for its functions independently (and passes
+  // these into the FunctionLibraryRuntime through an overlay), to avoid linear
+  // runtime w.r.t. to number of functions in the current function library.
   virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                        std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-                       FunctionLibraryRuntime** out_flr) = 0;
+                       FunctionLibraryRuntime** out_flr,
+                       bool skip_flib_def = false) = 0;
 
   // Returns the name of the executor class (in the sense of
   // `ExecutorFactory::GetFactory()`) that will be used based on the given
@@ -734,9 +753,20 @@ inline string Canonicalize(const string& funcname, AttrSlice attrs) {
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
-typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
-                             std::unique_ptr<OpKernel>*)>
-    CustomKernelCreator;
+
+class CustomKernelCreator {
+ public:
+  virtual ~CustomKernelCreator() {}
+
+  // Given a NodeDef 'node_def' and the function library runtime 'flr',
+  // validate if the class supports creating such a kernel.
+  virtual bool CanCreateKernel(const FunctionLibraryRuntime& flr,
+                               const NodeDef& node_def) const = 0;
+
+  // Given a supported NodeDef, returns a kernel that computes the node.
+  virtual Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                              std::unique_ptr<OpKernel>* kernel) const = 0;
+};
 
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {

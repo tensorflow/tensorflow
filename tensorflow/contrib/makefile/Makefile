@@ -650,6 +650,8 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
+tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/lib/profiler_session.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -685,7 +687,7 @@ $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
-tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+tensorflow/core/util/gpu_kernel_helper_test.cu.cc
 
 CORE_CC_EXCLUDE_SRCS := \
 $(CORE_CC_EXCLUDE_SRCS_NON_GPU) \

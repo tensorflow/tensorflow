@@ -42,21 +42,27 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
                                   /*retry_on_failure=*/false));
   allocated_bytes_excluding_redzones_ += byte_size;
 
-  char* addr =
-      reinterpret_cast<char*>(allocated_buffer.AsDeviceMemoryBase().opaque());
-  se::DeviceMemoryBase lhs_redzone(addr, redzone_size_,
-                                   /*is_sub_buffer=*/true);
+  static_assert(sizeof(uint8) == 1, "Unexpected size");
+  se::DeviceMemory<uint8> allocated_buffer_memory(
+      allocated_buffer.AsDeviceMemoryBase());
+
+  se::DeviceMemory<uint8> lhs_redzone = stream->parent()->GetSubBuffer(
+      &allocated_buffer_memory, 0, redzone_size_);
+
+  se::DeviceMemory<uint8> data_chunk = stream->parent()->GetSubBuffer(
+      &allocated_buffer_memory, redzone_size_, byte_size);
 
   // Split up the RHS redzone into two pieces:
   //  - 0 to kRhsRedzoneAlign bytes adjacent to the user buffer, followed by
   //  - redzone_size_ bytes.
   // We do this because Stream::ThenMemset32 requires the buffer address and
   // size to be aligned to 4 bytes.
-  se::DeviceMemoryBase rhs_redzone_slop(addr + redzone_size_ + byte_size,
-                                        rhs_slop, /*is_sub_buffer=*/true);
-  se::DeviceMemoryBase rhs_redzone_nonslop(
-      addr + redzone_size_ + byte_size + rhs_slop, redzone_size_,
-      /*is_sub_buffer=*/true);
+  se::DeviceMemory<uint8> rhs_redzone_slop = stream->parent()->GetSubBuffer(
+      &allocated_buffer_memory, redzone_size_ + byte_size, rhs_slop);
+
+  se::DeviceMemory<uint8> rhs_redzone_nonslop = stream->parent()->GetSubBuffer(
+      &allocated_buffer_memory, redzone_size_ + byte_size + rhs_slop,
+      redzone_size_);
 
   uint8 pattern_arr[] = {redzone_pattern_, redzone_pattern_, redzone_pattern_,
                          redzone_pattern_};
@@ -69,8 +75,7 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
   stream->ThenMemset32(&rhs_redzone_nonslop, pattern32, redzone_size_);
 
   allocated_buffers_.emplace_back(std::move(allocated_buffer), byte_size);
-  return se::DeviceMemory<uint8>(se::DeviceMemoryBase(
-      addr + redzone_size_, byte_size, /*is_sub_buffer=*/true));
+  return data_chunk;
 }
 
 Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
@@ -82,8 +87,7 @@ Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
     // user_alloc_size isn't necessarily the same as
     // allocated_buf.size() - 2 * redzone_size_ because if user_alloc_size was
     // not a multiple of kRhsRedzoneAlign, we rounded it up.
-    se::DeviceMemoryBase buf(addr + redzone_size_, user_alloc_size,
-                             /*is_sub_buffer=*/true);
+    se::DeviceMemoryBase buf(addr + redzone_size_, user_alloc_size);
     TF_RETURN_IF_ERROR(CheckBufferRedzones(buf, stream));
   }
   return Status::OK();
@@ -91,14 +95,31 @@ Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
 
 Status RedzoneAllocator::CheckBufferRedzones(se::DeviceMemoryBase buf,
                                              se::Stream* stream) const {
+  XLA_SCOPED_LOGGING_TIMER("RedzoneAllocator::CheckBufferRedzones.");
   char* buf_start = reinterpret_cast<char*>(buf.opaque());
   auto check_redzone = [&](int64 offset, int64 size, absl::string_view name) {
-    se::DeviceMemoryBase redzone(buf_start + offset, size,
-                                 /*is_sub_buffer=*/true);
+    se::DeviceMemoryBase redzone(buf_start + offset, size);
     auto redzone_data = absl::make_unique<uint8[]>(size);
     TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
                            .BlockHostUntilDone());
-    for (int64 i = 0; i < size; ++i) {
+    XLA_SCOPED_LOGGING_TIMER("RedzoneAllocator::CheckBufferRedzones CPU loop.");
+
+    std::array<uint8, sizeof(uint64)> pattern_arr;
+    pattern_arr.fill(redzone_pattern_);
+    uint64 pattern64;
+    std::memcpy(&pattern64, pattern_arr.data(), sizeof(uint64));
+
+    int64 i;
+    for (i = 0; i + 7 < size; i += sizeof(uint64)) {
+      uint64 rz_value = *reinterpret_cast<uint64*>(&redzone_data[i]);
+      if (rz_value != pattern64) {
+        return InternalError(
+            "Redzone mismatch in %s redzone of buffer %p at offset %d; "
+            "expected %08x but was %08x.",
+            name, buf.opaque(), i, pattern64, rz_value);
+      }
+    }
+    for (; i < size; ++i) {
       uint8 rz_value = redzone_data[i];
       if (rz_value != redzone_pattern_) {
         return InternalError(

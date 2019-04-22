@@ -131,7 +131,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   operator.matmul(x)
   ==> Shape [2, 4] Tensor, same as x.
 
-  y = tf.random_normal(shape=[3, 2, 4])
+  y = tf.random.normal(shape=[3, 2, 4])
   # Note that y.shape is compatible with operator.shape because operator.shape
   # is broadcast to [3, 2, 2].
   # This broadcast does NOT require copying data, since we can infer that y
@@ -492,7 +492,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   operator.matmul(x)
   ==> 3 * x
 
-  y = tf.random_normal(shape=[3, 2, 4])
+  y = tf.random.normal(shape=[3, 2, 4])
   # Note that y.shape is compatible with operator.shape because operator.shape
   # is broadcast to [3, 2, 2].
   x = operator.solve(y)

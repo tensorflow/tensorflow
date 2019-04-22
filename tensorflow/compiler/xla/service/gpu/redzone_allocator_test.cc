@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -50,10 +51,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   TF_EXPECT_OK(allocator.CheckRedzones(&stream));
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
-  se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize,
-                                   /*is_sub_buffer=*/true);
-  se::DeviceMemoryBase rhs_redzone(buf_addr + kAllocSize, kRedzoneSize,
-                                   /*is_sub_buffer=*/true);
+  se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
+  se::DeviceMemoryBase rhs_redzone(buf_addr + kAllocSize, kRedzoneSize);
 
   // Check that the redzones are in fact filled with kRedzonePattern.
   auto check_redzone = [&](se::DeviceMemoryBase redzone,
@@ -85,10 +84,12 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
                             absl::string_view name) {
     SCOPED_TRACE(absl::StrCat(name, ", offset=", offset));
     se::DeviceMemoryBase redzone_at_offset(
-        reinterpret_cast<char*>(redzone.opaque()) + offset, 1,
-        /*is_sub_buffer=*/true);
+        reinterpret_cast<char*>(redzone.opaque()) + offset, 1);
     char old_redzone_value = 0;
-    TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    {
+      XLA_SCOPED_LOGGING_TIMER("Checking redzones");
+      TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
     EXPECT_FALSE(allocator.CheckRedzones(&stream).ok());

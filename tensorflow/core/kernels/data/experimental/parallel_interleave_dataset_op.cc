@@ -38,7 +38,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &interleave_func_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "f", /*params=*/{},
+                                                 &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -76,12 +77,12 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      /*params=*/{}, &captured_func));
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
     *output =
-        new Dataset(ctx, input, interleave_func_, std::move(captured_func),
-                    cycle_length, block_length, sloppy, buffer_output_elements,
+        new Dataset(ctx, input, std::move(captured_func), cycle_length,
+                    block_length, sloppy, buffer_output_elements,
                     prefetch_input_elements, output_types_, output_shapes_);
   }
 
@@ -89,14 +90,12 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
             int64 block_length, bool sloppy, int64 buffer_output_elements,
             int64 prefetch_input_elements, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          interleave_func_(func),
           captured_func_(std::move(captured_func)),
           cycle_length_(cycle_length),
           block_length_(block_length),
@@ -151,7 +150,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                     &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(interleave_func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
@@ -1052,7 +1051,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList interleave_func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const int64 cycle_length_;
     const int64 block_length_;
@@ -1063,9 +1061,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList interleave_func_;
 };
 
 REGISTER_KERNEL_BUILDER(

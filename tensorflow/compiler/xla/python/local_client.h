@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
-namespace xla_python {
 
 // Registers a 'fn_capsule' as a CPU custom call target.
 // 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
@@ -39,21 +39,54 @@ namespace xla_python {
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
 
-// Initializes a local XLA client for `platform_name`. Returns an error if no
-// such platform exists, or if the platform has no visible devices.
-StatusOr<LocalClient*> GetLocalClient(const std::string& platform_name);
+class PyLocalClient {
+ public:
+  // Initializes a local XLA client for `platform_name`. Returns an error if no
+  // such platform exists, or if the platform has no visible devices.
+  static StatusOr<std::unique_ptr<PyLocalClient>> Get(
+      const std::string& platform_name);
+
+  explicit PyLocalClient(LocalClient* client);
+
+  Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
+  StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
+                                                 int device_ordinal);
+
+  int device_count() const { return client_->device_count(); }
+  LocalClient* client() const { return client_; }
+
+  tensorflow::thread::ThreadPool* h2d_transfer_pool() {
+    return &h2d_transfer_pool_;
+  }
+  const std::vector<std::unique_ptr<WorkerThread>>& execute_threads() {
+    return execute_threads_;
+  }
+
+ private:
+  LocalClient* client_;
+  tensorflow::thread::ThreadPool h2d_transfer_pool_;
+  // We use a single worker thread per device, both for simplicity and because
+  // it avoids a deadlock in tensorflow::thread::ThreadPool (b/130761212).
+  std::vector<std::unique_ptr<WorkerThread>> execute_threads_;
+};
 
 // Represents a reference to literals that live in a device-allocated buffer via
 // XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
 // literal to device via the local client.
-class LocalShapedBuffer {
+class PyLocalBuffer {
  public:
-  static StatusOr<LocalShapedBuffer> FromPython(
-      const pybind11::object& argument, LocalClient* client,
-      int device_ordinal);
+  static StatusOr<PyLocalBuffer> FromPython(const pybind11::object& argument,
+                                            PyLocalClient* client,
+                                            int device_ordinal);
 
-  LocalShapedBuffer() = default;
-  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, LocalClient* client);
+  // Converts multiple (python object, device ordinal) pairs into
+  // PyLocalBuffers in parallel.
+  static StatusOr<std::vector<PyLocalBuffer>> FromPythonValues(
+      const std::vector<std::pair<pybind11::object, int>>& argument,
+      PyLocalClient* client);
+
+  PyLocalBuffer() = default;
+  PyLocalBuffer(ScopedShapedBuffer shaped_buffer, PyLocalClient* client);
   StatusOr<pybind11::object> ToPython() const;
   const Shape& shape() const;
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -67,28 +100,25 @@ class LocalShapedBuffer {
     client_ = nullptr;
   }
 
-  // Destructures a tuple-valued LocalShapedBuffer into its constituent
-  // elements in LocalShapedBufferTuple form.
-  StatusOr<std::vector<LocalShapedBuffer>> DestructureTuple();
+  // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
+  StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
 
  private:
   absl::optional<ScopedShapedBuffer> shaped_buffer_;
-  LocalClient* client_ = nullptr;
+  PyLocalClient* client_ = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps an XLA LocalExecutable.
-class LocalExecutableWrapper {
+class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<LocalExecutableWrapper>> Compile(
-      const XlaComputation& computation,
-      const std::vector<Shape>& argument_shapes,
-      const ExecutableBuildOptions* build_options, LocalClient* client);
+  static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
+      const XlaComputation& computation, std::vector<Shape> argument_layouts,
+      const ExecutableBuildOptions* build_options, PyLocalClient* client);
 
-  LocalExecutableWrapper(std::unique_ptr<LocalExecutable> executable,
-                         DeviceAssignment device_assignment,
-                         LocalClient* client);
+  PyLocalExecutable(std::unique_ptr<LocalExecutable> executable,
+                    DeviceAssignment device_assignment, PyLocalClient* client);
 
   int num_replicas() const {
     return executable_->build_options().num_replicas();
@@ -101,35 +131,23 @@ class LocalExecutableWrapper {
     return device_assignment_;
   }
 
-  StatusOr<LocalShapedBuffer> Execute(
-      absl::Span<LocalShapedBuffer* const> argument_handles);
+  StatusOr<PyLocalBuffer> Execute(
+      absl::Span<PyLocalBuffer* const> argument_handles);
 
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
-  StatusOr<std::vector<LocalShapedBuffer>> ExecutePerReplica(
-      absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles);
+  StatusOr<std::vector<PyLocalBuffer>> ExecutePerReplica(
+      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
-  LocalClient* const client_;
+  PyLocalClient* const client_;
 };
 
-// Converts a computation to a serialized HloModuleProto
-StatusOr<pybind11::bytes> GetComputationSerializedProto(
-    const XlaComputation& computation);
-
-// Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation);
-
-// Converts a computation to HLO dot graph form.
-StatusOr<std::string> GetComputationHloDotGraph(
-    const XlaComputation& computation);
-
-}  // namespace xla_python
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_CLIENT_H_

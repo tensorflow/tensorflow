@@ -54,7 +54,7 @@ class Registry(object):
     if not name:
       name = candidate.__name__
     if name in self._registry:
-      (filename, line_number, function_name, _) = (
+      (filename, line_number, function_name, _, _) = (
           self._registry[name][_LOCATION_TAG])
       raise KeyError("Registering two %s with name '%s'! "
                      "(Previous registration was in %s %s:%d)" %
@@ -63,13 +63,12 @@ class Registry(object):
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]
     # so the user function is #2.
-    stack = tf_stack.extract_stack()
+    stack = tf_stack.extract_stack(limit=3)
     stack_index = min(2, len(stack)-1)
     if stack_index >= 0:
-      user_function = stack[stack_index]
-      location_tag = tf_stack.convert_stack([user_function])[0]
+      location_tag = stack[stack_index]
     else:
-      location_tag = "UNKNOWN"
+      location_tag = ("UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN")
     self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: location_tag}
 
   def list(self):

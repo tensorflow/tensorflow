@@ -68,13 +68,24 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "eigen_support_test",
+    size = "small",
+    srcs = ["eigen_support_test.cc"],
+    deps = [
+        ":eigen_support",
+        "//tensorflow/lite/kernels/internal:optimized",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
-    name = "gemm_support",
+    name = "gemmlowp_support",
     srcs = [
-        "gemm_support.cc",
+        "gemmlowp_support.cc",
     ],
     hdrs = [
-        "gemm_support.h",
+        "gemmlowp_support.h",
     ],
     copts = tflite_copts(),
     deps = [
@@ -242,7 +253,7 @@ cc_library(
     deps = [
         ":activation_functor",
         ":eigen_support",
-        ":gemm_support",
+        ":gemmlowp_support",
         ":kernel_util",
         ":lstm_eval",
         ":op_macros",
@@ -270,6 +281,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
     ],

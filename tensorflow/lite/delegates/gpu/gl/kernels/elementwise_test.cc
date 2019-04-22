@@ -28,10 +28,10 @@ namespace gpu {
 namespace gl {
 namespace {
 
-class ElementwiseTest : public ::testing::Test {
+class ElementwiseOneArgumentTest : public ::testing::Test {
  public:
-  ElementwiseTest() = default;
-  ~ElementwiseTest() override = default;
+  ElementwiseOneArgumentTest() = default;
+  ~ElementwiseOneArgumentTest() override = default;
 
   TensorRefFloat32 GetTensorRef(int ref) {
     TensorRefFloat32 tensor_ref;
@@ -42,7 +42,7 @@ class ElementwiseTest : public ::testing::Test {
   }
 };
 
-TEST_F(ElementwiseTest, Abs) {
+TEST_F(ElementwiseOneArgumentTest, Abs) {
   OperationType op_type = OperationType::ABS;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -52,7 +52,7 @@ TEST_F(ElementwiseTest, Abs) {
               Pointwise(FloatNear(1e-6), {0.0, 6.2, 2.0, 4.0}));
 }
 
-TEST_F(ElementwiseTest, Sin) {
+TEST_F(ElementwiseOneArgumentTest, Sin) {
   OperationType op_type = OperationType::SIN;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -62,7 +62,7 @@ TEST_F(ElementwiseTest, Sin) {
               Pointwise(FloatNear(1e-6), {0.0, 0.0, 0.0, 0.841471}));
 }
 
-TEST_F(ElementwiseTest, Cos) {
+TEST_F(ElementwiseOneArgumentTest, Cos) {
   OperationType op_type = OperationType::COS;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -72,7 +72,7 @@ TEST_F(ElementwiseTest, Cos) {
               Pointwise(FloatNear(1e-6), {1.0, -1.0, -1.0, 0.540302}));
 }
 
-TEST_F(ElementwiseTest, Log) {
+TEST_F(ElementwiseOneArgumentTest, Log) {
   OperationType op_type = OperationType::LOG;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -82,7 +82,7 @@ TEST_F(ElementwiseTest, Log) {
               Pointwise(FloatNear(1e-6), {0.0, 1.14473, 0.0, 0.0}));
 }
 
-TEST_F(ElementwiseTest, Sqrt) {
+TEST_F(ElementwiseOneArgumentTest, Sqrt) {
   OperationType op_type = OperationType::SQRT;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -92,7 +92,7 @@ TEST_F(ElementwiseTest, Sqrt) {
               Pointwise(FloatNear(1e-6), {0.0, 1.0, 1.414213, 2.0}));
 }
 
-TEST_F(ElementwiseTest, Rsqrt) {
+TEST_F(ElementwiseOneArgumentTest, Rsqrt) {
   OperationType op_type = OperationType::RSQRT;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -102,7 +102,7 @@ TEST_F(ElementwiseTest, Rsqrt) {
               Pointwise(FloatNear(1e-6), {1.0, 0.707106, 0.5, 0.333333}));
 }
 
-TEST_F(ElementwiseTest, Square) {
+TEST_F(ElementwiseOneArgumentTest, Square) {
   OperationType op_type = OperationType::SQUARE;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -112,7 +112,7 @@ TEST_F(ElementwiseTest, Square) {
               Pointwise(FloatNear(1e-6), {1.0, 4.0, 0.25, 9.0}));
 }
 
-TEST_F(ElementwiseTest, Sigmoid) {
+TEST_F(ElementwiseOneArgumentTest, Sigmoid) {
   OperationType op_type = OperationType::SIGMOID;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -122,7 +122,7 @@ TEST_F(ElementwiseTest, Sigmoid) {
               Pointwise(FloatNear(1e-6), {0.5, 0.002473, 0.880797, 0.982014}));
 }
 
-TEST_F(ElementwiseTest, Tanh) {
+TEST_F(ElementwiseOneArgumentTest, Tanh) {
   OperationType op_type = OperationType::TANH;
   SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -130,6 +130,64 @@ TEST_F(ElementwiseTest, Tanh) {
   ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, -0.999987, 0.964027, 0.999329}));
+}
+
+class ElementwiseTwoArgumentsTest : public ::testing::Test {
+ public:
+  ElementwiseTwoArgumentsTest() = default;
+  ~ElementwiseTwoArgumentsTest() override = default;
+
+  TensorRefFloat32 GetTensorRef(int ref) {
+    TensorRefFloat32 tensor_ref;
+    tensor_ref.type = DataType::FLOAT32;
+    tensor_ref.ref = ref;
+    tensor_ref.shape = BHWC(1, 2, 2, 1);
+    return tensor_ref;
+  }
+};
+
+TEST_F(ElementwiseTwoArgumentsTest, Sub) {
+  OperationType op_type = OperationType::SUB;
+  SingleOpModel model({ToString(op_type), {}},
+                      {GetTensorRef(0), GetTensorRef(1)}, {GetTensorRef(2)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
+  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0, -8.2, -1.0, 0.0}));
+}
+
+TEST_F(ElementwiseTwoArgumentsTest, Div) {
+  OperationType op_type = OperationType::DIV;
+  SingleOpModel model({ToString(op_type), {}},
+                      {GetTensorRef(0), GetTensorRef(1)}, {GetTensorRef(2)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, -0.5, 4.0}));
+  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, -3.1, -4.0, 1.0}));
+}
+
+TEST_F(ElementwiseTwoArgumentsTest, Pow) {
+  OperationType op_type = OperationType::POW;
+  SingleOpModel model({ToString(op_type), {}},
+                      {GetTensorRef(0), GetTensorRef(1)}, {GetTensorRef(2)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 1.0, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
+  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, 1.0, 8.0, 256.0}));
+}
+
+TEST_F(ElementwiseTwoArgumentsTest, SquaredDiff) {
+  OperationType op_type = OperationType::SQUARED_DIFF;
+  SingleOpModel model({ToString(op_type), {}},
+                      {GetTensorRef(0), GetTensorRef(1)}, {GetTensorRef(2)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 2.0, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 1.0, 5.0, 4.0}));
+  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {1.0, 1.0, 9.0, 0.0}));
 }
 
 }  // namespace

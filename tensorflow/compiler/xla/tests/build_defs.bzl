@@ -128,7 +128,7 @@ def xla_test(
         srcs = srcs,
         copts = copts,
         testonly = True,
-        deps = deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
+        deps = deps,
     )
 
     for backend in filter_backends(backends):

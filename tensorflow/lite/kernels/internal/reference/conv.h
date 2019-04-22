@@ -103,11 +103,11 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, void* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+                 uint8* im2col_data, void* gemmlowp_context) {
+  (void)gemmlowp_context;  // only used in optimized code.
   (void)im2col_data;   // only used in optimized code.
   (void)im2col_shape;  // only used in optimized code.
-  (void)gemm_context;  // only used in optimized code.
+  (void)gemmlowp_context;  // only used in optimized code.
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -181,7 +181,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     }
   }
 }
-
 
 }  // namespace reference_ops
 }  // namespace tflite

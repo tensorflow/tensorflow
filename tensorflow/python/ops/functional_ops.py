@@ -414,11 +414,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     if initializer is None:
       a_flat = [elem.read(n - 1 if reverse else 0) for elem in elems_ta]
-      i = constant_op.constant(1)
+      i = 1
     else:
       initializer_flat = output_flatten(initializer)
       a_flat = [ops.convert_to_tensor(init) for init in initializer_flat]
-      i = constant_op.constant(0)
+      i = 0
 
     # Create a tensor array to store the intermediate values.
     accs_ta = [

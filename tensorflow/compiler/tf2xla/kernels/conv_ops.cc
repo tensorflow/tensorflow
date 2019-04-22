@@ -15,13 +15,14 @@ limitations under the License.
 
 // XLA-specific Ops for 2D convolution.
 
-#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/kernels/conv_op_attrs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/conv_op_helpers.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -51,8 +52,12 @@ class ConvOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::StatusOr<xla::XlaOp> conv = MakeXlaForwardConvOp(
-        ctx->op_kernel().type_string(), ctx->Input(0), ctx->Input(1), attrs_);
+    xla::StatusOr<xla::ConvOpAttrs> attrs =
+        attrs_.ToXla(ctx->InputShape(0), ctx->InputShape(1));
+    OP_REQUIRES_OK(ctx, attrs.status());
+    xla::StatusOr<xla::XlaOp> conv =
+        xla::MakeXlaForwardConvOp(ctx->op_kernel().type_string(), ctx->Input(0),
+                                  ctx->Input(1), attrs.ValueOrDie());
     OP_REQUIRES_OK(ctx, conv.status());
     ctx->SetOutput(0, conv.ValueOrDie());
   }
@@ -102,10 +107,13 @@ class ConvBackpropInputOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_tensor_shape));
     xla::Shape input_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(1), input_tensor_shape);
+    xla::StatusOr<xla::ConvOpAttrs> attrs =
+        attrs_.ToXla(input_tensor_shape, ctx->InputShape(1));
+    OP_REQUIRES_OK(ctx, attrs.status());
 
-    xla::StatusOr<xla::XlaOp> in_backprop =
-        MakeXlaBackpropInputConvOp(ctx->op_kernel().type_string(), input_shape,
-                                   ctx->Input(1), ctx->Input(2), attrs_);
+    xla::StatusOr<xla::XlaOp> in_backprop = xla::MakeXlaBackpropInputConvOp(
+        ctx->op_kernel().type_string(), input_shape, ctx->Input(1),
+        ctx->Input(2), attrs.ValueOrDie());
     OP_REQUIRES_OK(ctx, in_backprop.status());
     ctx->SetOutput(0, in_backprop.ValueOrDie());
   }
@@ -160,10 +168,14 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(1, &filter_tensor_shape));
     xla::Shape filter_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(0), filter_tensor_shape);
+    xla::StatusOr<xla::ConvOpAttrs> attrs =
+        attrs_.ToXla(ctx->InputShape(0), filter_tensor_shape);
+    OP_REQUIRES_OK(ctx, attrs.status());
 
-    xla::StatusOr<xla::XlaOp> filter_backprop = MakeXlaBackpropFilterConvOp(
-        ctx->op_kernel().type_string(), ctx->Input(0), filter_shape,
-        ctx->Input(2), attrs_);
+    xla::StatusOr<xla::XlaOp> filter_backprop =
+        xla::MakeXlaBackpropFilterConvOp(ctx->op_kernel().type_string(),
+                                         ctx->Input(0), filter_shape,
+                                         ctx->Input(2), attrs.ValueOrDie());
     OP_REQUIRES_OK(ctx, filter_backprop.status());
     ctx->SetOutput(0, filter_backprop.ValueOrDie());
   }

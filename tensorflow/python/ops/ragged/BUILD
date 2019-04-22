@@ -270,6 +270,19 @@ py_library(
 )
 
 py_library(
+    name = "ragged_squeeze_op",
+    srcs = ["ragged_squeeze_op.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_tensor",
+        ":ragged_tensor_shape",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:ops",
+    ],
+)
+
+py_library(
     name = "ragged_tensor",
     srcs = ["ragged_tensor.py"],
     srcs_version = "PY2AND3",
@@ -391,6 +404,7 @@ py_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_math_ops",
+        ":ragged_squeeze_op",
         ":ragged_tensor",
         ":ragged_tensor_shape",
         ":ragged_util",
@@ -992,6 +1006,35 @@ py_test(
     deps = [
         ":ragged_array_ops",
         ":ragged_factory_ops",
+        ":ragged_test_util",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_placeholder_op_test",
+    srcs = ["ragged_placeholder_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_math_ops",
+        ":ragged_test_util",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "ragged_squeeze_op_test",
+    srcs = ["ragged_squeeze_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_conversion_ops",
+        ":ragged_factory_ops",
+        ":ragged_squeeze_op",
         ":ragged_test_util",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",

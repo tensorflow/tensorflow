@@ -1244,7 +1244,7 @@ def boolean_mask(labeled_tensor, mask, name=None):
                        'are not equal:\n%r\n%r' % (lt_axis, mask_axis))
     op = array_ops.boolean_mask(labeled_tensor.tensor, mask.tensor, name=scope)
     # TODO(shoyer): attempt to infer labels for the masked values, by calling
-    # tf.contrib.util.constant_value on the mask?
+    # tf.get_static_value on the mask?
     axes = [lt_axis.name] + list(labeled_tensor.axes.values())[1:]
     return core.LabeledTensor(op, axes)
 

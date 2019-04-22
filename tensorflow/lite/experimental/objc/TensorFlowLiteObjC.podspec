@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :tag => 'v2.0.0-alpha0' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '2b96dde' }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
@@ -21,18 +21,29 @@ Pod::Spec.new do |s|
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
 
-  base_dir = 'tensorflow/lite/experimental/objc/'
-  s.public_header_files = base_dir + 'apis/*.h'
-  s.source_files = base_dir + '{apis,sources}/*.{h,m,mm}'
-  s.module_map = base_dir + 'apis/framework.modulemap'
+  tfl_dir = 'tensorflow/lite/'
+  objc_dir = tfl_dir + 'experimental/objc/'
+  s.public_header_files = objc_dir + 'apis/*.h'
+  s.source_files = [
+    objc_dir + '{apis,sources}/*.{h,m,mm}',
+    tfl_dir + 'c/c_api_internal.h',
+    tfl_dir + 'experimental/c/c_api.h',
+    tfl_dir + 'experimental/c/c_api_types.h',
+  ]
+  s.module_map = objc_dir + 'apis/framework.modulemap'
   s.dependency 'TensorFlowLiteC', "#{s.version}"
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
-      '"${PODS_TARGET_SRCROOT}/' + base_dir  + 'apis"',
+      '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
+    'VALID_ARCHS' => 'x86_64 armv7 arm64',
   }
 
   s.test_spec 'Tests' do |ts|
-    ts.source_files = base_dir + 'tests/*.m'
+    ts.source_files = objc_dir + 'tests/*.m'
+    ts.resources = [
+      tfl_dir + 'testdata/add.bin',
+      tfl_dir + 'testdata/add_quantized.bin',
+    ]
   end
 end

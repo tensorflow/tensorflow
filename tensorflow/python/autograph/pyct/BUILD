@@ -147,6 +147,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
         "@gast_archive//:gast",
     ],
 )

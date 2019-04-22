@@ -92,7 +92,7 @@ class DirectivesTransformer(converter.Base):
     return call_node
 
   def _process_statement_directive(self, call_node, directive):
-    if self.local_scope_level < 1:
+    if self.local_scope_level < 2:
       raise ValueError(
           '"%s" must be used inside a statement' % directive.__name__)
     target = self.get_local(ENCLOSING_LOOP)

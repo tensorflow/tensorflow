@@ -84,7 +84,7 @@ class Metric(Layer):
   model.add(tf.keras.layers.Dense(64, activation='relu'))
   model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
-  model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
+  model.compile(optimizer=tf.compat.v1.train.RMSPropOptimizer(0.01),
                 loss=tf.keras.losses.categorical_crossentropy,
                 metrics=[tf.keras.metrics.CategoricalAccuracy()])
 
@@ -179,8 +179,7 @@ class Metric(Layer):
       #   model = Model()
       #   mean = Mean()
       #   model.add_metric(mean(values), name='mean')
-      if not context.executing_eagerly():
-        result_t._metric_obj = self  # pylint: disable=protected-access
+      result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
   @property
@@ -1842,7 +1841,7 @@ class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
   cosine similarity = (a . b) / ||a|| ||b||
-  (https://en.wikipedia.org/wiki/Cosine_similarity)
+  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
   similarity is 0.5.
@@ -2193,7 +2192,7 @@ class Poisson(MeanMetricWrapper):
 
 @keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
-  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
   `metric = y_true * log(y_true / y_pred)`
 
@@ -2709,7 +2708,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
-  y_pred.shape.assert_is_compatible_with(y_true.get_shape())
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())

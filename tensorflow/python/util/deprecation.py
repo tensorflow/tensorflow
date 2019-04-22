@@ -614,3 +614,17 @@ def silence():
   _PRINT_DEPRECATION_WARNINGS = False
   yield
   _PRINT_DEPRECATION_WARNINGS = print_deprecation_warnings
+
+
+class _HiddenTfApiAttribute(object):
+  pass
+
+# Attributes in public classes can be hidden from the API by having an '_'
+# in front of the name (e.g. ClassName._variables). This doesn't work when
+# attributes or methods are inherited from a parent class. To hide inherited
+# attributes, set their values to be `deprecation.HIDDEN_ATTRIBUTE`.
+# For example, this is used in V2 Estimator to hide the deprecated
+# export_savedmodel method:
+#   class EstimatorV2(Estimator):
+#     export_savedmodel = deprecation.HIDDEN_ATTRIBUTE
+HIDDEN_ATTRIBUTE = _HiddenTfApiAttribute()

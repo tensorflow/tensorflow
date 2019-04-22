@@ -74,13 +74,6 @@ void RemoveFromXlaCluster(Node* node);
 // Returns true if `node` has a DT_RESOURCE typed input or output.
 bool HasResourceInputOrOutput(const Node& node);
 
-// Adds edges to `cycles` to prevent clustering resource operations that cannot
-// be legally clustered.
-Status AdjustCycleDetectionGraphForResourceOps(
-    const Graph* graph, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
-    GraphCycles* cycles);
-
 // Picks the device for which XLA should compile a cluster that contains
 // operations placed in devices in `device_names`.  For instance a cluster that
 // contains operations solely placed on the CPU will be compiled into a CPU
@@ -134,6 +127,10 @@ OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
 // Returns true if `g` is a single-GPU graph.  A single-GPU graph uses exactly
 // one GPU (and any number of CPUs).
 bool IsSingleGpuGraph(const Graph& g);
+
+// Returns true if it is possible (but not guaranteed) that `n` calls a
+// function.
+bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_

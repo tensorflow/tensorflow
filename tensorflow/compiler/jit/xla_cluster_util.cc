@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -227,28 +226,6 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
 
-Status AdjustCycleDetectionGraphForResourceOps(
-    const Graph* graph, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
-    GraphCycles* cycles) {
-  std::vector<std::pair<int, int>> unsafe_deps;
-  TF_RETURN_IF_ERROR(ComputeIncompatibleResourceOperationPairs(
-      *graph, flib_def, resource_ops_to_ignore, &unsafe_deps));
-
-  // An edge {P,Q} in `unsafe_deps` denotes that P and Q, both of which are
-  // operations that interact with resource variables, must not be put in the
-  // same cluster.  We enforce this constraint by creating a phantom node, X,
-  // and adding edges P->X and X->Q.  MarkForCompilation then cannot cluster P
-  // and Q together since that would create a cycle with X.
-
-  for (std::pair<int, int> unsafe_dep : unsafe_deps) {
-    int phantom_node_id = cycles->NewNode();
-    CHECK(cycles->InsertEdge(unsafe_dep.first, phantom_node_id));
-    CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
-  }
-  return Status::OK();
-}
-
 Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
                             bool allow_mixing_unknown_and_cpu,
                             bool* out_can_pick_device,
@@ -436,4 +413,16 @@ OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
   return result;
 }
 
+bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def) {
+  if (flib_def->Contains(n.type_string())) {
+    return true;
+  }
+
+  // This is a conservative check: there may be nodes with a `func`
+  // attribute that do not make function calls.
+  return absl::c_any_of(n.def().attr(),
+                        [](const std::pair<string, AttrValue>& name_attr_pair) {
+                          return name_attr_pair.second.has_func();
+                        });
+}
 }  // namespace tensorflow

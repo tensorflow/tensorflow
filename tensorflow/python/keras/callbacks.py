@@ -25,6 +25,7 @@ import csv
 import io
 import json
 import os
+import tempfile
 import time
 
 import numpy as np
@@ -161,7 +162,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -796,29 +797,34 @@ class ModelCheckpoint(Callback):
       filepath: string, path to save the model file.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`,
-          the latest best model according to
-          the quantity monitored will not be overwritten.
-      mode: one of {auto, min, max}.
-          If `save_best_only=True`, the decision
-          to overwrite the current save file is made
-          based on either the maximization or the
-          minimization of the monitored quantity. For `val_acc`,
-          this should be `max`, for `val_loss` this should
-          be `min`, etc. In `auto` mode, the direction is
-          automatically inferred from the name of the monitored quantity.
-      save_weights_only: if True, then only the model's weights will be
-          saved (`model.save_weights(filepath)`), else the full model
-          is saved (`model.save(filepath)`).
-      period: Interval (number of epochs) between checkpoints.
-      load_weights_on_restart: Whether the training should restore the model.
-          If True, the model will attempt to load the checkpoint file from
-          `filepath` at the start of `model.fit()`. This saves the need of
-          manually calling `model.load_weights()` before `model.fit(). In
-          multi-worker distributed training, this provides fault-tolerance
-          and loads the model automatically upon recovery of workers.
-          The callback gives up loading if the filepath does not exist, and
-          raises ValueError if format does not match. Defaults to False.
+      save_best_only: if `save_best_only=True`, the latest best model according
+        to the quantity monitored will not be overwritten.
+      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
+        overwrite the current save file is made based on either the maximization
+        or the minimization of the monitored quantity. For `val_acc`, this
+        should be `max`, for `val_loss` this should be `min`, etc. In `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      save_weights_only: if True, then only the model's weights will be saved
+        (`model.save_weights(filepath)`), else the full model is saved
+        (`model.save(filepath)`).
+      save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
+        the model after each epoch. When using integer, the callback saves the
+        model at end of a batch at which this many samples have been seen since
+        last saving. Note that if the saving isn't aligned to epochs, the
+        monitored metric may potentially be less reliable (it could reflect as
+        little as 1 batch, since the metrics get reset every epoch). Defaults to
+        `'epoch'`
+      load_weights_on_restart: Whether the training should restore the model. If
+        True, the model will attempt to load the checkpoint file from `filepath`
+        at the start of `model.fit()`. This saves the need of manually calling
+        `model.load_weights()` before `model.fit(). In multi-worker distributed
+        training, this provides fault-tolerance and loads the model
+        automatically upon recovery of workers. The callback gives up loading if
+        the filepath does not exist, and raises ValueError if format does not
+        match. Defaults to False.
+      **kwargs: Additional arguments for backwards compatibility. Possible key
+        is `period`.
   """
 
   def __init__(self,
@@ -828,17 +834,28 @@ class ModelCheckpoint(Callback):
                save_best_only=False,
                save_weights_only=False,
                mode='auto',
-               period=1,
-               load_weights_on_restart=False):
+               save_freq='epoch',
+               load_weights_on_restart=False,
+               **kwargs):
     super(ModelCheckpoint, self).__init__()
     self.monitor = monitor
     self.verbose = verbose
     self.filepath = filepath
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
-    self.period = period
-    self.epochs_since_last_save = 0
+    self.save_freq = save_freq
     self.load_weights_on_restart = load_weights_on_restart
+    self.epochs_since_last_save = 0
+    self._samples_seen_since_last_saving = 0
+
+    # Deprecated field `period` is for the number of epochs between which
+    # the model is saved.
+    if 'period' in kwargs:
+      self.period = kwargs['period']
+      logging.warning('`period` argument is deprecated. Please use `save_freq` '
+                      'to specify the frequency in number of samples seen.')
+    else:
+      self.period = 1
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
@@ -858,6 +875,9 @@ class ModelCheckpoint(Callback):
       else:
         self.monitor_op = np.less
         self.best = np.Inf
+
+    if self.save_freq != 'epoch' and not isinstance(self.save_freq, int):
+      raise ValueError('Unrecognized save_freq: {}'.format(self.save_freq))
 
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
@@ -889,22 +909,52 @@ class ModelCheckpoint(Callback):
         raise ValueError('Error loading file from {}. Reason: {}'.format(
             self.filepath, e))
 
-  def on_epoch_end(self, epoch, logs=None):
+  def on_batch_end(self, batch, logs=None):
     logs = logs or {}
+    if isinstance(self.save_freq, int):
+      self._samples_seen_since_last_saving += logs.get('size', 1)
+      if self._samples_seen_since_last_saving >= self.save_freq:
+        self._save_model(epoch=self._current_epoch, logs=logs)
+        self._samples_seen_since_last_saving = 0
+
+  def on_epoch_begin(self, epoch, logs=None):
+    self._current_epoch = epoch
+
+  def on_epoch_end(self, epoch, logs=None):
     self.epochs_since_last_save += 1
+    if self.save_freq == 'epoch':
+      self._save_model(epoch=epoch, logs=logs)
 
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_checkpoint() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().should_checkpoint:
-      # For multi-worker training, it should not checkpoint a model in certain
-      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
-      return
+  def _save_model(self, epoch, logs):
+    """Saves the model.
 
-    if self.epochs_since_last_save >= self.period:
+    Arguments:
+        epoch: the epoch this iteration is in.
+        logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
+    """
+    logs = logs or {}
+
+    if isinstance(self.save_freq,
+                  int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
-      filepath = self.filepath.format(epoch=epoch + 1, **logs)
+
+      # TODO(rchao): Replace dc_context reference with
+      # distributed_training_utils.should_current_worker_checkpoint() once
+      # distributed_training_utils.py no longer depends on callbacks.py.
+      if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
+      ).should_checkpoint:
+        filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      else:
+        # If this is multi-worker training, and this worker should not
+        # save checkpoint, we replace the filepath with a dummy filepath so
+        # it writes to a file that will be removed at the end of _save_model()
+        # call. This is because the SyncOnReadVariable needs to be synced across
+        # all the workers in order to be read, and all workers need to initiate
+        # that.
+        file_handle, temp_file_name = tempfile.mkstemp()
+        extension = os.path.splitext(self.filepath)[1]
+        filepath = temp_file_name + extension
+
       if self.save_best_only:
         current = logs.get(self.monitor)
         if current is None:
@@ -932,6 +982,13 @@ class ModelCheckpoint(Callback):
           self.model.save_weights(filepath, overwrite=True)
         else:
           self.model.save(filepath, overwrite=True)
+
+      # Remove the file in multi-worker training where this worker should
+      # not checkpoint.
+      if K.in_multi_worker_mode(
+      ) and not dc_context.get_current_worker_context().should_checkpoint:
+        os.close(file_handle)
+        os.remove(filepath)
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -1262,7 +1319,7 @@ class TensorBoard(Callback):
         with self._get_writer(self._train_run_name).as_default():
           with summary_ops_v2.always_record_summaries():
             if not model.run_eagerly:
-              summary_ops_v2.graph(K.get_graph())
+              summary_ops_v2.graph(K.get_graph(), step=0)
 
             summary_writable = (
                 self.model._is_graph_network or  # pylint: disable=protected-access

@@ -965,10 +965,6 @@ tf_module {
     argspec: "args=[\'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
-    name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
     name: "complex"
     argspec: "args=[\'real\', \'imag\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1066,7 +1062,7 @@ tf_module {
   }
   member_method {
     name: "decode_raw"
-    argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_bytes\', \'out_type\', \'little_endian\', \'name\', \'bytes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "delete_session_tensor"
@@ -1673,12 +1669,20 @@ tf_module {
     argspec: "args=[\'_\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "nondifferentiable_batch_function"
+    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\'], "
+  }
+  member_method {
     name: "norm"
     argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "not_equal"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "numpy_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "one_hot"
@@ -2214,7 +2218,7 @@ tf_module {
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\', \'result_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'SparseTensor\', \'None\'], "
   }
   member_method {
     name: "string_strip"

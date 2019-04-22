@@ -482,8 +482,8 @@ class DebugGraph(object):
 def reconstruct_non_debug_graph_def(debug_graph_def):
   """Reconstruct original (non-debugger-decorated) partition GraphDef.
 
-  This method strips the input `tf.GraphDef` of the Copy* and Debug*-type nodes
-  inserted by the debugger.
+  This method strips the input `tf.compat.v1.GraphDef` of the Copy* and
+  Debug*-type nodes inserted by the debugger.
 
   The reconstructed partition graph is identical to the original (i.e.,
     non-debugger-decorated) partition graph except in the following respects:
@@ -494,10 +494,11 @@ def reconstruct_non_debug_graph_def(debug_graph_def):
       3) The parallel_iteration attribute of while-loop Enter ops are set to 1.
 
   Args:
-    debug_graph_def: The debugger-decorated `tf.GraphDef`, with the
+    debug_graph_def: The debugger-decorated `tf.compat.v1.GraphDef`, with the
       debugger-inserted Copy* and Debug* nodes.
 
   Returns:
-    The reconstructed `tf.GraphDef` stripped of the debugger-inserted nodes.
+    The reconstructed `tf.compat.v1.GraphDef` stripped of the debugger-inserted
+    nodes.
   """
   return DebugGraph(debug_graph_def).non_debug_graph_def

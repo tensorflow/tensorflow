@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :tag => 'v2.0.0-alpha0' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '2b96dde' }
   s.summary          = 'TensorFlow Lite for Swift'
   s.description      = <<-DESC
 
@@ -21,11 +21,16 @@ Pod::Spec.new do |s|
   s.module_name = 'TensorFlowLite'
   s.static_framework = true
 
-  base_dir = 'tensorflow/lite/experimental/swift/'
-  s.source_files = base_dir + 'Sources/*.swift'
+  tfl_dir = 'tensorflow/lite/'
+  swift_dir = tfl_dir + 'experimental/swift/'
+  s.source_files = swift_dir + 'Sources/*.swift'
   s.dependency 'TensorFlowLiteC', "#{s.version}"
 
   s.test_spec 'Tests' do |ts|
-    ts.source_files = base_dir + 'Tests/*.swift'
+    ts.source_files = swift_dir + 'Tests/*.swift'
+    ts.resources = [
+      tfl_dir + 'testdata/add.bin',
+      tfl_dir + 'testdata/add_quantized.bin',
+    ]
   end
 end

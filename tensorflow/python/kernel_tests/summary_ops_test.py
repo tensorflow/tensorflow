@@ -407,6 +407,69 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, events[2].step)
     self.assertEqual(4, events[3].step)
 
+  def testWriteRawPb(self):
+    logdir = self.get_temp_dir()
+    pb = summary_pb2.Summary()
+    pb.value.add().simple_value = 42.0
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        output = summary_ops.write_raw_pb(pb.SerializeToString(), step=12)
+        self.assertTrue(output.numpy())
+    events = events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(12, events[1].step)
+    self.assertProtoEquals(pb, events[1].summary)
+
+  def testWriteRawPb_fromFunction(self):
+    logdir = self.get_temp_dir()
+    pb = summary_pb2.Summary()
+    pb.value.add().simple_value = 42.0
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function
+      def f():
+        with writer.as_default():
+          return summary_ops.write_raw_pb(pb.SerializeToString(), step=12)
+      output = f()
+      self.assertTrue(output.numpy())
+    events = events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(12, events[1].step)
+    self.assertProtoEquals(pb, events[1].summary)
+
+  def testWriteRawPb_multipleValues(self):
+    logdir = self.get_temp_dir()
+    pb1 = summary_pb2.Summary()
+    pb1.value.add().simple_value = 1.0
+    pb1.value.add().simple_value = 2.0
+    pb2 = summary_pb2.Summary()
+    pb2.value.add().simple_value = 3.0
+    pb3 = summary_pb2.Summary()
+    pb3.value.add().simple_value = 4.0
+    pb3.value.add().simple_value = 5.0
+    pb3.value.add().simple_value = 6.0
+    pbs = [pb.SerializeToString() for pb in (pb1, pb2, pb3)]
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        output = summary_ops.write_raw_pb(pbs, step=12)
+        self.assertTrue(output.numpy())
+    events = events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(12, events[1].step)
+    expected_pb = summary_pb2.Summary()
+    for i in range(6):
+      expected_pb.value.add().simple_value = i + 1.0
+    self.assertProtoEquals(expected_pb, events[1].summary)
+
+  def testWriteRawPb_invalidValue(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with self.assertRaisesRegex(
+            errors.DataLossError,
+            'Bad tf.compat.v1.Summary binary proto tensor string'):
+          summary_ops.write_raw_pb('notaproto', step=12)
+
   @test_util.also_run_as_tf_function
   def testGetSetStep(self):
     try:
@@ -674,7 +737,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(
           logdir, max_queue=1, flush_millis=999999).as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         self.assertEqual(1, get_total())
@@ -706,7 +769,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
           logdir, max_queue=999999, flush_millis=999999)
       with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         summary_ops.write('tag', 1, step=0)

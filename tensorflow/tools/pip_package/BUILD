@@ -68,6 +68,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python:loss_scale",
+    "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
@@ -147,11 +149,6 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
-        "@absl_py//absl:LICENSE",
-        "@absl_py//absl/logging:LICENSE",
-        "@absl_py//absl/flags:LICENSE",
-        "@absl_py//absl/testing:LICENSE",
-        "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
@@ -226,6 +223,15 @@ filegroup(
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
     ]) + if_not_system_lib(
+        "absl_py",
+        [
+            "@absl_py//absl:LICENSE",
+            "@absl_py//absl/logging:LICENSE",
+            "@absl_py//absl/flags:LICENSE",
+            "@absl_py//absl/testing:LICENSE",
+            "@absl_py//absl/third_party/unittest3_backport:LICENSE",
+        ],
+    ) + if_not_system_lib(
         "grpc",
         [
             "@grpc//:LICENSE",

@@ -84,7 +84,8 @@ class EagerContext {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_policy, bool async,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous);
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator);
 
   ~EagerContext();
 

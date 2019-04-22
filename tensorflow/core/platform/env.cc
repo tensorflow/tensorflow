@@ -517,7 +517,8 @@ Status ReadBinaryProto(Env* env, const string& fname,
   // respectively.
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
-  if (!proto->ParseFromCodedStream(&coded_stream)) {
+  if (!proto->ParseFromCodedStream(&coded_stream) ||
+      !coded_stream.ConsumedEntireMessage()) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }

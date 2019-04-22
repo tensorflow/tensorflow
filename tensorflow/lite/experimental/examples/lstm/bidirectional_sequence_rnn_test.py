@@ -184,7 +184,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       bw_rnn_layer: The backward rnn layer either a single rnn cell or a multi
         rnn cell.
       sess: Old session.
-      saver: Saver created by tf.train.Saver()
+      saver: Saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: Use dynamic_rnn or not.
       use_sequence_length: Whether to use sequence length or not. Default to
         False.

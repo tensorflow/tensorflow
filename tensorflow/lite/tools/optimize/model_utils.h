@@ -43,6 +43,19 @@ void MakeTensorWithQuantParam(const string& name,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor);
 
+// Checks if the tensor has scale and zero point populated.
+bool QuantizationParametersExist(const TensorT* tensor);
+
+bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
+               int tensor_index);
+
+bool IsQuantized(const SubGraphT* subgraph, int tensor_index);
+
+bool HasMinMax(const TensorT* tensor);
+
+// Set version of OperatorCode.
+TfLiteStatus SetOperatorCodeVersion(ModelT* model);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
