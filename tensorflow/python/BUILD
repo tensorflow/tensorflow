@@ -3432,6 +3432,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":platform",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
     ],
 )
 
