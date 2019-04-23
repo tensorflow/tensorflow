@@ -59,10 +59,6 @@ void TestConvFloat(std::initializer_list<int> input_dims_data,
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  int input_depth = input_dims->data[3];
-  int output_depth = output_dims->data[3];
-  int depth_mul = output_depth / input_depth;
-
   TfLiteConvParams builtin_data = {
       .padding = kTfLitePaddingValid,
       .stride_width = 2,
@@ -131,8 +127,6 @@ void TestConvQuantized(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
 
-  const int intput_dims_count = ElementCount(*input_dims);
-
   constexpr int inputs_size = 3;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
@@ -154,10 +148,6 @@ void TestConvQuantized(
       resolver.FindOp(tflite::BuiltinOperator_CONV_2D, 1);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  int input_depth = input_dims->data[3];
-  int output_depth = output_dims->data[3];
-  int depth_mul = output_depth / input_depth;
 
   TfLiteConvParams builtin_data = {
       .padding = kTfLitePaddingSame,
@@ -309,7 +299,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
           F2Q(-1, filter_min, filter_max), F2Q(-1, filter_min, filter_max),
           F2Q(1, filter_min, filter_max), F2Q(1, filter_min, filter_max),
       },
-      input_min, input_max, {1, 3},
+      filter_min, filter_max, {1, 3},
       {
           F2Q32(1, bias_min, bias_max), F2Q32(2, bias_min, bias_max),
           F2Q32(3, bias_min, bias_max),
