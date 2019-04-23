@@ -199,22 +199,23 @@ class RNN(Layer):
         `state_size`.
       - A `get_initial_state(inputs=None, batch_size=None, dtype=None)`
         method that creates a tensor meant to be fed to `call()` as the
-        initial state, if user didn't specify any initial state via other
-        means. The returned initial state should be in shape of
-        [batch, cell.state_size]. Cell might choose to create zero filled
-        tensor, or with other values based on the cell implementations.
+        initial state, if the user didn't specify any initial state via other
+        means. The returned initial state should have a shape of
+        [batch_size, cell.state_size]. The cell might choose to create a
+        tensor full of zeros, or full of other values based on the cell's
+        implementation.
         `inputs` is the input tensor to the RNN layer, which should
         contain the batch size as its shape[0], and also dtype. Note that
-        the shape[0] might be None during the graph construction. Either
-        the `inputs` or the pair of `batch` and `dtype `are provided.
-        `batch` is a scalar tensor that represent the batch size
-        of the input. `dtype` is `tf.dtype` that represent the dtype of
-        the input.
+        the shape[0] might be `None` during the graph construction. Either
+        the `inputs` or the pair of `batch_size` and `dtype` are provided.
+        `batch_size` is a scalar tensor that represents the batch size
+        of the inputs. `dtype` is `tf.DType` that represents the dtype of
+        the inputs.
         For backward compatible reason, if this method is not implemented
-        by the cell, RNN layer will create a zero filled tensors with the
-        size of [batch, cell.state_size].
+        by the cell, the RNN layer will create a zero filled tensor with the
+        size of [batch_size, cell.state_size].
       In the case that `cell` is a list of RNN cell instances, the cells
-      will be stacked on after the other in the RNN, implementing an
+      will be stacked on top of each other in the RNN, resulting in an
       efficient stacked RNN.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence.
