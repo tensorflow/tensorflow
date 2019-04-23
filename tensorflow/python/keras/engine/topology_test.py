@@ -493,6 +493,19 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
+  def test_multi_output_layer_output_names(self):
+    inp = keras.layers.Input(name='inp', shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(keras.layers.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name='out')(inp)
+    model = keras.models.Model(inp, out)
+    self.assertEqual(['out', 'out_1'], model.output_names)
+    self.assertAllClose([2., 3.], model(1.))
+
   @test_util.run_deprecated_v1
   def test_recursion(self):
     with self.cached_session():

@@ -37,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
@@ -1476,6 +1477,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded = self.cycle(model, cycles)
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
+
+  def test_multi_output_layer(self, cycles):
+
+    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(base_layer.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name="out")(inp)
+    model = training_lib.Model(inp, out)
+    loaded = self.cycle(model, cycles)
+    self.assertAllClose(
+        dict(out=2., out_1=3.),
+        loaded.signatures["serving_default"](constant_op.constant(1.)))
 
   def test_model_with_custom_function_attached(self, cycles):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
