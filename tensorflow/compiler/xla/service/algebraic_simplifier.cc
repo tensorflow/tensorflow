@@ -3014,7 +3014,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // TODO(b/112040122): Most of those optimizations below can be done for
+  // TODO(b/131122694): Most of those optimizations below can be done for
   // multi-output reduces.
   if (multi_output_reduce) {
     return Status::OK();
