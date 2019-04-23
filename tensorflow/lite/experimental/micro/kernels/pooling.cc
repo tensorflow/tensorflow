@@ -208,7 +208,7 @@ TfLiteRegistration* Register_AVERAGE_POOL_2D() {
   return &r;
 }
 
-TfLiteRegistration* Register_MAX_POOL_REF() {
+TfLiteRegistration* Register_MAX_POOL() {
   static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
                                  pooling::MaxEval};
   return &r;
