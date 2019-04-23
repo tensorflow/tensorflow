@@ -277,22 +277,12 @@ def einsum(equation, *inputs, **kwargs):
     # first, seq[1] the second contraction and so forth; each element of seq
     # (j,k) tells us to contract tensors j and k in the list of inputs, remove
     # them from inputs and prepend the new tensor to the list
-    if not optimize:
-      seq = [(0,1)]*(len(inputs)-1) # contract from left to right
-    elif optimize in {True, 'dp'}:
-      seq = _einsum_optimize_dp(
-        [t.shape.as_list() for t in inputs],
-        input_axis_labels, 
-        output_axis_labels
-      )
-    elif optimize == 'greedy':
-      seq = _einsum_optimize_greedy(
-        [t.shape.as_list() for t in inputs],
-        input_axis_labels, 
-        output_axis_labels
-      )
-    else:
-      raise ValueError('invalid optimization strategy "{}"'.format(optimize))
+    seq = einsum_optimize(
+      [t.shape.as_list() for t in inputs],
+      input_axis_labels, 
+      output_axis_labels,
+      optimize=optimize
+    )
     
     for j, k in seq:
       if j > k: j, k = k, j
