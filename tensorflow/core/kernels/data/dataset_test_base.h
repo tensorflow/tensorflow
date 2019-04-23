@@ -52,7 +52,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   static Status ExpectEqual(const Tensor& a, const Tensor& b);
 
   // The method validates whether the two tensor vectors have the same tensors.
-  // If `compare_order` is false, the method will only evaluate the two
+  // If `compare_order` is false, the method will only evaluate whether the two
   // vectors have the same elements regardless of order.
   static Status ExpectEqual(std::vector<Tensor> produced_tensors,
                             std::vector<Tensor> expected_tensors,
