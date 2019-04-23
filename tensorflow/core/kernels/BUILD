@@ -3682,19 +3682,6 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "batch_matmul_op_common_test",
-    size = "small",
-    srcs = ["batch_matmul_op_common_test.cc"],
-    deps = [
-        ":batch_matmul_op",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
 tf_cuda_cc_test(
     name = "batch_matmul_op_test",
     size = "small",
@@ -5606,8 +5593,6 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
-        "batch_matmul_op_common.cc",
-        "batch_matmul_op_common.h",
         "batch_util.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
@@ -6108,7 +6093,6 @@ filegroup(
             "*_3d*",
             "*.cu.*",
             # Ops already in android_srcs
-            "batch_matmul_op_common.cc",
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
