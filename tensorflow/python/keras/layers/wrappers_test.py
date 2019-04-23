@@ -22,6 +22,7 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.ops.array_ops import concat
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -294,32 +295,36 @@ class TimeDistributedTest(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def test_TimeDistributed_output_shape_return_types(self):
 
-    class TupleOutputShapeLayer(keras.layers.Layer):
-
+    class TestLayer(keras.layers.Layer):
+      def call(self, inputs):
+          return concat([inputs,inputs], axis=-1)
       def compute_output_shape(self, input_shape):
-          return (input_shape[0], input_shape[1])
+          output_shape = tensor_shape.TensorShape(input_shape).as_list()
+          output_shape[-1] = output_shape[-1] * 2
+          output_shape = tensor_shape.TensorShape(output_shape)
+          return output_shape
 
-    class ListOutputShapeLayer(keras.layers.Layer):
-
+    class TestListLayer(TestLayer):
       def compute_output_shape(self, input_shape):
-          return [input_shape[0], input_shape[1]]
+          shape = super(TestListLayer, self).compute_output_shape(input_shape)
+          return shape.as_list()
 
-    class TensorShapeOutputShapeLayer(keras.layers.Layer):
-
+    class TestTupleLayer(TestLayer):
       def compute_output_shape(self, input_shape):
-          return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+          shape = super(TestTupleLayer, self).compute_output_shape(input_shape)
+          return tuple(shape.as_list())
 
-    test_layers = [TupleOutputShapeLayer, ListOutputShapeLayer,
-                   TensorShapeOutputShapeLayer]
-    # Custom layers can specify output shape as a list, tuple, or TensorShape
+    # Layers can specify output shape as list/tuple/TensorShape
+    test_layers = [TestLayer, TestListLayer, TestTupleLayer]
     for layer in test_layers:
-      time_distributed = keras.layers.TimeDistributed(layer())
-      input_shape = (None, 1, 13)
-      output_shape = time_distributed.compute_output_shape(input_shape)
-      # all output shapes are exposed in the end as TensorShape instances
-      self.assertIsInstance(output_shape, tensor_shape.TensorShape)
-      # verify the expected shapes from our passthrough layers
-      self.assertListEqual(list(input_shape), output_shape.as_list())
+      input_layer = keras.layers.TimeDistributed(layer())
+      inputs = keras.backend.placeholder(shape=(None, 2, 4))
+      output = input_layer(inputs)
+      self.assertEqual(output.shape.as_list(), [None, 2, 8])
+      self.assertEqual(input_layer.compute_output_shape(
+        [None, 2, 4]).as_list(),
+        [None, 2, 8]
+      )
 
 
 class BidirectionalTest(test.TestCase):
@@ -712,30 +717,36 @@ class BidirectionalTest(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def test_Bidirectional_output_shape_return_types(self):
 
-    class TupleOutputShapeLayer(keras.layers.SimpleRNN):
 
+    class TestLayer(keras.layers.SimpleRNN):
+      def call(self, inputs):
+          return concat([inputs,inputs], axis=-1)
       def compute_output_shape(self, input_shape):
-          return (input_shape[0], input_shape[1], input_shape[2])
+          output_shape = tensor_shape.TensorShape(input_shape).as_list()
+          output_shape[-1] = output_shape[-1] * 2
+          return tensor_shape.TensorShape(output_shape)
 
-    class ListOutputShapeLayer(keras.layers.SimpleRNN):
-
+    class TestListLayer(TestLayer):
       def compute_output_shape(self, input_shape):
-          return [input_shape[0], input_shape[1], input_shape[2]]
+          shape = super(TestListLayer, self).compute_output_shape(input_shape)
+          return shape.as_list()
 
-    class TensorShapeOutputShapeLayer(keras.layers.SimpleRNN):
-
+    class TestTupleLayer(TestLayer):
       def compute_output_shape(self, input_shape):
-          return tensor_shape.TensorShape([input_shape[0], input_shape[1], input_shape[2]])
+          shape = super(TestTupleLayer, self).compute_output_shape(input_shape)
+          return tuple(shape.as_list())
 
-    test_layers = [TupleOutputShapeLayer, ListOutputShapeLayer,
-                   TensorShapeOutputShapeLayer]
-    # Custom layers can specify output shape as a list, tuple, or TensorShape
+    # Layers can specify output shape as list/tuple/TensorShape
+    test_layers = [TestLayer, TestListLayer, TestTupleLayer]
     for layer in test_layers:
-      input_layer = keras.layers.Bidirectional(layer(3))
-      input_shape = (None, 1, 13)
-      output_shape = input_layer.compute_output_shape(input_shape)
-      # all output shapes are exposed in the end as TensorShape instances
-      self.assertIsInstance(output_shape, tensor_shape.TensorShape)
+      input_layer = keras.layers.Bidirectional(layer(1))
+      inputs = keras.backend.placeholder(shape=(None, 2, 4))
+      output = input_layer(inputs)
+      self.assertEqual(output.shape.as_list(), [None, 2, 16])
+      self.assertEqual(
+        input_layer.compute_output_shape([None, 2, 4]).as_list(),
+        [None, 2, 16]
+      )
 
 
   def test_Bidirectional_last_output_with_masking(self):
