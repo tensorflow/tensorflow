@@ -147,7 +147,6 @@ py_test(
     size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [

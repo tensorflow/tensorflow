@@ -12,7 +12,6 @@ exports_files(["LICENSE"])
 py_binary(
     name = "iris_custom_decay_dnn",
     srcs = ["iris_custom_decay_dnn.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -20,7 +19,6 @@ py_binary(
 py_binary(
     name = "iris_custom_model",
     srcs = ["iris_custom_model.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )

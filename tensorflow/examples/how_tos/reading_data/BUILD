@@ -10,7 +10,6 @@ exports_files(["LICENSE"])
 py_binary(
     name = "convert_to_records",
     srcs = ["convert_to_records.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -23,7 +22,6 @@ py_binary(
     srcs = [
         "fully_connected_reader.py",
     ],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

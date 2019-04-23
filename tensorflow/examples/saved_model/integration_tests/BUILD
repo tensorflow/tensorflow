@@ -20,7 +20,6 @@ py_binary(
         "use_text_embedding_in_dataset.py",
         "use_text_rnn_model.py",
     ],
-    python_version = "PY2",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":mnist_util",
@@ -53,7 +52,6 @@ py_test(
     data = [
         ":run_script",
     ],
-    python_version = "PY2",
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
