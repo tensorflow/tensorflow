@@ -2,7 +2,7 @@
 
 ## Major Features and Improvements
 
-* The release will be the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
+* This is the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
 * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
 
 ## Behavioral changes
