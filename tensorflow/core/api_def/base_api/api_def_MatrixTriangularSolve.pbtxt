@@ -74,7 +74,8 @@ x
 #        [ 2.6666665 ],
 #        [-1.3333331 ]], dtype=float32)>
 
-a@x
+# in python3 one can use `a@x`
+tf.matmul(a, x)
 # <tf.Tensor: id=263, shape=(4, 1), dtype=float32, numpy=
 # array([[4.       ],
 #        [2.       ],
