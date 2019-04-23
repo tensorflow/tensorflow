@@ -1712,6 +1712,44 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_simplifier",
+    srcs = ["all_reduce_simplifier.cc"],
+    hdrs = ["all_reduce_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_replication_analysis",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_simplifier_test",
+    srcs = ["all_reduce_simplifier_test.cc"],
+    deps = [
+        ":all_reduce_simplifier",
+        ":hlo",
+        ":hlo_parser",
+        ":hlo_pass",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "batch_dot_simplification",
     srcs = ["batch_dot_simplification.cc"],
     hdrs = ["batch_dot_simplification.h"],
