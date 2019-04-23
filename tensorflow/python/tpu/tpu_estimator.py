@@ -2295,39 +2295,75 @@ class TPUEstimator(estimator_lib.Estimator):
   Exporting
   =========
 
-  `export_savedmodel` exports 2 metagraphs, one with `saved_model.SERVING`,
-  and another with `saved_model.SERVING` and `saved_model.TPU`.
-  At serving time, these tags are used to select metagraph to load.
+  `export_savedmodel` exports 2 metagraphs, one with `saved_model.SERVING`, and
+  another with `saved_model.SERVING` and `saved_model.TPU` tags. At serving
+  time, these tags are used to select the appropriate metagraph to load.
 
-  Before running the graph on TPU, TPU system needs to be initialized. If
-  TensorFlow Serving model-server is used, this is done automatically. If
-  not, please call `session.run(tpu.initialize_system())`.
+  Before running the graph on TPU, the TPU system needs to be initialized. If
+  TensorFlow Serving model-server is used, this is done automatically. If not,
+  please use `session.run(tpu.initialize_system())`.
 
-  `tpu.outside_compilation` can be used to wrap TPU incompatible ops in
-  `model_fn`.
+  There are two versions of the API: ExportSavedModelApiVersion.V1 and V2.
 
-  Example:
-  ----------------
+  In V1, the exported CPU graph is `model_fn` as it is. The exported TPU graph
+  wraps `tpu.rewrite()` and `TPUPartitionedCallOp` around `model_fn` so
+  `model_fn` is on TPU by default. To place ops on CPU,
+  `tpu.outside_compilation(host_call, logits)` can be used.
 
   ```
-  def model_fn(features, labels, mode, config, params):
-    ...
-    logits = ...
-    export_outputs = {
-      'logits': export_output_lib.PredictOutput(
-        {'logits': logits})
-    }
+    def model_fn(features, labels, mode, config, params):
+      ...
+      logits = ...
+      export_outputs = {
+        'logits': export_output_lib.PredictOutput(
+          {'logits': logits})
+      }
 
-    def host_call(logits):
-      class_ids = math_ops.argmax(logits)
-      classes = string_ops.as_string(class_ids)
-      export_outputs['classes'] =
-        export_output_lib.ClassificationOutput(classes=classes)
+      def host_call(logits):
+        class_ids = math_ops.argmax(logits)
+        classes = string_ops.as_string(class_ids)
+        export_outputs['classes'] =
+          export_output_lib.ClassificationOutput(classes=classes)
 
-    tpu.outside_compilation(host_call, logits)
+      tpu.outside_compilation(host_call, logits)
 
-    ...
+      ...
   ```
+
+  In V2, `export_savedmodel()` sets up `params['use_tpu']` flag to let the user
+  know if the code is exporting to TPU (or not). When `params['use_tpu']` is
+  `True`, users need to call `tpu.rewrite()`, `TPUPartitionedCallOp` and/or
+  `batch_function()`. Alternatively use `inference_on_tpu()` which is a
+  convenience wrapper of the three.
+
+  ```
+    def model_fn(features, labels, mode, config, params):
+      ...
+      # This could be some pre-processing on CPU like calls to input layer with
+      # embedding columns.
+      x2 = features['x'] * 2
+
+      def computation(input_tensor):
+        return layers.dense(
+            input_tensor, 1, kernel_initializer=init_ops.zeros_initializer())
+
+      inputs = [x2]
+      if params['use_tpu']:
+        predictions = array_ops.identity(
+            tpu_estimator.inference_on_tpu(computation, inputs,
+            num_batch_threads=1, max_batch_size=2, batch_timeout_micros=100),
+            name='predictions')
+      else:
+        predictions = array_ops.identity(
+            computation(*inputs), name='predictions')
+      key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+      export_outputs = {
+          key: export_lib.PredictOutput({'prediction': predictions})
+      }
+      ...
+  ```
+
+  TIP: V2 is recommended as it is more flexible (eg: batching, etc).
 
   """
 

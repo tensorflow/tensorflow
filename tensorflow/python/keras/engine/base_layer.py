@@ -65,6 +65,9 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
+# Prefix that is added to the TF op layer names.
+_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
 
 @keras_export('keras.layers.Layer')
 class Layer(module.Module):
@@ -1357,7 +1360,8 @@ class Layer(module.Module):
     """
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
+        with tf_utils.maybe_init_scope(self):
+          self.build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1821,7 +1825,11 @@ class Layer(module.Module):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      # Any setup work performed only once should happen in an `init_scope`
+      # to avoid creating symbolic Tensors that will later pollute any eager
+      # operations.
+      with tf_utils.maybe_init_scope(self):
+        self.build(input_shapes)
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
@@ -2145,7 +2153,7 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
-        name=name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
     # Layer uses original op unless it is called on new inputs.
@@ -2261,4 +2269,3 @@ def default(method):
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
 InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
-

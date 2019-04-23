@@ -45,8 +45,8 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
                                   const TensorData& input,
                                   const TensorData& filter,
                                   const TensorData& output,
-                                  Padding padding_type,
-                                  int dilation_factor = 1) {
+                                  Padding padding_type, int dilation_factor = 1,
+                                  int stride_width = 1, int stride_height = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -97,9 +97,9 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     SetBuiltinOp(
         BuiltinOperator_DEPTHWISE_CONV_2D,
         BuiltinOptions_DepthwiseConv2DOptions,
-        CreateDepthwiseConv2DOptions(builder_, padding_type, 1, 1, depth_mul,
-                                     ActivationFunctionType_NONE,
-                                     dilation_factor, dilation_factor)
+        CreateDepthwiseConv2DOptions(
+            builder_, padding_type, stride_width, stride_height, depth_mul,
+            ActivationFunctionType_NONE, dilation_factor, dilation_factor)
             .Union());
 
     resolver_ = absl::make_unique<SingleOpResolver>(
@@ -502,7 +502,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
               ElementsAreArray({4, 7, 3, 6, 10, 4, 2, 3, 1}));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, MultithreadOnRowUint8GeneralTest) {
+TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowUint8GeneralTest) {
   const int depth = 1;
   const int image_width = 4;
   const int image_height = 28;
@@ -562,7 +562,7 @@ TEST_P(DepthwiseConvolutionOpTest, MultithreadOnRowUint8GeneralTest) {
 
   // clang-format off
   EXPECT_THAT(
-      m.GetOutput(),
+      m.GetDequantizedOutput(),
       ElementsAreArray({
           0, 0,    0, 0,    0, 0,    0, 0,
           0, 0,    0, 0,    24, 24,  39, 39,
@@ -591,7 +591,8 @@ TEST_P(DepthwiseConvolutionOpTest, MultithreadOnRowUint8GeneralTest) {
   // clang-format on
 }
 
-TEST_P(DepthwiseConvolutionOpTest, MultithreadOnBatchUint8GeneralTest) {
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       MultithreadOnBatchUint8GeneralTest) {
   const int depth = 1;
   const int image_width = 8;
   const int image_height = 4;
@@ -645,7 +646,7 @@ TEST_P(DepthwiseConvolutionOpTest, MultithreadOnBatchUint8GeneralTest) {
 
   // clang-format off
   EXPECT_THAT(
-      m.GetOutput(),
+      m.GetDequantizedOutput(),
       ElementsAreArray({
           39, 39, 39, 39, 39, 39,
           21, 21, 21, 21, 21, 21,
@@ -664,6 +665,532 @@ TEST_P(DepthwiseConvolutionOpTest, MultithreadOnBatchUint8GeneralTest) {
 
           39, 39, 39, 39, 39, 39,
           21, 21, 21, 21, 21, 21
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
+  // This test runs through DepthwiseConv3x3Filter with __aarch64__, and runs
+  // through DepthwiseConvGeneral with other configs.
+  const int input_batch = 1;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_VALID);
+
+  // clang-format off
+  m.SetInput({
+    // array of 9 x 8 => [1, 3, 3, 8]
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0
+  });
+
+  m.SetFilter({
+    // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(4);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        9, 18, 0, 0, 46, 55, 0, 0
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowSamePaddingTest) {
+  // This test runs through DepthwiseConv3x3Filter with __aarch64__, and runs
+  // through DepthwiseConvGeneral with other configs.
+  const int input_batch = 1;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_SAME);
+
+  // clang-format off
+  m.SetInput({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(3);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        // array of 9 x 8 => [1, 3, 3, 8]
+        4, 8, 0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       MultithreadOnBatchValidPaddingTest) {
+  // This test runs through DepthwiseConv3x3Filter with __aarch64__, and runs
+  // through DepthwiseConvGeneral with other configs.
+  const int input_batch = 2;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_VALID);
+
+  // clang-format off
+  m.SetInput({
+      // array of 2 x 3 x 24 => [2, 3, 3, 8]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(2);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnBatchSamePaddingTest) {
+  // This test runs through DepthwiseConv3x3Filter with __aarch64__, and runs
+  // through DepthwiseConvGeneral with other configs.
+  const int input_batch = 2;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_SAME);
+
+  // clang-format off
+  m.SetInput({
+      // array of 2 x 3 x 24 => [2, 3, 3, 8]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(3);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        // array of 9 x 16 => [2, 3, 3, 8]
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   9, 18, 0, 0, 46, 55, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       MultithreadOnRowSamePaddingStrideTest) {
+  // This test runs through DepthwiseConv3x3Filter with __aarch64__, and runs
+  // through DepthwiseConvGeneral with other configs.
+  const int input_batch = 1;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_SAME,
+      /* dilation_factor = */ 1,
+      /* stride_width = */ 2,
+      /* stride_height = */ 2);
+
+  // clang-format off
+  m.SetInput({
+      // array of 3 x 24 => [1, 3, 3, 8]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(4);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        4, 8, 0, 0, 20, 24, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+        4, 8, 0, 0, 20, 24, 0, 0,
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       MultithreadOnRowValidPaddingStrideTest) {
+  const int input_batch = 1;
+  const int input_width = 5;
+  const int input_height = 5;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 8;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_VALID,
+      /* dilation_factor = */ 1,
+      /* stride_width = */ 2,
+      /* stride_height = */ 2);
+
+  // clang-format off
+  m.SetInput({
+    // array of 8 x 24 + 8 => [1, 5, 5, 8]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 8 => [1, 3, 3, 8]
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(4);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       MultithreadOnRowDepthMultiplierTest) {
+  const int input_batch = 1;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 8;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 16;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_VALID);
+
+  // clang-format off
+  m.SetInput({
+      // array of 3 x 24 => [1, 3, 3, 8]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 16 => [1, 3, 3, 16]
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+      1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetNumThreads(4);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        9, 18, 27, 37, 0, 0, 0, 0,
+        9, 18, 27, 37, 0, 0, 0, 0
+      }));
+  // clang-format on
+}
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadDifferentPaddingTest) {
+  const int input_batch = 1;
+  const int input_width = 4;
+  const int input_height = 5;
+  const int input_depth = 2;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 2;
+
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {input_batch, input_height, input_width, input_depth},
+       0,
+       128},
+      {TensorType_UINT8,
+       {filter_batch, filter_size, filter_size, filter_depth},
+       0,
+       128},
+      {TensorType_UINT8, {}, 0, 255}, Padding_SAME,
+      /* dilation_factor = */ 1,
+      /* stride_width = */ 2,
+      /* stride_height = */ 2);
+
+  // clang-format off
+  m.SetInput({
+      // array of 2 x 16 => [1, 4, 4, 2]
+      1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+      1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0
+  });
+
+  m.SetFilter({
+      // array of 8 x 2 + 2 => [1, 3, 3, 2]
+      1, 2, 1, 2, 1, 2, 1, 2,
+      1, 2, 1, 2, 1, 2, 1, 2,
+      1, 2
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0});
+  m.SetNumThreads(4);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray({
+        6, 0, 4, 0,
+        9, 0, 6, 0,
+        6, 0, 4, 0
       }));
   // clang-format on
 }

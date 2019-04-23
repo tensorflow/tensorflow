@@ -86,6 +86,9 @@ PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
 	tensorflow/core/util/stats_calculator.cc
 
+CMD_LINE_TOOLS_SRCS := \
+  tensorflow/lite/tools/command_line_flags.cc
+
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
@@ -156,7 +159,8 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
-	$(PROFILE_SUMMARIZER_SRCS)
+	$(PROFILE_SUMMARIZER_SRCS) \
+  $(CMD_LINE_TOOLS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
@@ -171,9 +175,10 @@ include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 ALL_SRCS := \
 	$(MINIMAL_SRCS) \
 	$(PROFILER_SRCS) \
-	$(PROFILER_SUMMARY_SRCS) \
+	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
-	$(BENCHMARK_SRCS)
+	$(BENCHMARK_SRCS) \
+  $(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
 GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/

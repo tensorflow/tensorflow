@@ -1202,4 +1202,4 @@ def _get_context_device_type():
 def _runtime(runtime_name):
   with ops.device('/cpu:0'):
     return constant_op.constant(
-        runtime_name, dtype=dtypes.int32, name='runtime')
+        runtime_name, dtype=dtypes.float32, name='runtime')

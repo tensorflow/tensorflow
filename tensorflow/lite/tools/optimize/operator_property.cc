@@ -28,7 +28,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
   property->biases = {};
   property->restrict_same_input_output_scale = false;
   property->restriction_on_output = false;
-  property->restricted_value_on_output = {};
+  property->restricted_value_on_output = {0.0, 0.0};
   property->version = 0;
   switch (op) {
     case BuiltinOperator_ADD:

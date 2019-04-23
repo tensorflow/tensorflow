@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -317,21 +318,33 @@ TEST(FloatActivationsOpTest, Sigmoid) {
 TEST(QuantizedActivationsOpTest, SigmoidUint8) {
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -10, 10});
+      /*input=*/{TensorType_UINT8, {1, 6, 4, 1}, -10, 10});
   m.SetInput<uint8_t>({
-      0, -6, 2, 4,   //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
       3, -2, 10, 1,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.5, 0.002473, 0.880797, 0.982014,       //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
                       0.952574, 0.119203, 0.999955, 0.731059,  //
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+              ElementsAreArray({
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+              }));
 }
 
 TEST(QuantizedActivationsOpTest, SigmoidInt8) {

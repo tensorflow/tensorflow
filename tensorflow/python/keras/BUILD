@@ -698,6 +698,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "subclassed_layers_test",
+    size = "medium",
+    srcs = ["layers/subclassed_layers_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
+)
+
+tf_py_test(
     name = "dense_attention_test",
     size = "medium",
     srcs = ["layers/dense_attention_test.py"],

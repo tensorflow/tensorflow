@@ -40,6 +40,9 @@ namespace depthwise_conv {
   TFLITE_DCHECK_EQ(reinterpret_cast<std::uintptr_t>(dst) % 4, 0); \
   vst1q_lane_u32(reinterpret_cast<uint32_t*>(dst), reg, lane_num)
 
+// Important! Most compilation configurations will compile and run without
+// reinterpret_cast. Sanitizers may fail silently on lane-loading, with an
+// obscure bug or mis-feature probably in unhygienic macro expansion.
 #define vld1q_lane_s8x8(src, reg, lane_num) \
   vld1q_lane_u64(reinterpret_cast<const uint64_t*>(src), reg, lane_num)
 #define vld1_lane_8x4(src, reg, lane_num) \
@@ -47,11 +50,6 @@ namespace depthwise_conv {
 #define vld1q_lane_8x4(src, reg, lane_num) \
   vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
-
-
-#endif  // ARM NEON
-
-#ifdef USE_NEON
 
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
@@ -5682,9 +5680,9 @@ inline void DepthwiseConv3x3Filter(
   }
 
   for (int32 b = batch_start; b < batch_end; ++b) {
+    // input_ptr and output_ptr point to the start of each batch
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size +
-                        row_start * params.output_width * params.output_depth;
+    uint8* output_ptr = output_data + b * output_batch_size;
 
     int32 out_x = 0;
     int32 out_y = row_start;
@@ -5700,12 +5698,18 @@ inline void DepthwiseConv3x3Filter(
       end_x = params.output_width - 1;
       out_y = std::max(1, out_y);
       end_y = std::min(params.output_height - 1, end_y);
-      const int in_x = (out_x * stride_width) - pad_width;
-      const int in_y = (out_y * stride_height) - pad_height;
-      input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr +=
-          out_y * params.output_row_size + out_x * params.output_depth;
     }
+
+    // pad_width and pad_height can both be 0 or 1, depending on padding option,
+    // such as Padding_VALID / Padding_SAME.
+    const int in_x = (out_x * stride_width) - pad_width;
+    const int in_y = (out_y * stride_height) - pad_height;
+
+    // input_ptr and output_ptr point to (in_y, in_x) and (out_y, out_x),
+    // respectively. (in_y, in_x) and (out_y, out_x) change along with
+    // row_start.
+    input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
+    output_ptr += out_y * params.output_row_size + out_x * params.output_depth;
 
     // Shuffling shapes that maximize width over the shuffle workspace size
     // perform better since the inputs are closer together, minimizing
@@ -6688,10 +6692,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -6974,10 +6974,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -7472,7 +7468,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             const bool no_right_block = output_width < 3;
 
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg = vdupq_n_s8(0);
               right_bank_1_reg = vdupq_n_s8(0);
               right_bank_2_reg = vdupq_n_s8(0);
@@ -7611,7 +7607,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
             // Load next sub-micro block of data.
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg_a = vdupq_n_s8(0);
               right_bank_1_reg_a = vdupq_n_s8(0);
               right_bank_2_reg_a = vdupq_n_s8(0);
@@ -7949,6 +7945,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           bias_data += kBiasIncrement;
         }
       } else {
+        // block_height == 1.
         int8x16_t filter_reg_0_a;
         int8x16_t filter_reg_1_a;
         int8x16_t filter_reg_2_a;
@@ -9797,6 +9794,15 @@ inline void DepthwiseConvDotProduct3x3(
               : function_params.output_width_micro_repeats + 1;
 
       for (int j_depth = 0; j_depth < depth_overall_macro_count; ++j_depth) {
+        // Process filter and bias data.
+        //
+        function_params.depth_micro_repeats =
+            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
+        ProcessPerDepth<implementation>::Run(
+            filter_data + 64 * j_depth,
+            bias_data + 8 * 2 * bias_increment * j_depth,
+            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
+
         const uint8* input_data_block =
             input_data + b * input_batch_stride +
             j_depth * input_depth_macro_stride +
@@ -9806,15 +9812,6 @@ inline void DepthwiseConvDotProduct3x3(
         uint8* output_data_block = output_data + b * output_batch_stride +
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
-
-        // Process filter and bias data.
-        //
-        function_params.depth_micro_repeats =
-            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
-        ProcessPerDepth<implementation>::Run(
-            filter_data + 64 * j_depth,
-            bias_data + 8 * 2 * bias_increment * j_depth,
-            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
 
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the

@@ -331,6 +331,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "snapshot_dataset_op",
+    srcs = ["snapshot_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "sql_dataset_op",
     srcs = [
         "sql_dataset_op.cc",
@@ -455,6 +466,7 @@ tf_kernel_library(
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",
         ":sliding_window_dataset_op",
+        ":snapshot_dataset_op",
         ":sql_dataset_op",
         ":stats_aggregator_ops",
         ":stats_dataset_ops",

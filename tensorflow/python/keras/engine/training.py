@@ -1851,9 +1851,24 @@ class Model(network.Network):
     return batch_size
 
   def _list_functions_for_serialization(self):
-    return {
-        '_default_save_signature': saving_utils.trace_model_call(self)
-    }
+    """If available, saves a trace of call using self.inputs."""
+    all_functions = super(Model, self)._list_functions_for_serialization()
+    try:
+      # pylint:disable=pointless-statement
+      self.inputs
+      self.input_names
+      # pylint:enable=pointless-statement
+    except AttributeError:
+      # If the model does not have inputs set, because it was not called or its
+      # input shapes were not recorded, we won't have a signature so can't trace
+      # a function. But the user may still save an object with this Model
+      # attached; we won't fail the whole tf.saved_model.save.
+      pass
+    else:
+      if '_default_save_signature' not in all_functions:
+        all_functions['_default_save_signature'] = (
+            saving_utils.trace_model_call(self))
+    return all_functions
 
   def _set_sample_weight_attributes(self, sample_weight_mode):
     """Sets sample weight related attributes on the model."""

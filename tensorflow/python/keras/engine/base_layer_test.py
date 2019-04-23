@@ -403,6 +403,19 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_layer_names(self):
+    inputs = keras.layers.Input(shape=[2])
+    add1 = inputs + inputs
+    add2 = keras.layers.Add()([inputs, inputs])
+    add3 = inputs + inputs
+    add4 = keras.layers.Add()([inputs, inputs])
+    model = keras.models.Model(
+        inputs=[inputs], outputs=[add1, add2, add3, add4])
+    self.assertEqual(
+        [l.name for l in model.layers],
+        ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
+
 
 class SymbolicSupportTest(test.TestCase):
 

@@ -1127,6 +1127,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                           MklFusedBatchNormOp<CPUDevice, T, T>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(T, U)                   \
@@ -1138,6 +1139,7 @@ TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
                           MklFusedBatchNormOp<CPUDevice, T, U>);
 
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_V2_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(T)                    \
@@ -1148,6 +1150,7 @@ REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
                           MklFusedBatchNormGradOp<CPUDevice, T, T>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(T, U)              \
@@ -1159,6 +1162,7 @@ TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
                           MklFusedBatchNormGradOp<CPUDevice, T, U>);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU
 
 }  // namespace tensorflow
