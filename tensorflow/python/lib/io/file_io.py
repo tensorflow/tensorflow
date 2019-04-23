@@ -128,8 +128,7 @@ class FileIO(object):
         pywrap_tensorflow.ReadFromStream(self._read_buf, length))
 
   @deprecation.deprecated_args(
-      None,
-      "position is deprecated in favor of the offset argument.",
+      None, "position is deprecated in favor of the offset argument.",
       "position")
   def seek(self, offset=None, whence=0, position=None):
     # TODO(jhseu): Delete later. Used to omit `position` from docs.
@@ -169,8 +168,8 @@ class FileIO(object):
       else:
         raise errors.InvalidArgumentError(
             None, None,
-            "Invalid whence argument: {}. Valid values are 0, 1, or 2."
-            .format(whence))
+            "Invalid whence argument: {}. Valid values are 0, 1, or 2.".format(
+                whence))
       ret_status = self._read_buf.Seek(offset)
       pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
@@ -241,7 +240,6 @@ class FileIO(object):
         pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
-  @property
   def seekable(self):
     """Returns True as FileIO supports random access ops of seek()/tell()"""
     return True
@@ -319,7 +317,7 @@ def read_file_to_string(filename, binary_mode=False):
   Args:
     filename: string, path to a file
     binary_mode: whether to open the file in binary mode or not. This changes
-        the type of the object returned.
+      the type of the object returned.
 
   Returns:
     contents of the file as a string or bytes.
@@ -401,10 +399,8 @@ def create_dir(dirname):
 
   Args:
     dirname: string, name of the directory to be created
-
-  Notes:
-    The parent directories need to exist. Use recursive_create_dir instead if
-    there is the possibility that the parent dirs don't exist.
+  Notes: The parent directories need to exist. Use recursive_create_dir instead
+    if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -418,10 +414,8 @@ def create_dir_v2(path):
 
   Args:
     path: string, name of the directory to be created
-
-  Notes:
-    The parent directories need to exist. Use recursive_create_dir instead if
-    there is the possibility that the parent dirs don't exist.
+  Notes: The parent directories need to exist. Use recursive_create_dir instead
+    if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -467,7 +461,7 @@ def copy(oldpath, newpath, overwrite=False):
     oldpath: string, name of the file who's contents need to be copied
     newpath: string, name of the file to which to copy to
     overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+      existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -483,7 +477,7 @@ def copy_v2(src, dst, overwrite=False):
     src: string, name of the file whose contents need to be copied
     dst: string, name of the file to which to copy to
     overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+      existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -500,7 +494,7 @@ def rename(oldname, newname, overwrite=False):
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
     overwrite: boolean, if false it's an error for `newname` to be occupied by
-        an existing file.
+      an existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -515,8 +509,8 @@ def rename_v2(src, dst, overwrite=False):
   Args:
     src: string, pathname for a file
     dst: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false it's an error for `dst` to be occupied by
-        an existing file.
+    overwrite: boolean, if false it's an error for `dst` to be occupied by an
+      existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -538,7 +532,7 @@ def atomic_write_string_to_file(filename, contents, overwrite=True):
     filename: string, pathname for a file
     contents: string, contents that need to be written to the file
     overwrite: boolean, if false it's an error for `filename` to be occupied by
-        an existing file.
+      an existing file.
   """
   temp_pathname = filename + ".tmp" + uuid.uuid4().hex
   write_string_to_file(temp_pathname, contents)
@@ -657,9 +651,8 @@ def walk(top, in_order=True):
 
   Args:
     top: string, a Directory name
-    in_order: bool, Traverse in order if True, post order if False.
-
-  Errors that happen while listing directories are ignored.
+    in_order: bool, Traverse in order if True, post order if False.  Errors that
+      happen while listing directories are ignored.
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
@@ -679,8 +672,7 @@ def walk_v2(top, topdown=True, onerror=None):
     topdown: bool, Traverse pre order if True, post order if False.
     onerror: optional handler for errors. Should be a function, it will be
       called with the error as argument. Rethrowing the error aborts the walk.
-
-  Errors that happen while listing directories are ignored.
+      Errors that happen while listing directories are ignored.
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
