@@ -153,12 +153,21 @@ def resource_tracker_scope(resource_tracker):
 class TrackableResource(base.Trackable):
   """Base class for all resources that need to be tracked."""
 
-  def __init__(self):
+  def __init__(self, device=""):
+    """Initialize the `TrackableResource`.
+
+    Args:
+      device: A string indicating a required placement for this resource,
+        e.g. "CPU" if this resource must be created on a CPU device. A blank
+        device allows the user to place resource creation, so generally this
+        should be blank unless the resource only makes sense on one device.
+    """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
 
     self._resource_handle = None
+    self._resource_device = device
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -173,7 +182,8 @@ class TrackableResource(base.Trackable):
   def resource_handle(self):
     """Returns the resource handle associated with this Resource."""
     if self._resource_handle is None:
-      self._resource_handle = self._create_resource()
+      with ops.device(self._resource_device):
+        self._resource_handle = self._create_resource()
     return self._resource_handle
 
   def _list_functions_for_serialization(self):

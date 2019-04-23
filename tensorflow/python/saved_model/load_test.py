@@ -65,20 +65,16 @@ from tensorflow.python.util import tf_inspect
     dict(testcase_name="ReloadThrice", cycles=3))
 class LoadTest(test.TestCase, parameterized.TestCase):
 
-  def cycle(self, obj, cycles, signatures=None, use_gpu=True):
+  def cycle(self, obj, cycles, signatures=None):
     to_save = obj
     # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
     # point w.r.t. saving/restoring, ideally after 2nd saving.
     for _ in range(cycles):
       path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      if use_gpu:
-        # If available, we'll run the save and restore preferring the GPU. This
-        # just makes sure we aren't throwing errors and have enough
-        # device("CPU") blocks to satisfy the placer.
-        with test_util.use_gpu():
-          save.save(to_save, path, signatures)
-          loaded = load.load(path)
-      else:
+      # If available, we'll run the save and restore preferring the GPU. This
+      # just makes sure we aren't throwing errors and have enough
+      # device("CPU") blocks to satisfy the placer.
+      with test_util.use_gpu():
         save.save(to_save, path, signatures)
         loaded = load.load(path)
       to_save = loaded
@@ -1446,16 +1442,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return current_sum
 
     root = HasDataset()
-    self.assertEqual(3 * (1 + 4 + 9 + 16),
-                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
-    with ops.device("CPU"):
-      # TODO(b/130706977): Fix loading of captured Datsets with a GPU device
-      # available.
-      root = self.cycle(
-          root, cycles,
-          use_gpu=False)
-    self.assertEqual(3 * (1 + 4 + 9 + 16),
-                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    root = self.cycle(root, cycles)
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
