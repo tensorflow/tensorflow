@@ -46,7 +46,7 @@ template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
                                int32_t zero_point) {
   std::vector<T> q;
-  for (float f : data) {
+  for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         std::numeric_limits<T>::min(),
         std::min<float>(std::numeric_limits<T>::max(),
@@ -59,7 +59,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
-  for (T q : data) {
+  for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
   return f;
@@ -276,7 +276,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -296,7 +296,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -497,7 +497,7 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   static std::vector<string> GetKernelTags(
       const std::map<string, TfLiteRegistration*>& kernel_map) {
     std::vector<string> tags;
-    for (auto it : kernel_map) {
+    for (const auto& it : kernel_map) {
       tags.push_back(it.first);
     }
     return tags;

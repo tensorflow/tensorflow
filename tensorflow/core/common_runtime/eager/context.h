@@ -23,6 +23,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NO_LINT
+
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -31,11 +34,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/env.h"
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -84,7 +87,8 @@ class EagerContext {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_policy, bool async,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous);
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator);
 
   ~EagerContext();
 
@@ -199,7 +203,7 @@ class EagerContext {
 
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   Status GetClientAndContextID(Device* device, eager::EagerClient** client,
                                uint64* context_id);
 
@@ -230,7 +234,7 @@ class EagerContext {
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
-#endif
+#endif  // IS_MOBILE_PLATFORM
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
@@ -313,7 +317,7 @@ class EagerContext {
   std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
   CollectiveExecutorMgrInterface* unowned_collective_executor_mgr_ = nullptr;
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   void CloseRemoteContexts();
 
   // The server_ is not const since we release it when the context is destroyed.
@@ -336,7 +340,7 @@ class EagerContext {
   mutex keep_alive_thread_shutdown_mu_;
   condition_variable keep_alive_thread_cv_;
   bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
-#endif
+#endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;

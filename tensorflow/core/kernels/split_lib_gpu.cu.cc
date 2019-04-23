@@ -19,13 +19,12 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/split_lib.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
+#include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/split_lib_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -218,9 +217,10 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     CudaLaunchConfig config =
         GetCudaLaunchConfig(total_rows * total_cols, gpu_device);
 
-    SplitVOpKernel_fixed<T><<<config.block_count, config.thread_per_block, 0,
-                              gpu_device.stream()>>>(
-        input_ptr, total_rows, total_cols, output_ptr_data);
+    TF_CHECK_OK(CudaLaunchKernel(SplitVOpKernel_fixed<T>, config.block_count,
+                                 config.thread_per_block, 0,
+                                 gpu_device.stream(), input_ptr, total_rows,
+                                 total_cols, output_ptr_data));
   } else {
     auto config = GetCuda2DLaunchConfig(total_cols, total_rows, gpu_device);
     IntType smem_max = gpu_device.sharedMemPerBlock();
@@ -230,15 +230,15 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-      split_v_kernel<T, IntType, true>
-          <<<config.block_count, config.thread_per_block, smem_usage,
-             gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
-                                    total_cols, output_ptr_data);
+      TF_CHECK_OK(CudaLaunchKernel(
+          split_v_kernel<T, IntType, true>, config.block_count,
+          config.thread_per_block, smem_usage, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     else
-      split_v_kernel<T, IntType, false>
-          <<<config.block_count, config.thread_per_block, 0,
-             gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
-                                    total_cols, output_ptr_data);
+      TF_CHECK_OK(CudaLaunchKernel(
+          split_v_kernel<T, IntType, false>, config.block_count,
+          config.thread_per_block, 0, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
   }
 }
 

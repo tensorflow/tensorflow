@@ -62,7 +62,7 @@ cc_library(
     srcs = ["buffer_info_util.cc"],
     hdrs = ["buffer_info_util.h"],
     deps = [
-        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
@@ -93,13 +93,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         ":target_machine_features",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:scatter_expander",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -210,6 +210,12 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_lightweight_check",
+    hdrs = ["runtime_lightweight_check.h"],
+    copts = runtime_copts(),
+)
+
+cc_library(
     name = "runtime_fp16",
     srcs = [
         "runtime_fp16.cc",
@@ -247,6 +253,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor/host:host_stream",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -502,6 +509,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -537,6 +545,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
@@ -572,6 +581,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:framework_lite",
@@ -596,6 +606,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
@@ -627,6 +638,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",

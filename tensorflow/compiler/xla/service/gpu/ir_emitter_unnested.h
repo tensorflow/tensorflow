@@ -215,8 +215,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionToVector(*unnested_hlo)`
-  Status EmitReductionToVector(HloInstruction* unnested_hlo);
+  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  Status EmitReductionFromOrToContiguousDimensions(
+      HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo

@@ -426,12 +426,18 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       //   setting them for each kernel.
       // TODO(zhengxq): pin the thread to the same socket of the target GPU.
       thread_pool_.reset(new thread::ThreadPool(
-          options.env, strings::StrCat("gpu_private_", tf_gpu_id_.value()),
-          static_cast<int32>(gpu_thread_count)));
+          options.env, ThreadOptions(),
+          strings::StrCat("gpu_private_", tf_gpu_id_.value()),
+          static_cast<int32>(gpu_thread_count),
+          !options.config.experimental().disable_thread_spinning(),
+          /*allocator=*/nullptr));
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (gpu_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
-          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+          options.env, ThreadOptions(), "gpu_shared",
+          static_cast<int32>(gpu_thread_count),
+          !options.config.experimental().disable_thread_spinning(),
+          /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
@@ -745,6 +751,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 }
 
+void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                           Tensor* output_tensor,
+                                           const DeviceContext* device_context,
+                                           StatusCallback done) {
+  GPUUtil::CopyGPUTensorToSameGPU(static_cast<Device*>(this), device_context,
+                                  input_tensor, output_tensor, std::move(done));
+}
+
 namespace {
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
@@ -974,6 +988,36 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
+
+Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
+  se::Platform* gpu_manager = GPUMachineManager();
+  if (gpu_manager == nullptr) {
+    return Status::OK();
+  }
+
+  int device_count = gpu_manager->VisibleDeviceCount();
+  if (device_count <= 0) {
+    return Status::OK();
+  }
+
+  std::vector<PlatformGpuId> visible_gpu_order(device_count);
+  int deviceNo = 0;
+  std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+                [&deviceNo] { return deviceNo++; });
+
+  std::vector<PlatformGpuId> valid_platform_gpu_ids;
+  TF_RETURN_IF_ERROR(
+      GetValidDeviceIds(visible_gpu_order, &valid_platform_gpu_ids));
+
+  for (PlatformGpuId platform_gpu_id : valid_platform_gpu_ids) {
+    const string device_name =
+        strings::StrCat("/physical_device:GPU:", platform_gpu_id.value());
+    devices->push_back(device_name);
+  }
+
+  return Status::OK();
+}
 
 Status BaseGPUDeviceFactory::CreateDevices(
     const SessionOptions& options, const string& name_prefix,
@@ -1532,13 +1576,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 
     auto stream_exec = executor.ValueOrDie();
-    int64 free_bytes;
-    int64 total_bytes;
-    if (!stream_exec->DeviceMemoryUsage(&free_bytes, &total_bytes)) {
-      // Logs internally on failure.
-      free_bytes = 0;
-      total_bytes = 0;
-    }
     const auto& description = stream_exec->GetDeviceDescription();
 #if GOOGLE_CUDA
     int cc_major;
@@ -1552,9 +1589,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << " major: " << cc_major
               << " minor: " << cc_minor
               << " memoryClockRate(GHz): " << description.clock_rate_ghz()
-              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
+              << "\npciBusID: " << description.pci_bus_id();
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description.rocm_amdgpu_isa_version(&isa_version)) {
@@ -1565,10 +1600,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
               << isa_version << "\nmemoryClockRate (GHz) "
               << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << description.pci_bus_id();
 #endif
   }
   // Checking peering and shows matrix if more than one gpu found.

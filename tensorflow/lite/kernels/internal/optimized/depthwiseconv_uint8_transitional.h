@@ -48,6 +48,9 @@ namespace depthwise_conv {
   TFLITE_DCHECK_EQ(reinterpret_cast<std::uintptr_t>(dst) % 4, 0); \
   vst1q_lane_u32(reinterpret_cast<uint32_t*>(dst), reg, lane_num)
 
+// Important! Most compilation configurations will compile and run without
+// reinterpret_cast. Sanitizers may fail silently on lane-loading, with an
+// obscure bug or mis-feature probably in unhygienic macro expansion.
 #define vld1q_lane_s8x8(src, reg, lane_num) \
   vld1q_lane_u64(reinterpret_cast<const uint64_t*>(src), reg, lane_num)
 #define vld1_lane_8x4(src, reg, lane_num) \
@@ -1834,10 +1837,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -2124,10 +2123,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -3135,7 +3130,7 @@ struct KernelMacroBlock<
                 i_width == output_width_micro_repeats && residual_width < 3;
 
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg = vdupq_n_s8(0);
               right_bank_1_reg = vdupq_n_s8(0);
               right_bank_2_reg = vdupq_n_s8(0);
@@ -3366,7 +3361,7 @@ struct KernelMacroBlock<
             const bool no_right_block = output_width < 3;
 
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg = vdupq_n_s8(0);
               right_bank_1_reg = vdupq_n_s8(0);
               right_bank_2_reg = vdupq_n_s8(0);
@@ -3498,7 +3493,7 @@ struct KernelMacroBlock<
               const bool no_right_block = output_width < 3;
 
               if (no_right_block) {
-                // Only needed for santizer checks.
+                // Only needed for sanitizer checks.
                 right_bank_0_reg = vdupq_n_s8(0);
                 right_bank_1_reg = vdupq_n_s8(0);
                 right_bank_2_reg = vdupq_n_s8(0);

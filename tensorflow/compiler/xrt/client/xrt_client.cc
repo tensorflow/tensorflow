@@ -373,7 +373,7 @@ XrtExecutable::ExecuteReplicated(
   for (int i = 0; i < device_assignment_.replica_count(); ++i) {
     for (int j = 0; j < device_assignment_.computation_count(); ++j) {
       for (int k = 0; k < args[j].n2(); ++k) {
-        inputs.push_back(&args[j](i, j)->handle());
+        inputs.push_back(&args[j](i, k)->handle());
         input_types.push_back(DT_INT64);
       }
     }

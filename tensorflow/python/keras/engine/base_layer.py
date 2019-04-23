@@ -28,6 +28,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -46,6 +47,7 @@ from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -54,6 +56,8 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -61,9 +65,12 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
+# Prefix that is added to the TF op layer names.
+_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
 
 @keras_export('keras.layers.Layer')
-class Layer(trackable.Trackable):
+class Layer(module.Module):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -115,6 +122,18 @@ class Layer(trackable.Trackable):
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
   """
+
+  # See tf.Module for the usage of this property.
+  # The key for _obj_reference_counts_dict is a Trackable, which could be a
+  # variable or layer etc. tf.Module._flatten will fail to flatten the key
+  # since it is trying to convert Trackable to a string. This attribute can be
+  # ignored even after the fix of nest lib, since the trackable object should
+  # already been available as individual attributes. _obj_reference_counts_dict
+  # just contains a copy of them.
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+      ('_obj_reference_counts_dict',),
+      module.Module._TF_MODULE_IGNORED_PROPERTIES
+  ))
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
@@ -215,12 +234,6 @@ class Layer(trackable.Trackable):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
-
-    # This flag is used to keep track of whether symbolic tensors are added to
-    # the model outside of the call context. This is required for disabling
-    # `run_eagerly` on compile.
-    # TODO(b/124303407): Remove this flag after we add support for the use case.
-    self._contains_symbolic_tensors = False
 
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
@@ -569,7 +582,7 @@ class Layer(trackable.Trackable):
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
-    with base_layer_utils.call_context():
+    with base_layer_utils.call_context(self):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -584,6 +597,8 @@ class Layer(trackable.Trackable):
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
+          # TODO(omalleyt): Reconcile this with new `trainable` behavior
+          # when available.
           learning_phase_passed_by_framework = False
           if (self._expects_training_arg and
               not base_layer_utils.training_arg_passed_to_call(
@@ -657,6 +672,7 @@ class Layer(trackable.Trackable):
           self._initial_weights is not None):
         self.set_weights(self._initial_weights)
         del self._initial_weights
+
     return outputs
 
   @property
@@ -748,18 +764,56 @@ class Layer(trackable.Trackable):
     be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
+    This method can be used inside a subclassed layer or model's `call`
+    function, in which case `losses` should be a Tensor or list of Tensors.
+
+    Example:
+
+    ```python
+    class MyLayer(tf.keras.layers.Layer):
+      def call(inputs, self):
+        self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
+        return 2*inputs
+    ```
+
+    This method can also be called directly on a Functional Model during
+    construction. In this case, any loss Tensors passed to this Model must
+    be symbolic and be able to be traced back to the model's `Input`s. These
+    losses become part of the model's topology and are tracked in `get_config`.
+
+    Example:
+
+    ```python
+    inputs = tf.keras.Input(shape=(10,))
+    x = tf.keras.layers.Dense(10)(inputs)
+    outputs = tf.keras.layers.Dense(1)(x)
+    model = tf.keras.Model(inputs, outputs)
+    # Actvity regularization.
+    model.add_loss(tf.abs(tf.reduce_mean(x)))
+    ````
+
+    If this is not the case for your loss (if, for example, your loss references
+    a `Variable` of one of the model's layers), you can wrap your loss in a
+    zero-argument lambda. These losses are not tracked as part of the model's
+    topology since they can't be serialized.
+
+    Example:
+
+    ```python
+    inputs = tf.keras.Input(shape=(10,))
+    x = tf.keras.layers.Dense(10)(inputs)
+    outputs = tf.keras.layers.Dense(1)(x)
+    model = tf.keras.Model(inputs, outputs)
+    # Weight regularization.
+    model.add_loss(lambda: tf.reduce_mean(x.kernel))
+    ```
+
     The `get_losses_for` method allows to retrieve the losses relevant to a
     specific set of inputs.
-
-    Note that `add_loss` is not supported when executing eagerly. Instead,
-    variable regularizers may be added through `add_variable`. Activity
-    regularization is not supported directly (but such losses may be returned
-    from `Layer.call()`).
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
-        Other types of input are ignored.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -768,8 +822,6 @@ class Layer(trackable.Trackable):
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
     """
-    losses = generic_utils.to_list(losses)
-
     def _tag_unconditional(loss):
       if callable(loss):
         loss = loss()
@@ -780,20 +832,47 @@ class Layer(trackable.Trackable):
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
+    losses = nest.flatten(losses)
+
+    callable_losses = []
+    eager_losses = []
+    symbolic_losses = []
     for loss in losses:
       if callable(loss):
-        self._callable_losses.append(
-            functools.partial(_tag_unconditional, loss))
-      else:
-        if not tensor_util.is_tensor(loss):
-          # Ignoring constant values as this does not affect the gradients.
-          return
-        if tf_utils.is_symbolic_tensor(loss):
-          if not base_layer_utils.is_in_call_context():
-            self._contains_symbolic_tensors = True
-          self._losses.append(_tag_unconditional(loss))
+        callable_losses.append(functools.partial(_tag_unconditional, loss))
+      elif tf_utils.is_symbolic_tensor(loss):
+        symbolic_losses.append(_tag_unconditional(loss))
+      elif tensor_util.is_tensor(loss):
+        eager_losses.append(_tag_unconditional(loss))
+      elif loss is not None:  # `None` is valid but should be ignored.
+        raise ValueError('Found non-Tensor loss: ' + str(loss))
+
+    self._callable_losses += callable_losses
+
+    call_context = base_layer_utils.is_in_call_context()
+    if eager_losses and not call_context:
+      raise ValueError(
+          'Expected a symbolic Tensors or a callable for the loss value. '
+          'Please wrap your loss computation in a zero argument `lambda`.')
+
+    self._eager_losses += eager_losses
+
+    if call_context:
+      for symbolic_loss in symbolic_losses:
+        self._losses.append(symbolic_loss)
+    else:
+      for symbolic_loss in symbolic_losses:
+        if getattr(self, '_is_graph_network', False):
+          new_layers = base_layer_utils.create_keras_history(symbolic_loss)
+          # Losses must be keyed on inputs no matter what in order to
+          # be supported in DistributionStrategy.
+          add_loss_layer = AddLoss(unconditional=False)
+          add_loss_layer(symbolic_loss)
+          new_layers.append(add_loss_layer)
+          self._insert_layers(new_layers)
         else:
-          self._eager_losses.append(_tag_unconditional(loss))
+          # Possible a loss was added in a Layer's `build`.
+          self._losses.append(symbolic_loss)
 
   @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
@@ -832,6 +911,8 @@ class Layer(trackable.Trackable):
           'You provided aggregation=`%s`' % aggregation)
 
     is_symbolic = tf_utils.is_symbolic_tensor(value)
+    call_context = base_layer_utils.is_in_call_context()
+
     if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
       # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
       # In eager mode, we use metric name to lookup a metric. Without a name,
@@ -848,11 +929,35 @@ class Layer(trackable.Trackable):
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
 
-    if is_symbolic:
-      with backend.get_graph().as_default():
-        self._symbolic_add_metric(value, aggregation, name)
+    if call_context:
+      if is_symbolic:
+        with backend.get_graph().as_default():
+          self._symbolic_add_metric(value, aggregation, name)
+      else:
+        self._eager_add_metric(value, aggregation, name)
     else:
-      self._eager_add_metric(value, aggregation, name)
+      if not is_symbolic:
+        raise ValueError('Expected a symbolic Tensor for the metric value, '
+                         'received: ' + str(value))
+
+      # Possible a metric was added in a Layer's `build`.
+      if not getattr(self, '_is_graph_network', False):
+        with backend.get_graph().as_default():
+          self._symbolic_add_metric(value, aggregation, name)
+        return
+
+      if getattr(value, '_metric_obj', None):
+        raise ValueError('Using the result of calling a `Metric` object '
+                         'when calling `add_metric` on a Functional '
+                         'Model is not supported. Please pass the '
+                         'Tensor to monitor directly.')
+
+      # Insert layers into the Keras Graph Network.
+      new_layers = base_layer_utils.create_keras_history(value)
+      add_metric_layer = AddMetric(aggregation, name)
+      add_metric_layer(value)
+      new_layers.append(add_metric_layer)
+      self._insert_layers(new_layers)
 
   @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
@@ -873,7 +978,10 @@ class Layer(trackable.Trackable):
     execution).
 
     Arguments:
-      updates: Update op, or list/tuple of update ops.
+      updates: Update op, or list/tuple of update ops, or zero-arg callable
+        that returns an update op. A zero-arg callable should be passed in
+        order to disable running the updates by setting `trainable=False`
+        on this Layer, when executing in Eager mode.
       inputs: If anything other than None is passed, it signals the updates
         are conditional on some of the layer's inputs,
         and thus they should only be run where these inputs are available.
@@ -883,10 +991,20 @@ class Layer(trackable.Trackable):
         have is available at runtime.
         A step counter might fall into this category.
     """
+    updates = generic_utils.to_list(updates)
+
     if context.executing_eagerly():
+      # Don't run callable updates if currently executing inside the `call`
+      # of a Layer/Model with `trainable=False`.
+      if not base_layer_utils.is_in_frozen_context():
+        for update in updates:
+          if callable(update):
+            update()
       return  # Updates already applied when in eager mode.
 
     def process_update(x):
+      if callable(x):
+        x = x()
       if isinstance(x, ops.Operation):
         return x
       elif hasattr(x, 'op'):
@@ -894,7 +1012,6 @@ class Layer(trackable.Trackable):
       else:
         return ops.convert_to_tensor(x)
 
-    updates = generic_utils.to_list(updates)
     updates = [process_update(x) for x in updates]
     self._updates += updates
     if inputs is None:
@@ -1243,7 +1360,8 @@ class Layer(trackable.Trackable):
     """
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
+        with tf_utils.maybe_init_scope(self):
+          self.build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1384,39 +1502,37 @@ class Layer(trackable.Trackable):
     # If the given metric is available in `metrics` list we just update state
     # on it, otherwise we create a new metric instance and
     # add it to the `metrics` list.
+    metric_obj = getattr(value, '_metric_obj', None)
+    if metric_obj:
+      name = metric_obj.name
+
     match = self._get_existing_metric(name)
     if match:
-      match(value)  # Update the metric state.
+      # Tensors that come from a Metric object already updated the Metric state.
+      if not metric_obj:
+        match(value)
       return
-    else:
-      # Aggregation will always be set in this use case. If not we will raise
-      # error on model/layer call in graph function mode when model/layer is
-      # created.
+
+    if not metric_obj:
       assert aggregation is not None
       metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
-      self._metrics.append(metric_obj)
+    self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
-    if not base_layer_utils.is_in_call_context():
-      self._contains_symbolic_tensors = True
+    match = self._get_existing_metric(name)
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model
       # layer `__init__` and we have tracked that instance already in
       # model.__setattr__.
-      match = self._get_existing_metric(name)
       if match:
         result_tensor = value
-        if match.name not in self._metrics_tensors:
-          self._metrics_tensors[match.name] = result_tensor
-          return
-        else:
-          raise ValueError(
-              'We currently do not support reusing a metric instance.')
+        metric_obj = match
       elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+        self._metrics.append(metric_obj)
       else:
         raise ValueError(
             'We do not support adding an aggregated metric result tensor that '
@@ -1430,9 +1546,13 @@ class Layer(trackable.Trackable):
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
-      metric_obj, result_tensor = base_layer_utils.create_mean_metric(
-          value, name)
-    self._metrics.append(metric_obj)
+      if match:
+        result_tensor = match(value)
+        metric_obj = match
+      else:
+        metric_obj, result_tensor = base_layer_utils.create_mean_metric(
+            value, name)
+        self._metrics.append(metric_obj)
     self._metrics_tensors[metric_obj.name] = result_tensor
 
   def _handle_weight_regularization(self, name, variable, regularizer):
@@ -1705,7 +1825,11 @@ class Layer(trackable.Trackable):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      # Any setup work performed only once should happen in an `init_scope`
+      # to avoid creating symbolic Tensors that will later pollute any eager
+      # operations.
+      with tf_utils.maybe_init_scope(self):
+        self.build(input_shapes)
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
@@ -1745,6 +1869,11 @@ class Layer(trackable.Trackable):
       super(Layer, self).__setattr__(name, default_value)
 
   def __delattr__(self, name):
+    # For any super.__delattr__() call, we will directly use the implementation
+    # in Trackable and skip the behavior in AutoTrackable. The Layer was
+    # originally use Trackable as base class, the change of using Module as base
+    # class forced us to have AutoTrackable in the class hierarchy. Skipping
+    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -1752,7 +1881,7 @@ class Layer(trackable.Trackable):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
 
     reference_count = reference_counts[existing_value]
@@ -1760,33 +1889,34 @@ class Layer(trackable.Trackable):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(Layer, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
         or trackable_layer_utils.has_weights(existing_value)):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
   def __setattr__(self, name, value):
-    if (not getattr(self, '_setattr_tracking', True) or
+    if (name == '_self_setattr_tracking' or
+        not getattr(self, '_self_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
-      super(Layer, self).__setattr__(name, value)
+      super(tracking.AutoTrackable, self).__setattr__(name, value)
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
@@ -1803,6 +1933,8 @@ class Layer(trackable.Trackable):
     except AttributeError:
       pass
 
+    # TODO(scottzhu): Need to track Module object as well for weight tracking.
+    # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
@@ -1835,7 +1967,9 @@ class Layer(trackable.Trackable):
             self._non_trainable_weights.append(val)
           backend.track_variable(val)
 
-    super(Layer, self).__setattr__(name, value)
+    # Skip the auto trackable from tf.Module to keep status quo. See the comment
+    # at __delattr__.
+    super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
@@ -2019,7 +2153,7 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
-        name=name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
     # Layer uses original op unless it is called on new inputs.
@@ -2047,6 +2181,18 @@ class TensorFlowOpLayer(Layer):
       c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
 
+      # Record the gradient because custom-made ops don't go through the
+      # code-gen'd eager call path
+      op_type = compat.as_str(op.op_def.name)
+      attr_names = [compat.as_str(attr.name) for attr in op.op_def.attr]
+      attrs = []
+      for attr_name in attr_names:
+        attrs.append(attr_name)
+        attrs.append(op.get_attr(attr_name))
+      attrs = tuple(attrs)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs,
+                              op.name)
+
       if len(op.outputs) == 1:
         return op.outputs[0]
       return op.outputs
@@ -2060,7 +2206,56 @@ class TensorFlowOpLayer(Layer):
     config = super(TensorFlowOpLayer, self).get_config()
     config.update({
         'node_def': self.node_def.SerializeToString(),
-        'constants': self.constants
+        'constants': {
+            i: backend.get_value(c) for i, c in self.constants.items()
+        }
+    })
+    return config
+
+
+class AddLoss(Layer):
+  """Adds its inputs as a loss.
+
+  Attributes:
+    unconditional: Whether or not the loss should be conditioned on the inputs.
+  """
+
+  def __init__(self, unconditional, **kwargs):
+    super(AddLoss, self).__init__(**kwargs)
+    self.unconditional = unconditional
+
+  def call(self, inputs):
+    self.add_loss(inputs, inputs=(not self.unconditional))
+    return inputs
+
+  def get_config(self):
+    config = super(AddLoss, self).get_config()
+    config.update({'unconditional': self.unconditional})
+    return config
+
+
+class AddMetric(Layer):
+  """Adds its inputs as a metric.
+
+  Attributes:
+    aggregation: 'mean' or None. How the inputs should be aggregated.
+    metric_name: The name to use for this metric.
+  """
+
+  def __init__(self, aggregation=None, metric_name=None, **kwargs):
+    super(AddMetric, self).__init__(**kwargs)
+    self.aggregation = aggregation
+    self.metric_name = metric_name
+
+  def call(self, inputs):
+    self.add_metric(inputs, self.aggregation, self.metric_name)
+    return inputs
+
+  def get_config(self):
+    config = super(AddMetric, self).get_config()
+    config.update({
+        'aggregation': self.aggregation,
+        'metric_name': self.metric_name
     })
     return config
 

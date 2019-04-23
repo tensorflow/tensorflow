@@ -17,6 +17,7 @@ filegroup(
 py_library(
     name = "test_modules",
     srcs = [
+        "decorators.py",
         "future_import_module.py",
     ],
     srcs_version = "PY2AND3",

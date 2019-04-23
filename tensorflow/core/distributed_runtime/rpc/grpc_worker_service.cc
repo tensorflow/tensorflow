@@ -434,31 +434,33 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
-  auto do_response = [this, response, done](const Tensor& tensor, bool is_dead,
-                                            const Status& status) {
+  const int64 request_id = request->request_id();
+  const int64 step_id = request->step_id();
+
+  bool cache_enabled = (response_cache_ != nullptr && request_id != 0);
+
+  auto do_response = [response, done, cache_enabled](const Tensor& tensor,
+                                                     bool is_dead,
+                                                     const Status& status) {
     if (status.ok()) {
-      bool require_ack = (response_cache_ != nullptr);
-      grpc::EncodeTensorToByteBuffer(is_dead, tensor, require_ack, response);
+      grpc::EncodeTensorToByteBuffer(is_dead, tensor, cache_enabled, response);
     }
     done(status);
   };
-
-  const int64 request_id = request->request_id();
-  const int64 step_id = request->step_id();
 
   // If response cache is enabled and the response cache already contains the
   // request, we delegate this retry request to the response cache. Otherwise,
   // we add the request to the response cache and start the computation to
   // retrieve the requested data.
-  if (response_cache_ &&
+  if (cache_enabled &&
       response_cache_->QueueRequest(request_id, step_id, do_response)) {
     return;
   }
 
-  auto rendezvous_done = [this, request_id, do_response](const Tensor& tensor,
-                                                         bool is_dead,
-                                                         const Status& status) {
-    if (response_cache_) {
+  auto rendezvous_done = [this, request_id, do_response, cache_enabled](
+                             const Tensor& tensor, bool is_dead,
+                             const Status& status) {
+    if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
       response_cache_->OnRequestFinished(request_id, tensor, is_dead, status);
     } else {
@@ -575,31 +577,33 @@ void SetTensorInRecvBufResp(int64 max_chunk_bytes, const Tensor* tensor,
 
 void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                               RecvBufResponse* response, StatusCallback done) {
-  auto do_response = [this, response, done](const Tensor& tensor, bool is_dead,
-                                            const Status& status) {
+  const int64 request_id = request->request_id();
+  const int64 step_id = request->step_id();
+  bool cache_enabled = (response_cache_ != nullptr && request_id != 0);
+
+  auto do_response = [this, response, done, cache_enabled](
+                         const Tensor& tensor, bool is_dead,
+                         const Status& status) {
     if (status.ok()) {
       SetTensorInRecvBufResp(recv_buf_max_chunk_, &tensor, response);
     }
     response->set_send_start_micros(env_->env->NowMicros());
-    response->set_require_ack(response_cache_ != nullptr);
+    response->set_require_ack(cache_enabled);
     done(status);
   };
-
-  const int64 request_id = request->request_id();
-  const int64 step_id = request->step_id();
 
   // If response cache is enabled and the response cache already contains the
   // request, we delegate this retry request to the response cache. Otherwise,
   // we add the request to the response cache and start the computation to
   // retrieve the requested data.
-  if (response_cache_ &&
+  if (cache_enabled &&
       response_cache_->QueueRequest(request_id, step_id, do_response)) {
     return;
   }
 
-  auto rendezvous_done = [this, request_id, do_response](const Tensor& tensor,
-                                                         const Status& status) {
-    if (response_cache_) {
+  auto rendezvous_done = [this, request_id, do_response, cache_enabled](
+                             const Tensor& tensor, const Status& status) {
+    if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
       response_cache_->OnRequestFinished(request_id, tensor, false, status);
     } else {

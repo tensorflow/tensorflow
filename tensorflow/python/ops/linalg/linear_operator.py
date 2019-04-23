@@ -597,16 +597,18 @@ class LinearOperator(object):
         as `self`.
     """
     if isinstance(x, LinearOperator):
-      if adjoint or adjoint_arg:
-        raise ValueError(".matmul not supported with adjoints.")
-      if (x.range_dimension is not None and
-          self.domain_dimension is not None and
-          x.range_dimension != self.domain_dimension):
+      left_operator = self.adjoint() if adjoint else self
+      right_operator = x.adjoint() if adjoint_arg else x
+
+      if (right_operator.range_dimension is not None and
+          left_operator.domain_dimension is not None and
+          right_operator.range_dimension != left_operator.domain_dimension):
         raise ValueError(
             "Operators are incompatible. Expected `x` to have dimension"
-            " {} but got {}.".format(self.domain_dimension, x.range_dimension))
+            " {} but got {}.".format(
+                left_operator.domain_dimension, right_operator.range_dimension))
       with self._name_scope(name):
-        return linear_operator_algebra.matmul(self, x)
+        return linear_operator_algebra.matmul(left_operator, right_operator)
 
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
@@ -780,6 +782,20 @@ class LinearOperator(object):
       raise NotImplementedError(
           "Exact solve not implemented for an operator that is expected to "
           "not be square.")
+    if isinstance(rhs, LinearOperator):
+      left_operator = self.adjoint() if adjoint else self
+      right_operator = rhs.adjoint() if adjoint_arg else rhs
+
+      if (right_operator.range_dimension is not None and
+          left_operator.domain_dimension is not None and
+          right_operator.range_dimension != left_operator.domain_dimension):
+        raise ValueError(
+            "Operators are incompatible. Expected `rhs` to have dimension"
+            " {} but got {}.".format(
+                left_operator.domain_dimension, right_operator.range_dimension))
+      with self._name_scope(name):
+        return linear_operator_algebra.solve(left_operator, right_operator)
+
     with self._name_scope(name, values=[rhs]):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
@@ -959,7 +975,7 @@ class LinearOperator(object):
     ==> [1., 2.]
 
     # Equivalent, but inefficient method
-    tf.matrix_diag_part(my_operator.to_dense())
+    tf.linalg.diag_part(my_operator.to_dense())
     ==> [1., 2.]
     ```
 

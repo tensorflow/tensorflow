@@ -2016,7 +2016,7 @@ inline void DepthwiseConvWithRounding(
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
     gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
-    depthwise_conv::DepthwiseConv3x3Filter(
+    depthwise_conv::DepthwiseConv3x3Filter<kOutputRounding>(
         params, input_shape, input_data, filter_shape, filter_data, bias_shape,
         bias_data, output_shape, output_data, thread_start, thread_end,
         thread_dim);
@@ -2106,7 +2106,7 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context = nullptr) {
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -2128,7 +2128,8 @@ inline void DepthwiseConv(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
+  const int max_threads =
+      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
@@ -2148,7 +2149,7 @@ inline void DepthwiseConv(
           thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 

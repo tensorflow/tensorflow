@@ -19,7 +19,6 @@ limitations under the License.
 #include <limits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -213,8 +212,8 @@ void TestRequantizeManyInNewRange8To32Bit() {
 template <typename InputType, typename OutputType>
 void TestRequantizeManyInNewRangeEigenVsNonEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   const size_t ranges_count = 6;
   const float ranges[ranges_count][4] = {
@@ -295,8 +294,8 @@ void TimeRequantizeManyInNewRange(int64 num_elements, int64 iterations,
   }
 
   thread::ThreadPool threadpool(Env::Default(), "test", 4 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 4 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       4 /* num_threads */);
 
   Tensor i_tensor =
       tensorflow::test::AsTensor(gtl::ArraySlice<InputType>(values_quantized));
@@ -607,8 +606,8 @@ void TestRequantizeManyInNewRange32To8Bit() {
 
 void TestRequantizeManyInNewRange32To8BitUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
   TestRequantizeManyInNewRange32To8Bit(&eigen_device);
 }
 
@@ -638,8 +637,8 @@ void TestFloatTensorToQuantized() {
 // FloatToQuantized.
 void TestFloatToQuantizedInPlaceUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   TestFloatToQuantizedInPlaceUsingEigen<quint8>(&eigen_device);
   TestFloatToQuantizedInPlaceUsingEigen<qint8>(&eigen_device);
@@ -649,8 +648,8 @@ void TestFloatToQuantizedInPlaceUsingEigen() {
 
 void TestOverflowWithEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   const int num_vals = 4;
   const float input_min = 0.0f;
@@ -717,8 +716,8 @@ void TestQuantizedTensorToFloat() {
 // QuantizedToFloat.
 void TestQuantizedToFloatInPlaceUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   TestQuantizedToFloatInPlaceUsingEigen<quint8>(&eigen_device);
   TestQuantizedToFloatInPlaceUsingEigen<qint8>(&eigen_device);

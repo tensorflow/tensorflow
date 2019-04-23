@@ -120,8 +120,8 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
   return result
 
 
-@tf_export("distribute.experimental.TPUStrategy")
-class TPUStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.experimental.TPUStrategy", v1=[])
+class TPUStrategy(distribute_lib.Strategy):
   """TPU distribution strategy implementation."""
 
   def __init__(self,
@@ -145,6 +145,84 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
 
+  # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
+  # can use the default implementation.
+  # This implementation runs a single step. It does not use infeed or outfeed.
+  def experimental_run_v2(self, fn, args=(), kwargs=None):
+    """See base class."""
+    return _tpu_run(self, fn, args, kwargs)
+
+
+def _tpu_run(strategy, fn, args, kwargs):
+  """Common implementation of TPUStrategy.experimental_run_v2."""
+  if context.executing_eagerly() and not ops.inside_function():
+    raise NotImplementedError(
+        "Eager mode not supported in TPUStrategy outside TF functions.")
+
+  if kwargs is None:
+    kwargs = {}
+
+  # Used to re-structure flattened output tensors from `tpu.replicate()`
+  # into a structured format.
+  result = [[]]
+
+  def replicated_fn(replica_id, replica_args, replica_kwargs):
+    """Wraps user function to provide replica ID and `Tensor` inputs."""
+    with _TPUReplicaContext(strategy, replica_id_in_sync_group=replica_id):
+      result[0] = fn(*replica_args, **replica_kwargs)
+    return result[0]
+
+  replicate_inputs = []  # By replica.
+  for i in range(strategy.num_replicas_in_sync):
+    replicate_inputs.append(
+        [constant_op.constant(i, dtype=dtypes.int32),
+         values.select_replica(i, args),
+         values.select_replica(i, kwargs)])
+
+  with strategy.scope():
+    replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs)
+
+  # Remove all no ops that may have been added during 'tpu.replicate()'
+  if isinstance(result[0], list):
+    result[0] = [
+        output for output in result[0] if tensor_util.is_tensor(output)
+    ]
+
+  # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
+  replicate_outputs = [
+      nest.pack_sequence_as(result[0], nest.flatten(replica_output))
+      for replica_output in replicate_outputs
+  ]
+
+  device_map = strategy.extended._device_map  # pylint: disable=protected-access
+  return values.regroup(device_map, replicate_outputs)
+
+
+@tf_export(v1=["distribute.experimental.TPUStrategy"])
+class TPUStrategyV1(distribute_lib.StrategyV1):
+  """TPU distribution strategy implementation."""
+
+  def __init__(self,
+               tpu_cluster_resolver=None,
+               steps_per_run=None,
+               device_assignment=None):
+    """Initializes the TPUStrategy object.
+
+    Args:
+      tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
+          which provides information about the TPU cluster.
+      steps_per_run: Number of steps to run on device before returning to the
+          host. Note that this can have side-effects on performance, hooks,
+          metrics, summaries etc.
+          This parameter is only used when Distribution Strategy is used with
+          estimator or keras.
+      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
+          the placement of replicas on the TPU cluster. Currently only supports
+          the usecase of using a single core within a TPU cluster.
+    """
+    super(TPUStrategyV1, self).__init__(TPUExtended(
+        self, tpu_cluster_resolver, steps_per_run, device_assignment))
+
   @property
   def steps_per_run(self):
     """DEPRECATED: use .extended.steps_per_run instead."""
@@ -155,50 +233,11 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-    if context.executing_eagerly() and not ops.inside_function():
-      raise NotImplementedError(
-          "Eager mode not supported in TPUStrategy outside TF functions.")
-
-    if kwargs is None:
-      kwargs = {}
-
-    # Used to re-structure flattened output tensors from `tpu.replicate()`
-    # into a structured format.
-    result = [[]]
-
-    def replicated_fn(replica_id, replica_args, replica_kwargs):
-      """Wraps user function to provide replica ID and `Tensor` inputs."""
-      with _TPUReplicaContext(self, replica_id_in_sync_group=replica_id):
-        result[0] = fn(*replica_args, **replica_kwargs)
-      return result[0]
-
-    replicate_inputs = []  # By replica.
-    for i in range(self.num_replicas_in_sync):
-      replicate_inputs.append(
-          [constant_op.constant(i, dtype=dtypes.int32),
-           values.select_replica(i, args),
-           values.select_replica(i, kwargs)])
-
-    with self.scope():
-      replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs)
-
-    # Remove all no ops that may have been added during 'tpu.replicate()'
-    if isinstance(result[0], list):
-      result[0] = [
-          output for output in result[0] if tensor_util.is_tensor(output)
-      ]
-
-    # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
-    replicate_outputs = [
-        nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-        for replica_output in replicate_outputs
-    ]
-
-    device_map = self.extended._device_map  # pylint: disable=protected-access
-    return values.regroup(device_map, replicate_outputs)
+    return _tpu_run(self, fn, args, kwargs)
 
 
-class TPUExtended(distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class TPUExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of TPUStrategy."""
 
   def __init__(self,
@@ -285,6 +324,10 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
+
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
@@ -477,7 +520,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     host_canonical = device_util.canonicalize(self._host_device)
 
     if dest_canonical != host_canonical:
-      with ops.device(devices[0]):
+      with ops.device(dest_canonical):
         output = array_ops.identity(output)
 
     return output

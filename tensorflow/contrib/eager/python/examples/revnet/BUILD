@@ -83,13 +83,23 @@ cuda_py_test(
     name = "blocks_test",
     size = "medium",
     srcs = ["blocks_test.py"],
-    additional_deps = [
-        ":blocks",
-        "//tensorflow:tensorflow_py",
-    ],
+    additional_deps = [":blocks_test_main_lib"],
     shard_count = 4,
     tags = [
         "optonly",
+    ],
+)
+
+py_library(
+    name = "blocks_test_main_lib",
+    testonly = True,
+    srcs = ["blocks_test.py"],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":blocks",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -124,6 +134,7 @@ py_library(
 py_binary(
     name = "cifar_tfrecords",
     srcs = ["cifar_tfrecords.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -133,6 +144,7 @@ py_binary(
 py_binary(
     name = "main",
     srcs = ["main.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":main_lib"],
 )
@@ -152,6 +164,7 @@ py_library(
 py_binary(
     name = "main_estimator",
     srcs = ["main_estimator.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",

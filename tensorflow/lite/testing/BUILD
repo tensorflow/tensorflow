@@ -93,6 +93,7 @@ py_binary(
     data = [
         "//tensorflow/lite/toco",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",
@@ -193,7 +194,10 @@ tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

@@ -68,7 +68,7 @@ def _enter_graph(g, eager, creator_stack=None):
 
 def _cpu_device(device):
   cpu_device = tf_device.DeviceSpec.from_string(device)
-  cpu_device.merge_from(tf_device.DeviceSpec(device_type="CPU", device_index=0))
+  cpu_device = cpu_device.replace(device_type="CPU", device_index=0)
   return cpu_device.to_string()
 
 
@@ -297,7 +297,7 @@ def _is_device_list_local(devices):
   """
   all_local = None
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
     is_local = d_spec.job in (None, "localhost")
 
     if all_local is None:  # Determine all_local from first device.
@@ -345,7 +345,7 @@ def _group_device_list(devices):
   device_dict = {}
 
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
 
     # Create an entry for the task_type.
     if d_spec.job not in device_dict:
@@ -361,7 +361,7 @@ def _group_device_list(devices):
 
 
 def _is_gpu_device(device):
-  return tf_device.DeviceSpec().parse_from_string(device).device_type == "GPU"
+  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
 
 
 def _infer_num_gpus_per_worker(devices):
@@ -396,7 +396,7 @@ def _infer_num_gpus_per_worker(devices):
           raise ValueError("All workers should have the same number of GPUs.")
 
         for d in device_in_task:
-          d_spec = tf_device.DeviceSpec().parse_from_string(d)
+          d_spec = tf_device.DeviceSpec.from_string(d)
           if (d_spec.device_type == "GPU" and
               d_spec.device_index >= num_gpus):
             raise ValueError("GPU `device_index` on a worker should be "
@@ -407,8 +407,7 @@ def _infer_num_gpus_per_worker(devices):
 def all_local_devices(num_gpus=None):
   if num_gpus is None:
     num_gpus = context.num_gpus()
-  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
-          ("/device:CPU:0",))
+  return device_util.local_devices_from_num_gpus(num_gpus)
 
 
 def _all_devices():
@@ -420,8 +419,8 @@ def _all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy")
-class MirroredStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.MirroredStrategy", v1=[])
+class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
   This strategy uses one replica per device and sync replication for its
@@ -441,7 +440,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     super(MirroredStrategy, self).__init__(extended)
 
 
-class MirroredExtended(distribute_lib.DistributionStrategyExtended):
+@tf_export(v1=["distribute.MirroredStrategy"])
+class MirroredStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = MirroredStrategy.__doc__
+
+  def __init__(self, devices=None, cross_device_ops=None):
+    extended = MirroredExtended(
+        self, devices=devices, cross_device_ops=cross_device_ops)
+    super(MirroredStrategyV1, self).__init__(extended)
+
+
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
@@ -510,9 +521,12 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         self._device_map, worker_devices)
 
     if len(workers) > 1:
-      self._inferred_cross_device_ops = (
-          cross_device_ops_lib.MultiWorkerAllReduce(
-              workers, _infer_num_gpus_per_worker(devices)))
+      if not isinstance(self._cross_device_ops,
+                        cross_device_ops_lib.MultiWorkerAllReduce):
+        raise ValueError(
+            "In-graph multi-worker training with `MirroredStrategy` is not "
+            "supported.")
+      self._inferred_cross_device_ops = self._cross_device_ops
     else:
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
@@ -585,6 +599,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
+
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -838,12 +856,10 @@ class _MirroredReplicaThread(threading.Thread):
     self.has_paused = threading.Event()
     # These fields have to do with inheriting various contexts from the
     # parent thread:
+    context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
     self.record_thread_local_context_fields()
-    # pylint: disable=protected-access
-    if not ctx._context_handle:
-      ctx._initialize_handle_and_devices()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))

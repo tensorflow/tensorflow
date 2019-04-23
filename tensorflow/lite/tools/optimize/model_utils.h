@@ -32,9 +32,29 @@ void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
                           int32_t input, int32_t output);
 
-// Create a new TensorT object.
+// Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor);
+
+// Create a new TensorT object with quantization parameters.
+void MakeTensorWithQuantParam(const string& name,
+                              const std::vector<int32_t>& shape,
+                              const TensorType& type, float scale,
+                              int64_t zero_point,
+                              std::unique_ptr<TensorT>* tensor);
+
+// Checks if the tensor has scale and zero point populated.
+bool QuantizationParametersExist(const TensorT* tensor);
+
+bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
+               int tensor_index);
+
+bool IsQuantized(const SubGraphT* subgraph, int tensor_index);
+
+bool HasMinMax(const TensorT* tensor);
+
+// Set version of OperatorCode.
+TfLiteStatus SetOperatorCodeVersion(ModelT* model);
 
 }  // namespace utils
 }  // namespace optimize

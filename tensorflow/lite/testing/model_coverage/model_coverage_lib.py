@@ -242,8 +242,9 @@ def compare_models_v2(tflite_model, concrete_func, input_data=None,
 
   # Gets the TensorFlow results as a map from the output names to outputs.
   # Converts the map into a list that is equivalent to the TFLite list.
-  tf_results_map = concrete_func(input_data_func)
-  tf_results = [tf_results_map[tf_results_map.keys()[0]]]
+  tf_results = concrete_func(input_data_func)
+  if isinstance(tf_results, dict):
+    tf_results = [tf_results[tf_results.keys()[0]]]
   tflite_results = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
@@ -378,9 +379,7 @@ def test_saved_model(directory,
   compare_models(tflite_model, tf_eval_func, input_data=input_data)
 
 
-# TODO(nupurgarg): Remove input_shape parameter after bug with shapes is fixed.
 def test_saved_model_v2(directory,
-                        input_shape=None,
                         tag_set=None,
                         signature_key=None,
                         input_data=None,
@@ -392,7 +391,6 @@ def test_saved_model_v2(directory,
 
   Args:
     directory: SavedModel directory to convert.
-    input_shape: Input shape for the single input array as a list of integers.
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
       analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
@@ -403,9 +401,8 @@ def test_saved_model_v2(directory,
   if not signature_key:
     signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
   concrete_func = model.signatures[signature_key]
-  concrete_func.inputs[0].set_shape(input_shape)
 
-  converter = _lite.TFLiteConverterV2.from_concrete_function(concrete_func)
+  converter = _lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
   tflite_model = _convert(converter, **kwargs)
 
   compare_models_v2(tflite_model, concrete_func, input_data=input_data)
@@ -437,3 +434,29 @@ def test_keras_model(filename,
 
   tf_eval_func = evaluate_keras_model(filename)
   compare_models(tflite_model, tf_eval_func, input_data=input_data)
+
+
+def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
+  """Validates the tf.keras model converts to a TFLite model.
+
+  Converts the tf.keras model to TFLite and checks the accuracy of the model on
+  random data.
+
+  Args:
+    filename: Full filepath of HDF5 file containing the tf.keras model.
+    input_shapes: List of list of integers representing input shapes in the
+      order of the tf.keras model's .input attribute (e.g., [[1, 16, 16, 3]]).
+      (default None)
+    input_data: np.ndarray to pass into models during inference. (default None)
+    **kwargs: Additional arguments to be passed into the converter.
+  """
+  keras_model = _keras.models.load_model(filename)
+  if input_shapes:
+    for tensor, shape in zip(keras_model.inputs, input_shapes):
+      tensor.set_shape(shape)
+
+  converter = _lite.TFLiteConverterV2.from_keras_model(keras_model)
+  tflite_model = _convert(converter, **kwargs)
+
+  tf_eval_func = evaluate_keras_model(filename)
+  compare_models_v2(tflite_model, tf_eval_func, input_data=input_data)

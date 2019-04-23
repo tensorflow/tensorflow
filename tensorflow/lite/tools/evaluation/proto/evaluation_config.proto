@@ -19,31 +19,16 @@ package tflite.evaluation;
 
 import "tensorflow/lite/tools/evaluation/proto/evaluation_stages.proto";
 
-// Next ID: 6
+// Contains parameters that define how an EvaluationStage will be executed.
+// This would typically be validated only once during initialization, so should
+// not contain any variables that change with each run.
+//
+// Next ID: 3
 message EvaluationStageConfig {
   optional string name = 1;
 
   // Specification defining what this stage does, and any required parameters.
   optional ProcessSpecification specification = 2;
-
-  // initializers, inputs and outputs are strings that define colon-separated
-  // mappings between TAGs and their corresponding names.
-  // These names help EvaluationStages communicate with each other during runs.
-  // Format for TAGs: [A-Z0-9_]+ (Uppercase letters, numbers, "_")
-  // Format for names: [a-z0-9_]+ (Lowercase letters, numbers, "_")
-  // Example mapping: "BITMAP1:image_in"
-  //
-  // It is up to individual EvaluationStage sub-classes to specify the
-  // initializer/input TAGs they require, and outputs TAGs they provide.
-  // For example, suppose a pre-processing stage with tag "OUTPUT" outputs a
-  // matrix that is required by an inference stage that takes in an input
-  // "TENSOR". These can be connected by specifying "OUTPUT:tensor" in
-  // preprocessing outputs & "TENSOR:tensor" in inference inputs.
-  //
-  // For more information: go/mlperflite-framework#heading=h.fxpk50cps4zs
-  repeated string initializers = 3;
-  repeated string inputs = 4;
-  repeated string outputs = 5;
 }
 
 // Metrics returned from EvaluationStage.LatestMetrics() need not have all

@@ -36,6 +36,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -218,6 +219,43 @@ class BaseLayerTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
       _ = InvalidLayer()(inputs)
 
+  def test_no_legacy_model(self):
+    inputs = keras.Input((1,))
+    legacy_dense_0 = legacy_core.Dense(1, name='legacy_dense_0')
+    legacy_dense_1 = legacy_core.Dense(1, name='legacy_dense_1')
+
+    layer = legacy_dense_0(inputs)
+    layer = keras.layers.Dense(1)(layer)
+    layer = legacy_dense_1(layer)
+
+    expected_regex = (r'The following are legacy tf\.layers\.Layers:\n  '
+                      '{}\n  {}'.format(legacy_dense_0, legacy_dense_1))
+
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Model(inputs=[inputs], outputs=[layer])
+
+    model = keras.models.Model(inputs=[inputs], outputs=[inputs])
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      model._insert_layers([legacy_dense_0, legacy_dense_1])
+
+  def test_no_legacy_sequential(self):
+    layers = [
+        keras.layers.Dense(1),
+        legacy_core.Dense(1, name='legacy_dense_0')
+    ]
+
+    expected_regex = r'legacy tf\.layers\.Layers:\n  {}'.format(layers[1])
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Sequential(layers)
+
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Sequential([keras.layers.Input(shape=(4,))] + layers)
+
+    model = keras.models.Sequential()
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      for l in layers:
+        model.add(l)
+
   @keras_parameterized.run_with_all_model_types
   @test_util.run_in_graph_and_eager_modes
   def test_build_with_numpy_data(self):
@@ -364,6 +402,19 @@ class BaseLayerTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_layer_names(self):
+    inputs = keras.layers.Input(shape=[2])
+    add1 = inputs + inputs
+    add2 = keras.layers.Add()([inputs, inputs])
+    add3 = inputs + inputs
+    add4 = keras.layers.Add()([inputs, inputs])
+    model = keras.models.Model(
+        inputs=[inputs], outputs=[add1, add2, add3, add4])
+    self.assertEqual(
+        [l.name for l in model.layers],
+        ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
 
 
 class SymbolicSupportTest(test.TestCase):
@@ -541,11 +592,13 @@ class NestedTrackingTest(test.TestCase):
       inputs = array_ops.ones((3, 1))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
     else:
       inputs = keras.Input((1,))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
 
   def test_attribute_reassignment(self):
     l = keras.layers.Layer()
@@ -580,6 +633,19 @@ class NestedTrackingTest(test.TestCase):
     layer.build((10, 10))
 
     self.assertEqual([layer.v], layer.variables)
+
+  def test_layer_class_not_tracked_as_sublayer(self):
+    # See https://github.com/tensorflow/tensorflow/issues/27431 for details.
+
+    class LayerWithClassAttribute(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithClassAttribute, self).__init__()
+        self.layer_fn = keras.layers.Dense
+
+    layer = LayerWithClassAttribute()
+    self.assertEmpty(layer.variables)
+    self.assertEmpty(layer.submodules)
 
 
 @test_util.run_all_in_graph_and_eager_modes

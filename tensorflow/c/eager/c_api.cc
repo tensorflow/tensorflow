@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NOLINT
+
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -38,11 +41,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -88,6 +95,7 @@ string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
@@ -143,7 +151,9 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    auto* eager_client = remote_eager_workers->GetClient(remote_worker);
+    tensorflow::eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(
+        remote_eager_workers->GetClient(remote_worker, &eager_client));
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
           "Cannot find a client for the given target:", remote_worker);
@@ -243,6 +253,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
+#endif  // !IS_MOBILE_PLATFORM
 
 tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
                                            TFE_TensorHandle* input) {
@@ -358,7 +369,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
   return new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, device_mgr.release(),
-                         /*device_mgr_owned*/ true, r);
+                         /*device_mgr_owned*/ true, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
 TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
@@ -368,9 +380,10 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   if (!status->status.ok()) return nullptr;
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
+
   return new TFE_Context(opts->session_options.options, opts->policy,
-                         opts->async, device_mgr, /*device_mgr_owned*/ false,
-                         r);
+                         opts->async, device_mgr, /*device_mgr_owned*/ false, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
@@ -394,6 +407,10 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+#else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -402,6 +419,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
   }
   status->status =
       UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def, ctx);
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(

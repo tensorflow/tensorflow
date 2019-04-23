@@ -83,7 +83,7 @@ class StackedRNNCells(Layer):
     if self.reverse_state_order:
       logging.warning('reverse_state_order=True in StackedRNNCells will soon '
                       'be deprecated. Please update the code to work with the '
-                      'natural order of states if you reply on the RNN states, '
+                      'natural order of states if you rely on the RNN states, '
                       'eg RNN(return_state=True).')
     super(StackedRNNCells, self).__init__(**kwargs)
 
@@ -140,14 +140,10 @@ class StackedRNNCells(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     if isinstance(input_shape, list):
-      constants_shape = input_shape[1:]
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        if generic_utils.has_arg(cell.call, 'constants'):
-          cell.build([input_shape] + constants_shape)
-        else:
-          cell.build(input_shape)
+        cell.build(input_shape)
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -203,22 +199,23 @@ class RNN(Layer):
         `state_size`.
       - A `get_initial_state(inputs=None, batch_size=None, dtype=None)`
         method that creates a tensor meant to be fed to `call()` as the
-        initial state, if user didn't specify any initial state via other
-        means. The returned initial state should be in shape of
-        [batch, cell.state_size]. Cell might choose to create zero filled
-        tensor, or with other values based on the cell implementations.
+        initial state, if the user didn't specify any initial state via other
+        means. The returned initial state should have a shape of
+        [batch_size, cell.state_size]. The cell might choose to create a
+        tensor full of zeros, or full of other values based on the cell's
+        implementation.
         `inputs` is the input tensor to the RNN layer, which should
         contain the batch size as its shape[0], and also dtype. Note that
-        the shape[0] might be None during the graph construction. Either
-        the `inputs` or the pair of `batch` and `dtype `are provided.
-        `batch` is a scalar tensor that represent the batch size
-        of the input. `dtype` is `tf.dtype` that represent the dtype of
-        the input.
+        the shape[0] might be `None` during the graph construction. Either
+        the `inputs` or the pair of `batch_size` and `dtype` are provided.
+        `batch_size` is a scalar tensor that represents the batch size
+        of the inputs. `dtype` is `tf.DType` that represents the dtype of
+        the inputs.
         For backward compatible reason, if this method is not implemented
-        by the cell, RNN layer will create a zero filled tensors with the
-        size of [batch, cell.state_size].
+        by the cell, the RNN layer will create a zero filled tensor with the
+        size of [batch_size, cell.state_size].
       In the case that `cell` is a list of RNN cell instances, the cells
-      will be stacked on after the other in the RNN, implementing an
+      will be stacked on top of each other in the RNN, resulting in an
       efficient stacked RNN.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence.
@@ -236,13 +233,13 @@ class RNN(Layer):
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
     time_major: The shape format of the `inputs` and `outputs` tensors.
-        If True, the inputs and outputs will be in shape
-        `(timesteps, batch, ...)`, whereas in the False case, it will be
-        `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
-        efficient because it avoids transposes at the beginning and end of the
-        RNN calculation. However, most TensorFlow data is batch-major, so by
-        default this function accepts input and emits output in batch-major
-        form.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
 
   Call arguments:
     inputs: Input tensor.
@@ -490,16 +487,6 @@ class RNN(Layer):
       return output_mask
 
   def build(self, input_shape):
-    # Note input_shape will be list of shapes of initial states and
-    # constants if these are passed in __call__.
-    if self._num_constants is not None:
-      constants_shape = input_shape[-self._num_constants:]  # pylint: disable=invalid-unary-operand-type
-      constants_shape = nest.map_structure(
-          lambda s: tuple(tensor_shape.TensorShape(s).as_list()),
-          constants_shape)
-    else:
-      constants_shape = None
-
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
       # The input_shape here could be a nest structure.
@@ -551,10 +538,7 @@ class RNN(Layer):
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      if constants_shape is not None:
-        self.cell.build([step_input_shape] + constants_shape)
-      else:
-        self.cell.build(step_input_shape)
+      self.cell.build(step_input_shape)
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -1851,6 +1835,14 @@ class GRU(RNN):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form. 
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before" (default),
       True = "after" (CuDNN compatible).
@@ -2401,7 +2393,7 @@ class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
    Note that this cell is not optimized for performance on GPU. Please use
-  `tf.keras.layers.CuDNNLSTM` for better performance on GPU.
+  `tf.compat.v1.keras.layers.CuDNNLSTM` for better performance on GPU.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -2466,6 +2458,14 @@ class LSTM(RNN):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
 
   Call arguments:
     inputs: A 3D tensor.

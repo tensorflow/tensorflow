@@ -34,85 +34,42 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                            std::vector<Tensor>, std::vector<Tensor>*)>;
 
   explicit MapDatasetOp(OpKernelConstruction* ctx) : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    FunctionMetadata::Params params;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &params.use_inter_op_parallelism));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
-                                     &use_inter_op_parallelism_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
-    OP_REQUIRES_OK(
-        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    CapturedFunction::Params params;
-    params.use_inter_op_parallelism = use_inter_op_parallelism_;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 params, &captured_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
-    MapIteratorFunction map_func;
-    CapturedFunction* raw_captured_func = captured_func.get();
-    if (short_circuit_indices_.empty()) {
-      map_func = [](IteratorContext* ctx,
-                    InstantiatedCapturedFunction* inst_captured_func,
-                    std::vector<Tensor> args,
-                    std::vector<Tensor>* out_tensors) {
-        return inst_captured_func->Run(ctx, std::move(args), out_tensors);
-      };
-    } else {
-      std::vector<bool> can_move = ComputeMoveVector(short_circuit_indices_);
-      const auto& indices = short_circuit_indices_;
-      map_func = [raw_captured_func, indices, can_move](
-                     IteratorContext* ctx,
-                     InstantiatedCapturedFunction* inst_captured_func,
-                     std::vector<Tensor> args,
-                     std::vector<Tensor>* out_tensors) {
-        const std::vector<Tensor>& captured_inputs =
-            raw_captured_func->captured_inputs();
-        size_t num_args = args.size();
-        for (size_t i = 0; i < indices.size(); ++i) {
-          if (indices[i] < num_args) {
-            if (can_move[i]) {
-              out_tensors->push_back(std::move(args[indices[i]]));
-            } else {
-              out_tensors->push_back(args[indices[i]]);
-            }
-          } else {
-            out_tensors->push_back(captured_inputs[indices[i] - num_args]);
-          }
-        }
-        return Status::OK();
-      };
-    }
-
-    *output =
-        new Dataset(ctx, input, func_, std::move(captured_func), output_types_,
-                    output_shapes_, use_inter_op_parallelism_,
-                    std::move(map_func), preserve_cardinality_);
+    *output = new Dataset(ctx, input, std::move(captured_func), output_types_,
+                          output_shapes_, preserve_cardinality_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            bool use_inter_op_parallelism, MapIteratorFunction map_func,
             bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          func_(func),
-          use_inter_op_parallelism_(use_inter_op_parallelism),
           preserve_cardinality_(preserve_cardinality),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
-          output_shapes_(output_shapes),
-          map_func_(std::move(map_func)) {
+          output_shapes_(output_shapes) {
       input_->Ref();
     }
 
@@ -121,7 +78,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Map")}, map_func_);
+          Iterator::Params{this, strings::StrCat(prefix, "::Map")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -149,7 +106,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
       // Attr: f
       AttrValue f_attr;
-      b->BuildAttrValue(func_, &f_attr);
+      b->BuildAttrValue(captured_func_->func(), &f_attr);
 
       // Attr: Targuments
       AttrValue other_arguments_types_attr;
@@ -157,7 +114,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
       // Attr: use_inter_op_parallelism
       AttrValue use_inter_op_parallelism_attr;
-      b->BuildAttrValue(use_inter_op_parallelism_,
+      b->BuildAttrValue(captured_func_->use_inter_op_parallelism(),
                         &use_inter_op_parallelism_attr);
 
       // Attr: preserve_cardinality
@@ -180,8 +137,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params, MapIteratorFunction map_func)
-          : DatasetIterator<Dataset>(params), map_func_(std::move(map_func)) {}
+      explicit Iterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
@@ -204,8 +161,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        Status s = map_func_(ctx, instantiated_captured_func_.get(), args,
-                             out_tensors);
+        Status s =
+            instantiated_captured_func_->Run(ctx, std::move(args), out_tensors);
         if (errors::IsOutOfRange(s)) {
           if (dataset()->preserve_cardinality_) {
             // To guarantee that the transformation preserves the cardinality of
@@ -245,26 +202,20 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       std::unique_ptr<IteratorBase> input_impl_;
-      const MapIteratorFunction map_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
-    const bool use_inter_op_parallelism_;
     const bool preserve_cardinality_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
-    const MapIteratorFunction map_func_;
   };
 
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
-  bool use_inter_op_parallelism_;
   bool preserve_cardinality_;
-  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);

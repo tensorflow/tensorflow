@@ -207,7 +207,7 @@ Status PruneForTargets(Graph* g, const NameIndex& name_index,
     return errors::NotFound("PruneForTargets: Some target nodes not found: ",
                             not_found);
   }
-  PruneForReverseReachability(g, targets);
+  PruneForReverseReachability(g, std::move(targets));
 
   // Reconnect nodes with no outgoing edges to the sink node
   FixupSourceAndSinkEdges(g);

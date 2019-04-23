@@ -73,15 +73,12 @@ you can easily explore the code in a cross-platform IDE.
 ## Building Portable Reference Code using Make
 
 It's easy to build portable reference code directly from GitHub using make if
-you're on a Linux or OS X machine.
+you're on a Linux or OS X machine with an internet connection.
 
 -   Open a terminal
 -   Download the TensorFlow source with `git clone
     https://github.com/tensorflow/tensorflow.git`
 -   Enter the source root directory by running `cd tensorflow`
--   Download the dependencies by running
-    `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
-    This may take a few minutes
 -   Build and test the library with `make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile test`
 
@@ -241,9 +238,6 @@ Building micro_speech_test binary
 -   Launch the Docker that we just created using: `docker run -it-v
     /tmp/copybara_out:/workspace riscv_build:latest bash`
 -   Enter the source root directory by running `cd /workspace`
--   Download the dependencies by running
-    `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
-    This may take a few minutes.
 -   Set the path to RISC-V tools: `export
     PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
 -   Build the binary: `make -f
@@ -274,21 +268,18 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
 1.  Make sure to run the "Building Portable Reference Code using Make" section
     before performing the following steps
-2.  The Ambiq Micro SDK is downloaded into
-    `tensorflow/lite/experimental/micro/tools/make/downloads` by
-    'download_dependencies.sh'.
-3.  Compile the project with the following command: make -f
+2.  Compile the project with the following command: make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
     pushbutton_cmsis_speech_test_bin
-4.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
-5.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
+3.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
+4.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
     to the computer and power it on.
-6.  Start the GDB server in a new terminal with the following command:
+5.  Start the GDB server in a new terminal with the following command:
     JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD
     -speed 1000 -noir -noLocalhostOnly
     1.  The command has run successfully if you see the message "Waiting for GDB
         connection"
-7.  Back in the original terminal, run the program via the debugger
+6.  Back in the original terminal, run the program via the debugger
     1.  Navigate to
         tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
     2.  Start gdb by entering the following command: arm-none-eabi-gdb
@@ -333,9 +324,7 @@ To flash a part with JFlash Lite, do the following:
 2.  Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
 3.  You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1
     20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.
-    This compiler is downloaded when you run the
-    tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh
-    script.
+    This compiler is downloaded through make.
 4.  Edit the file
     tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc
     so that the variables ETA_SDK and GCC_ARM point to the correct directories.
@@ -491,7 +480,7 @@ folders for various popular build systems. These projects are self-contained,
 with only the headers and source files needed by a particular binary, and
 include project files to make loading them into an IDE easy. These can be
 auto-generated for any target you can compile using the main Make system, using
-a command like this (making sure you've run `download_dependencies.sh` first):
+a command like this:
 
 ```
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project

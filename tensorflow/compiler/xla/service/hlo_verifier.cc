@@ -407,9 +407,10 @@ Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
     return InternalError("Iota does not support scalars.");
   }
   int64 iota_dimension = iota->iota_dimension();
-  if (iota_dimension >= rank) {
+  if (iota_dimension >= rank || iota_dimension < 0) {
     return InternalError(
-        "The iota dimension cannot go beyond the operation rank.");
+        "The iota dimension cannot go beyond the operation rank or be "
+        "negative.");
   }
   return Status::OK();
 }

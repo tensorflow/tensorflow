@@ -39,6 +39,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@StatsOptions
 @@Structure
 @@TFRecordWriter
+@@TensorArrayStructure
 @@TensorStructure
 @@ThreadingOptions
 
@@ -49,8 +50,10 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
+@@from_variant
 @@get_next_as_optional
 @@get_single_element
+@@get_structure
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
@@ -68,6 +71,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@scan
 @@shuffle_and_repeat
 @@take_while
+@@to_variant
 @@unbatch
 @@unique
 
@@ -125,12 +129,16 @@ from tensorflow.python.data.experimental.ops.threading_options import ThreadingO
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import from_variant
+from tensorflow.python.data.ops.dataset_ops import get_structure
+from tensorflow.python.data.ops.dataset_ops import to_variant
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalStructure
 from tensorflow.python.data.util.structure import NestedStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorArrayStructure
 from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 

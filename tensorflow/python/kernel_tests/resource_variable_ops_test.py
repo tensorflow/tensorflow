@@ -81,9 +81,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  @test_util.run_gpu_only
   def testGPUInt64(self):
-    if not context.context().num_gpus():
-      return
     with context.eager_mode(), context.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
       self.assertAllEqual(1, v.numpy())
@@ -698,6 +697,24 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
     self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNd(self):
+    init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
+    v = resource_variable_ops.ResourceVariable(
+        constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
+    self.evaluate(variables.global_variables_initializer())
+
+    value_op = v.gather_nd([[0, 0], [1, 2], [3, 3]])
+    self.assertAllEqual([3, 4], value_op.shape)
+    value = self.evaluate(value_op)
+    self.assertAllEqual([[0, 1, 2, 3], [24, 25, 26, 27], [60, 61, 62, 63]],
+                        value)
+
+    value_op = v.gather_nd([[0, 0, 0], [1, 2, 3], [3, 3, 3]])
+    self.assertAllEqual([3], value_op.shape)
+    value = self.evaluate(value_op)
+    self.assertAllEqual([0, 27, 63], value)
+
   @test_util.run_deprecated_v1
   def testToFromProto(self):
     with self.cached_session():
@@ -1127,7 +1144,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
                     [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
 
-      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      # batch_dims=indices.shape.ndims - 1 (equivalent to
+      # tf.compat.v1.batch_gather)
       dict(  # 2D indices (1 batch dim)
           batch_dims=1,
           params=[[10, 11, 12, 13], [20, 21, 22, 23]],

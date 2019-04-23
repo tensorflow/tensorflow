@@ -21,7 +21,9 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import init_ops
@@ -66,7 +68,8 @@ class _Loader(object):
     for node in self._nodes:
       if isinstance(node, tracking.TrackableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
-        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+        if not context.executing_eagerly():
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""
@@ -184,7 +187,8 @@ class _Loader(object):
     # TODO(andresp): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
-    saver._file_prefix_placeholder = constant_op.constant(variables_path)
+    with ops.device("CPU"):
+      saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
@@ -260,17 +264,34 @@ class _Loader(object):
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
-    return variables.Variable(dummy_value, trainable=proto.trainable), setattr
+    name = proto.name if proto.name else None
+    if name is not None:
+      dbg_name = name
+    else:
+      dbg_name = "<variable loaded from saved model>"
+    synchronization, aggregation, trainable = (
+        variables.validate_synchronization_aggregation_trainable(
+            proto.synchronization, proto.aggregation, proto.trainable,
+            name=dbg_name))
+    return variables.Variable(
+        dummy_value,
+        name=name,
+        trainable=trainable,
+        synchronization=synchronization,
+        aggregation=aggregation), setattr
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    imported_constant = constant_op.constant(
-        tensor_util.MakeNdarray(tensor_proto))
+    ndarray = tensor_util.MakeNdarray(tensor_proto)
+    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
+      with ops.device("CPU"):
+        imported_constant = constant_op.constant(ndarray)
+    else:
+      imported_constant = constant_op.constant(ndarray)
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
-    del proto
-    return _RestoredResource(), setattr
+    return _RestoredResource(device=proto.device), setattr
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.

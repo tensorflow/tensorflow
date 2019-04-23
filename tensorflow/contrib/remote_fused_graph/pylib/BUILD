@@ -37,6 +37,7 @@ py_test(
     name = "remote_fused_graph_ops_test",
     size = "small",
     srcs = ["python/ops/remote_fused_graph_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":remote_fused_graph_ops_py",

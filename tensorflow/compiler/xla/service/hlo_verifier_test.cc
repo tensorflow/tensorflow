@@ -504,7 +504,7 @@ TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   HloModule Module
 
   ENTRY SelectMixedPrecisionNotAllowed {
-   p0 = pred[] parameter(0)
+   p0 = pred[32] parameter(0)
    p1 = f32[32] parameter(1)
    p2 = bf16[32] parameter(2)
    ROOT select = f32[32] select(p0, p1, p2)
@@ -523,7 +523,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   HloModule Module
 
   ENTRY SelectMixedPrecisionAllowed {
-   p0 = pred[] parameter(0)
+   p0 = pred[32] parameter(0)
    p1 = f32[32] parameter(1)
    p2 = bf16[32] parameter(2)
    ROOT select = f32[32] select(p0, p1, p2)
@@ -551,7 +551,7 @@ TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
-              HasSubstr("Select operation is not supported for tuples"));
+              HasSubstr("Expected array argument for select"));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -569,6 +569,22 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("does not support non-array result"));
+}
+
+TEST_F(HloVerifierTest, IotaNegativeDimension) {
+  const char* const hlo_string = R"(
+  HloModule IotaTupleResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = s32[128,1001]{1,0} iota(), iota_dimension=-1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("negative"));
 }
 
 static const char* const kMapOperandComputationMismatchHlo = R"(

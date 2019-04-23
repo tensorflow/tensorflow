@@ -24,7 +24,7 @@ endif
 HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
 
 # Override these on the make command line to target a specific architecture. For example:
-# make -f tensorflow/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
+# make -f tensorflow/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv7l
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
@@ -57,7 +57,7 @@ LIBS := \
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
-CCFLAGS := ${CXXFLAGS}
+CFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=
 LDOPTS := -L/usr/local/lib
@@ -85,6 +85,9 @@ PROFILER_SRCS := \
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
 	tensorflow/core/util/stats_calculator.cc
+
+CMD_LINE_TOOLS_SRCS := \
+  tensorflow/lite/tools/command_line_flags.cc
 
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
@@ -156,7 +159,8 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
-	$(PROFILE_SUMMARIZER_SRCS)
+	$(PROFILE_SUMMARIZER_SRCS) \
+  $(CMD_LINE_TOOLS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
@@ -171,9 +175,10 @@ include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 ALL_SRCS := \
 	$(MINIMAL_SRCS) \
 	$(PROFILER_SRCS) \
-	$(PROFILER_SUMMARY_SRCS) \
+	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
-	$(BENCHMARK_SRCS)
+	$(BENCHMARK_SRCS) \
+  $(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
 GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
@@ -199,14 +204,14 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
 BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
 
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)

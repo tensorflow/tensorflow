@@ -2007,6 +2007,9 @@ tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
   rnn_state->set_discardable(true);
   rnn_state->set_state_array(node.name());
   rnn_state->set_back_edge_source_array(node.input(0));
+  // TODO(tianjuny): Temporary set the size to 1 to avoid transient array
+  // allocation crash. The real value should depend on the hidden_size of RNN.
+  rnn_state->set_size(1);
   return tensorflow::Status::OK();
 }
 
@@ -2424,6 +2427,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowAssertOperator, kAnyNumInputs, 1>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},
+      {"BatchMatMulV2", ConvertBatchMatMulOperator},
       {"BatchNormWithGlobalNormalization",
        ConvertBatchNormWithGlobalNormalizationOperator},
       {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
@@ -2629,4 +2633,16 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
   return ImportTensorFlowGraphDef(model_flags, tf_import_flags, *tf_graph);
 }
+
+std::vector<std::string> GetPotentiallySupportedOps() {
+  std::vector<std::string> supported_ops;
+  const internal::ConverterMapType& converter_map =
+      internal::GetTensorFlowNodeConverterMap();
+
+  for (const auto& item : converter_map) {
+    supported_ops.push_back(item.first);
+  }
+  return supported_ops;
+}
+
 }  // namespace toco

@@ -72,6 +72,10 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
       return inst->mutable_operand(2);
     }
     case HloOpcode::kParameter:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
@@ -81,7 +85,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
     case HloOpcode::kSlice:
       return nullptr;
     default:
-      return UnimplementedStrCat("Unimplimented padding for instruction: ",
+      return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
   }
 }

@@ -558,7 +558,9 @@ class OptimizerTest(test.TestCase):
     loss = lambda: losses.mean_squared_error(model(x), y)
     var_list = lambda: model.trainable_weights
 
-    self.assertLen(var_list(), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      var_list()
     train_op = opt.minimize(loss, var_list)
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())

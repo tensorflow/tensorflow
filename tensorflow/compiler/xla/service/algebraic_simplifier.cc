@@ -299,7 +299,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
         HloInstruction::CreateConvert(changed_shape, hlo));
   }
 
-  // Transposes a dot operand such that the batch dimensions are the msot major,
+  // Transposes a dot operand such that the batch dimensions are the most major,
   // and the contracting dimensions are most minor.
   StatusOr<HloInstruction*> NormalizeDotOperandToBatchMajorAndContractingMinor(
       HloInstruction* dot_operand, absl::Span<const int64> batch_dimensions,
@@ -531,9 +531,17 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   VLOG(10) << "trying transform [(A + C1) + C2 => A + (C1 + C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(add, m::Add(m::Add(m::NonConstant(&a), m::Constant(&c1)),
-                        m::Constant(&c2)))) {
+                        m::Constant(&c2))) ||
+      Match(add, m::Add(m::Add(m::NonConstant(&a),
+                               m::Broadcast(m::ConstantScalar(&c1))),
+                        m::Broadcast(m::ConstantScalar(&c2))))) {
     TF_ASSIGN_OR_RETURN(auto* sum_of_constants,
                         MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
+    if (ShapeUtil::IsScalar(sum_of_constants->shape()) &&
+        !ShapeUtil::IsScalar(add->shape())) {
+      sum_of_constants = computation_->AddInstruction(
+          HloInstruction::CreateBroadcast(add->shape(), sum_of_constants, {}));
+    }
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd, a,
                                           sum_of_constants));
@@ -649,8 +657,18 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   if (HloInstruction* bitcast_operand =
           BitcastingOperandOfReshapeOrCopyChain(copy, options_)) {
     ReplaceWithBitcast(copy, bitcast_operand);
+    return Status::OK();
   }
 
+  // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
+  if (copy->operand(0)->opcode() == HloOpcode::kReshape &&
+      copy->operand(0)->user_count() == 1 &&
+      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape())) {
+    return ReplaceWithNewInstruction(
+        copy,
+        copy->operand(0)->CloneWithNewOperands(
+            copy->shape(), {copy->mutable_operand(0)->mutable_operand(0)}));
+  }
   return Status::OK();
 }
 
@@ -851,9 +869,17 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
 
   // Canonicalize subtraction of a constant to addition.
   VLOG(10) << "trying transform [A - Const => A + (-Const)]";
-  if (Match(sub, m::Subtract(m::NonConstant(&lhs), m::Constant(&rhs)))) {
+  if (Match(sub, m::Subtract(m::NonConstant(&lhs), m::Constant(&rhs))) ||
+      Match(sub, m::Subtract(m::NonConstant(&lhs),
+                             m::Broadcast(m::Constant(&rhs))))) {
     HloInstruction* negative_const = computation_->AddInstruction(
         HloInstruction::CreateUnary(rhs->shape(), HloOpcode::kNegate, rhs));
+    if (const HloInstruction* broadcast =
+            DynCast<HloBroadcastInstruction>(sub->operand(1))) {
+      negative_const =
+          computation_->AddInstruction(HloInstruction::CreateBroadcast(
+              broadcast->shape(), negative_const, broadcast->dimensions()));
+    }
     return ReplaceWithNewInstruction(
         sub, HloInstruction::CreateBinary(sub->shape(), HloOpcode::kAdd, lhs,
                                           negative_const));
@@ -1076,33 +1102,38 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   //
   // (Backends can do this transformation, but generally only if the constant is
   // a scalar.)
-  if (Match(divide, m::Divide(m::NonConstant(&a), m::Constant(&b)))) {
-    Shape result_shape = b->literal().shape();
+  if (Match(divide, m::Divide(m::NonConstant(&a), m::Op(&b))) &&
+      (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
+    Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
     switch (result_shape.element_type()) {
       case F16:
-        TF_RETURN_IF_ERROR(InvertConstant<half>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<half>(*c, &new_literal));
         break;
       case F32:
-        TF_RETURN_IF_ERROR(InvertConstant<float>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<float>(*c, &new_literal));
         break;
       case BF16:
-        TF_RETURN_IF_ERROR(InvertConstant<bfloat16>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<bfloat16>(*c, &new_literal));
         break;
       case F64:
-        TF_RETURN_IF_ERROR(InvertConstant<double>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<double>(*c, &new_literal));
         break;
       case C64:
-        TF_RETURN_IF_ERROR(InvertConstant<complex64>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<complex64>(*c, &new_literal));
         break;
       case C128:
-        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*b, &new_literal));
+        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*c, &new_literal));
         break;
       default:
         return Status::OK();
     }
     auto inverse = computation_->AddInstruction(
-        simplifier_->CreateConstantWithLayoutUpdated((new_literal.Clone())));
+        simplifier_->CreateConstantWithLayoutUpdated(new_literal.Clone()));
+    if (b != c) {
+      inverse = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          b->shape(), inverse, b->dimensions()));
+    }
     TF_ASSIGN_OR_RETURN(auto new_divide,
                         MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
     return ReplaceInstruction(divide, new_divide);
@@ -1868,6 +1899,29 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     return Status::OK();
   }
 
+  VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
+  HloInstruction *a, *c1, *c2;
+  if (Match(multiply,
+            m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
+                        m::Constant(&c2))) ||
+      Match(multiply,
+            m::Multiply(m::Multiply(m::NonConstant(&a),
+                                    m::Broadcast(m::ConstantScalar(&c1))),
+                        m::Broadcast(m::ConstantScalar(&c2))))) {
+    TF_ASSIGN_OR_RETURN(auto* product_of_constants,
+                        MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
+    if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
+        !ShapeUtil::IsScalar(multiply->shape())) {
+      product_of_constants =
+          computation_->AddInstruction(HloInstruction::CreateBroadcast(
+              multiply->shape(), product_of_constants, {}));
+    }
+    return ReplaceWithNewInstruction(
+        multiply,
+        HloInstruction::CreateBinary(multiply->shape(), HloOpcode::kMultiply, a,
+                                     product_of_constants));
+  }
+
   // exp(A) * exp(B) => exp(A+B)
   if (Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
     auto add = computation_->AddInstruction(HloInstruction::CreateBinary(
@@ -1977,40 +2031,11 @@ Status AlgebraicSimplifierVisitor::HandleGetTupleElement(
 
 namespace {
 
-// Return whether the given reshape instruction leaves the dimensions at the
-// given input indices unmodified, and returns their output indices.
-//
-// Example:
-//   input_dim_indices = {2, 3}
-//   input  shape = T[a, b, x, y, cd]
-//   output shape = T[ab, x, 1, y, c, d]
-//   return value = {1, 3}
-//
-// Precondition: input_dim_indices is sorted.
 absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
     const HloInstruction* hlo, absl::Span<const int64> input_dim_indices) {
-  CHECK_EQ(HloOpcode::kReshape, hlo->opcode());
-  CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
-
-  std::vector<int64> output_dim_indices;
-  std::vector<std::pair<int64, int64>> unmodified_dims =
-      ShapeUtil::DimensionsUnmodifiedByReshape(hlo->operand(0)->shape(),
-                                               hlo->shape());
-  size_t i = 0;  // index to unmodified_dims
-  for (int64 input_dim_index : input_dim_indices) {
-    // Search unmodified_dims for input_dim_index. We can search from the last
-    // matching position because input_dim_indices is guaranteed to be sorted.
-    while (i < unmodified_dims.size() &&
-           unmodified_dims[i].first < input_dim_index) {
-      ++i;
-    }
-    if (i >= unmodified_dims.size() ||
-        unmodified_dims[i].first != input_dim_index) {
-      return absl::nullopt;
-    }
-    output_dim_indices.push_back(unmodified_dims[i].second);
-  }
-  return output_dim_indices;
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReshape);
+  return ShapeUtil::ReshapeLeavesDimensionsUnmodified(
+      hlo->operand(0)->shape(), hlo->shape(), input_dim_indices);
 }
 
 // Returns true if the output of "instruction" is a permutation of the

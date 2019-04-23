@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_profiler_analysis_pb2_grpc",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:util",

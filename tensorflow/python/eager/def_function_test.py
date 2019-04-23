@@ -21,7 +21,6 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -246,18 +245,13 @@ class DefFunctionTest(test.TestCase):
         def_function.function(functools.partial(lambda x, y: x + y, 1.))(
             constant_op.constant(2.)))
 
-  def test_functools_partial_single_keyword(self):
-    def f(x, y):
+  def test_functools_partial_new_default(self):
+    def f(x=3, y=7):
       return x + y
 
-    func = def_function.function(
-        functools.partial(f, x=constant_op.constant(1)))
-
-    # This is a limitation of functools.partial. It is not unexpected behavior,
-    # but still testing for it for completeness.
-    with self.assertRaisesRegexp(
-        TypeError, 'got multiple values for'):
-      func(5)
+    func = def_function.function(functools.partial(f, y=6))
+    self.assertEqual(func().numpy(), 9)
+    self.assertEqual(func(y=8).numpy(), 11)
 
   def test_functools_partial_keywords(self):
     def f(x, y):
@@ -506,10 +500,8 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
-    if not context.num_gpus():
-      self.skipTest("Needs multiple devices")
-
     a = []
 
     @def_function.function()

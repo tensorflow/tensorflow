@@ -74,6 +74,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   request.add_tools("input_pipeline");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
+  request.add_tools("pod_viewer");
   *request.mutable_opts() = opts;
   return request;
 }
@@ -232,20 +233,20 @@ Status StartTracing(const tensorflow::string& service_addr,
   return status;
 }
 
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
+MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
+                                      bool timestamp) {
   MonitorRequest request;
   request.set_duration_ms(duration_ms);
   request.set_monitoring_level(monitoring_level);
+  request.set_timestamp(timestamp);
   return request;
 }
 
-// Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
 void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries) {
+                     int monitoring_level, bool timestamp, int num_queries) {
   for (int query = 0; query < num_queries; ++query) {
     MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level);
+        PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
 
     ::grpc::ClientContext context;
     ::grpc::ChannelArguments channel_args;

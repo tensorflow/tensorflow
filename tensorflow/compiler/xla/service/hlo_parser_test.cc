@@ -1536,6 +1536,19 @@ ENTRY MinMaxValues {
 
 )"
 },
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+}
 });
   // clang-format on
 }

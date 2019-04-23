@@ -35,7 +35,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     const ShapeIndex& index) {
   BufferAllocation::Slice buffer_slice;
   if (hlo.opcode() == HloOpcode::kParameter &&
-      hlo.parent() == hlo.parent()->parent()->entry_computation()) {
+      hlo.parent() == module_.entry_computation()) {
     // Entry computation parameters may alias with each other but may not alias
     // with our temporary buffers.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
@@ -78,12 +78,9 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
           .xla_llvm_enable_invariant_load_metadata()) {
     // Parameters of the entry computation are never stored to, loading from a
     // parameter pointer should always return the same result within a loop.
-    if (hlo.opcode() == HloOpcode::kParameter) {
-      const std::vector<HloInstruction*>& parameter_instructions =
-          module_.entry_computation()->parameter_instructions();
-      if (absl::c_linear_search(parameter_instructions, &hlo)) {
-        array->MarkInvariantOverWholeProgram(context_);
-      }
+    if (hlo.opcode() == HloOpcode::kParameter &&
+        hlo.parent() == module_.entry_computation()) {
+      array->MarkInvariantOverWholeProgram(context_);
     }
   }
 }

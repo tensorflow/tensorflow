@@ -134,11 +134,14 @@ def Assert(condition, data, summarize=None, name=None):
   Returns:
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
-    @compatibility{eager} returns None.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
 
   Raises:
-    @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
-    is not true
+    @compatibility(eager)
+    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @end_compatibility
   """
   if context.executing_eagerly():
     if not condition:
@@ -244,9 +247,11 @@ def _Enter(data,
       result.set_shape(data.get_shape())
     return result
   elif isinstance(data, composite_tensor.CompositeTensor):
+
     def enter_component(t):
-      return _Enter(t, frame_name, is_constant, parallel_iterations,
-                    use_ref, use_input_shape)
+      return _Enter(t, frame_name, is_constant, parallel_iterations, use_ref,
+                    use_input_shape)
+
     return nest.map_structure(enter_component, data, expand_composites=True)
   else:
     raise TypeError("Type %s not supported" % type(data))
@@ -406,12 +411,14 @@ def merge(inputs, name=None):
         nest.assert_same_structure(inputs[0], v, expand_composites=True)
 
       flat_inputs = [nest.flatten(v, expand_composites=True) for v in inputs]
-      merged_results = [gen_control_flow_ops.merge(component)
-                        for component in zip(*flat_inputs)]
+      merged_results = [
+          gen_control_flow_ops.merge(component)
+          for component in zip(*flat_inputs)
+      ]
       flat_merged = [tensor for (tensor, _) in merged_results]
       chosen_index = merged_results[0][1]
-      merged_inputs = nest.pack_sequence_as(inputs[0], flat_merged,
-                                            expand_composites=True)
+      merged_inputs = nest.pack_sequence_as(
+          inputs[0], flat_merged, expand_composites=True)
       return (merged_inputs, chosen_index)
 
 
@@ -563,6 +570,7 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
     # pylint: disable=protected-access
     def update_component(m_component, v_component):
       m_component.op._update_input(1, v_component)
+
     if isinstance(m, ops.IndexedSlices):
       v = math_ops._as_indexed_slices(v, optimize=False)
     # pylint: enable=protected-access
@@ -1485,8 +1493,10 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      nest.map_structure(lambda x: self._outer_context.AddName(x.name), result,
-                         expand_composites=True)
+      nest.map_structure(
+          lambda x: self._outer_context.AddName(x.name),
+          result,
+          expand_composites=True)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
@@ -1794,8 +1804,8 @@ class CondContext(ControlFlowContext):
       # Use pivot as the proxy for this op.
       return with_dependencies([v], self._pivot)
     else:
-      v = nest.map_structure(_convert_tensorarray_to_flow, v,
-                             expand_composites=True)
+      v = nest.map_structure(
+          _convert_tensorarray_to_flow, v, expand_composites=True)
       return self._ProcessOutputTensor(ops.convert_to_tensor(v))
 
   def BuildCondBranch(self, fn):
@@ -1811,14 +1821,13 @@ class CondContext(ControlFlowContext):
         if original_result is None:
           return no_op(), None
         else:
-          original_result = nest.map_structure(array_ops.identity,
-                                               original_result,
-                                               expand_composites=True)
+          original_result = nest.map_structure(
+              array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
       return None, None
 
-    result = nest.map_structure(self._BuildCondTensor, original_result,
-                                expand_composites=True)
+    result = nest.map_structure(
+        self._BuildCondTensor, original_result, expand_composites=True)
     if not isinstance(result, (list, _basetuple)):
       result = [result]
     return original_result, result
@@ -1985,8 +1994,7 @@ def cond(pred,
 
     # Check that the return values of the two branches have the same structure.
     try:
-      nest.assert_same_structure(orig_res_t, orig_res_f,
-                                 expand_composites=True)
+      nest.assert_same_structure(orig_res_t, orig_res_f, expand_composites=True)
     except TypeError as e:
       raise TypeError(
           "Incompatible return types of true_fn and false_fn: {}".format(e))
@@ -2021,8 +2029,8 @@ def cond(pred,
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
-    merges = nest.pack_sequence_as(structure=orig_res_t, flat_sequence=merges,
-                                   expand_composites=True)
+    merges = nest.pack_sequence_as(
+        structure=orig_res_t, flat_sequence=merges, expand_composites=True)
 
     # Singleton lists and tuples are automatically unpacked if strict == False.
     if not strict:
@@ -2041,12 +2049,12 @@ def _cast_indexed_slice_indices(structure, flat_a, flat_b):
 
   Args:
     structure: The nested structure that was flattened.
-    flat_a: A flattened list of `Tensors` whose structure matches
-        `structure`.  Will be modified in place to cast `IndexedSlices`
-        indices tensors to int64, where necessary.
-    flat_a: A flattened list of `Tensors` whose structure matches
-        `structure`.  Will be modified in place to cast `IndexedSlices`
-        indices tensors to int64, where necessary.
+    flat_a: A flattened list of `Tensors` whose structure matches `structure`.
+      Will be modified in place to cast `IndexedSlices` indices tensors to
+      int64, where necessary.
+    flat_a: A flattened list of `Tensors` whose structure matches `structure`.
+      Will be modified in place to cast `IndexedSlices` indices tensors to
+      int64, where necessary.
   """
   # Find the locations (in flat_a and flat_b) of the IndexedSlices'
   # indices tensors.
@@ -2077,10 +2085,7 @@ def _cast_indexed_slice_indices(structure, flat_a, flat_b):
 
 
 @tf_export("cond", v1=[])
-def cond_for_tf_v2(pred,
-                   true_fn=None,
-                   false_fn=None,
-                   name=None):
+def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
   `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
@@ -2941,15 +2946,15 @@ class WhileContext(ControlFlowContext):
             return x
           return array_ops.identity(x)
 
-        body_result = nest.map_structure(map_fn, body_result,
-                                         expand_composites=True)
+        body_result = nest.map_structure(
+            map_fn, body_result, expand_composites=True)
 
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and
     # outputs of the body are typically tuples.
-    nest.assert_same_structure(list(packed_vars_for_body), list(body_result),
-                               expand_composites=True)
+    nest.assert_same_structure(
+        list(packed_vars_for_body), list(body_result), expand_composites=True)
 
     # Store body_result to keep track of TensorArrays returned by body
     original_body_result = body_result
@@ -3193,9 +3198,10 @@ def while_loop_v2(cond,
   n = 10000
   x = tf.constant(list(range(n)))
   c = lambda i, x: i < n
-  b = lambda i, x: (tf.Print(i + 1, [i]), tf.Print(x + 1, [i], "x:"))
+  b = lambda i, x: (tf.compat.v1.Print(i + 1, [i]), tf.compat.v1.Print(x + 1,
+  [i], "x:"))
   i, out = tf.while_loop(c, b, (0, x))
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       print(sess.run(i))  # prints [0] ... [9999]
 
       # The following line may increment the counter and x in parallel.
@@ -3379,9 +3385,10 @@ def while_loop(cond,
   n = 10000
   x = tf.constant(list(range(n)))
   c = lambda i, x: i < n
-  b = lambda i, x: (tf.Print(i + 1, [i]), tf.Print(x + 1, [i], "x:"))
+  b = lambda i, x: (tf.compat.v1.Print(i + 1, [i]), tf.compat.v1.Print(x + 1,
+  [i], "x:"))
   i, out = tf.while_loop(c, b, (0, x))
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       print(sess.run(i))  # prints [0] ... [9999]
 
       # The following line may increment the counter and x in parallel.
@@ -3395,8 +3402,9 @@ def while_loop(cond,
 
   """
   # Always enable control flow v2 if building a function, regardless of toggle.
+  executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
-      not context.executing_eagerly()):
+      not executing_eagerly):
     return while_v2.while_loop(
         cond,
         body,
@@ -3424,8 +3432,12 @@ def while_loop(cond,
         raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
                          maximum_iterations.shape)
 
-      counter = constant_op.constant(
-          0, dtype=maximum_iterations.dtype, name="iteration_counter")
+      if executing_eagerly:
+        counter = 0
+        maximum_iterations = int(maximum_iterations.numpy())
+      else:
+        counter = constant_op.constant(
+            0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
       if len(loop_vars) == 1:
@@ -3439,7 +3451,7 @@ def while_loop(cond,
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
-    if context.executing_eagerly():
+    if executing_eagerly:
       try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
@@ -3453,6 +3465,7 @@ def while_loop(cond,
         if isinstance(x, tensor_array_ops.TensorArray):
           return x
         return ops.convert_to_tensor(x)
+
       loop_vars = nest.map_structure(convert, loop_vars)
       if maximum_iterations is not None:
         return loop_vars[1]
@@ -3463,10 +3476,12 @@ def while_loop(cond,
       if maximum_iterations is not None:
         shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
 
-      nest.assert_same_structure(loop_vars, shape_invariants,
-                                 expand_composites=False)
+      nest.assert_same_structure(
+          loop_vars, shape_invariants, expand_composites=False)
       shape_invariants = nest.map_structure(
-          _get_shape_invariant, loop_vars, shape_invariants,
+          _get_shape_invariant,
+          loop_vars,
+          shape_invariants,
           expand_composites=False)
 
     loop_context = WhileContext(
@@ -3946,7 +3961,7 @@ def case(pred_fn_pairs,
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
 
-  @compatibility{eager}
+  @compatibility(eager)
   Unordered dictionaries are not supported in eager mode when `exclusive=False`.
   Use a list of tuples instead.
   @end_compatibility
@@ -4028,8 +4043,8 @@ class XLAControlFlowContext(ControlFlowContext):
   def to_control_flow_context_def(self, context_def, export_scope=None):
     # pylint: disable=useless-super-delegation
     # NOTE(slebedev): the method is required by `ControlFlowContext`.
-    super(XLAControlFlowContext, self).to_control_flow_context_def(
-        context_def, export_scope)
+    super(XLAControlFlowContext,
+          self).to_control_flow_context_def(context_def, export_scope)
 
   def IsXLAContext(self):
     return True

@@ -74,8 +74,8 @@ struct NcclManager::CommunicatorMember {
   ~CommunicatorMember() {
     if (nccl_comm != nullptr) ncclCommDestroy(nccl_comm);
   }
-  ncclComm_t nccl_comm;
 
+  ncclComm_t nccl_comm = nullptr;
   // Owned by NcclManager::device_to_comm_streams_.
   NcclStream* nccl_stream = nullptr;
 };
@@ -203,11 +203,12 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
 
   mutex_lock l(mu_);
 
-  if (collective->single_node) {
-    // For single-node collectives, we identify a communicator uniquely by the
-    // set of devices participating in the collective.  For example, if a
-    // collective is for GPUs 0, 1, and 2 then this will scan to find the
-    // communicator for GPUs 0, 1, and 2.
+  if (collective->communicator_key.empty()) {
+    // For single-node collectives, when the caller does not specify a
+    // `communicator_key`, we identify a communicator uniquely by the set of
+    // devices participating in the collective.  For example, if a collective is
+    // for GPUs 0, 1, and 2 then this will scan to find the communicator for
+    // GPUs 0, 1, and 2.
     //
     // Note that each executor identifies a context on one device, so this is
     // the same as getting the communicator connecting the devices in the
@@ -414,12 +415,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
     }
 
     // Check `collective` is correct and consistent.
-    if (collective->status.ok() && collective->single_node &&
-        !collective->communicator_key.empty()) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " is single node but has communicator_key of size ",
-                           collective->communicator_key.size());
+    if (collective->status.ok() && !collective->single_node &&
+        collective->communicator_key.empty()) {
+      collective->status = errors::Internal(
+          "Collective ", reduction_op, " is multi node with num_local_devices=",
+          collective->num_local_devices,
+          " and num_global_devices=", collective->num_global_devices,
+          " but has an empty communicator_key");
     }
     if (collective->status.ok() && collective->communicator_key.size() !=
                                        context.communicator_key.size()) {

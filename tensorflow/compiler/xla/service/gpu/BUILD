@@ -5,6 +5,7 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
@@ -394,6 +395,7 @@ cc_library(
         ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
+        ":stream_executor_util",
         ":thunk",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
@@ -418,6 +420,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/kernels:gpu_utils",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
@@ -466,8 +469,11 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
-        ":scratch_allocator",
+        ":redzone_allocator",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
@@ -477,7 +483,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -494,6 +502,39 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "redzone_allocator",
+    srcs = ["redzone_allocator.cc"],
+    hdrs = ["redzone_allocator.h"],
+    deps = [
+        ":gpu_constants",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+tf_cc_test(
+    name = "redzone_allocator_test",
+    srcs = ["redzone_allocator_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":redzone_allocator",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ],
 )
 
@@ -558,15 +599,17 @@ cc_library(
     srcs = ["cusolver_context.cc"],
     hdrs = ["cusolver_context.h"],
     deps = [
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cusolver",
-    ],
+    ] + if_static(
+        ["@local_config_cuda//cuda:cusolver"],
+        ["//tensorflow/stream_executor/cuda:cusolver_stub"],
+    ),
 )
 
 cc_library(

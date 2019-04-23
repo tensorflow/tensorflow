@@ -69,7 +69,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       std::unique_ptr<IteratorBase> iterator;
       IteratorContext::Params params(ctx);
       std::unique_ptr<FunctionHandleCache> function_handle_cache =
-          absl::make_unique<FunctionHandleCache>(params.lib);
+          absl::make_unique<FunctionHandleCache>(params.flr);
       params.function_handle_cache = function_handle_cache.get();
       IteratorContext iter_ctx(std::move(params));
 

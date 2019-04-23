@@ -25,6 +25,7 @@ import collections
 import itertools
 import json
 import os
+import sys
 import threading
 import weakref
 
@@ -38,7 +39,9 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -218,6 +221,8 @@ def clear_session():
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
+  global _GRAPH
+  _GRAPH = None
   ops.reset_default_graph()
   reset_uids()
   _SESSION.session = None
@@ -240,7 +245,7 @@ def manual_variable_initialization(value):
   variables should be initialized
   as they are instantiated (default), or if
   the user should handle the initialization
-  (e.g. via `tf.initialize_all_variables()`).
+  (e.g. via `tf.compat.v1.initialize_all_variables()`).
 
   Arguments:
       value: Python boolean.
@@ -531,7 +536,12 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
+    if tfdev.is_device_spec(device):
+      device = device.to_string()
     self.device = device
+
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
 
 
 def _get_current_tf_device():
@@ -545,7 +555,7 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return op.device
+  return tfdev.DeviceSpec.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -804,13 +814,6 @@ def constant(value, dtype=None, shape=None, name=None):
   if dtype is None:
     dtype = floatx()
 
-  # If the outer context is eager but we are executing under the keras
-  # FuncGraph, we create EagerTensors and use them as constants.
-  if (ops.executing_eagerly_outside_functions() and
-      getattr(get_graph(), 'name', '') == 'keras_graph'):
-    with ops.init_scope():
-      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
-
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
@@ -838,7 +841,7 @@ def is_keras_tensor(x):
       >>> np_var = numpy.array([1, 2])
       >>> K.is_keras_tensor(np_var) # A numpy array is not a symbolic tensor.
       ValueError
-      >>> k_var = tf.placeholder('float32', shape=(1,1))
+      >>> k_var = tf.compat.v1.placeholder('float32', shape=(1,1))
       >>> K.is_keras_tensor(k_var) # A variable indirectly created outside of
       keras is not a Keras tensor.
       False
@@ -2821,19 +2824,21 @@ def get_value(x):
 
   Returns:
       A Numpy array.
-
-  Raises:
-      RuntimeError: If this method is called inside defun.
   """
+  if not tensor_util.is_tensor(x):
+    return x
   if context.executing_eagerly():
     return x.numpy()
-  elif not getattr(x, '_in_graph_mode', True):
+  if not getattr(x, '_in_graph_mode', True):
     # This is a variable which was created in an eager context, but is being
     # evaluated from a Graph.
     with context.eager_mode():
       return x.numpy()
-  elif ops.inside_function():
-    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
+
+  if ops.executing_eagerly_outside_functions():
+    # This method of evaluating works inside the Keras FuncGraph.
+    return function([], x)(x)
+
   return x.eval(session=get_session((x,)))
 
 
@@ -2940,7 +2945,15 @@ def print_tensor(x, message=''):
   Returns:
       The same tensor `x`, unchanged.
   """
-  return logging_ops.Print(x, [x], message)
+  if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
+    with get_graph().as_default():
+      op = logging_ops.print_v2(message, x, output_stream=sys.stdout)
+      with ops.control_dependencies([op]):
+        return array_ops.identity(x)
+  else:
+    logging_ops.print_v2(message, x, output_stream=sys.stdout)
+    return x
+
 
 
 # GRAPH MANIPULATION
@@ -2974,7 +2987,8 @@ class GraphExecutionFunction(object):
                       'should be a list or tuple.')
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
+    self.outputs = cast_variables_to_tensor(
+        nest.flatten(outputs, expand_composites=True))
     # TODO(b/127668432): Consider using autograph to generate these
     # dependencies in call.
     # Index 0 = total loss or model output for `predict`.
@@ -3073,6 +3087,19 @@ class GraphExecutionFunction(object):
       if fetch in self.fetch_callbacks:
         self.fetch_callbacks[fetch](output)
 
+  def _eval_if_composite(self, tensor):
+    """Helper method which evaluates any CompositeTensors passed to it."""
+    # We need to evaluate any composite tensor objects that have been
+    # reconstructed in 'pack_sequence_as', since otherwise they'll be output as
+    # actual CompositeTensor objects instead of the value(s) contained in the
+    # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
+    # this ensures that we return its value as a SparseTensorValue rather than
+    # a SparseTensor.
+    if isinstance(tensor, composite_tensor.CompositeTensor):
+      return self._session.run(tensor)
+    else:
+      return tensor
+
   def __call__(self, inputs):
     inputs = nest.flatten(inputs)
 
@@ -3117,8 +3144,17 @@ class GraphExecutionFunction(object):
     fetched = self._callable_fn(*array_vals,
                                 run_metadata=self.run_metadata)
     self._call_fetch_callbacks(fetched[-len(self._fetches):])
-    return nest.pack_sequence_as(self._outputs_structure,
-                                 fetched[:len(self.outputs)])
+    output_structure = nest.pack_sequence_as(
+        self._outputs_structure,
+        fetched[:len(self.outputs)],
+        expand_composites=True)
+    # We need to evaluate any composite tensor objects that have been
+    # reconstructed in 'pack_sequence_as', since otherwise they'll be output as
+    # actual CompositeTensor objects instead of the value(s) contained in the
+    # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
+    # this ensures that we return its value as a SparseTensorValue rather than
+    # a SparseTensor.
+    return nest.map_structure(self._eval_if_composite, output_structure)
 
 
 class EagerExecutionFunction(object):
@@ -3136,7 +3172,7 @@ class EagerExecutionFunction(object):
     self.name = name
     self._outputs_structure = outputs
     inputs = nest.flatten(inputs)
-    outputs = nest.flatten(outputs)
+    outputs = nest.flatten(outputs, expand_composites=True)
 
     updates = updates or []
     if not isinstance(updates, (list, tuple)):
@@ -3169,7 +3205,9 @@ class EagerExecutionFunction(object):
       else:
         if hasattr(update, 'op'):
           update = update.op
-        updates_ops.append(update)
+        if update is not None:
+          # `update.op` may have been None in certain cases.
+          updates_ops.append(update)
 
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
@@ -3237,8 +3275,9 @@ class EagerExecutionFunction(object):
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
-    return nest.pack_sequence_as(self._outputs_structure,
-                                 [x.numpy() for x in outputs])
+    return nest.pack_sequence_as(
+        self._outputs_structure, [x.numpy() for x in outputs],
+        expand_composites=True)
 
 
 @keras_export('keras.backend.function')
@@ -3593,7 +3632,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
@@ -3632,7 +3671,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
@@ -3657,7 +3696,7 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    if hasattr(output_, 'set_shape'):
+    if isinstance(output_, ops.Tensor):
       shape = output_.shape.as_list()
       shape[0] = time_steps
       shape[1] = batch
@@ -4287,8 +4326,6 @@ def conv2d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -4336,8 +4373,6 @@ def conv2d_transpose(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: Tuple of 2 integers.
 
   Returns:
@@ -4351,8 +4386,6 @@ def conv2d_transpose(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
-  if isinstance(output_shape, (tuple, list)):
-    output_shape = array_ops.stack(output_shape)
 
   # `atrous_conv2d_transpose` only supports NHWC format, even on GPU.
   if data_format == 'channels_first' and dilation_rate != (1, 1):
@@ -4366,7 +4399,9 @@ def conv2d_transpose(x,
     output_shape = (output_shape[0], output_shape[2], output_shape[3],
                     output_shape[1])
   if output_shape[0] is None:
-    output_shape = (array_ops.shape(x)[0],) + tuple(output_shape[1:])
+    output_shape = (shape(x)[0],) + tuple(output_shape[1:])
+
+  if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(list(output_shape))
 
   padding = _preprocess_padding(padding)
@@ -4579,8 +4614,6 @@ def conv3d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:
@@ -4626,8 +4659,6 @@ def conv3d_transpose(x,
       strides: strides tuple.
       padding: string, "same" or "valid".
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 3D convolution.
@@ -5060,6 +5091,10 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """Returns a tensor with random binomial distribution of values.
 
+  The binomial distribution with parameters `n` and `p` is the probability
+  distribution of the number of successful Bernoulli process. Only supports
+  `n` = 1 for now.
+
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
       p: A float, `0. <= p <= 1`, probability of binomial distribution.
@@ -5393,7 +5428,8 @@ def configure_and_create_distributed_session(distribution_strategy):
 
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def cast_variables_to_tensor(tensors):

@@ -182,8 +182,10 @@ tf_custom_op_library(
         "kernels/lstm_ops.h",
     ],
     deps = [
-        "//tensorflow/core/kernels:eigen_contraction_kernel",
-        "//tensorflow/core/kernels:eigen_helpers",
+        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
+        # or there will be duplicate thread_local symbols, which can cause
+        # problems in TensorFlow Transform.
+        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
     ],
 )
 
@@ -207,8 +209,10 @@ tf_custom_op_library(
         "kernels/gru_ops.h",
     ],
     deps = [
-        "//tensorflow/core/kernels:eigen_contraction_kernel",
-        "//tensorflow/core/kernels:eigen_helpers",
+        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
+        # or there will be duplicate thread_local symbols, which can cause
+        # problems in TensorFlow Transform.
+        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
     ],
 )
 
@@ -341,6 +345,7 @@ tf_kernel_library(
 py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":checkpoint_convert_lib"],
 )
@@ -364,6 +369,7 @@ py_test(
     name = "checkpoint_convert_test",
     size = "small",
     srcs = ["python/tools/checkpoint_convert_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
