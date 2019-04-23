@@ -2929,6 +2929,9 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_rocm",
+    ],
 )
 
 py_library(
