@@ -112,14 +112,14 @@ class Decoder(object):
     raise NotImplementedError
 
   def finalize(self, outputs, final_state, sequence_lengths):
-    """Called after any decoding iterations.
+    """Called after decoding iterations complete.
 
     Args:
       outputs: RNNCell outputs (possibly nested tuple of) tensor[s] for all time
         steps.
       final_state: RNNCell final state (possibly nested tuple of) tensor[s] for
         last time step.
-      sequence_lengths: 1-D `int32` tensor containing lengths of each sequences.
+      sequence_lengths: 1-D `int32` tensor containing lengths of each sequence.
 
     Returns:
       `(final_outputs, final_state)`: `final_outputs` is an object containing
