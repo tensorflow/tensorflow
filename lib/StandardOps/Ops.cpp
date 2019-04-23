@@ -1094,7 +1094,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
     // Check that the memref operand's defining operation is an AllocOp.
     Value *memref = dealloc.getMemRef();
     Operation *defOp = memref->getDefiningOp();
-    if (!isa_nonnull<AllocOp>(defOp))
+    if (!isa_and_nonnull<AllocOp>(defOp))
       return matchFailure();
 
     // Check that all of the uses of the AllocOp are other DeallocOps.

@@ -93,7 +93,7 @@ void linalg::SliceOp::print(OpAsmPrinter *p) {
       *p << "*";
     } else {
       auto *v = getIndexing();
-      if (isa_nonnull<RangeOp>(v->getDefiningOp())) {
+      if (isa_and_nonnull<RangeOp>(v->getDefiningOp())) {
         *p << *v << "..";
       } else {
         *p << *v;

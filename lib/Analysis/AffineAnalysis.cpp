@@ -64,7 +64,7 @@ void mlir::getReachableAffineApplyOps(
     auto *opInst = state.value->getDefiningOp();
     // Note: getDefiningOp will return nullptr if the operand is not an
     // Operation (i.e. block argument), which is a terminator for the search.
-    if (!isa_nonnull<AffineApplyOp>(opInst)) {
+    if (!isa_and_nonnull<AffineApplyOp>(opInst)) {
       worklist.pop_back();
       continue;
     }

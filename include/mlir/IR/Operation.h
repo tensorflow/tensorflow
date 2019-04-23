@@ -532,9 +532,9 @@ template <typename T> T dyn_cast_or_null(Operation *op) {
   return op ? op->dyn_cast<T>() : T();
 }
 
-/// Provide isa_nonnull functionality for Operation casts, i.e. if the operation
-/// is non-null and a class of 'T'.
-template <typename T> bool isa_nonnull(Operation *op) {
+/// Provide isa_and_nonnull functionality for Operation casts, i.e. if the
+/// operation is non-null and a class of 'T'.
+template <typename T> bool isa_and_nonnull(Operation *op) {
   return op && op->isa<T>();
 }
 

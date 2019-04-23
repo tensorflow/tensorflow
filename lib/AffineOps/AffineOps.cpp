@@ -317,7 +317,7 @@ static llvm::SetVector<unsigned>
 indicesFromAffineApplyOp(ArrayRef<Value *> operands) {
   llvm::SetVector<unsigned> res;
   for (auto en : llvm::enumerate(operands))
-    if (isa_nonnull<AffineApplyOp>(en.value()->getDefiningOp()))
+    if (isa_and_nonnull<AffineApplyOp>(en.value()->getDefiningOp()))
       res.insert(en.index());
   return res;
 }
@@ -531,7 +531,7 @@ static void composeAffineMapAndOperands(AffineMap *map,
 void mlir::fullyComposeAffineMapAndOperands(
     AffineMap *map, SmallVectorImpl<Value *> *operands) {
   while (llvm::any_of(*operands, [](Value *v) {
-    return isa_nonnull<AffineApplyOp>(v->getDefiningOp());
+    return isa_and_nonnull<AffineApplyOp>(v->getDefiningOp());
   })) {
     composeAffineMapAndOperands(map, operands);
   }

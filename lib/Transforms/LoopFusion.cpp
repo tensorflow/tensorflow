@@ -2243,7 +2243,7 @@ public:
         continue;
       // Use list expected to match the dep graph info.
       auto *op = memref->getDefiningOp();
-      if (isa_nonnull<AllocOp>(op))
+      if (isa_and_nonnull<AllocOp>(op))
         op->erase();
     }
   }
