@@ -72,7 +72,7 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
       for m in model.metrics
       if m not in model._compile_metric_functions
   ])
-  return [backend.mean(t) for t in metric_results]
+  return metric_results
 
 
 def _model_loss(model,
@@ -192,8 +192,6 @@ def _model_loss(model,
 
       total_loss += model.loss_weights_list[i] * output_loss
 
-    if loss_fns:
-      total_loss = backend.mean(total_loss)
     # Add regularization losses
     custom_losses = model.losses
     if custom_losses:
