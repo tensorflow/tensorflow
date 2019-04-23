@@ -1170,11 +1170,11 @@ def set_other_mpi_vars(environ_cp):
   """Set other MPI related variables."""
   # Link the MPI header files
   mpi_home = environ_cp.get('MPI_HOME')
-  symlink_force('%s/include/mpi.h' % mpi_home, 'third_party/mpi/mpi.h')
 
   # Determine if we use OpenMPI or MVAPICH, these require different header files
   # to be included here to make bazel dependency checker happy
   if os.path.exists(os.path.join(mpi_home, 'include/mpi_portable_platform.h')):
+    symlink_force('%s/include/mpi.h' % mpi_home, 'third_party/mpi/mpi.h')
     symlink_force(
         os.path.join(mpi_home, 'include/mpi_portable_platform.h'),
         'third_party/mpi/mpi_portable_platform.h')
@@ -1183,10 +1183,12 @@ def set_other_mpi_vars(environ_cp):
                  'MPI_LIB_IS_OPENMPI=True')
   else:
     # MVAPICH / MPICH
+    symlink_force('%s/include/mpi/mpi.h' % mpi_home, 'third_party/mpi/mpi.h')
     symlink_force(
-        os.path.join(mpi_home, 'include/mpio.h'), 'third_party/mpi/mpio.h')
+        os.path.join(mpi_home, 'include/mpi/mpio.h'), 'third_party/mpi/mpio.h')
     symlink_force(
-        os.path.join(mpi_home, 'include/mpicxx.h'), 'third_party/mpi/mpicxx.h')
+        os.path.join(mpi_home, 'include/mpi/mpicxx.h'),
+        'third_party/mpi/mpicxx.h')
     # TODO(gunan): avoid editing files in configure
     sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI=True',
                  'MPI_LIB_IS_OPENMPI=False')
