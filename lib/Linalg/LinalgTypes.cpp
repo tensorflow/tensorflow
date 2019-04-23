@@ -31,6 +31,10 @@ mlir::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect("linalg", context) {
   addTypes<BufferType, RangeType, ViewType>();
   addOperations<BufferAllocOp, BufferDeallocOp, RangeOp, SliceOp, ViewOp>();
+  addOperations<
+#define GET_OP_LIST
+#include "mlir/Linalg/LinalgOps.cpp.inc"
+      >();
 }
 
 struct mlir::BufferTypeStorage : public mlir::TypeStorage {

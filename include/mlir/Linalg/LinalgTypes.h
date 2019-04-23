@@ -93,20 +93,18 @@ public:
 ///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
 /// ```
 class ViewTypeStorage;
-class ViewType
-    : public mlir::Type::TypeBase<ViewType, mlir::Type, ViewTypeStorage> {
+class ViewType : public Type::TypeBase<ViewType, Type, ViewTypeStorage> {
 public:
   // Used for generic hooks in TypeBase.
   using Base::Base;
   /// Construction hook.
-  static ViewType get(mlir::MLIRContext *context, mlir::Type elementType,
-                      unsigned rank);
+  static ViewType get(MLIRContext *context, Type elementType, unsigned rank);
   // Used to implement llvm-style cast.
   static bool kindof(unsigned kind) { return kind == LinalgTypes::View; }
 
   // Type-specific functionality.
   /// Return the underlying elemental type.
-  mlir::Type getElementType();
+  Type getElementType();
   /// Return the rank of the view.
   /// This is the number of indexings needed to reach an underlying element.
   unsigned getRank();

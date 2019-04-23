@@ -19,6 +19,7 @@
 #define MLIR_LINALG_LINALGOPS_H_
 
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Linalg/LinalgTraits.h"
 #include "mlir/Linalg/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 
@@ -218,6 +219,9 @@ public:
     return {operand_begin() + ViewOp::FirstIndexingOperand, operand_end()};
   }
 };
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/LinalgOps.h.inc"
 
 } // namespace mlir
 

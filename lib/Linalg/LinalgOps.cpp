@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Linalg/LinalgOps.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
@@ -354,3 +356,48 @@ void mlir::ViewOp::print(OpAsmPrinter *p) {
       [&](mlir::Value *v) { *p << *v; }, [&]() { *p << ", "; });
   *p << "] : " << getType();
 }
+
+namespace mlir {
+namespace impl {
+
+// A LinalgLibraryOp prints as:
+//
+// ```{.mlir}
+//   concrete_op_name (ssa-inputs, ssa-outputs) : view-types
+// ```
+//
+// for example:
+//
+// ```
+//   linalg.matmul(%0, %1, %2) :
+//     !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+// ```
+//
+// Where %0, %1 and %2 are ssa-values of type ViewType.
+void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op) {
+  assert(op->getAbstractOperation() && "unregistered operation");
+  *p << op->getName().getStringRef() << "(";
+  interleave(
+      op->getOperands().begin(), op->getOperands().end(),
+      [&](mlir::Value *v) { *p << *v; }, [&]() { *p << ", "; });
+  *p << ") : ";
+  interleave(
+      op->getOperands().begin(), op->getOperands().end(),
+      [&](mlir::Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
+}
+
+bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 3> ops;
+  SmallVector<Type, 3> types;
+  return parser->parseOperandList(ops, -1, OpAsmParser::Delimiter::Paren) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonTypeList(types) ||
+         parser->resolveOperands(ops, types, parser->getNameLoc(),
+                                 result->operands);
+}
+} // namespace impl
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/LinalgOps.cpp.inc"
+
+} // namespace mlir
