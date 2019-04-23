@@ -205,16 +205,11 @@ def _convert_tf2_model(flags):
     ValueError: Unsupported file format.
   """
   # Load the model.
-  if os.path.isdir(flags.input_file):
-    converter = lite.TFLiteConverterV2.from_saved_model(flags.input_file)
-  elif (flags.input_file.endswith(".h5") or
-        flags.input_file.endswith(".keras") or
-        flags.input_file.endswith(".hdf5")):
-    model = keras.models.load_model(flags.input_file)
+  if flags.saved_model_dir:
+    converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
+  elif flags.keras_model_file:
+    model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-  else:
-    raise ValueError("File format of '{}' is not supported.".format(
-        flags.input_file))
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -468,12 +463,17 @@ def _get_tf2_parser():
       type=str,
       help="Full filepath of the output file.",
       required=True)
-  parser.add_argument(
-      "--input_file",
+
+  # Input file flags.
+  input_file_group = parser.add_mutually_exclusive_group(required=True)
+  input_file_group.add_argument(
+      "--saved_model_dir",
       type=str,
-      help=("Full filepath of input model file. Accepted formats are "
-            "SavedModel and tf.Keras HDF5 model file"),
-      required=True)
+      help="Full path of the directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
   return parser
 
 
