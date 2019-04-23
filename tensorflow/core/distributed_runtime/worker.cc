@@ -185,6 +185,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     // tracer may be NULL on platforms without accelerators.
     if (trptr) {
       tracer = trptr.release();
+      tracer->worker_name = session->worker_name;
       Status s = tracer->Start();
       if (!s.ok()) {
         if (!errors::IsUnavailable(s)) {

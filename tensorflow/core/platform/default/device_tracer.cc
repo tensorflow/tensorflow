@@ -152,42 +152,14 @@ class CUPTIManager {
   // Disable tracing.  No further events will be delivered to 'client'.
   Status DisableTrace(CUPTIClient *client);
 
-  void MapThreadToClient(std::thread::id tid, CUPTIClient* client) {
+  void MapCidToClient(uint32 correlation_id, CUPTIClient* client) {
     mutex_lock l(mu_);
-
-    // Mapping tid -> client more than twice 
-    if (thread_to_client_.find(tid) != thread_to_client_.end()) {
-      // CHECK(thread_to_client_[tid] == client);
-      return;
-    }
-
-    thread_to_client_[tid] = client;
-    if (client_to_threads_.find(client) == client_to_threads_.end()) {
-      client_to_threads_[client];
-    }
-    client_to_threads_[client].insert(tid);
-  }
-  
-  void AddCorrelationId(uint32 correlation_id, const string &name,
-                        const string &src_dev, const string &dst_dev) {
-    auto tid = std::this_thread::get_id();
-    mutex_lock l(mu_);
-    if (thread_to_client_.find(tid) == thread_to_client_.end()) {
-      return;
-    }
-
-    auto client = thread_to_client_[tid];
     if (correlation_to_client_.find(correlation_id) != correlation_to_client_.end()) {
       CHECK(correlation_to_client_.find(correlation_id)->second == client);
       return;
     }
 
-    client->AddCorrelationId(correlation_id, name, src_dev, dst_dev);
     correlation_to_client_[correlation_id] = client;
-    if (client_to_correlations_.find(client) == client_to_correlations_.end()) {
-      client_to_correlations_[client];
-    }
-    client_to_correlations_[client].insert(correlation_id);
   }
 
  private:
@@ -217,10 +189,7 @@ class CUPTIManager {
 
   mutex mu_;
   std::vector<CUPTIClient*>clients_ GUARDED_BY(mu_);
-  std::map<std::thread::id, CUPTIClient*> thread_to_client_ GUARDED_BY(mu_);
-  std::map<CUPTIClient*, std::set<std::thread::id>> client_to_threads_ GUARDED_BY(mu_);
   std::map<uint32, CUPTIClient*> correlation_to_client_ GUARDED_BY(mu_); 
-  std::map<CUPTIClient*, std::set<uint32>> client_to_correlations_ GUARDED_BY(mu_);
   std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CUPTIManager);
@@ -273,16 +242,6 @@ Status CUPTIManager::DisableTrace(CUPTIClient *client) {
         CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY2));
         CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
       }
-      for (auto thread: client_to_threads_[client]) {
-        CHECK(thread_to_client_.find(thread) != thread_to_client_.end());
-        thread_to_client_.erase(thread_to_client_.find(thread));
-      }
-      client_to_threads_.erase(client_to_threads_.find(client));
-      for (auto correlation: client_to_correlations_[client]) {
-        CHECK(correlation_to_client_.find(correlation) != correlation_to_client_.end());
-        correlation_to_client_.erase(correlation_to_client_.find(correlation));
-      }
-      client_to_correlations_.erase(client_to_correlations_.find(client));
     }
   }
   return Status::OK();
@@ -414,7 +373,7 @@ class DeviceTracerImpl : public DeviceTracer,
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
       StringPiece name_part1, StringPiece name_part2,
       StringPiece src_dev, StringPiece dst_dev) const {
-    cupti_manager_->MapThreadToClient(std::this_thread::get_id(), const_cast<DeviceTracerImpl*>(this));
+    // cupti_manager_->MapThreadToClient(std::this_thread::get_id(), const_cast<DeviceTracerImpl*>(this));
     struct Impl : public tracing::TraceCollector::Handle {
       string annotation;
       string src_device;
@@ -567,7 +526,10 @@ Status DeviceTracerImpl::Start() {
   // there is another trace in progress (possibly by external code).
   CUptiResult ret;
   ret = cupti_wrapper_->Subscribe(
-      &subscriber_, static_cast<CUpti_CallbackFunc>(ApiCallback), cupti_manager_);
+      &subscriber_, static_cast<CUpti_CallbackFunc>(ApiCallback), this);
+  if (ret == CUPTI_SUCCESS) {
+    LOG(INFO) << worker_name << " Succeeded";
+  }
   if (ret != CUPTI_SUCCESS && ret != CUPTI_ERROR_MAX_LIMIT_REACHED) {
     return errors::Internal("Failed to create CUPTI subcriber.");
   }
@@ -639,6 +601,8 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
                                         const string &dst_dev) {
   VLOG(2) << correlation_id << " : " << name;
   mutex_lock l(trace_mu_);
+  cupti_manager_->MapCidToClient(correlation_id, 
+                                 const_cast<CUPTIClient*>(static_cast<CUPTIClient*> (this)));
   if (correlations_.size() >= kMaxRecords) return;
   correlations_.emplace(correlation_id, name);
   src_dev_correlations_.emplace(correlation_id, src_dev);
@@ -652,7 +616,8 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
                                               CUpti_CallbackId cbid,
                                               const void *cbdata) {
   auto *cbInfo = reinterpret_cast<const CUpti_CallbackData *>(cbdata);
-  CUPTIManager *manager = reinterpret_cast<CUPTIManager *>(userdata);
+  // CUPTIManager *manager = reinterpret_cast<CUPTIManager *>(userdata);
+  DeviceTracerImpl *tracer = reinterpret_cast<DeviceTracerImpl *>(userdata);
   VLOG(2) << "ApiCallback " << domain << ":" << cbid
           << " func: " << cbInfo->functionName;
 
@@ -679,7 +644,7 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
       }
       const string annotation =
           tls_annotation ? tls_annotation : cbInfo->symbolName;
-      manager->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
+      /*manager->*/tracer->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
     }
   } else if ((domain == CUPTI_CB_DOMAIN_RUNTIME_API) &&
              (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020 ||
@@ -694,7 +659,7 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
       }
       if (tls_annotation) {
         const string annotation = tls_annotation;
-        manager->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
+        /*manager->*/tracer->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
       }
     }
   } else if ((domain == CUPTI_CB_DOMAIN_DRIVER_API) &&
@@ -706,7 +671,7 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
               cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2)) {
     if (cbInfo->callbackSite == CUPTI_API_EXIT && tls_annotation) {
       const string annotation = tls_annotation;
-      manager->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
+      /*manager->*/tracer->AddCorrelationId(cbInfo->correlationId, annotation, src_device, dst_device);
     }
   } else {
     VLOG(1) << "Unhandled API Callback for " << domain << " " << cbid;
@@ -775,6 +740,8 @@ void DeviceTracerImpl::CollectMemcpyRecord(StepStatsCollector *collector,
 
 Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
   mutex_lock l(mu_);
+  LOG(INFO) << worker_name << " kernel records: " << kernel_records_.size();
+  LOG(INFO) << worker_name << " memcpy records: " << memcpy_records_.size();
   if (enabled_) {
     return errors::FailedPrecondition("DeviceTracer is still enabled.");
   }
