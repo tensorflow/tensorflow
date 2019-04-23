@@ -202,6 +202,7 @@ inline APFloat convertFloatToType(FloatType ft, APFloat value) {
   bool losesInfo;
   auto status = value.convert(ft.getFloatSemantics(),
                               APFloat::rmNearestTiesToEven, &losesInfo);
+  (void)status; // unused in opt mode
   assert((status & (APFloat::opDivByZero | APFloat::opInvalidOp)) == 0 &&
          "could not convert to float const");
   return value;
