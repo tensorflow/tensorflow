@@ -911,7 +911,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "https://mirror.bazel.build/github.com/seastar/seastar/archive/seastar-tf.tar.gz",
             "https://github.com/liutongxuan/seastar/archive/features/tensorflow_rpc.tar.gz",
         ],
-        sha256 = "05279c9cf61f7b0b77a30749cf1d8745e49b1754e6aad8fc7bd607258922e596",
+        sha256 = "4aff80e8f6889c21b17aeed93cc632229ced0e5cb6b35ba060416b668744c2b0",
         strip_prefix = "seastar-features-tensorflow_rpc",
         build_file = clean_dep("//third_party:seastar.BUILD"),
     )
