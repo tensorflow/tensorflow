@@ -3445,6 +3445,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SnapshotDataset"
+    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Softmax"
     argspec: "args=[\'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
