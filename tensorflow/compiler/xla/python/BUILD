@@ -80,6 +80,7 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
+        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
