@@ -72,6 +72,34 @@ static ValueT safeGetOrCreate(DenseSet<ValueT, DenseInfoT> &container,
   return *existing.first = constructorFn();
 }
 
+/// A utility function to thread-safely get or create a uniqued instance within
+/// the given vector container.
+template <typename ValueT, typename ConstructorFn>
+ValueT safeGetOrCreate(std::vector<ValueT> &container, unsigned position,
+                       llvm::sys::SmartRWMutex<true> &mutex,
+                       ConstructorFn &&constructorFn) {
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> lock(mutex);
+    if (container.size() > position && container[position])
+      return container[position];
+  }
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> lock(mutex);
+
+  // Check if we need to resize.
+  if (position >= container.size())
+    container.resize(position + 1, nullptr);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto *&result = container[position];
+  if (result)
+    return result;
+
+  return result = constructorFn();
+}
+
 /// A utility function to safely get or create a uniqued instance within the
 /// given map container.
 template <typename ContainerTy, typename KeyT, typename ConstructorFn>
@@ -1699,58 +1727,27 @@ AffineExpr mlir::getAffineBinaryOpExpr(AffineExprKind kind, AffineExpr lhs,
 AffineExpr mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
-  { // Check for an existing instance in read-only mode.
-    llvm::sys::SmartScopedReader<true> affineLock(impl.affineMutex);
-    if (impl.dimExprs.size() > position && impl.dimExprs[position])
-      return impl.dimExprs[position];
-  }
-
-  // Aquire a writer-lock so that we can safely create the new instance.
-  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
-
-  // Check if we need to resize.
-  if (position >= impl.dimExprs.size())
-    impl.dimExprs.resize(position + 1, nullptr);
-
-  // Check for an existing instance again here, because another writer thread
-  // may have already created one.
-  auto *&result = impl.dimExprs[position];
-  if (result)
-    return result;
-
-  result = impl.affineAllocator.Allocate<AffineDimExprStorage>();
-  // Initialize the memory using placement new.
-  new (result) AffineDimExprStorage{{AffineExprKind::DimId, context}, position};
-  return result;
+  return safeGetOrCreate(
+      impl.dimExprs, position, impl.affineMutex, [&impl, context, position] {
+        auto *result = impl.affineAllocator.Allocate<AffineDimExprStorage>();
+        // Initialize the memory using placement new.
+        new (result)
+            AffineDimExprStorage{{AffineExprKind::DimId, context}, position};
+        return result;
+      });
 }
 
 AffineExpr mlir::getAffineSymbolExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
-  { // Check for an existing instance in read-only mode.
-    llvm::sys::SmartScopedReader<true> affineLock(impl.affineMutex);
-    if (impl.symbolExprs.size() > position && impl.symbolExprs[position])
-      return impl.symbolExprs[position];
-  }
-
-  // Aquire a writer-lock so that we can safely create the new instance.
-  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
-
-  // Check if we need to resize.
-  if (position >= impl.symbolExprs.size())
-    impl.symbolExprs.resize(position + 1, nullptr);
-
-  // Check for an existing instance again here, because another writer thread
-  // may have already created one.
-  auto *&result = impl.symbolExprs[position];
-  if (result)
-    return result;
-
-  result = impl.affineAllocator.Allocate<AffineSymbolExprStorage>();
-  // Initialize the memory using placement new.
-  new (result)
-      AffineSymbolExprStorage{{AffineExprKind::SymbolId, context}, position};
-  return result;
+  return safeGetOrCreate(
+      impl.symbolExprs, position, impl.affineMutex, [&impl, context, position] {
+        auto *result = impl.affineAllocator.Allocate<AffineSymbolExprStorage>();
+        // Initialize the memory using placement new.
+        new (result) AffineSymbolExprStorage{
+            {AffineExprKind::SymbolId, context}, position};
+        return result;
+      });
 }
 
 AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
