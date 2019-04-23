@@ -319,6 +319,22 @@ def einsum(equation, *inputs, **kwargs):
     perm = [input_axis_labels[0].index(a) for a in output_axis_labels]
     return _transpose_if_necessary(inputs[0], perm)
 
+  
+@tf_export('einsum_optimize', 'linalg.einsum_optimize')
+def einsum_optimize(ishapes, ilabels, olabels, **kwargs):
+
+  optimize = kwargs.pop('optimize', True)
+
+  if not optimize:
+    return [(0,1)]*(len(ishapes)-1)
+  elif optimize in {True, 'dp'}:
+    cost_limit = kwargs.pop('cost_limit', np.inf)
+    return _einsum_optimize_dp(ishapes, ilabels, olabels, cost_limit)
+  elif optimize == "greedy":
+    return _einsum_optimize_greedy(ishapes, ilabels, olabels)
+
+  raise ValueError('invalid optimization strategy "{}"'.format(optimize))
+  
 
 def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
   """Helper for einsum() that computes the result of a two-argument einsum().
