@@ -88,6 +88,7 @@ message TfliteInferenceParams {
   enum Delegate {
     NONE = 0;
     NNAPI = 1;
+    GPU = 2;
   }
   optional Delegate delegate = 2;
   // Number of threads available to the TFLite Interpreter.
