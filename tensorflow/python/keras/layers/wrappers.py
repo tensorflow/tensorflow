@@ -412,8 +412,10 @@ class Bidirectional(Wrapper):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    output_shape = tuple(self.forward_layer.compute_output_shape(
-        input_shape).as_list())
+    output_shape = self.forward_layer.compute_output_shape(input_shape)
+    if not isinstance(output_shape, tensor_shape.TensorShape):
+      output_shape = tensor_shape.TensorShape(output_shape)
+    output_shape = tuple(output_shape.as_list())
     if self.return_state:
       state_shape = output_shape[1:]
       output_shape = output_shape[0]

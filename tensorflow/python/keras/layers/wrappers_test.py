@@ -708,6 +708,36 @@ class BidirectionalTest(test.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_Bidirectional_output_shape_return_types(self):
+
+    class TupleOutputShapeLayer(keras.layers.SimpleRNN):
+
+      def compute_output_shape(self, input_shape):
+          return (input_shape[0], input_shape[1], input_shape[2])
+
+    class ListOutputShapeLayer(keras.layers.SimpleRNN):
+
+      def compute_output_shape(self, input_shape):
+          return [input_shape[0], input_shape[1], input_shape[2]]
+
+    class TensorShapeOutputShapeLayer(keras.layers.SimpleRNN):
+
+      def compute_output_shape(self, input_shape):
+          return tensor_shape.TensorShape([input_shape[0], input_shape[1], input_shape[2]])
+
+    test_layers = [TupleOutputShapeLayer, ListOutputShapeLayer,
+                   TensorShapeOutputShapeLayer]
+    # Custom layers can specify output shape as a list, tuple, or TensorShape
+    for layer in test_layers:
+      input_layer = keras.layers.Bidirectional(layer(3))
+      input_shape = (None, 1, 13)
+      output_shape = input_layer.compute_output_shape(input_shape)
+      # all output shapes are exposed in the end as TensorShape instances
+      self.assertIsInstance(output_shape, tensor_shape.TensorShape)
+
+
   def test_Bidirectional_last_output_with_masking(self):
     rnn = keras.layers.LSTM
     samples = 2
