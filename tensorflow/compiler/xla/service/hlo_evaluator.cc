@@ -56,43 +56,40 @@ namespace xla {
 namespace {
 
 template <typename OperandT>
-StatusOr<Literal> Compare(const Shape& shape, HloOpcode opcode,
+StatusOr<Literal> Compare(const Shape& shape, ComparisonDirection direction,
                           LiteralSlice lhs_literal, LiteralSlice rhs_literal) {
   std::function<bool(OperandT, OperandT)> compare_op;
-  switch (opcode) {
-    case HloOpcode::kEq:
+  switch (direction) {
+    case ComparisonDirection::kEq:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el == rhs_el;
       };
       break;
-    case HloOpcode::kNe:
+    case ComparisonDirection::kNe:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el != rhs_el;
       };
       break;
-    case HloOpcode::kGe:
+    case ComparisonDirection::kGe:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el >= rhs_el;
       };
       break;
-    case HloOpcode::kGt:
+    case ComparisonDirection::kGt:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el > rhs_el;
       };
       break;
-    case HloOpcode::kLe:
+    case ComparisonDirection::kLe:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el <= rhs_el;
       };
       break;
-    case HloOpcode::kLt:
+    case ComparisonDirection::kLt:
       compare_op = [](OperandT lhs_el, OperandT rhs_el) {
         return lhs_el < rhs_el;
       };
       break;
-    default:
-      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
-                 << HloOpcodeString(opcode);
   }
 
   Literal result(shape);
@@ -106,24 +103,25 @@ StatusOr<Literal> Compare(const Shape& shape, HloOpcode opcode,
 }
 
 template <>
-StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
+StatusOr<Literal> Compare<complex64>(const Shape& shape,
+                                     ComparisonDirection direction,
                                      LiteralSlice lhs_literal,
                                      LiteralSlice rhs_literal) {
   std::function<bool(complex64, complex64)> compare_op;
-  switch (opcode) {
-    case HloOpcode::kEq:
+  switch (direction) {
+    case ComparisonDirection::kEq:
       compare_op = [](complex64 lhs_el, complex64 rhs_el) {
         return lhs_el == rhs_el;
       };
       break;
-    case HloOpcode::kNe:
+    case ComparisonDirection::kNe:
       compare_op = [](complex64 lhs_el, complex64 rhs_el) {
         return lhs_el != rhs_el;
       };
       break;
     default:
-      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "unhandled direction for conversion to Comparison: "
+                 << ComparisonDirectionToString(direction);
   }
 
   Literal result(shape);
@@ -137,24 +135,25 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
 }
 
 template <>
-StatusOr<Literal> Compare<complex128>(const Shape& shape, HloOpcode opcode,
+StatusOr<Literal> Compare<complex128>(const Shape& shape,
+                                      ComparisonDirection direction,
                                       LiteralSlice lhs_literal,
                                       LiteralSlice rhs_literal) {
   std::function<bool(complex128, complex128)> compare_op;
-  switch (opcode) {
-    case HloOpcode::kEq:
+  switch (direction) {
+    case ComparisonDirection::kEq:
       compare_op = [](complex128 lhs_el, complex128 rhs_el) {
         return lhs_el == rhs_el;
       };
       break;
-    case HloOpcode::kNe:
+    case ComparisonDirection::kNe:
       compare_op = [](complex128 lhs_el, complex128 rhs_el) {
         return lhs_el != rhs_el;
       };
       break;
     default:
-      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
-                 << HloOpcodeString(opcode);
+      LOG(FATAL) << "unhandled direction for conversion to Comparison: "
+                 << ComparisonDirectionToString(direction);
   }
 
   Literal result(shape);
@@ -244,12 +243,13 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
+                                                   arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
           i, ShapeUtil::HumanStringWithLayout(computation_shape),
-          ShapeUtil::HumanString(arg_shape));
+          ShapeUtil::HumanStringWithLayout(arg_shape));
     }
   }
 
@@ -423,10 +423,12 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 #ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
-      << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
+  DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
+                                                   input_literal->shape()))
+      << "parameter shape is: "
+      << ShapeUtil::HumanStringWithLayout(parameter->shape())
       << ", but input literal shape is: "
-      << ShapeUtil::HumanString(input_literal->shape());
+      << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
   return Status::OK();
@@ -671,20 +673,11 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
 }
 
 Status HloEvaluator::HandleCompare(HloInstruction* compare) {
-  HloOpcode opcode = compare->opcode();
+  ComparisonDirection direction = compare->comparison_direction();
   auto lhs = compare->operand(0);
   auto rhs = compare->operand(1);
-  // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-  // removed.
-  if (!(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
-        ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-    return Unimplemented(
-        "Implicit broadcasting is currently unsupported in HLO evaluator "
-        "Shape Mismatch: %s vs %s vs %s",
-        ShapeUtil::HumanString(compare->shape()),
-        ShapeUtil::HumanString(lhs->shape()),
-        ShapeUtil::HumanString(rhs->shape()));
-  }
+  DCHECK(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
+         ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
   TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
 
@@ -696,76 +689,76 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     case PRED: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
-          Compare<bool>(compare->shape(), opcode, lhs_literal, rhs_literal));
+          Compare<bool>(compare->shape(), direction, lhs_literal, rhs_literal));
     } break;
     case U8: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<uint8>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<uint8>(compare->shape(), direction,
+                                         lhs_literal, rhs_literal));
     } break;
     case U16: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<uint16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<uint16>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case U32: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<uint32>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<uint32>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case U64: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<uint64>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<uint64>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case S8: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
-          Compare<int8>(compare->shape(), opcode, lhs_literal, rhs_literal));
+          Compare<int8>(compare->shape(), direction, lhs_literal, rhs_literal));
     } break;
     case S16: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int16>(compare->shape(), direction,
+                                         lhs_literal, rhs_literal));
     } break;
     case S32: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int32>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int32>(compare->shape(), direction,
+                                         lhs_literal, rhs_literal));
     } break;
     case S64: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int64>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int64>(compare->shape(), direction,
+                                         lhs_literal, rhs_literal));
     } break;
     case F16: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
-          Compare<half>(compare->shape(), opcode, lhs_literal, rhs_literal));
+          Compare<half>(compare->shape(), direction, lhs_literal, rhs_literal));
     } break;
     case BF16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<bfloat16>(compare->shape(), opcode,
+                          Compare<bfloat16>(compare->shape(), direction,
                                             lhs_literal, rhs_literal));
     } break;
     case F32: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<float>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<float>(compare->shape(), direction,
+                                         lhs_literal, rhs_literal));
     } break;
     case F64: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<double>(compare->shape(), opcode, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<double>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case C64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<complex64>(compare->shape(), opcode,
+                          Compare<complex64>(compare->shape(), direction,
                                              lhs_literal, rhs_literal));
     } break;
     case C128: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<complex128>(compare->shape(), opcode,
+                          Compare<complex128>(compare->shape(), direction,
                                               lhs_literal, rhs_literal));
     } break;
     default:
@@ -1226,8 +1219,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
-                       .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      embedded_evaluator.Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1261,37 +1254,35 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result =
-      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator.Evaluate(
+                                          *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();
 }
 
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
-  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
-  const auto& true_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(1));
-  const auto& false_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(2));
-
-  auto* true_computation = conditional->true_computation();
-  auto* false_computation = conditional->false_computation();
+  const auto& branch_index_literal =
+      GetEvaluatedLiteralFor(conditional->operand(0));
+  int branch_index;
+  if (conditional->operand(0)->shape().element_type() == PRED) {
+    branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
+  } else {
+    branch_index = branch_index_literal.Get<int32>({});
+    if (branch_index < 0 || branch_index >= conditional->branch_count()) {
+      branch_index = conditional->branch_count() - 1;
+    }
+  }
+  const auto& branch_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1 + branch_index));
 
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result;
-  if (pred.Get<bool>({})) {
-    result =
-        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
-            .ConsumeValueOrDie();
-  } else {
-    result = embedded_evaluator
-                 .Evaluate(*false_computation, {&false_computation_arg})
-                 .ConsumeValueOrDie();
-  }
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      embedded_evaluator.Evaluate(
+                          *conditional->branch_computation(branch_index),
+                          {&branch_computation_arg}));
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();
@@ -1569,20 +1560,220 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   return Status::OK();
 }
 
-Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!reduce->shape().IsTuple()) {
-    return DefaultAction(reduce);
-  } else {
-    auto first_element_type = reduce->shape().tuple_shapes(0).element_type();
-    for (const auto& tuple_shape : reduce->shape().tuple_shapes()) {
-      if (tuple_shape.element_type() != first_element_type) {
-        return Unimplemented(
-            "Reduce with several outputs that have mixed element types is "
-            "unsupported");
-      }
-    }
-    return reduce->Visit(typed_visitors_[first_element_type].get());
+static bool IsScalarAdd(HloComputation* computation) {
+  HloInstruction* instruction = computation->root_instruction();
+  if (instruction->opcode() == HloOpcode::kAdd &&
+      computation->num_parameters() == 2) {
+    const HloInstruction* lhs = instruction->operand(0);
+    const HloInstruction* rhs = instruction->operand(1);
+    return lhs->opcode() == HloOpcode::kParameter &&
+           ShapeUtil::IsScalar(lhs->shape()) &&
+           rhs->opcode() == HloOpcode::kParameter &&
+           ShapeUtil::IsScalar(rhs->shape()) && lhs != rhs;
   }
+  return false;
+}
+
+// Run a single step of an inner loop while running reduction, which applies
+// the user-provided computation on the accumulator and the output element
+// (until the reduction is completed, the output element is also used as
+// an accumulator).
+static StatusOr<bool> PerformReductionStep(
+    absl::Span<const int64> input_index, absl::Span<const int64> output_index,
+    absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
+    HloComputation* computation, HloEvaluator* embedded_evaluator) {
+  int num_args = results.size();
+  bool is_tuple = num_args > 1;
+
+  absl::InlinedVector<Literal, 1> arg_values;
+  arg_values.reserve(num_args);
+  absl::InlinedVector<Literal, 1> accumulators;
+  accumulators.reserve(num_args);
+  for (int64 i = 0; i < num_args; ++i) {
+    arg_values.emplace_back(
+        ShapeUtil::MakeShape(input_args[i]->shape().element_type(), {}));
+    accumulators.emplace_back(
+        ShapeUtil::MakeShape(input_args[i]->shape().element_type(), {}));
+
+    TF_RETURN_IF_ERROR(
+        arg_values[i].CopyElementFrom(*input_args[i], input_index, {}));
+    TF_RETURN_IF_ERROR(
+        accumulators[i].CopyElementFrom(results[i], output_index, {}));
+  }
+
+  // Evaluate computation with specified literal operands.
+  absl::InlinedVector<Literal*, 2> embedded_operands;
+  for (Literal& accumulator : accumulators) {
+    embedded_operands.push_back(&accumulator);
+  }
+  for (Literal& local_input : arg_values) {
+    embedded_operands.push_back(&local_input);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      Literal computed_result,
+      embedded_evaluator->Evaluate(*computation, embedded_operands));
+
+  // Clear visit states so that we can use the evaluator again on the same
+  // computation.
+  embedded_evaluator->ResetVisitStates();
+
+  if (is_tuple) {
+    std::vector<Literal> computed_results = computed_result.DecomposeTuple();
+    for (int64 i = 0; i < num_args; ++i) {
+      TF_RETURN_IF_ERROR(
+          results[i].CopyElementFrom(computed_results[i], {}, output_index));
+    }
+  } else {
+    TF_RETURN_IF_ERROR(
+        results[0].CopyElementFrom(computed_result, {}, output_index));
+  }
+
+  return true;
+}
+
+static StatusOr<bool> GenerateReduceOutputElement(
+    absl::Span<const int64> output_index,
+
+    absl::Span<const Literal* const> init_values,
+    absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
+
+    HloComputation* function, HloEvaluator* embedded_evaluator,
+
+    absl::Span<const int64> arg_dim_steps,
+    absl::Span<const int64> arg_dim_counts,
+    absl::Span<const int64> result_to_arg_index) {
+  bool is_tuple = results.size() > 1;
+  bool use_fast_add = ShapeUtil::ElementIsFloating(init_values[0]->shape()) &&
+                      IsScalarAdd(function) && !is_tuple;
+
+  const Shape& arg_shape = input_args[0]->shape();
+  absl::Span<const int64> arg_dimensions = AsInt64Slice(arg_shape.dimensions());
+  std::vector<int64> base(arg_dimensions.size());
+  for (int64 i = 0; i < output_index.size(); ++i) {
+    base[result_to_arg_index[i]] = output_index[i];
+  }
+
+  for (int64 i = 0; i < results.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        results[i].CopyElementFrom(*init_values[i], {}, output_index));
+  }
+
+  if (use_fast_add) {
+    TF_ASSIGN_OR_RETURN(double computed_result,
+                        init_values[0]->GetAsDouble({}));
+    auto reduction_step =
+        [&](absl::Span<const int64> input_index) -> StatusOr<bool> {
+      TF_ASSIGN_OR_RETURN(double argument,
+                          input_args[0]->GetAsDouble(input_index));
+      computed_result += argument;
+      return true;
+    };
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+        arg_shape, base, arg_dim_counts, arg_dim_steps, reduction_step));
+    TF_RETURN_IF_ERROR(results[0].SetFromDouble(output_index, computed_result));
+    return true;
+  }
+
+  // Iterates only over reduced shape, as counts and steps are set to zero
+  // for all non-reduced dimensions.
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      arg_shape, base, arg_dim_counts, arg_dim_steps,
+      [&](absl::Span<const int64> input_index) {
+        return PerformReductionStep(input_index, output_index, input_args,
+                                    results, function, embedded_evaluator);
+      }));
+  return true;
+}
+
+Status HloEvaluator::HandleReduce(HloInstruction* instr) {
+  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(instr);
+  int64 num_args = reduce->inputs().size();
+  absl::Span<const int64> dimensions_to_reduce(reduce->dimensions());
+  HloComputation* function = reduce->to_apply();
+
+  absl::InlinedVector<const Shape*, 1> operand_shapes;
+  for (const HloInstruction* operand : reduce->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                      ShapeInference::InferReduceShape(
+                          operand_shapes, dimensions_to_reduce,
+                          /*to_apply=*/function->ComputeProgramShape()));
+  TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
+      << "return shape is set to: " << ShapeUtil::HumanString(reduce->shape())
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  absl::InlinedVector<const Literal*, 1> input_args(num_args);
+  absl::InlinedVector<const Literal*, 1> init_values(num_args);
+  for (int64 i = 0; i < num_args; ++i) {
+    input_args[i] = &GetEvaluatedLiteralFor(reduce->inputs()[i]);
+    VLOG(3) << "HandleReduce arg_literal: " << input_args[i]->ToString();
+    init_values[i] = &GetEvaluatedLiteralFor(reduce->init_values()[i]);
+    VLOG(3) << "HandleReduce init_literal: " << init_values[i]->ToString();
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_values[i]->shape()));
+  }
+
+  // All args and results have the same dimensions, so pick an arbitrary one.
+  const Shape& arg_shape = input_args[0]->shape();
+  const Shape& out_shape = reduce->shape();
+  bool is_tuple = out_shape.IsTuple();
+  const Shape& output_shape = reduce->shape().IsTuple()
+                                  ? reduce->shape().tuple_shapes(0)
+                                  : reduce->shape();
+
+  absl::Span<const int64> arg_dimensions = AsInt64Slice(arg_shape.dimensions());
+
+  // All increments are set to 0.
+  std::vector<int64> arg_dim_steps(arg_dimensions.size());
+
+  // All counts are set to 0.
+  std::vector<int64> arg_dim_counts(arg_dimensions.size());
+
+  // Set steps and counts for reduced dimensions.
+  // This avoids iterating over non-reduced dimensions, as their step
+  // and count is set to zero.
+  for (const int64 dim : dimensions_to_reduce) {
+    arg_dim_steps[dim] = 1;
+    arg_dim_counts[dim] = arg_dimensions[dim];
+  }
+  auto reduced_dimensions = arg_shape.dimensions();
+
+  // Map each dimension in the result to a dimension in arg that isn't
+  // being reduced.
+  std::vector<int64> result_to_arg_index;
+  for (int64 i = 0; i < arg_dimensions.size(); ++i) {
+    if (arg_dim_steps[i] == 0) {
+      result_to_arg_index.push_back(i);
+    }
+  }
+
+  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  absl::InlinedVector<Literal, 1> results(num_args);
+  for (int64 i = 0; i < num_args; ++i) {
+    results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
+  }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      output_shape, [&](absl::Span<const int64> output_index) {
+        return GenerateReduceOutputElement(
+            output_index, init_values, input_args, absl::Span<Literal>(results),
+            function, &embedded_evaluator, arg_dim_steps, arg_dim_counts,
+            result_to_arg_index);
+      }));
+
+  if (is_tuple) {
+    Literal tuple_result(reduce->shape());
+    for (int64 i = 0; i < num_args; ++i) {
+      TF_CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
+    }
+    evaluated_[reduce] = std::move(tuple_result);
+  } else {
+    CHECK_EQ(results.size(), 1);
+    evaluated_[reduce] = std::move(results[0]);
+  }
+  return Status::OK();
 }
 
 Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
@@ -1616,8 +1807,9 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!LayoutUtil::LayoutsInShapesEqual(GetEvaluatedLiteralFor(hlo).shape(),
-                                        hlo->shape())) {
+  if (!Layout::Equal().MinorToMajorOnly()(
+          GetEvaluatedLiteralFor(hlo).shape().layout(),
+          hlo->shape().layout())) {
     evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
   }
   return Status::OK();

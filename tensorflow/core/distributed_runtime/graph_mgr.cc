@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
@@ -342,10 +343,13 @@ Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
   std::vector<Tensor> tensors_to_send;
   keys.reserve(in.size());
   tensors_to_send.reserve(in.size());
+  size_t input_size = 0;
   for (const auto& p : in) {
     keys.push_back(p.first);
     tensors_to_send.push_back(p.second);
+    input_size += p.second.AllocatedBytes();
   }
+  metrics::RecordGraphInputTensors(input_size);
   Status s =
       SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   rendezvous->Unref();
@@ -362,6 +366,11 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
     s = errors::Internal("Failed to fetch outputs for step ", step_id,
                          ". (Original error message: ", s.ToString(), ")");
   }
+  size_t output_size = 0;
+  for (auto& p : *out) {
+    output_size += p.second.AllocatedBytes();
+  }
+  metrics::RecordGraphOutputTensors(output_size);
   return s;
 }
 
@@ -380,9 +389,12 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
       rendezvous, nullptr, {}, keys, received_keys,
       [done, rendezvous, received_keys, out, keys](const Status s) {
         rendezvous->Unref();
+        size_t output_size = 0;
         for (int i = 0; i < keys.size(); ++i) {
           (*out)[keys[i]] = (*received_keys)[i];
+          output_size += (*out)[keys[i]].AllocatedBytes();
         }
+        metrics::RecordGraphOutputTensors(output_size);
         delete received_keys;
         done(s);
       });
@@ -395,6 +407,8 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
+  string session_id_meta = strings::StrCat("RunGraph #id=", step_id, "#");
+  auto* activity = new tracing::ScopedActivity(session_id_meta);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -408,6 +422,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
+    delete activity;
     return;
   }
 
@@ -432,6 +447,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                 true)
           : nullptr;
   // Sends values specified by the caller.
+  size_t input_size = 0;
   if (s.ok()) {
     std::vector<string> keys;
     std::vector<Tensor> tensors_to_send;
@@ -440,12 +456,14 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     for (auto& p : in) {
       keys.push_back(p.first);
       tensors_to_send.push_back(p.second);
+      input_size += p.second.AllocatedBytes();
     }
     s = SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   }
 
   if (!s.ok()) {
     done(s);
+    delete activity;
     delete ce_handle;
     item->Unref();
     rendezvous->Unref();
@@ -455,12 +473,15 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   StartParallelExecutors(
       handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
       cancellation_manager,
-      [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
+      [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
+       activity](const Status& s) {
         done(s);
+        metrics::RecordGraphInputTensors(input_size);
         metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
                                      start_time_usecs);
         rendezvous->Unref();
         item->Unref();
+        delete activity;
         delete ce_handle;
       });
 }

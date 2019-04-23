@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -89,6 +91,40 @@ w: The eigenvalues in ascending order, each repeated according to its
   multiplicity.
 v: The column v[..., :, i] is the normalized eigenvector corresponding to the
   eigenvalue w[..., i].
+)doc");
+
+REGISTER_OP("XlaSvd")
+    .Input("a: T")
+    .Attr("max_iter: int")
+    .Attr("epsilon: float")
+    .Attr("precision_config: string")
+    .Output("s: T")
+    .Output("u: T")
+    .Output("v: T")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Computes the eigen decomposition of a batch of self-adjoint matrices
+(Note: Only real inputs are supported).
+
+Computes the eigenvalues and eigenvectors of the innermost M-by-N matrices in
+tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[...,:,:]).
+
+a: the input tensor.
+
+max_iter: maximum number of sweep update, i.e., the whole lower triangular
+  part or upper triangular part based on parameter lower. Heuristically, it has
+  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  (Ref: Golub & van Loan "Matrix Computation").
+
+epsilon: the tolerance ratio.
+
+precision_config: a serialized xla::PrecisionConfig proto.
+
+s: Singular values. The values are sorted in reverse order of magnitude, so
+  s[..., 0] is the largest value, s[..., 1] is the second largest, etc.
+u: Left singular vectors.
+v: Right singular vectors.
 )doc");
 
 REGISTER_OP("XlaConv")
@@ -471,6 +507,95 @@ mode: String to determine the dequantize mode in {"MIN_COMBINED", "MIN_FIRST", "
 transpose_output: Boolean to determine if output is transposed. transpose_output
      is faster when input is large and rank of input is higher than 1.
 )doc");
+
+REGISTER_OP("XlaEinsum")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("equation: string")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      shape_inference::ShapeHandle input_a = context->input(0);
+      shape_inference::ShapeHandle input_b = context->input(1);
+
+      int64 rank_a, rank_b;
+      if (context->RankKnown(input_a)) {
+        rank_a = context->Rank(input_a);
+      } else {
+        return errors::InvalidArgument("input 0's rank is unknown.");
+      }
+      if (context->RankKnown(input_b)) {
+        rank_b = context->Rank(input_b);
+      } else {
+        return errors::InvalidArgument("input 1's rank is unknown.");
+      }
+      string equation;
+      TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));
+
+      std::map<char, shape_inference::DimensionHandle> left_map;
+      std::map<char, shape_inference::DimensionHandle> right_map;
+      std::vector<shape_inference::DimensionHandle> dims;
+
+      std::vector<string> equation_split = absl::StrSplit(equation, "->");
+
+      if (equation_split.size() != 2) {
+        return errors::InvalidArgument("Expected one \"->\" in equation. Got: ",
+                                       equation);
+      }
+
+      std::vector<string> lhs_rhs_split =
+          absl::StrSplit(equation_split[0], ',');
+      if (lhs_rhs_split.size() != 2) {
+        return errors::InvalidArgument("Expected one \",\" in equation. Got: ",
+                                       equation);
+      }
+
+      if (rank_a != lhs_rhs_split[0].size()) {
+        return errors::InvalidArgument(absl::StrCat(
+            "Expected equation[0] with size: ", rank_a, " Got '",
+            lhs_rhs_split[0], "'", " with size: ", lhs_rhs_split[0].size()));
+      }
+
+      if (rank_b != lhs_rhs_split[1].size()) {
+        return errors::InvalidArgument(absl::StrCat(
+            "Expected equation[1] with size: ", rank_b, " Got '",
+            lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
+      }
+
+      for (const char& c : lhs_rhs_split[0]) {
+        left_map[c] = context->Dim(input_a, left_map.size());
+      }
+      for (const char& c : lhs_rhs_split[1]) {
+        right_map[c] = context->Dim(input_b, right_map.size());
+      }
+
+      for (const char& c : equation_split[1]) {
+        if (left_map.count(c)) {
+          dims.push_back(left_map[c]);
+        } else if (right_map.count(c)) {
+          dims.push_back(right_map[c]);
+        } else {
+          return errors::InvalidArgument("Invalid equation: ", equation);
+        }
+      }
+
+      context->set_output(0, context->MakeShape(dims));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op which supports basic einsum op with 2 inputs and 1 output.
+
+This op has better TPU performnce since it doesn't have explicitly reshape and
+transpose operations as tf.einsum does.
+)doc");
+
+REGISTER_OP("XlaReplicaId")
+    .Output("id: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->MakeShape({}));
+      return Status::OK();
+    })
+    .Doc("Replica ID.");
 
 }  // namespace
 }  // namespace tensorflow

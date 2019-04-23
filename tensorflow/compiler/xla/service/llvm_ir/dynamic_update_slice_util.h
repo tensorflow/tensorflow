@@ -45,7 +45,7 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
   HloInstruction* fused_root = fusion->fused_expression_root();
   if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice ||
-      fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+      !fusion->IsLoopFusion()) {
     return false;
   }
   // Walk DynamicUpdateSlice operand(0) to fused parameter and get its

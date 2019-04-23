@@ -142,10 +142,10 @@ class CpuCompilerTest : public LLVMCompilerTest {
 
 class GpuCompilerTest : public LLVMCompilerTest {
  public:
-#if GOOGLE_CUDA
-  GpuCompilerTest() : LLVMCompilerTest("CUDA") {}
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   GpuCompilerTest() : LLVMCompilerTest("ROCM") {}
+#elif GOOGLE_CUDA
+  GpuCompilerTest() : LLVMCompilerTest("CUDA") {}
 #endif 
 };
 
@@ -155,10 +155,10 @@ TEST_F(CpuCompilerTest, HooksTest) {
 }
 
 TEST_F(GpuCompilerTest, HooksTest) {
-#if GOOGLE_CUDA 
-  gpu::NVPTXCompiler compiler;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   gpu::AMDGPUCompiler compiler;
+#elif GOOGLE_CUDA 
+  gpu::NVPTXCompiler compiler;
 #endif 
   TestCompilerHooks(&compiler);
 }
@@ -169,10 +169,10 @@ TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
 }
 
 TEST_F(GpuCompilerTest, GpuMultModuleCompilation) {
-#if GOOGLE_CUDA 
-  gpu::NVPTXCompiler compiler;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   gpu::AMDGPUCompiler compiler;
+#elif GOOGLE_CUDA 
+  gpu::NVPTXCompiler compiler;
 #endif 
   TestMultiModuleCompilation(&compiler);
 }

@@ -63,6 +63,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
+from tensorflow.python import tf2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -200,13 +201,22 @@ class TPUDistributionStrategy(object):
         removed in future once the model replication functionality is mature
         enough. If `False` (default behavior), the system automatically finds
         the best configuration, in terms of number of TPU cores, for the model
-        replication, typically using all avaiable TPU cores. If overwrites as
+        replication, typically using all available TPU cores. If overwrites as
         `True`, force the model replication using single core, i.e., no
         replication.
     Raises:
       Exception: No TPU Found on the given worker.
     """
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     if tpu_cluster_resolver is None:
       tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
 
@@ -298,10 +308,11 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(
-      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
+  mask = math_ops.cast(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id),
+      dtypes.float32)
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
-  result = mask * math_ops.to_float(tensor)
+  result = mask * math_ops.cast(tensor, dtypes.float32)
   local_tensor_with_holes = array_ops.reshape(result,
                                               [-1] + result.shape.as_list()[2:])
   concat_tensor = tpu_ops.cross_replica_sum(local_tensor_with_holes)
@@ -1034,29 +1045,29 @@ class TPUFunction(object):
           # the Momentum optimizer) when _make_train_function is invoked.
           with keras_tpu_variables.replicated_variable_for_optimizer(
               self._tpu_assignment.num_towers):
-            self._cloned_model._make_fit_function()
+            self._cloned_model._make_train_function()
         else:
-          self._cloned_model._make_fit_function()
+          self._cloned_model._make_train_function()
 
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._fit_function.outputs
+            for tensor in self._cloned_model.train_function.outputs
         ]
         return [
-            self._cloned_model._fit_function.updates_op,
+            self._cloned_model.train_function.updates_op,
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._fit_function.outputs,
+                self._cloned_model.train_function.outputs,
                 name='outfeed-enqueue-train')
         ]
       elif is_test:
-        self._cloned_model._make_eval_function()
+        self._cloned_model._make_test_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._eval_function.outputs
+            for tensor in self._cloned_model.test_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._eval_function.outputs,
+                self._cloned_model.test_function.outputs,
                 name='outfeed-enqueue-test')
         ]
       elif is_predict:
@@ -1373,7 +1384,16 @@ class KerasTPUModel(models.Model):
         outputs=cpu_model.outputs,
         name=cpu_model.name,
     )
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     # Create a mapping from numpy arrays to infeed managers.
     # Note: uses a list of tuples instead of a map because numpy arrays are
     # not hashable.
@@ -1386,8 +1406,6 @@ class KerasTPUModel(models.Model):
     self.predict_function = None
     self.test_function = None
     self.train_function = None
-    self._fit_function = None
-    self._eval_function = None
     self._stateful_metric_functions = []
 
     cluster_resolver = strategy._tpu_cluster_resolver
@@ -1928,7 +1946,7 @@ class KerasTPUModel(models.Model):
     # in TPUs.
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator) or
+          isinstance(validation_data, iterator_ops.IteratorV2) or
           isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '
@@ -2027,21 +2045,6 @@ class KerasTPUModel(models.Model):
       self.test_function = TPUFunction(
           self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
     return self.test_function
-
-  def _make_fit_function(self):
-    if not self._fit_function:
-      self._fit_function = TPUFunction(
-          self,
-          model_fn_lib.ModeKeys.TRAIN,
-          tpu_assignment=self._tpu_assignment)
-
-    return self._fit_function
-
-  def _make_eval_function(self):
-    if not self._eval_function:
-      self._eval_function = TPUFunction(
-          self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
-    return self._eval_function
 
   def _make_predict_function(self):
     if not self.predict_function:

@@ -90,7 +90,7 @@ struct BucketizeFunctor<GPUDevice, T> {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     GpuDeviceArrayOnHost<float> boundaries_array(context,
-                                                  boundaries_vector.size());
+                                                 boundaries_vector.size());
     TF_RETURN_IF_ERROR(boundaries_array.Init());
     for (int i = 0; i < boundaries_vector.size(); ++i) {
       boundaries_array.Set(i, boundaries_vector[i]);

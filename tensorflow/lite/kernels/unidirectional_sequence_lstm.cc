@@ -246,7 +246,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 }
 
 // Resize the output and  state tensors based on the sizes of the input tensors.
-// Allocate a temprory scratch tensor. Also check that the sizes of the input
+// Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
@@ -304,14 +304,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size));
 
-  // The weights are of consistent type, so it suffices to check one.
-  // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
-  const bool is_hybrid_op = ((input_to_output_weights->type == kTfLiteUInt8 ||
-                              input_to_output_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
-
   TfLiteIntArrayFree(node->temporaries);
-  if (is_hybrid_op) {
+  if (IsHybridOp(input, input_to_output_weights)) {
     node->temporaries = TfLiteIntArrayCreate(kNumTemporaryTensors);
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
@@ -338,7 +332,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
                                                    scratch_buffer_size));
 
-  if (is_hybrid_op) {
+  if (IsHybridOp(input, input_to_output_weights)) {
     // Allocate temporary tensors to store quantized values of input,
     // activation_state and cell_state tensors.
     node->temporaries->data[kInputQuantized] =

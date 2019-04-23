@@ -207,6 +207,7 @@ class HloSharding {
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
   // pre-order walk (ShapeTree iterator order).
   // REQUIRES: IsTuple().
+  std::vector<HloSharding>& tuple_elements() { return tuple_elements_; }
   const std::vector<HloSharding>& tuple_elements() const {
     return tuple_elements_;
   }

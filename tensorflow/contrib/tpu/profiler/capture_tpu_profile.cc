@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
   int FLAGS_num_tracing_attempts = 3;
   bool FLAGS_include_dataset_ops = true;
   int FLAGS_monitoring_level = 0;
+  bool FLAGS_timestamp = false;
   int FLAGS_num_queries = 100;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
@@ -54,6 +55,9 @@ int main(int argc, char** argv) {
                        "Choose a monitoring level between 1 and 2 to monitor "
                        "your TPU job continuously. Level 2 is more verbose "
                        "than level 1 and shows more metrics."),
+      tensorflow::Flag("timestamp", &FLAGS_timestamp,
+                       "Set to true to display timestamp in monitoring "
+                       "results."),
       tensorflow::Flag("num_queries", &FLAGS_num_queries,
                        "This script will run monitoring for num_queries before "
                        "it stops.")};
@@ -102,12 +106,13 @@ int main(int argc, char** argv) {
               << "ms and show metrics for " << num_queries << " time(s)."
               << std::endl;
     tensorflow::profiler::client::StartMonitoring(
-        FLAGS_service_addr, duration_ms, FLAGS_monitoring_level, num_queries);
+        FLAGS_service_addr, duration_ms, FLAGS_monitoring_level,
+        FLAGS_timestamp, num_queries);
   } else {
     status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
         FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
-    if (!status.ok()) {
+    if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
       std::cout << status.error_message() << std::endl;
       std::cout << usage.c_str() << std::endl;
       return 2;

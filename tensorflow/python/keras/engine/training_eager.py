@@ -40,12 +40,7 @@ def _eager_loss_fn(outputs, targets, loss_fn, output_name):
   return loss
 
 
-def _eager_metrics_fn(model,
-                      outputs,
-                      targets,
-                      sample_weights=None,
-                      masks=None,
-                      return_stateful_result=True):
+def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """Calculates the metrics for each output of the given model.
 
   Arguments:
@@ -54,8 +49,6 @@ def _eager_metrics_fn(model,
       targets: The predictions or targets of the given model.
       sample_weights: Optional list of sample weights for each output.
       masks: Optional list of masks for each output.
-      return_stateful_result: Boolean, indicates whether the stateful
-        (aggregated)/stateless metric result should be returned.
 
   Returns:
       Returns the metric results for each output of the model.
@@ -63,12 +56,22 @@ def _eager_metrics_fn(model,
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
   # TODO(psv): Consider supporting skip target indices in eager mode?
-  metric_results = model._handle_metrics(
-      outputs,
-      targets=targets,
-      sample_weights=sample_weights,
-      masks=masks,
-      return_stateful_result=return_stateful_result)
+  # Invoke all(weighted and unweighted) metrics.
+  metric_results = []
+  if targets:
+    metric_results = model._handle_metrics(
+        outputs,
+        return_weighted_and_unweighted_metrics=True,
+        targets=targets,
+        sample_weights=sample_weights,
+        masks=masks)
+
+  # Add metric results from the `add_metric` metrics.
+  metric_results.extend([
+      m.result()
+      for m in model.metrics
+      if m not in model._compile_metric_functions
+  ])
   return [backend.mean(t) for t in metric_results]
 
 
@@ -120,13 +123,14 @@ def _model_loss(model,
   masks = [t._keras_mask for t in outs]
   targets = nest.flatten(targets)
 
-  # Used to keep track of individual output losses (stateless).
+  # Used to keep track of individual output losses.
   output_losses = []
-  # Used to keep track of individual output losses (stateful).
-  aggregated_output_losses = []
 
   with backend.name_scope('loss'):
-    for i, loss_fn in enumerate(model.loss_functions):
+    loss_fns = [
+        loss_fn for loss_fn in model.loss_functions if loss_fn is not None
+    ]
+    for i, loss_fn in enumerate(loss_fns):
       weights = sample_weights[i] if sample_weights else None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
@@ -167,32 +171,27 @@ def _model_loss(model,
       # associated with a model, each output's loss is calculated and returned
       # as part of the loss_metrics.
       if len(model.outputs) > 1:
-        output_losses.append(backend.mean(output_loss))
-        if output_loss_metrics is not None:
-          # Compute the stateful loss value.
-          if weighted_losses is not None:
-            aggregated_output_loss = output_loss_metrics[i](weighted_losses)
-          else:
-            # Custom loss class.
-            aggregated_output_loss = training_utils.call_metric_function(
-                output_loss_metrics[i], targets[i], outs[i], weights=weights)
-          # Keep track of the stateful output loss result.
-          aggregated_output_losses.append(aggregated_output_loss)
+        # Compute the stateful loss value.
+        if weighted_losses is not None:
+          aggregated_output_loss = output_loss_metrics[i](weighted_losses)
+        else:
+          # Custom loss class.
+          aggregated_output_loss = training_utils.call_metric_function(
+              output_loss_metrics[i], targets[i], outs[i], weights=weights)
+        # Keep track of the stateful output loss result.
+        output_losses.append(aggregated_output_loss)
 
-      loss_weight = model.loss_weights_list[i]
-      if total_loss is None:
-        total_loss = loss_weight * output_loss
-      else:
-        total_loss += loss_weight * output_loss
+      total_loss += model.loss_weights_list[i] * output_loss
 
-    total_loss = backend.mean(total_loss)
+    if loss_fns:
+      total_loss = backend.mean(total_loss)
     # Add regularization losses
     custom_losses = model.losses
     if custom_losses:
       total_loss += losses_utils.scale_loss_for_distribution(
           math_ops.add_n(custom_losses))
 
-  return outs, total_loss, output_losses, aggregated_output_losses, masks
+  return outs, total_loss, output_losses, masks
 
 
 def _process_single_batch(model,
@@ -225,7 +224,7 @@ def _process_single_batch(model,
   """
   with backend.eager_learning_phase_scope(1 if training else 0):
     with GradientTape() as tape:
-      outs, total_loss, output_losses, aggregated_output_losses, masks = (
+      outs, total_loss, output_losses, masks = (
           _model_loss(
               model,
               inputs,
@@ -237,22 +236,21 @@ def _process_single_batch(model,
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
     if training:
-      if not model._collected_trainable_weights:
+      if not model.trainable_weights:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
       else:
-        grads = tape.gradient(total_loss, model._collected_trainable_weights)
+        grads = tape.gradient(total_loss, model.trainable_weights)
         model.optimizer.apply_gradients(zip(grads,
-                                            model._collected_trainable_weights))
-    return outs, total_loss, output_losses, aggregated_output_losses, masks
+                                            model.trainable_weights))
+    return outs, total_loss, output_losses, masks
 
 
 def train_on_batch(model,
                    inputs,
                    targets,
                    sample_weights=None,
-                   reset_metrics=True,
                    output_loss_metrics=None):
   """Calculates the loss and gradient updates for one input batch.
 
@@ -261,9 +259,6 @@ def train_on_batch(model,
       inputs: Input batch data.
       targets: Target batch data.
       sample_weights: Sample weight batch data.
-      reset_metrics: If `True`, the metrics returned will be only for this
-        batch. If `False`, the metrics will be statefully accumulated across
-        batches.
       output_loss_metrics: List of metrics that are used to aggregated output
         loss values.
 
@@ -273,19 +268,21 @@ def train_on_batch(model,
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
       inputs = training_utils.cast_if_floating_dtype(
           [ops.convert_to_tensor(val) for val in inputs])
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
         if val is not None else None for val in sample_weights
     ]
 
-  outs, total_loss, output_losses, aggregated_output_losses, masks = (
+  outs, total_loss, output_losses, masks = (
       _process_single_batch(
           model,
           inputs,
@@ -296,18 +293,9 @@ def train_on_batch(model,
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(
-      model,
-      outs,
-      targets,
-      sample_weights=sample_weights,
-      masks=masks,
-      return_stateful_result=not reset_metrics)
+      model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  if reset_metrics:
-    final_output_losses = output_losses
-  else:
-    final_output_losses = aggregated_output_losses
-  results = total_loss + final_output_losses + metrics_results
+  results = total_loss + output_losses + metrics_results
 
   return [tensor_util.constant_value(v) for v in results]
 
@@ -316,7 +304,6 @@ def test_on_batch(model,
                   inputs,
                   targets,
                   sample_weights=None,
-                  reset_metrics=True,
                   output_loss_metrics=None):
   """Calculates the loss for one input batch.
 
@@ -325,9 +312,6 @@ def test_on_batch(model,
       inputs: Input batch data.
       targets: Target batch data.
       sample_weights: Sample weight batch data.
-      reset_metrics: If `True`, the metrics returned will be only for this
-        batch. If `False`, the metrics will be statefully accumulated across
-        batches.
       output_loss_metrics: List of metrics that are used to aggregated output
         loss values.
 
@@ -348,7 +332,7 @@ def test_on_batch(model,
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
         if val is not None else None for val in sample_weights
     ]
-  outs, total_loss, output_losses, aggregated_output_losses, masks = (
+  outs, total_loss, output_losses, masks = (
       _model_loss(
           model,
           inputs,
@@ -359,17 +343,8 @@ def test_on_batch(model,
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(
-      model,
-      outs,
-      targets,
-      sample_weights=sample_weights,
-      masks=masks,
-      return_stateful_result=not reset_metrics)
+      model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  if reset_metrics:
-    final_output_losses = output_losses
-  else:
-    final_output_losses = aggregated_output_losses
-  results = total_loss + final_output_losses + metrics_results
+  results = total_loss + output_losses + metrics_results
 
   return [tensor_util.constant_value(v) for v in results]

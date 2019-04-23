@@ -19,13 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 
 
 # TODO(yuefengz): support in-graph replication.
-class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+class CollectiveAllReduceStrategy(distribute_lib.StrategyV1):
   """Distribution strategy that uses collective ops for all-reduce.
 
   *** contrib version ***
@@ -41,22 +42,34 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
   distributed environment.
   """
 
-  def __init__(self, num_gpus_per_worker=0):
+  def __init__(self,
+               num_gpus_per_worker=0,
+               communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
     """Initializes the object.
 
     Args:
       num_gpus_per_worker: number of local GPUs or GPUs per worker, the default
         is 0 meaning CPU only.
+      communication: optional Enum of type
+        `distribute.experimental.CollectiveCommunication`.  This provides a way
+        for the user to override the choice of collective op communication.
+        Possible values include `AUTO`, `RING`, and `NCCL`.
     """
     super(CollectiveAllReduceStrategy, self).__init__(
-        CollectiveAllReduceExtended(self, num_gpus_per_worker))
+        CollectiveAllReduceExtended(
+            self,
+            num_gpus_per_worker=num_gpus_per_worker,
+            communication=communication))
 
 
 class CollectiveAllReduceExtended(
     collective_all_reduce_strategy.CollectiveAllReduceExtended):
   """Implementation of CollectiveAllReduceStrategy."""
 
-  def __init__(self, container_strategy, num_gpus_per_worker):
+  def __init__(self,
+               container_strategy,
+               num_gpus_per_worker,
+               communication):
     # Use TFConfigClusterResolver to parse TF_CONFIG. We don't want to change
     # the constructor's interface to allow customized cluster resolver. Use
     # SimpleClusterResolver to override num_accelerators.
@@ -65,6 +78,9 @@ class CollectiveAllReduceExtended(
         cluster_spec=tfconfig.cluster_spec(),
         task_type=tfconfig.task_type,
         task_id=tfconfig.task_id,
-        num_accelerators={"GPU": num_gpus_per_worker})
+        num_accelerators={"GPU": num_gpus_per_worker},
+        rpc_layer=tfconfig.rpc_layer)
     super(CollectiveAllReduceExtended, self).__init__(
-        container_strategy, cluster_resolver=cluster_resolver)
+        container_strategy,
+        communication=communication,
+        cluster_resolver=cluster_resolver)

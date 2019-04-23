@@ -484,7 +484,7 @@ TEST_F(XlaBuilderTest, ProtoMatches) {
 TEST_F(XlaBuilderTest, DynamicParameter) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6}, {true})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   Parameter(&b, 1, ShapeUtil::MakeShape(U32, {}), "p1");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/1,
@@ -503,7 +503,7 @@ TEST_F(XlaBuilderTest, DynamicParameter) {
 TEST_F(XlaBuilderTest, DynamicUnary) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{1},
@@ -521,8 +521,8 @@ TEST_F(XlaBuilderTest, DynamicUnary) {
 TEST_F(XlaBuilderTest, DynamicBinary) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {5}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5}, {true}),
+       ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{2},
@@ -546,8 +546,8 @@ TEST_F(XlaBuilderTest, DynamicBinary) {
 TEST_F(XlaBuilderTest, DynamicBinaryHasBroadcast) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5, 4}), ShapeUtil::MakeShape(F32, {5}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{2},
@@ -572,7 +572,8 @@ TEST_F(XlaBuilderTest, DynamicBinaryHasBroadcast) {
 TEST_F(XlaBuilderTest, DynamicBroadcast) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5, 4}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{1},
@@ -593,8 +594,8 @@ TEST_F(XlaBuilderTest, DynamicBroadcast) {
 TEST_F(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(F32, {1, 15}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {10}, {true}),
+       ShapeUtil::MakeShape(F32, {1, 15}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{1},
@@ -614,8 +615,8 @@ TEST_F(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
 TEST_F(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(PRED, {10}), ShapeUtil::MakeShape(F32, {10}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(PRED, {10}, {true}),
+       ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{1},
@@ -637,7 +638,8 @@ TEST_F(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
 TEST_F(XlaBuilderTest, DynamicPad) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5, 4}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pad_val = ConstantR0<float>(&b, -1);
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -664,9 +666,9 @@ TEST_F(XlaBuilderTest, DynamicPad) {
 TEST_F(XlaBuilderTest, DynamicConvolution) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {1, 2, 2, 128}),
-       ShapeUtil::MakeShape(F32, {2, 2, 128, 8}), ShapeUtil::MakeShape(U32, {}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {1, 2, 2, 128}, {true, false, false, false}),
+       ShapeUtil::MakeShape(F32, {2, 2, 128, 8}, {false, false, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{2},
@@ -706,9 +708,9 @@ TEST_F(XlaBuilderTest, DynamicConvolution) {
 TEST_F(XlaBuilderTest, DynamicDot) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2, 3, 4}),
-       ShapeUtil::MakeShape(F32, {2, 4, 5}), ShapeUtil::MakeShape(U32, {}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {2, 3, 4}, {true, true, false}),
+       ShapeUtil::MakeShape(F32, {2, 4, 5}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{2},
@@ -745,7 +747,8 @@ TEST_F(XlaBuilderTest, DynamicDot) {
 TEST_F(XlaBuilderTest, DynamicReduce) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {5, 4, 3}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {5, 4, 3}, {false, true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0);
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -769,7 +772,8 @@ TEST_F(XlaBuilderTest, DynamicReduce) {
 TEST_F(XlaBuilderTest, DynamicReduceWindow) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2, 4, 8}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0.f);
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -795,8 +799,9 @@ TEST_F(XlaBuilderTest, DynamicReduceWindow) {
 TEST_F(XlaBuilderTest, DynamicSelectAndScatter) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2, 4, 8}),
-       ShapeUtil::MakeShape(F32, {2, 2, 2}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(F32, {2, 2, 2}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0.f);
   XlaBuilder bsum(TestName());
@@ -833,7 +838,8 @@ TEST_F(XlaBuilderTest, DynamicSelectAndScatter) {
 TEST_F(XlaBuilderTest, DynamicReshape) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6}),
+      {ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
+                            {false, false, true, true, false}),
        ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -861,9 +867,9 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
 TEST_F(XlaBuilderTest, DynamicSelect) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {4, 5, 6}),
-       ShapeUtil::MakeShape(F32, {4, 5, 6}), ShapeUtil::MakeShape(U32, {}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pred = Parameter(&b, 1, ShapeUtil::MakeShape(PRED, {}), "pred");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -892,9 +898,9 @@ TEST_F(XlaBuilderTest, DynamicSelect) {
 TEST_F(XlaBuilderTest, DynamicSelectNotCompatible) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {4, 5, 6}),
-       ShapeUtil::MakeShape(F32, {4, 5, 6}), ShapeUtil::MakeShape(U32, {}),
-       ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, false, true}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pred = Parameter(&b, 1, ShapeUtil::MakeShape(PRED, {}), "pred");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
@@ -920,7 +926,8 @@ TEST_F(XlaBuilderTest, DynamicSelectNotCompatible) {
 TEST_F(XlaBuilderTest, DynamicTranspose) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {3, 5}), ShapeUtil::MakeShape(U32, {})});
+      {ShapeUtil::MakeShape(F32, {3, 5}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
                                    /*dynamic_size_param_index=*/{1},

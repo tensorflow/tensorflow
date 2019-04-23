@@ -134,11 +134,14 @@ def Assert(condition, data, summarize=None, name=None):
   Returns:
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
-    @compatibility{eager} returns None.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
 
   Raises:
-    @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
-    is not true
+    @compatibility(eager)
+    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @end_compatibility
   """
   if context.executing_eagerly():
     if not condition:
@@ -2455,7 +2458,12 @@ class WhileContext(ControlFlowContext):
     # store the tensor after the reduction as opposed to the tensor before
     # reduction, and therefore could significantly reduce memory consumption.
     # For now, we do this only for a few ops.
-    if op.type in {"Shape", "Size", "Rank"}:
+    #
+    # If in XLA context, do not move constant ops to forward pass as pushing to
+    # and popping from a stack removes the constant property of an op and breaks
+    # XLA compilation, which requires certain inputs to be constant for certain
+    # ops.
+    if not util.IsInXLAContext(op) and op.type in {"Shape", "Size", "Rank"}:
       grad_ctxt = ops.get_default_graph()._get_control_flow_context()
       if grad_ctxt:
         grad_ctxt = grad_ctxt.GetWhileContext()
@@ -3941,7 +3949,7 @@ def case(pred_fn_pairs,
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
 
-  @compatibility{eager}
+  @compatibility(eager)
   Unordered dictionaries are not supported in eager mode when `exclusive=False`.
   Use a list of tuples instead.
   @end_compatibility

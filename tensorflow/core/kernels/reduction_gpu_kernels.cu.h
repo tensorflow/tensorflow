@@ -33,6 +33,7 @@ limitations under the License.
 #endif
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
@@ -64,60 +65,12 @@ struct Sum {
   }
 };
 
-#if GOOGLE_CUDA
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded addition op for std::complex
-template <>
-struct Sum<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Sum<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
-  }
-};
-#endif
-
 template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a * b;
   }
 };
-
-#if GOOGLE_CUDA
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded multiply op for std::complex
-template <>
-struct Prod<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Prod<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
-  }
-};
-#endif
 
 template <typename T>
 struct Square {
@@ -334,7 +287,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   // TODO(nluehr) revert to 2D array when compiler is ready.
   // This is to mimic the following, but without any constructors:
   //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || __HIP__
   __shared__ __align__(
       alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
@@ -391,7 +344,7 @@ __global__ void ColumnReduceKernel(
   // TODO(nluehr) revert to 2D array when compiler is ready.
   // This is to mimic the following, but without constructors:
   //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || __HIP__
   __shared__ __align__(
       alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
@@ -535,7 +488,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   if (in_size <= 4096) {
     const int num_blocks = 1;
     const int num_threads = 256;
-    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, OUT_T, num_threads>),
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, OUT_T, num_threads, Op>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream, in, out, in_size, op, init);
     return;
   } else if (in_size <= 1 << 18) {
@@ -555,7 +508,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
             DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
             &temp_storage));
 
-    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, T*, num_threads>),
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, T*, num_threads, Op>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream,
             in, (T*)temp_storage.flat<int8_t>().data(), in_size, op, init);
 
@@ -577,7 +530,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     OP_REQUIRES(
         ctx, success == 0,
-        errors::Internal("CUB reduce error", GPUGETERRORSTRING(success)));
+        errors::Internal("CUB reduce error", GPU_GET_ERROR_STRING(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
@@ -619,7 +572,7 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
 
     OP_REQUIRES(ctx, success == 0,
                 errors::Internal("CUB segmented reduce error",
-                                 GPUGETERRORSTRING(success)));
+                                 GPU_GET_ERROR_STRING(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
@@ -777,7 +730,7 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
     OP_REQUIRES(ctx, success == 0,
                 errors::Internal("CUB segmented reduce error",
-                                 GPUGETERRORSTRING(success)));
+                                 GPU_GET_ERROR_STRING(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.

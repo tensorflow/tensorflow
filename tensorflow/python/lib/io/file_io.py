@@ -246,6 +246,11 @@ class FileIO(object):
         pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
+  @property
+  def seekable(self):
+    """Returns True as FileIO supports random access ops of seek()/tell()"""
+    return True
+
 
 @tf_export(v1=["gfile.Exists"])
 def file_exists(filename):
@@ -255,7 +260,7 @@ def file_exists(filename):
     filename: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
@@ -272,7 +277,7 @@ def file_exists_v2(path):
     path: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
@@ -646,7 +651,10 @@ def list_directory_v2(path):
     errors.NotFoundError if directory doesn't exist
   """
   if not is_directory(path):
-    raise errors.NotFoundError(None, None, "Could not find directory")
+    raise errors.NotFoundError(
+        node_def=None,
+        op=None,
+        message="Could not find directory {}".format(path))
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.

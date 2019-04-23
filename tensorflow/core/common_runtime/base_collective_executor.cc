@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 
 #define VALUE_IN_DEBUG_STRING false
@@ -264,7 +265,10 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // TODO(b/80529858): Instead of forking every per-device Collective
   // Op off into its own thread, consider queuing them on a
   // fixed-size thread-pool dedicated to running CollectiveOps.
-  SchedClosure([col_impl, col_ctx, done_safe]() {
+  SchedClosure([col_impl, col_ctx, done_safe, ctx]() {
+    tracing::ScopedActivity activity(
+        ctx->op_kernel().name(), strings::StrCat(ctx->op_kernel().type_string(),
+                                                 "#id=", ctx->step_id(), "#"));
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       done_safe(s);
       delete col_ctx;

@@ -36,7 +36,7 @@ std::vector<Tindices> ParseRowStartIndices(
 
 // Returns Status::OK() if and only if config is a float scalar or a matrix with
 // dimensions M x 3. If config is a scalar then config must be in the range
-// [0, 1.0). If confix is a matrix then config must have shape M x 3, all of
+// [0, 1.0). If config is a matrix then config must have shape M x 3, all of
 // its entries must be positive, and entries in the last column may not
 // exceed 1.0. If config is a matrix then it may not be empty.
 Status ValidateSparseMatrixShardingConfig(const Tensor& config);

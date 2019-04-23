@@ -18,12 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
 class _TestReplicaContext(distribute_lib.ReplicaContext):
@@ -40,13 +49,25 @@ def _get_test_variable(name, synchronization, aggregation):
   }
 
 
-class _TestStrategy(distribute_lib.DistributionStrategy):
+def _test_input_fn(input_context):
+  del input_context
+  return dataset_ops.DatasetV2.from_tensors(1.).repeat()
+
+
+class _TestStrategy(distribute_lib.Strategy):
 
   def __init__(self):
     super(_TestStrategy, self).__init__(_TestExtended(self))
 
 
-class _TestExtended(distribute_lib.DistributionStrategyExtended):
+class _TestExtended(distribute_lib.StrategyExtendedV1):
+
+  def __init__(self, distribute):
+    super(_TestExtended, self).__init__(distribute)
+    device_map = values.ReplicaDeviceMap(["/device:CPU:0"])
+    worker_device_pairs = [("", ["/device:CPU:0"])]
+    self._input_workers = input_lib.InputWorkers(device_map,
+                                                 worker_device_pairs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
@@ -58,6 +79,45 @@ class _TestExtended(distribute_lib.DistributionStrategyExtended):
     return _get_test_variable(kwargs["name"], kwargs["synchronization"],
                               kwargs["aggregation"])
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    return input_lib.InputFunctionIterator(
+        input_fn, self._input_workers, [distribute_lib.InputContext()])
+
+  def _local_results(self, value):
+    return (value,)
+
+  def _reduce_to(self, reduce_op, value, destinations):
+    del reduce_op, destinations
+    return value
+
+  def _experimental_make_numpy_dataset(self, numpy_input, session):
+    del session
+    return dataset_ops.DatasetV2.from_tensor_slices(numpy_input)
+
+  def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
+                                          initial_loop_values=None):
+    # TODO(tomhennigan) This is missing many things (e.g. ctx.run_op).
+    ctx = input_lib.MultiStepContext()
+    for _ in range(iterations):
+      fn(ctx, iterator.get_next())
+    return ctx
+
+  def _update(self, var, fn, args, kwargs, group):
+    # The implementations of _update() and _update_non_slot() are identical
+    # except _update() passes `var` as the first argument to `fn()`.
+    return self._update_non_slot(var, fn, (var,) + tuple(args), kwargs, group)
+
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
+    del colocate_with
+    result = fn(*args, **kwargs)
+    if group:
+      return result
+    else:
+      return nest.map_structure(self._unwrap, result)
+
 
 def _assert_in_default_state(t):
   t.assertIs(ds_context._get_default_replica_context(),
@@ -66,6 +126,25 @@ def _assert_in_default_state(t):
   t.assertFalse(ds_context.in_cross_replica_context())
   t.assertIs(ds_context._get_default_strategy(), ds_context.get_strategy())
   t.assertFalse(ds_context.has_strategy())
+
+
+def _run_in_and_out_of_scope(unbound_test_method):
+  def wrapper(test_case):
+    dist = _TestStrategy()
+    # Running in the default (replica) scope should be supported.
+    _assert_in_default_state(test_case)
+    unbound_test_method(test_case, dist)
+    # As well as running in the strategy scope.
+    with dist.scope():
+      unbound_test_method(test_case, dist)
+    _assert_in_default_state(test_case)
+    # When run under a different strategy the test method should fail.
+    another_strategy = _TestStrategy()
+    msg = "Mixing different .*Strategy objects"
+    with test_case.assertRaisesRegexp(RuntimeError, msg):
+      with another_strategy.scope():
+        unbound_test_method(test_case, dist)
+  return wrapper
 
 
 class TestStrategyTest(test.TestCase):
@@ -88,8 +167,7 @@ class TestStrategyTest(test.TestCase):
       self.assertDictEqual(expected_value,
                            variable_scope.variable(1.0, name="bar"))
 
-    with self.assertRaises(RuntimeError):
-      dist.extended.call_for_each_replica(run_fn)
+    dist.extended.call_for_each_replica(run_fn)
     with dist.scope():
       dist.extended.call_for_each_replica(run_fn)
     _assert_in_default_state(self)
@@ -110,6 +188,53 @@ class TestStrategyTest(test.TestCase):
                            variable_scope.variable(1.0, name="baz"))
     _assert_in_default_state(self)
 
+  def testScopeDeviceNestingError(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    # Open a device scope with dist.scope().
+    dist.extended._default_device = "/device:GPU:0"
+    scope = dist.scope()
+    scope.__enter__()
+    self.assertIs(dist, ds_context.get_strategy())
+    with ops.device("/device:CPU:0"):
+      with self.assertRaisesRegexp(RuntimeError, "Device scope nesting error"):
+        scope.__exit__(None, None, None)
+    scope.__exit__(None, None, None)
+    _assert_in_default_state(self)
+
+  def testScopeVarCreatorNestingError(self):
+
+    def creator(next_creator, **kwargs):
+      return next_creator(**kwargs)
+
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    scope = dist.scope()
+    scope.__enter__()
+    self.assertIs(dist, ds_context.get_strategy())
+    with variable_scope.variable_creator_scope(creator):
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "Variable creator scope nesting error"):
+        scope.__exit__(None, None, None)
+    scope.__exit__(None, None, None)
+    _assert_in_default_state(self)
+
+  def testScopeVarScopeNestingError(self):
+    # We create a new graph here to simplify clean-up, since the error
+    # we are triggering happens in the middle of scope.__exit__() and
+    # leaves us in a weird state.
+    with ops.Graph().as_default():
+      _assert_in_default_state(self)
+      dist = _TestStrategy()
+      scope = dist.scope()
+      scope.__enter__()
+      self.assertIs(dist, ds_context.get_strategy())
+      with variable_scope.variable_scope("AA"):
+        with self.assertRaisesRegexp(RuntimeError,
+                                     "Variable scope nesting error"):
+          scope.__exit__(None, None, None)
+    _assert_in_default_state(self)
+
   def testSettingSynchronizationAndAggregation(self):
     _assert_in_default_state(self)
     dist = _TestStrategy()
@@ -125,6 +250,142 @@ class TestStrategyTest(test.TestCase):
               synchronization=variable_scope.VariableSynchronization.ON_WRITE,
               aggregation=variable_scope.VariableAggregation.MEAN))
     _assert_in_default_state(self)
+
+  def testSetStrategy(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    dist2 = _TestStrategy()
+    ds_context.experimental_set_strategy(dist)
+    self.assertIs(None, ds_context.get_replica_context())
+    self.assertIs(dist, ds_context.get_cross_replica_context())
+    self.assertTrue(ds_context.in_cross_replica_context())
+    self.assertTrue(ds_context.has_strategy())
+    self.assertIs(dist, ds_context.get_strategy())
+    expected_value = _get_test_variable(
+        "baz", variable_scope.VariableSynchronization.AUTO,
+        variable_scope.VariableAggregation.NONE)
+    self.assertDictEqual(expected_value,
+                         variable_scope.variable(1.0, name="baz"))
+    ds_context.experimental_set_strategy(dist2)
+    self.assertIs(dist2, ds_context.get_strategy())
+    ds_context.experimental_set_strategy(None)
+    _assert_in_default_state(self)
+
+  def testSetStrategyInScope(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    with dist.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError,
+          "Must not be called inside a `tf.distribute.Strategy` scope"):
+        ds_context.experimental_set_strategy(_TestStrategy())
+      with self.assertRaisesRegexp(
+          RuntimeError,
+          "Must not be called inside a `tf.distribute.Strategy` scope"):
+        ds_context.experimental_set_strategy(dist)
+      with self.assertRaisesRegexp(
+          RuntimeError,
+          "Must not be called inside a `tf.distribute.Strategy` scope"):
+        ds_context.experimental_set_strategy(None)
+    _assert_in_default_state(self)
+
+  def testSameScopeNesting(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    scope_a = dist.scope()
+    with scope_a:
+      self.assertIs(dist, ds_context.get_strategy())
+      scope_b = dist.scope()
+      with scope_b:
+        self.assertIs(dist, ds_context.get_strategy())
+        with scope_a:
+          self.assertIs(dist, ds_context.get_strategy())
+        self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(dist, ds_context.get_strategy())
+      dist2 = _TestStrategy()
+      scope2 = dist2.scope()
+      with self.assertRaisesRegexp(
+          RuntimeError,
+          "Mixing different tf.distribute.Strategy objects"):
+        with scope2:
+          pass
+    _assert_in_default_state(self)
+    with scope_b:
+      self.assertIs(dist, ds_context.get_strategy())
+    _assert_in_default_state(self)
+
+  @_run_in_and_out_of_scope
+  def testMakeInputFnIterator(self, dist):
+    self.assertIsNotNone(dist.make_input_fn_iterator(_test_input_fn))
+
+  @_run_in_and_out_of_scope
+  def testReduce(self, dist):
+    x = constant_op.constant(1.)
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
+    self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+
+  def testReductions_acceptStringOps(self):
+    dist = _TestStrategy()
+    for op in ("mean", "MEAN", "sum", "SUM"):
+      x = constant_op.constant(1.)
+      y = constant_op.constant(1.)
+      x_r = dist.reduce(op, x, axis=None)
+      self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+      x_r = dist.extended.reduce_to(op, x, "/CPU:0")
+      self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+      x_r, y_r = dist.extended.batch_reduce_to(op,
+                                               ((x, "/CPU:0"), (y, "/CPU:0")))
+      self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+      self.assertEqual(self.evaluate(y), self.evaluate(y_r))
+
+  @_run_in_and_out_of_scope
+  def testExperimentalMakeNumpyDataset(self, dist):
+    numpy_input = np.ones([10], dtype=np.float32)
+    dataset = dist.experimental_make_numpy_dataset(numpy_input)
+    self.assertEqual(
+        self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
+
+  @_run_in_and_out_of_scope
+  def testExperimentalRunStepsOnIterator(self, dist):
+    all_inputs = []
+    dataset = dataset_ops.Dataset.from_tensors(1.).repeat()
+    dist.extended.experimental_run_steps_on_iterator(
+        lambda _, inputs: all_inputs.append(self.evaluate(inputs)),
+        dataset.make_one_shot_iterator())
+    self.assertEqual(all_inputs, [1.])
+
+  @_run_in_and_out_of_scope
+  def testReduceTo(self, dist):
+    x = constant_op.constant(1.)
+    x_r = dist.extended.reduce_to(reduce_util.ReduceOp.MEAN, x, "/CPU:0")
+    self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+
+  @_run_in_and_out_of_scope
+  def testBatchReduceTo(self, dist):
+    x = constant_op.constant(1.)
+    y = constant_op.constant(1.)
+    x_r, y_r = dist.extended.batch_reduce_to(reduce_util.ReduceOp.MEAN,
+                                             ((x, "/CPU:0"), (y, "/CPU:0")))
+    self.assertEqual(self.evaluate(x), self.evaluate(x_r))
+    self.assertEqual(self.evaluate(y), self.evaluate(y_r))
+
+  @_run_in_and_out_of_scope
+  def testUpdate(self, dist):
+    with dist.scope():
+      v = variables.Variable(1.)
+    t = constant_op.constant(2.)
+
+    def assign_fn(vv, tt):
+      self.assertIs(vv, v)
+      self.assertIs(tt, t)
+    dist.extended.update(v, assign_fn, (t,))
+
+  @_run_in_and_out_of_scope
+  def testUpdateNonSlot(self, dist):
+    t = constant_op.constant(2.)
+    update_calls = []
+    dist.extended.update_non_slot(t, lambda: update_calls.append(1))
+    self.assertEqual(len(update_calls), 1)
 
 
 class DefaultDistributionStrategyTest(test.TestCase):

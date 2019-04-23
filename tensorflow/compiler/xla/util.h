@@ -260,6 +260,16 @@ Status Unavailable(const absl::FormatSpec<Args...>& format,
   return WithLogBacktrace(
       tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
 }
+template <typename... Args>
+Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {

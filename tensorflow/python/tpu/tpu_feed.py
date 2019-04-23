@@ -86,6 +86,8 @@ def partition_or_replicate_on_host(tensor, dims):
 def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
   """Tags appropriate XLA sharding attribute to the dequeued tensor.
 
+  The sharding attribute of the dequeued tensor will be a tuple.
+
   Args:
     tensor: The dequeued tensor on TPU.
     dims: A list of integer describes how the tensor is partitioned.
@@ -94,12 +96,15 @@ def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
     The same tensor with the xla_sharding attribute.
   """
   if dims is None:
-    return xla_sharding.replicate(tensor)
+    return xla_sharding.replicate(tensor, assign_tuple_sharding=True)
   elif np.prod(dims) == 1:
-    return xla_sharding.assign_device(tensor, 0)
+    return xla_sharding.assign_device(tensor, 0, assign_tuple_sharding=True)
   else:
     tile_assignment = np.arange(np.prod(dims)).reshape(dims)
-    return xla_sharding.tile(tensor=tensor, tile_assignment=tile_assignment)
+    return xla_sharding.tile(
+        tensor=tensor,
+        tile_assignment=tile_assignment,
+        assign_tuple_sharding=True)
 
 
 def tag_sharding_attribute_for_dequeued_tensors(dequeues, dims):

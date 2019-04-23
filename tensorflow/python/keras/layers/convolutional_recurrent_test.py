@@ -172,8 +172,6 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       self.assertEqual(len(layer.losses), 4)
 
   def test_conv_lstm_dropout(self):
-    if testing_utils.should_run_eagerly():
-      self.skipTest('Skip test due to b/126246383.')
     # check dropout
     with self.cached_session():
       testing_utils.layer_test(

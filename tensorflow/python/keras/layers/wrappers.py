@@ -27,9 +27,9 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -43,10 +43,9 @@ class Wrapper(Layer):
   Two usable wrappers are the `TimeDistributed` and `Bidirectional` wrappers.
 
   Arguments:
-      layer: The layer to be wrapped.
+    layer: The layer to be wrapped.
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -57,6 +56,8 @@ class Wrapper(Layer):
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
+    if not self.layer.built:
+      self.layer.build(input_shape)
     self.built = True
 
   @property
@@ -65,36 +66,6 @@ class Wrapper(Layer):
       return self.layer.activity_regularizer
     else:
       return None
-
-  @property
-  def trainable(self):
-    return self.layer.trainable
-
-  @trainable.setter
-  def trainable(self, value):
-    self.layer.trainable = value
-
-  @property
-  def trainable_weights(self):
-    return self.layer.trainable_weights
-
-  @property
-  def non_trainable_weights(self):
-    return self.layer.non_trainable_weights
-
-  @property
-  def updates(self):
-    return self.layer.updates + self._updates
-
-  @property
-  def losses(self):
-    return self.layer.losses + self._losses
-
-  def get_weights(self):
-    return self.layer.get_weights()
-
-  def set_weights(self, weights):
-    self.layer.set_weights(weights)
 
   def get_config(self):
     config = {
@@ -130,10 +101,10 @@ class TimeDistributed(Wrapper):
   to each of the 10 timesteps, independently:
 
   ```python
-      # as the first layer in a model
-      model = Sequential()
-      model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
-      # now model.output_shape == (None, 10, 8)
+  # as the first layer in a model
+  model = Sequential()
+  model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
+  # now model.output_shape == (None, 10, 8)
   ```
 
   The output will then have shape `(32, 10, 8)`.
@@ -141,8 +112,8 @@ class TimeDistributed(Wrapper):
   In subsequent layers, there is no need for the `input_shape`:
 
   ```python
-      model.add(TimeDistributed(Dense(32)))
-      # now model.output_shape == (None, 10, 32)
+  model.add(TimeDistributed(Dense(32)))
+  # now model.output_shape == (None, 10, 32)
   ```
 
   The output will then have shape `(32, 10, 32)`.
@@ -151,16 +122,25 @@ class TimeDistributed(Wrapper):
   for instance with a `Conv2D` layer:
 
   ```python
-      model = Sequential()
-      model.add(TimeDistributed(Conv2D(64, (3, 3)),
-                                input_shape=(10, 299, 299, 3)))
+  model = Sequential()
+  model.add(TimeDistributed(Conv2D(64, (3, 3)),
+                            input_shape=(10, 299, 299, 3)))
   ```
 
   Arguments:
-      layer: a layer instance.
+    layer: a layer instance.
+
+  Call arguments:
+    inputs: Input tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the
+      wrapped layer (only if the layer supports this argument).
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked. This argument is passed to the
+      wrapped layer (only if the layer supports this argument).
 
   Raises:
-      ValueError: If not initialized with a `Layer` instance.
+    ValueError: If not initialized with a `Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
@@ -170,7 +150,12 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._track_trackable(layer, name='layer')
+
+    # It is safe to use the fast, reshape-based approach with all of our
+    # built-in Layers.
+    self._always_use_reshape = (
+        layer_utils.is_builtin_layer(layer) and
+        not getattr(layer, 'stateful', False))
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
@@ -179,18 +164,19 @@ class TimeDistributed(Wrapper):
     tensor.
 
     Arguments:
-        init_tuple: a tuple, the first part of the output shape
-        tensor: the tensor from which to get the (static and dynamic) shapes
-            as the last part of the output shape
-        start_idx: int, which indicate the first dimension to take from
-            the static shape of the tensor
-        int_shape: an alternative static shape to take as the last part
-            of the output shape
+      init_tuple: a tuple, the first part of the output shape
+      tensor: the tensor from which to get the (static and dynamic) shapes
+        as the last part of the output shape
+      start_idx: int, which indicate the first dimension to take from
+        the static shape of the tensor
+      int_shape: an alternative static shape to take as the last part
+        of the output shape
+
     Returns:
-        The new int_shape with the first part from init_tuple
-        and the last part from either `int_shape` (if provided)
-        or `tensor.shape`, where every `None` is replaced by
-        the corresponding dimension from `tf.shape(tensor)`.
+      The new int_shape with the first part from init_tuple
+      and the last part from either `int_shape` (if provided)
+      or `tensor.shape`, where every `None` is replaced by
+      the corresponding dimension from `tf.shape(tensor)`.
     """
     # replace all None in int_shape by K.shape
     if int_shape is None:
@@ -213,13 +199,7 @@ class TimeDistributed(Wrapper):
     # Don't enforce the batch or time dimension.
     self.input_spec = InputSpec(shape=[None, None] + input_shape[2:])
     child_input_shape = [input_shape[0]] + input_shape[2:]
-    if not self.layer.built:
-      # The base layer class calls a conversion function on the input shape to
-      # convert it to a TensorShape. The conversion function requires a
-      # tuple which is why we cast the shape.
-      self.layer.build(tuple(child_input_shape))
-      self.layer.built = True
-    super(TimeDistributed, self).build()
+    super(TimeDistributed, self).build(tuple(child_input_shape))
     self.built = True
 
   def compute_output_shape(self, input_shape):
@@ -238,7 +218,7 @@ class TimeDistributed(Wrapper):
       kwargs['training'] = training
 
     input_shape = K.int_shape(inputs)
-    if input_shape[0]:
+    if input_shape[0] and not self._always_use_reshape:
       # batch size matters, use rnn-based implementation
       def step(x, _):
         output = self.layer.call(x, **kwargs)
@@ -302,10 +282,10 @@ class TimeDistributed(Wrapper):
 
     Arguments:
       inputs: Tensor with shape [batch size, timesteps, ...] indicating the
-          input to TimeDistributed. If static shape information is available for
-          "batch size", `mask` is returned unmodified.
+        input to TimeDistributed. If static shape information is available for
+        "batch size", `mask` is returned unmodified.
       mask: Either None (indicating no masking) or a Tensor indicating the
-          input mask for TimeDistributed. The shape can be static or dynamic.
+        input mask for TimeDistributed. The shape can be static or dynamic.
 
     Returns:
       Either None (no masking), or a [batch size, timesteps, ...] Tensor with
@@ -362,31 +342,34 @@ class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
   Arguments:
-      layer: `Recurrent` instance.
-      merge_mode: Mode by which outputs of the
-          forward and backward RNNs will be combined.
-          One of {'sum', 'mul', 'concat', 'ave', None}.
-          If None, the outputs will not be combined,
-          they will be returned as a list.
+    layer: `Recurrent` instance.
+    merge_mode: Mode by which outputs of the
+      forward and backward RNNs will be combined.
+      One of {'sum', 'mul', 'concat', 'ave', None}.
+      If None, the outputs will not be combined,
+      they will be returned as a list.
+
+  Call arguments:
+    The call arguments for this layer are the same as those of the wrapped RNN
+      layer.
 
   Raises:
-      ValueError: If not initialized with a `Layer` instance or
-          In case of invalid `merge_mode` argument.
+    ValueError: If not initialized with a `Layer` instance or
+      In case of invalid `merge_mode` argument.
 
   Examples:
 
   ```python
-      model = Sequential()
-      model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
-      10)))
-      model.add(Bidirectional(LSTM(10)))
-      model.add(Dense(5))
-      model.add(Activation('softmax'))
-      model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+  model = Sequential()
+  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
+  10)))
+  model.add(Bidirectional(LSTM(10)))
+  model.add(Dense(5))
+  model.add(Activation('softmax'))
+  model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
@@ -397,8 +380,8 @@ class Bidirectional(Wrapper):
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
     if getattr(layer, 'zero_output_for_mask', None) is not None:
-      # Force the zero_output_for_mask to be True if it presents.
-      layer.zero_output_for_mask = True
+      # Force the zero_output_for_mask to be True if returning sequences.
+      layer.zero_output_for_mask = layer.return_sequences
 
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
@@ -417,28 +400,12 @@ class Bidirectional(Wrapper):
     self.supports_masking = True
     self._trainable = True
     self._num_constants = None
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
     super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
     self.input_spec = layer.input_spec
-    self._track_trackable(self.forward_layer, name='forward_layer')
-    self._track_trackable(self.backward_layer, name='backward_layer')
-
-  @property
-  def trainable(self):
-    return self._trainable
-
-  @trainable.setter
-  def trainable(self, value):
-    self._trainable = value
-    self.forward_layer.trainable = value
-    self.backward_layer.trainable = value
-
-  def get_weights(self):
-    return self.forward_layer.get_weights() + self.backward_layer.get_weights()
-
-  def set_weights(self, weights):
-    nw = len(weights)
-    self.forward_layer.set_weights(weights[:nw // 2])
-    self.backward_layer.set_weights(weights[nw // 2:])
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
@@ -631,32 +598,6 @@ class Bidirectional(Wrapper):
         return output_mask + state_mask * 2
       return [output_mask] + state_mask * 2
     return output_mask
-
-  @property
-  def trainable_weights(self):
-    if hasattr(self.forward_layer, 'trainable_weights'):
-      return (self.forward_layer.trainable_weights +
-              self.backward_layer.trainable_weights)
-    return []
-
-  @property
-  def non_trainable_weights(self):
-    if hasattr(self.forward_layer, 'non_trainable_weights'):
-      return (self.forward_layer.non_trainable_weights +
-              self.backward_layer.non_trainable_weights)
-    return []
-
-  @property
-  def updates(self):
-    if hasattr(self.forward_layer, 'updates'):
-      return self.forward_layer.updates + self.backward_layer.updates
-    return []
-
-  @property
-  def losses(self):
-    if hasattr(self.forward_layer, 'losses'):
-      return self.forward_layer.losses + self.backward_layer.losses
-    return []
 
   @property
   def constraints(self):

@@ -66,24 +66,31 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
     }
   }
 
-  // If the common ancestor is a conditional instruction, even though the true
-  // and false computations are not really ordered per-se, we define the true
-  // computation to be ordered before the false one.
-  // This ensures that buffers can still be shared among the two computations
+  // If the common ancestor is a conditional instruction, even though the branch
+  // computations are not really ordered per-se, we define the 0th branch
+  // computation to be ordered before the 1st one, before the 2nd and so forth.
+  // This ensures that buffers can still be shared among branch computations
   // as they will forcibly have disjoint liveness.
   if (a_ancestor == b_ancestor &&
-      a_ancestor->opcode() == HloOpcode::kConditional) {
-    const HloComputation* true_computation = a_ancestor->true_computation();
-    const HloComputation* false_computation = a_ancestor->false_computation();
-    if (call_graph_->InstructionIsNestedIn(a, true_computation) &&
-        call_graph_->InstructionIsNestedIn(b, false_computation)) {
+      (a_ancestor->opcode() == HloOpcode::kConditional)) {
+    int a_branch = -1;
+    int b_branch = -1;
+    for (int j = 0; j < a_ancestor->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              a, a_ancestor->branch_computation(j))) {
+        a_branch = j;
+      }
+      if (call_graph_->InstructionIsNestedIn(
+              b, a_ancestor->branch_computation(j))) {
+        b_branch = j;
+      }
+    }
+    if (a_branch != -1 && a_branch < b_branch) {
       return true;
     }
-    // If 'b' is the conditional ancestor, and 'a' is within the true or false
-    // computations, 'a' executes before 'b'.
-    if (b == a_ancestor &&
-        (call_graph_->InstructionIsNestedIn(a, true_computation) ||
-         call_graph_->InstructionIsNestedIn(a, false_computation))) {
+    // If 'b' is the conditional ancestor, and 'a' is within a branch
+    // computation, 'a' executes before 'b'.
+    if (b == a_ancestor && a_branch != -1) {
       return true;
     }
   }
@@ -144,17 +151,17 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
            b.defining_instruction()->while_condition()))) {
     return true;
   }
-  // If 'b' is a conditional phi and 'a' is in the true or false computation,
-  // then 'a' executes before 'b'.
+  // If 'b' is a conditional phi and 'a' is in some branch computation, then 'a'
+  // executes before 'b'.
   if (b.is_phi() &&
-      b.defining_instruction()->opcode() == HloOpcode::kConditional &&
-      (call_graph_->InstructionIsNestedIn(
-           a.defining_instruction(),
-           b.defining_instruction()->true_computation()) ||
-       call_graph_->InstructionIsNestedIn(
-           a.defining_instruction(),
-           b.defining_instruction()->false_computation()))) {
-    return true;
+      b.defining_instruction()->opcode() == HloOpcode::kConditional) {
+    for (int j = 0; j < b.defining_instruction()->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              a.defining_instruction(),
+              b.defining_instruction()->branch_computation(j))) {
+        return true;
+      }
+    }
   }
   return ExecutesBefore(a.defining_instruction(), b.defining_instruction());
 }
@@ -225,17 +232,14 @@ bool HloOrdering::UseIsBeforeValueDefinition(
 
   if (use.instruction->opcode() == HloOpcode::kConditional) {
     const HloInstruction* conditional = use.instruction;
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           conditional->true_computation())) {
-      VLOG(4) << "  use is conditional " << use.instruction->name()
-              << " and def is in TRUE computation";
-      return true;
-    }
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           conditional->false_computation())) {
-      VLOG(4) << "  use is conditional " << use.instruction->name()
-              << " and def is in FALSE computation";
-      return true;
+    for (int j = 0; j < conditional->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              value.defining_instruction(),
+              conditional->branch_computation(j))) {
+        VLOG(4) << "  use is conditional " << use.instruction->name()
+                << " and def is in " << j << "th branch computation";
+        return true;
+      }
     }
     if (value.defining_instruction() == use.instruction) {
       VLOG(4) << "  use is conditional " << use << " and def is "

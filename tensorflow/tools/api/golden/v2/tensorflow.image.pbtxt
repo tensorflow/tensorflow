@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "convert_image_dtype"
@@ -74,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "draw_bounding_boxes"
-    argspec: "args=[\'images\', \'boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "encode_jpeg"
@@ -178,15 +178,15 @@ tf_module {
   }
   member_method {
     name: "resize"
-    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'images\', \'size\', \'method\', \'preserve_aspect_ratio\', \'antialias\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "resize_image_with_crop_or_pad"
     argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "resize_image_with_pad"
-    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\', \'align_corners\'], varargs=None, keywords=None, defaults=[\'0\', \'False\'], "
+    name: "resize_with_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\', \'antialias\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'False\'], "
   }
   member_method {
     name: "rgb_to_grayscale"

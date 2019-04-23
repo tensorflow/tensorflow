@@ -32,7 +32,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseHloString(hlo_text, config));
+                            ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, nullopt));
   }
 };
@@ -83,7 +83,15 @@ ENTRY resampler_Resampler.49 {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{4e-3, 4e-3}));
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  // Disable the layout assignment pass because it would throw away the layouts
+  // in the fusion computation, but not recreate them.
+  debug_options.add_xla_disable_hlo_passes("layout-assignment");
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 }  // namespace
 }  // namespace xla

@@ -128,7 +128,7 @@ class ProfileBuffer {
   // Returns the profile event at the given index. If the index is invalid a
   // nullptr is returned. The return event may get overwritten if more events
   // are added to buffer.
-  const struct ProfileEvent* const At(int index) const {
+  const struct ProfileEvent* const At(size_t index) const {
     size_t size = Size();
     if (index >= size) {
       return nullptr;

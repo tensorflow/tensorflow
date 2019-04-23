@@ -64,7 +64,35 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
-  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
+  HloOpcode opcode;
+  auto opcode_or = StringToHloOpcode(proto.opcode());
+  absl::optional<ComparisonDirection> comparison_direction;
+  if (opcode_or.ok()) {
+    opcode = opcode_or.ConsumeValueOrDie();
+  } else {
+    // Unknown opcode. Try auto-upgrading deprecated "less-than",
+    // "greater-than", etc opcodes, which are now rolled into the kCompare
+    // opcode.
+    if (proto.opcode() == "equal-to") {
+      comparison_direction = ComparisonDirection::kEq;
+    } else if (proto.opcode() == "not-equal-to") {
+      comparison_direction = ComparisonDirection::kNe;
+    } else if (proto.opcode() == "greater-than-or-equal-to") {
+      comparison_direction = ComparisonDirection::kGe;
+    } else if (proto.opcode() == "greater-than") {
+      comparison_direction = ComparisonDirection::kGt;
+    } else if (proto.opcode() == "less-than-or-equal-to") {
+      comparison_direction = ComparisonDirection::kLe;
+    } else if (proto.opcode() == "less-than") {
+      comparison_direction = ComparisonDirection::kLt;
+    }
+    if (comparison_direction) {
+      opcode = HloOpcode::kCompare;
+    } else {
+      return InvalidArgument("Unknown opcode: %s", proto.opcode());
+    }
+  }
+
   TF_RET_CHECK(proto.has_shape());
 
   std::unique_ptr<HloInstruction> instruction;
@@ -81,6 +109,15 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   };
   const auto computations = [&computation_map, &proto](int index) {
     return computation_map.at(proto.called_computation_ids(index));
+  };
+  const auto all_computations = [&computation_map, &proto]() {
+    std::vector<HloComputation*> result(proto.called_computation_ids_size());
+    std::transform(proto.called_computation_ids().begin(),
+                   proto.called_computation_ids().end(), result.begin(),
+                   [&computation_map](int64 computation_id) {
+                     return computation_map.at(computation_id);
+                   });
+    return result;
   };
 
   TF_RET_CHECK(
@@ -127,9 +164,25 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               absl::Span<const int64>(fft_length));
       break;
     }
+    case HloOpcode::kCompare: {
+      // Auto-upgraded from deprecated opcode skips the following.
+      if (!comparison_direction) {
+        TF_ASSIGN_OR_RETURN(
+            comparison_direction,
+            StringToComparisonDirection(proto.comparison_direction()));
+      }
+      instruction =
+          CreateCompare(shape, operands(0), operands(1), *comparison_direction);
+      break;
+    }
     case HloOpcode::kTriangularSolve: {
       instruction = CreateTriangularSolve(shape, operands(0), operands(1),
                                           proto.triangular_solve_options());
+      break;
+    }
+    case HloOpcode::kCholesky: {
+      instruction =
+          CreateCholesky(shape, operands(0), proto.cholesky_options());
       break;
     }
     case HloOpcode::kSend:
@@ -158,6 +211,26 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction =
           CreateConcatenate(shape, all_operands(), proto.dimensions(0));
       break;
+    case HloOpcode::kConditional: {
+      TF_RET_CHECK(proto.called_computation_ids_size() > 0)
+          << "conditional should have at least 1 called computation";
+      if (operands(0)->shape().element_type() == PRED) {
+        TF_RET_CHECK(proto.called_computation_ids_size() == 2)
+            << "conditional should have exactly 2 called computations but got "
+            << proto.called_computation_ids_size();
+      }
+      TF_RET_CHECK(proto.operand_ids_size() ==
+                   proto.called_computation_ids_size() + 1)
+          << "conditional should have one branch_index operand plus one "
+             "operand per called computation but got "
+          << proto.operand_ids_size() << " operands for "
+          << proto.called_computation_ids_size() << " branch computations";
+      auto cond_operands = all_operands();
+      instruction =
+          CreateConditional(shape, cond_operands[0], all_computations(),
+                            absl::MakeSpan(cond_operands).subspan(1));
+      break;
+    }
     case HloOpcode::kReduce:
       TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
           << "Reduce instruction should have an even number of operands but "
@@ -230,6 +303,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_ASSIGN_OR_RETURN(auto literal,
                             Literal::CreateFromProto(proto.literal()));
         instruction = CreateConstant(std::move(literal));
+        // Literal's shape may have no/different tiling info.
+        TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+            instruction->shape(), shape));
+        *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
       }
@@ -522,6 +599,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction->AppendOperand(instruction_map.at(operand_id));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
+        if (instruction->opcode() == HloOpcode::kCall) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+              << "Call should have 1 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64 computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));
@@ -630,6 +712,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -654,15 +737,9 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kComplex:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -727,11 +804,22 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
                                               fft_length);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    ComparisonDirection direction) {
+  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction);
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
                                       HloInstruction* b,
                                       const TriangularSolveOptions& options) {
   return absl::make_unique<HloTriangularSolveInstruction>(shape, a, b, options);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCholesky(
+    const Shape& shape, HloInstruction* a, const CholeskyOptions& options) {
+  return absl::make_unique<HloCholeskyInstruction>(shape, a, options);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
@@ -885,6 +973,21 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
   // kFalseComputationIndex.
   instruction->called_computations_.push_back(true_computation);
   instruction->called_computations_.push_back(false_computation);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConditional(
+    const Shape& shape, HloInstruction* branch_index,
+    absl::Span<HloComputation* const> branch_computations,
+    absl::Span<HloInstruction* const> branch_computation_args) {
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kConditional, shape));
+  instruction->AppendOperand(branch_index);
+  CHECK_EQ(branch_computations.size(), branch_computation_args.size());
+  for (int i = 0; i < branch_computations.size(); ++i) {
+    instruction->called_computations_.push_back(branch_computations[i]);
+    instruction->AppendOperand(branch_computation_args[i]);
+  }
   return instruction;
 }
 
@@ -1257,6 +1360,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
+    case HloOpcode::kCompare:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -1294,6 +1398,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1313,6 +1418,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1329,12 +1435,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -1386,10 +1486,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
       break;
     case HloOpcode::kConditional:
-      CHECK_EQ(new_operands.size(), 3);
-      clone = CreateConditional(shape, new_operands[0], new_operands[1],
-                                true_computation(), new_operands[2],
-                                false_computation());
+      CHECK_EQ(new_operands.size(), branch_count() + 1);
+      clone = CreateConditional(shape, new_operands[0],
+                                absl::MakeSpan(branch_computations()),
+                                new_operands.subspan(1));
       break;
     case HloOpcode::kAfterAll:
       if (new_operands.empty()) {
@@ -1650,27 +1750,22 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
@@ -1700,16 +1795,16 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCall:
       return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kConditional:
-      return eq_computations(true_computation(), other.true_computation()) &&
-             eq_computations(false_computation(), other.false_computation());
-
-    case HloOpcode::kWhile: {
-      if (eq_computations(while_body(), other.while_body()) &&
-          eq_computations(while_condition(), other.while_condition())) {
-        return true;
+      for (int j = 0; j < branch_count(); ++j) {
+        if (!eq_computations(branch_computation(j),
+                             other.branch_computation(j))) {
+          return false;
+        }
       }
-      return false;
-    }
+      return true;
+    case HloOpcode::kWhile:
+      return (eq_computations(while_body(), other.while_body()) &&
+              eq_computations(while_condition(), other.while_condition()));
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
@@ -1717,6 +1812,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
+    case HloOpcode::kCompare:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -1754,6 +1850,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1971,28 +2068,41 @@ HloInstruction* HloInstruction::while_init() const {
 
 HloComputation* HloInstruction::true_computation() const {
   CHECK_EQ(HloOpcode::kConditional, opcode_);
+  CHECK_EQ(PRED, operand(0)->shape().element_type());
   return called_computations_[kTrueComputationIndex];
 }
 
 HloComputation* HloInstruction::false_computation() const {
   CHECK_EQ(HloOpcode::kConditional, opcode_);
+  CHECK_EQ(PRED, operand(0)->shape().element_type());
   return called_computations_[kFalseComputationIndex];
 }
 
-void HloInstruction::set_true_computation(HloComputation* true_computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
-  CHECK_EQ(HloOpcode::kConditional, opcode_);
-  called_computations_[kTrueComputationIndex] = true_computation;
+const std::vector<HloComputation*>& HloInstruction::branch_computations()
+    const {
+  CHECK(HloOpcode::kConditional == opcode_);
+  return called_computations_;
 }
 
-void HloInstruction::set_false_computation(HloComputation* false_computation) {
+int HloInstruction::branch_count() const {
+  CHECK(HloOpcode::kConditional == opcode_);
+  return called_computations_.size();
+}
+
+HloComputation* HloInstruction::branch_computation(int b) const {
+  CHECK(HloOpcode::kConditional == opcode_);
+  CHECK_GE(b, 0);
+  CHECK_LT(b, called_computations_.size());
+  return called_computations_[b];
+}
+
+void HloInstruction::set_branch_computation(int b,
+                                            HloComputation* computation) {
   // Don't allow changing the computation for fused instructions so we don't
   // have to recompute called_instructions for the entire fusion instruction.
   CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kConditional, opcode_);
-  called_computations_[kFalseComputationIndex] = false_computation;
+  called_computations_[b] = computation;
 }
 
 string HloInstruction::SignatureString() const {
@@ -2037,6 +2147,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
@@ -2050,17 +2161,12 @@ bool HloInstruction::IsElementwiseImpl(
     // Binary elementwise operations, the same as in IsElementwiseBinary().
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -2112,9 +2218,15 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintName(name(), options), " = ");
   }
 
-  // Print opcode, operand(s) and shape.
-  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
-            HloOpcodeString(opcode()), "(",
+  // Print shape.
+  if (options.include_layout_in_shapes()) {
+    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
+  } else {
+    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  }
+
+  // Print opcode, operand(s).
+  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2158,7 +2270,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
-      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      if (options.include_layout_in_shapes()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      } else {
+        str.push_back(ShapeUtil::HumanString(operand->shape()));
+      }
     }
 
     // In a top-level HloInstruction::ToString() call, the operand name is not
@@ -2195,10 +2311,21 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       extra.push_back(
           StrCat("scatter=", PrintName(scatter()->name(), options)));
     } else if (opcode() == HloOpcode::kConditional) {
-      extra.push_back(StrCat("true_computation=",
-                             PrintName(true_computation()->name(), options)));
-      extra.push_back(StrCat("false_computation=",
-                             PrintName(false_computation()->name(), options)));
+      if (operand(0)->shape().element_type() == PRED) {
+        extra.push_back(StrCat("true_computation=",
+                               PrintName(true_computation()->name(), options)));
+        extra.push_back(
+            StrCat("false_computation=",
+                   PrintName(false_computation()->name(), options)));
+      } else {
+        extra.push_back(StrCat(
+            "branch_computations={",
+            StrJoin(branch_computations(), ", ",
+                    [&](string* out, const HloComputation* computation) {
+                      StrAppend(out, PrintName(computation->name(), options));
+                    }),
+            "}"));
+      }
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
@@ -2230,10 +2357,20 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
         extra.push_back(StrCat("scatter=\n", scatter()->ToString(new_options)));
         break;
       case HloOpcode::kConditional:
-        extra.push_back(StrCat("true_computation=\n",
-                               true_computation()->ToString(new_options)));
-        extra.push_back(StrCat("false_computation=\n",
-                               false_computation()->ToString(new_options)));
+        if (operand(0)->shape().element_type() == PRED) {
+          extra.push_back(StrCat("true_computation=\n",
+                                 true_computation()->ToString(new_options)));
+          extra.push_back(StrCat("false_computation=\n",
+                                 false_computation()->ToString(new_options)));
+        } else {
+          extra.push_back(StrCat(
+              "branch_computations={\n",
+              StrJoin(branch_computations(), ",\n",
+                      [&](string* out, const HloComputation* computation) {
+                        StrAppend(out, computation->ToString(new_options));
+                      }),
+              "\n}"));
+        }
         break;
       case HloOpcode::kCall:
       case HloOpcode::kMap:
@@ -2335,6 +2472,22 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
+bool HloInstruction::IsInputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
+}
+
+bool HloInstruction::IsLoopFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kLoop;
+}
+
+bool HloInstruction::IsOutputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kOutput;
+}
+
+bool HloInstruction::IsCustomFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kCustom;
+}
+
 bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
@@ -2382,12 +2535,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGetTupleElement(this);
     case HloOpcode::kParameter:
       return visitor->HandleParameter(this);
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
+    case HloOpcode::kCompare:
       return visitor->HandleCompare(this);
     case HloOpcode::kComplex:
       return visitor->HandleComplex(this);
@@ -2491,6 +2639,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleIsFinite(this);
     case HloOpcode::kNot:
       return visitor->HandleNot(this);
+    case HloOpcode::kPopulationCount:
+      return visitor->HandlePopulationCount(this);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -2553,6 +2703,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGetDimensionSize(this);
     case HloOpcode::kTriangularSolve:
       return visitor->HandleTriangularSolve(this);
+    case HloOpcode::kCholesky:
+      return visitor->HandleCholesky(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -2599,7 +2751,12 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  // Calculating the instruction count within a module can be expensive on large
+  // models so only do it if the visit state is empty. This will help when the
+  // same visitor is reused across many computations of a single module.
+  if (visitor->VisitStateSize() == 0) {
+    visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  }
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
@@ -2743,11 +2900,6 @@ bool HloInstruction::IsElementwise() const {
   return IsElementwiseImpl(absl::nullopt);
 }
 
-bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
-  CHECK(IsElementwise());
-  return !ShapeUtil::SameDimensions(shape(), operand(operand_idx)->shape());
-}
-
 bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
   return IsElementwiseImpl(operand_idx);
 }
@@ -2857,9 +3009,7 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       }
       return UseKind::kReuse;
     default:
-      return IsElementwise() && !ImplicitlyBroadcastsOperand(i)
-                 ? UseKind::kUse
-                 : UseKind::kReuse;
+      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
 }
 
@@ -2972,6 +3122,16 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
+  std::vector<string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
+  }
+  return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   static std::unordered_map<string, RandomDistribution>* map = [] {
     static auto* map = new std::unordered_map<string, RandomDistribution>;
@@ -3065,7 +3225,12 @@ Status HloInstruction::set_backend_config(
 /* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
     const tensorflow::protobuf::Message& proto) {
   string ret;
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
+  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
+  // INT64_MAX, JsonFormat will return an error status, although there is no
+  // accuracy loss for int64.
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+      proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }
 
@@ -3271,6 +3436,13 @@ void HloInstruction::set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);
 }
 
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
 const absl::optional<std::vector<bool>>&
 HloInstruction::parameter_replicated_at_leaf_buffers() const {
   return Cast<HloParameterInstruction>(this)
@@ -3279,6 +3451,11 @@ HloInstruction::parameter_replicated_at_leaf_buffers() const {
 
 int64 HloInstruction::tuple_index() const {
   return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
+}
+
+void HloInstruction::set_tuple_index(int64 new_tuple_index) {
+  return Cast<HloGetTupleElementInstruction>(this)->set_tuple_index(
+      new_tuple_index);
 }
 
 int32 HloInstruction::exponent_bits() const {
@@ -3434,7 +3611,16 @@ const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
 }
 
+ComparisonDirection HloInstruction::comparison_direction() const {
+  return Cast<HloCompareInstruction>(this)->direction();
+}
+
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
   return Cast<HloTriangularSolveInstruction>(this)->triangular_solve_options();
 }
+
+const CholeskyOptions& HloInstruction::cholesky_options() const {
+  return Cast<HloCholeskyInstruction>(this)->cholesky_options();
+}
+
 }  // namespace xla

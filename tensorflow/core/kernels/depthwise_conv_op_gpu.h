@@ -36,6 +36,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace detail {
+template <typename T>
+struct PseudoHalfType {
+  using Type = T;
+};
+template <>
+struct PseudoHalfType<Eigen::half> {
+  using Type = float;
+};
+}  // namespace detail
+
 using Eigen::GpuDevice;
 
 // Returns whether depthwise convolution forward or backward input pass can be
@@ -74,6 +85,7 @@ template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
 __global__ void __launch_bounds__(1024, 2)
     DepthwiseConv2dGPUKernelNHWC(const DepthwiseArgs args, const T* input,
                                  const T* filter, T* output, int num_outputs) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   const int in_height = args.in_rows;
   const int in_width = args.in_cols;
   const int in_depth = args.in_depth;
@@ -107,7 +119,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_height;
     const int input_col_end = input_col_start + filter_width;
 
-    T sum = static_cast<T>(0);
+    S sum = static_cast<S>(0);
 
     const int input_offset_temp = in_height * batch;
     if (input_row_start >= 0 && input_col_start >= 0 &&
@@ -127,7 +139,8 @@ __global__ void __launch_bounds__(1024, 2)
               multiplier +
               depth_multiplier *
                   (in_channel + in_depth * (filter_col + filter_offset_temp));
-          sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+          sum += static_cast<S>(ldg(input + input_offset)) *
+                 static_cast<S>(ldg(filter + filter_offset));
         }
       }
     } else {
@@ -149,12 +162,13 @@ __global__ void __launch_bounds__(1024, 2)
                 multiplier +
                 depth_multiplier *
                     (in_channel + in_depth * (filter_col + filter_offset_temp));
-            sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+            sum += static_cast<S>(ldg(input + input_offset)) *
+                   static_cast<S>(ldg(filter + filter_offset));
           }
         }
       }
     }
-    output[thread_id] = sum;
+    output[thread_id] = static_cast<T>(sum);
   }
 }
 
@@ -171,9 +185,10 @@ __global__ void __launch_bounds__(1024, 2)
 // same as T for all cases but pseudo half (which has T=Eigen::half, S=float).
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
-          bool kKnownEvenHeight, typename S>
+          bool kKnownEvenHeight>
 __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
     const DepthwiseArgs args, const T* input, const T* filter, T* output) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.x depths.
 #if GOOGLE_CUDA
@@ -318,6 +333,7 @@ template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
 __global__ void __launch_bounds__(1024, 2)
     DepthwiseConv2dGPUKernelNCHW(const DepthwiseArgs args, const T* input,
                                  const T* filter, T* output, int num_outputs) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   const int in_height = args.in_rows;
   const int in_width = args.in_cols;
   const int in_depth = args.in_depth;
@@ -391,7 +407,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_height;
     const int input_col_end = input_col_start + filter_width;
 
-    T sum = static_cast<T>(0);
+    S sum = static_cast<S>(0);
     if (input_row_start >= 0 && input_col_start >= 0 &&
         input_row_end < in_height && input_col_end < in_width) {
       // Loop that doesn't need to check for boundary conditions.
@@ -409,7 +425,8 @@ __global__ void __launch_bounds__(1024, 2)
               multiplier +
               depth_multiplier *
                   (in_channel + in_depth * (filter_col + filter_offset_temp));
-          sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+          sum += static_cast<S>(ldg(input + input_offset)) *
+                 static_cast<S>(ldg(filter + filter_offset));
         }
       }
     } else {
@@ -436,13 +453,14 @@ __global__ void __launch_bounds__(1024, 2)
                 multiplier +
                 depth_multiplier *
                     (in_channel + in_depth * (filter_col + filter_offset_temp));
-            sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+            sum += static_cast<S>(ldg(input + input_offset)) *
+                   static_cast<S>(ldg(filter + filter_offset));
           }
         }
       }
     }
 
-    output[thread_id] = sum;
+    output[thread_id] = static_cast<T>(sum);
   }
 }
 
@@ -459,9 +477,10 @@ __global__ void __launch_bounds__(1024, 2)
 // same as T for all cases but pseudo half (which has T=Eigen::half, S=float).
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
-          bool kKnownEvenHeight, typename S>
+          bool kKnownEvenHeight>
 __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
     const DepthwiseArgs args, const T* input, const T* filter, T* output) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.z depths.
 #if GOOGLE_CUDA
@@ -603,11 +622,12 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
 
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
-          bool kKnownEvenHeight, typename S>
+          bool kKnownEvenHeight>
 Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
                                      const DepthwiseArgs& args, const T* input,
                                      const T* filter, T* output,
                                      TensorFormat data_format) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   const int block_height = (args.in_rows + 1) / 2;
   dim3 block_dim;
   int block_count;
@@ -620,7 +640,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
       kernel =
           DepthwiseConv2dGPUKernelNHWCSmall<T, kDirection, kKnownFilterWidth,
                                             kKnownFilterHeight, kBlockDepth,
-                                            kKnownEvenHeight, S>;
+                                            kKnownEvenHeight>;
       break;
     case FORMAT_NCHW:
       block_dim = dim3(args.in_cols, block_height, kBlockDepth);
@@ -629,7 +649,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
       kernel =
           DepthwiseConv2dGPUKernelNCHWSmall<T, kDirection, kKnownFilterWidth,
                                             kKnownFilterHeight, kBlockDepth,
-                                            kKnownEvenHeight, S>;
+                                            kKnownEvenHeight>;
       break;
     default:
       return errors::InvalidArgument("FORMAT_", ToString(data_format),
@@ -653,21 +673,6 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   return Status::OK();
 }
 
-namespace detail {
-template <typename T>
-struct PseudoHalfType {
-  using Type = T;
-};
-template <>
-struct PseudoHalfType<Eigen::half> {
-  using Type = float;
-};
-}  // namespace detail
-
-// Maps to float if T is __half, and to T otherwise.
-template <typename T>
-using PseudoHalfType = typename detail::PseudoHalfType<T>::Type;
-
 // Returns whether the context's GPU supports efficient fp16 math.
 inline bool HasFastHalfMath(OpKernelContext* ctx) {
   int major, minor;
@@ -679,27 +684,6 @@ inline bool HasFastHalfMath(OpKernelContext* ctx) {
   auto cuda_arch = major * 100 + minor * 10;
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
   return cuda_arch >= 530 && cuda_arch != 610;
-}
-
-template <typename T, DepthwiseConv2dDirection kDirection,
-          int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
-          bool kKnownEvenHeight>
-Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
-                                     const DepthwiseArgs& args, const T* input,
-                                     const T* filter, T* output,
-                                     TensorFormat data_format) {
-#if !defined __CUDA_ARCH__ || __CUDA_ARCH__ >= 530
-  if (HasFastHalfMath(ctx)) {
-    return LaunchDepthwiseConv2dGPUSmall<T, kDirection, kKnownFilterWidth,
-                                         kKnownFilterHeight, kBlockDepth,
-                                         kKnownEvenHeight, T>(
-        ctx, args, input, filter, output, data_format);
-  }
-#endif
-  return LaunchDepthwiseConv2dGPUSmall<T, kDirection, kKnownFilterWidth,
-                                       kKnownFilterHeight, kBlockDepth,
-                                       kKnownEvenHeight, PseudoHalfType<T>>(
-      ctx, args, input, filter, output, data_format);
 }
 
 template <typename T, DepthwiseConv2dDirection kDirection,
@@ -1040,6 +1024,8 @@ void LaunchDepthwiseConvBackpropInputOp<GpuDevice, T>::operator()(
 }
 
 // A GPU kernel to compute the depthwise convolution backprop w.r.t. filter.
+// TODO: Add fp32 accumulation to half calls of this function. This addition
+// is non-trivial as the partial sums are added directly to the output
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 __global__ void __launch_bounds__(640, 2)
@@ -1178,10 +1164,11 @@ __device__ inline T WarpSumReduce(T val) {
 // T is the tensors' data type. S is the math type the kernel uses. This is the
 // same as T for all cases but pseudo half (which has T=Eigen::half, S=float).
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kBlockDepth, int kAccumPixels, typename S>
+          int kBlockDepth, int kAccumPixels>
 __global__
 __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
     const DepthwiseArgs args, const T* output, const T* input, T* filter) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.z));
   // Holds block plus halo and filter data for blockDim.x depths.
 #if GOOGLE_CUDA
@@ -1454,10 +1441,11 @@ __global__ void __launch_bounds__(640, 2)
 // Requirements: threads per block must be multiple of 32 and <= launch_bounds,
 // kAccumPixels * 64 >= args.in_rows * args.in_cols * kBlockDepth.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kBlockDepth, int kAccumPixels, typename S>
+          int kBlockDepth, int kAccumPixels>
 __global__
 __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
     const DepthwiseArgs args, const T* output, const T* input, T* filter) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.x));
   // Holds block plus halo and filter data for blockDim.z depths.
 #if GOOGLE_CUDA
@@ -1604,11 +1592,12 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kBlockDepth, int kAccumPixels, typename S>
+          int kBlockDepth, int kAccumPixels>
 Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
     OpKernelContext* ctx, const DepthwiseArgs& args, const int block_height,
     const T* out_backprop, const T* input, T* filter_backprop,
     TensorFormat data_format) {
+  typedef typename detail::PseudoHalfType<T>::Type S;
   auto device = ctx->eigen_gpu_device();
   const int tile_width = args.in_cols + args.filter_cols - 1;
   const int tile_height = block_height * 2 + args.filter_rows - 1;
@@ -1629,16 +1618,14 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
       block_count =
           args.batch * DivUp(args.out_depth, kBlockDepth) * kBlockDepth;
       kernel = DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall<
-          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels,
-          S>;
+          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
       break;
     case FORMAT_NCHW:
       block_dim = dim3(args.in_cols, block_height, kBlockDepth);
       block_count =
           DivUp(args.batch * args.out_depth, kBlockDepth) * kBlockDepth;
       kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall<
-          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels,
-          S>;
+          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
       break;
     default:
       return errors::InvalidArgument("FORMAT_", ToString(data_format),
@@ -1653,26 +1640,6 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
            device.stream(),
            args, out_backprop, input, filter_backprop);
   return Status::OK();
-}
-
-template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kBlockDepth, int kAccumPixels>
-Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
-    OpKernelContext* ctx, const DepthwiseArgs& args, const int block_height,
-    const T* out_backprop, const T* input, T* filter_backprop,
-    TensorFormat data_format) {
-#if !defined __CUDA_ARCH__ || __CUDA_ARCH__ >= 530
-  if (HasFastHalfMath(ctx)) {
-    return TryLaunchDepthwiseConv2dBackpropFilterGPUSmall<
-        T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels, T>(
-        ctx, args, block_height, out_backprop, input, filter_backprop,
-        data_format);
-  }
-#endif
-  return TryLaunchDepthwiseConv2dBackpropFilterGPUSmall<
-      T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels,
-      PseudoHalfType<T>>(ctx, args, block_height, out_backprop, input,
-                         filter_backprop, data_format);
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,

@@ -23,6 +23,7 @@ import abc
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import nest
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -91,8 +92,46 @@ class CompositeTensor(object):
     """Returns True if this tensor's components belong to a TF graph."""
     raise NotImplementedError("CompositeTensor._is_symbolic_tensor")
 
+  def consumers(self):
+    """Returns a list of `Operation`s that consume this `CompositeTensor`.
+
+    Returns:
+      A list of `Operation`s.
+
+    Raises:
+      RuntimeError: If this method is called while executing eagerly.
+    """
+    consumers = nest.flatten([
+        component.consumers()
+        for component in self._to_components()
+        if getattr(component, "graph", None) is not None
+    ])
+    return list(set(consumers))
+
 
 pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)
+
+
+def replace_composites_with_components(structure):
+  """Recursively replaces CompositeTensors with their components.
+
+  Args:
+    structure: A `nest`-compatible structure, possibly containing composite
+      tensors.
+
+  Returns:
+    A copy of `structure`, where each composite tensor has been replaced by
+    its components.  The result will contain no composite tensors.
+    Note that `nest.flatten(replace_composites_with_components(structure))`
+    returns the same value as `nest.flatten(structure)`.
+  """
+  if isinstance(structure, CompositeTensor):
+    return replace_composites_with_components(structure._to_components())  # pylint: disable=protected-access
+  elif not nest.is_sequence(structure):
+    return structure
+  else:
+    return nest.map_structure(replace_composites_with_components, structure,
+                              expand_composites=False)
 
 
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just

@@ -66,14 +66,9 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    llvm::StringRef PassName = p->getPassName();
-    if (PassName.contains("Warn about non-applied transformations")) {
-      delete p;
-      return;
-    }
     if (disable_expensive_passes_) {
+      llvm::StringRef PassName = p->getPassName();
       if (PassName.contains("Unroll loops")) {
-        delete p;
         return;
       }
     }
@@ -94,7 +89,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (pre_optimization_hook_) {
-    TF_CHECK_OK(pre_optimization_hook_(module));
+    pre_optimization_hook_(module);
   }
 
   // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
@@ -138,7 +133,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (post_optimization_hook_) {
-    TF_CHECK_OK(post_optimization_hook_(module));
+    post_optimization_hook_(module);
   }
 
   // Generate code.
@@ -150,17 +145,11 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
       new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
 
-  if (VLOG_IS_ON(2)) {
+  if (post_codegen_hook_) {
     llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
         llvm::object::ObjectFile::createObjectFile(*memory_buffer);
     if (obj_file) {
-      StatusOr<DisassemblerResult> disasm_result =
-          disassembler_->DisassembleObjectFile(*obj_file.get());
-      if (disasm_result.ok()) {
-        XLA_VLOG_LINES(2, disasm_result.ValueOrDie().text);
-      } else {
-        LOG(WARNING) << "Could not disassemble object file!";
-      }
+      post_codegen_hook_(*obj_file.get());
     } else {
       LOG(WARNING) << "Could convert memory buffer to object file!";
     }
@@ -220,7 +209,6 @@ void CompilerFunctor::AddOptimizationPasses(
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0 && size_level == 0;
   builder.SLPVectorize = opt_level > 1 && size_level == 0;

@@ -22,7 +22,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuFtzTest : public GpuCodegenTest {
+class GpuFtzTest : public PtxCodegenTest {
  public:
   explicit GpuFtzTest(bool ftz) : ftz_(ftz) {}
 

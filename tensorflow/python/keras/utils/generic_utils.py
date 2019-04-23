@@ -200,17 +200,20 @@ def deserialize_keras_object(identifier,
       with CustomObjectScope(custom_objects):
         return cls(**cls_config)
   elif isinstance(identifier, six.string_types):
-    function_name = identifier
-    if custom_objects and function_name in custom_objects:
-      fn = custom_objects.get(function_name)
-    elif function_name in _GLOBAL_CUSTOM_OBJECTS:
-      fn = _GLOBAL_CUSTOM_OBJECTS[function_name]
+    object_name = identifier
+    if custom_objects and object_name in custom_objects:
+      obj = custom_objects.get(object_name)
+    elif object_name in _GLOBAL_CUSTOM_OBJECTS:
+      obj = _GLOBAL_CUSTOM_OBJECTS[object_name]
     else:
-      fn = module_objects.get(function_name)
-      if fn is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' +
-                         function_name)
-    return fn
+      obj = module_objects.get(object_name)
+      if obj is None:
+        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+    # Classes passed by name are instantiated with no args, functions are
+    # returned as-is.
+    if tf_inspect.isclass(obj):
+      return obj()
+    return obj
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
                      ': ' + identifier)
@@ -579,3 +582,11 @@ def is_all_none(structure):
     if element is not None:
       return False
   return True
+
+
+def check_for_unexpected_keys(name, input_dict, expected_values):
+  unknown = set(input_dict.keys()).difference(expected_values)
+  if unknown:
+    raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
+                     'following keys: {}'.format(name, list(unknown),
+                                                 expected_values))

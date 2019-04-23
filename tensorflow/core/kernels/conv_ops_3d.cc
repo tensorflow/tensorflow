@@ -34,6 +34,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
 #endif
 
@@ -431,9 +433,9 @@ struct LaunchConvOp<GPUDevice, T> {
     using se::dnn::ProfileResult;
 
     AlgorithmConfig algorithm_config;
-
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
@@ -445,8 +447,7 @@ struct LaunchConvOp<GPUDevice, T> {
                       "because cuDNN failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
 
-      ProfileResult best_result;
-      ProfileResult best_result_no_scratch;
+      std::vector<tensorflow::AutotuneResult> results;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -461,28 +462,38 @@ struct LaunchConvOp<GPUDevice, T> {
                 .ok();
         if (cudnn_launch_status) {
           if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+            results.emplace_back();
+            auto& result = results.back();
+            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+            result.mutable_conv()->set_tensor_ops_enabled(
+                profile_algorithm.tensor_ops_enabled());
+            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+            *result.mutable_run_time() = proto_utils::ToDurationProto(
+                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
           }
         }
       }
-      OP_REQUIRES(ctx,
-                  best_result.is_valid() || best_result_no_scratch.is_valid(),
-                  errors::NotFound("No algorithm worked!"));
-      if (best_result.is_valid()) {
-        algorithm_config.set_algorithm(best_result.algorithm());
-      }
-      if (best_result_no_scratch.is_valid()) {
-        algorithm_config.set_algorithm_no_scratch(
-            best_result_no_scratch.algorithm());
-      }
+      LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
+                             se::dnn::ToDataType<T>::value, input_desc,
+                             filter_desc, output_desc, conv_desc,
+                             stream->parent(), results);
+      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+      ProfileResult best_result;
+      LOG(INFO) << "running auto-tune for convolution";
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveWithAlgorithm(
+                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                  output_desc, &output_ptr, &scratch_allocator,
+                  AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                  errors::NotFound("Failed to find conv algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 

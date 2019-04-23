@@ -33,8 +33,6 @@ struct TrtDestroyer {
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
-bool IsGoogleTensorRTEnabled();
-
 enum class TrtPrecisionMode { FP32, FP16, INT8 };
 
 Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);

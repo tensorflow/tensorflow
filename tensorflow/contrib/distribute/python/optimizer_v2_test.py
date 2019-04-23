@@ -20,20 +20,53 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
+from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
+from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
+from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute.single_loss_example import minimize_loss_example
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 
 
+mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
+    "MirroredCPUAndGPU",
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
+    required_gpus=1)
+mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
+    "Mirrored2GPUs",
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
+    required_gpus=2)
+
+# pylint: disable=g-long-lambda
+gradient_descent_optimizer_v2_fn = combinations.NamedObject(
+    "GradientDescentV2", lambda: gradient_descent_v2.GradientDescentOptimizer(
+        0.2))
+adagrad_optimizer_v2_fn = combinations.NamedObject(
+    "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
+
+optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
+
+
+def distributions_and_v2_optimizers():
+  """DistributionStrategies and V2 Optimizers."""
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ],
+      optimizer_fn=optimizers_v2)
+
+
 class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v2_optimizers(),
+          distributions_and_v2_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
           + combinations.combine(mode=["eager"], use_callable_loss=[True])))
   def testTrainNetwork(self, distribution, optimizer_fn,
@@ -45,7 +78,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
       def run_step():
         return control_flow_ops.group(
-            distribution.unwrap(
+            distribution.experimental_local_results(
                 distribution.extended.call_for_each_replica(
                     model_fn, args=(iterator.get_next(),))))
 

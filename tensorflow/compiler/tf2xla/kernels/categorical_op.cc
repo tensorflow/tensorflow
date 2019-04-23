@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA implementations of Categorical op.
 
+#include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -140,8 +141,6 @@ class StatelessCategoricalOp : public CategoricalOp {
   xla::XlaOp GetLogUniforms(xla::Shape uniform_shape, xla::PrimitiveType type,
                             XlaOpKernelContext* ctx) override {
     xla::XlaOp seed = ctx->Input(2);
-    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
 
     xla::XlaBuilder* builder = ctx->builder();
     if (uniform_shape.element_type() == xla::BF16) {
@@ -150,8 +149,8 @@ class StatelessCategoricalOp : public CategoricalOp {
     // We want a number in (0, 1) rather than [0, 1) or (0, 1]:
     // * log(-log(0)) is ∞.
     // * log(-log(1)) is -∞.
-    auto uniforms = xla::StatelessRngUniform(
-        {seed0, seed1}, uniform_shape,
+    xla::XlaOp uniforms = StatelessRngUniform(
+        seed, uniform_shape,
         xla::MinPositiveNormalValue(builder, uniform_shape.element_type()),
         xla::One(builder, uniform_shape.element_type()));
     return xla::ConvertElementType(xla::Log(-xla::Log(uniforms)), type);

@@ -229,8 +229,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // subgraph. This is always true before step 2.
   //
   // This is the best we can do without sharing tensor buffer across subgraph
-  // boundry. Currently we copy the input / output between the subgraphs. This
-  // isn't optimized yet and a lot of redundent copies are made.
+  // boundary. Currently we copy the input / output between the subgraphs. This
+  // isn't optimized yet and a lot of redundant copies are made.
   // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
   TF_LITE_ENSURE_OK(
       context,

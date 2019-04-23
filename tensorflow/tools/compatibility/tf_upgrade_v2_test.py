@@ -22,6 +22,7 @@ import inspect
 import os
 import tempfile
 
+from absl.testing import parameterized
 import six
 import tensorflow as tf
 # OSS TF V2 import placeholder.
@@ -75,7 +76,7 @@ def get_func_and_args_from_str(call_str):
   return function_name, args
 
 
-class TestUpgrade(test_util.TensorFlowTestCase):
+class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test various APIs that have been changed in 2.0.
 
   We also test whether a converted file is executable. test_file_v1_10.py
@@ -85,6 +86,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
   @classmethod
   def setUpClass(cls):
+    super(TestUpgrade, cls).setUpClass()
     cls.v2_symbols = {}
     cls.v1_symbols = {}
     if hasattr(tf.compat, "v2"):
@@ -97,6 +99,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
             cls.v2_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
+      visitor.private_map["tf.compat"] = ["v1"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
@@ -416,6 +419,181 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertIn("switch to the schedules in "
                     "`tf.keras.optimizers.schedules`", report)
 
+  def verify_compat_v1_rename_correctness(self, values, ns_prefix=""):
+    if ns_prefix:
+      ns_prefix += "."
+    for v in values:
+      text = "tf." + ns_prefix + v + "(a, b)"
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual("tf.compat.v1." + ns_prefix + v + "(a, b)", new_text)
+
+  def testIntializers(self):
+    initializers = [
+        "zeros",
+        "ones",
+        "constant",
+        "random_uniform",
+        "random_normal",
+        "truncated_normal",
+        "variance_scaling",
+        "orthogonal",
+        "glorot_uniform",
+        "glorot_normal",
+        "identity",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="initializers")
+
+    initializers = [
+        "zeros_initializer",
+        "ones_initializer",
+        "constant_initializer",
+        "random_uniform_initializer",
+        "random_normal_initializer",
+        "truncated_normal_initializer",
+        "variance_scaling_initializer",
+        "orthogonal_initializer",
+        "glorot_uniform_initializer",
+        "glorot_normal_initializer",
+    ]
+    self.verify_compat_v1_rename_correctness(initializers)
+
+    initializers = [
+        "zeros",
+        "ones",
+        "Ones",
+        "Zeros",
+        "constant",
+        "Constant",
+        "VarianceScaling",
+        "Orthogonal",
+        "orthogonal",
+        "Identity",
+        "identity",
+        "glorot_uniform",
+        "glorot_normal",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+        "TruncatedNormal",
+        "truncated_normal",
+        "RandomUniform",
+        "uniform",
+        "random_uniform",
+        "RandomNormal",
+        "normal",
+        "random_normal",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="keras.initializers")
+
+  def testContribXavierInitializer(self):
+    text = "tf.contrib.layers.xavier_initializer()\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=\"uniform\")\n",
+    )
+
+    text = "slim.xavier_initializer(True or False)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if True or False else "
+        "\"truncated_normal\"))\n",
+    )
+
+    text = "slim.xavier_initializer(uniform=(True or False))\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if True or False else "
+        "\"truncated_normal\"))\n",
+    )
+
+    text = "tf.contrib.layers.xavier_initializer_conv2d(False, 12)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12)\n",
+    )
+
+    text = ("tf.contrib.layers.xavier_initializer_conv2d("
+            "False, 12, tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12, "
+        "dtype=tf.float32)\n",
+    )
+
+    text = ("tf.contrib.layers.xavier_initializer("
+            "False, 12, dtypes=tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12, "
+        "dtypes=tf.float32)\n",
+    )
+
+  def testVarianceScalingInitializer(self):
+    text = ("tf.contrib.layers.variance_scaling_initializer("
+            "mode=(\"FAN\" + \"_AVG\"))\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=2.0, "
+        "mode=(\"FAN\" + \"_AVG\").lower())\n",
+    )
+
+    text = ("slim.variance_scaling_initializer("
+            "uniform=(True or False), mode=(\"FAN\" + \"_AVG\"))\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=2.0, "
+        "distribution=(\"uniform\" if True or False else \"truncated_normal\"),"
+        " mode=(\"FAN\" + \"_AVG\").lower())\n",
+    )
+
+    text = "tf.contrib.layers.variance_scaling_initializer(factor=1.0)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0)\n",
+    )
+
+    text = ("tf.contrib.layers.variance_scaling_initializer("
+            "12.0, \"FAN_AVG\", True, dtypes=tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(12.0, "
+        "(\"FAN_AVG\").lower(), "
+        "(\"uniform\" if True else \"truncated_normal\"), "
+        "dtypes=tf.float32)\n",
+    )
+
   def testMetrics(self):
     metrics = [
         "accuracy",
@@ -493,11 +671,55 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     ]
     for c in classes:
       ns = "tf.estimator." + c
-      text = ns + "(a, b)"
+      text = ns + "()"
+      expected_text = ns + "(loss_reduction=tf.compat.v1.losses.Reduction.SUM)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+      text = ns + "(loss_reduction=TEST)"
+      expected_text = ns + "(loss_reduction=TEST)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(text, new_text)
-      self.assertIn("%s requires manual check" % ns, errors[0])
-      self.assertIn("loss_reduction has been changed", report)
+    text = "tf.estimator.BaselineClassifier(m, c, w, v, o, c, lr)"
+    expected_text = (
+        "tf.estimator.BaselineClassifier(" +
+        "model_dir=m, n_classes=c, weight_column=w, label_vocabulary=v, "
+        "optimizer=o, config=c, loss_reduction=lr)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
+    expected_text = ("tf.estimator.BaselineClassifier(" +
+                     "model_dir=model_dir, "
+                     "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testBaseEstimatorPartitioner(self):
+    classes = ["LinearEstimator", "DNNLinearCombinedEstimator", "DNNEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testCannedEstimatorPartitioner(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      suffix = ("(input_layer_partitioner=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
@@ -581,6 +803,74 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(
         new_text,
         "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
+    )
+
+  def testContribL1(self):
+    text = "tf.contrib.layers.l1_regularizer(scale)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(scale)\n",
+    )
+    self.assertNotIn("Dropping scope", unused_report)
+
+    text = "tf.contrib.layers.l1_regularizer(scale, scope)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(scale)\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+    text = (
+        "slim.l1_regularizer(  # Stuff before\n"
+        "                    scale=.4,"
+        "                    scope=\"foo\")\n"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(  # Stuff before\n"
+        "                    l=.4)\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+  def testContribL2(self):
+    text = "tf.contrib.layers.l2_regularizer(scale)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (scale))\n",
+    )
+    self.assertNotIn("Dropping scope", unused_report)
+
+    text = "tf.contrib.layers.l2_regularizer(scale, scope)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (scale))\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+    text = (
+        "slim.l2_regularizer(  # Stuff before\n"
+        "                    scale=.4,"
+        "                    scope=\"foo\")\n"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(  # Stuff before\n"
+        "                    l=0.5 * (.4))\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+  def testContribL2Expr(self):
+    text = "tf.contrib.layers.l2_regularizer(1 - func(3 + 4.), scope=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (1 - func(3 + 4.)))\n",
     )
 
   def testMathCountNonZeroChanges(self):
@@ -1114,9 +1404,10 @@ tf.print('abc')
   def testImageResizeExtraPositionalArgs(self):
     for method in ["bilinear", "area", "bicubic", "nearest_neighbor"]:
       text = "tf.image.resize_%s(i, s, a, p)" % method
-      expected_text = ["tf.image.resize(i, s, ", "align_corners=a, ",
-                       "preserve_aspect_ratio=p, ",
-                       "method=tf.image.ResizeMethod.%s)" % method.upper()]
+      expected_text = [
+          "tf.image.resize(i, s, ", "preserve_aspect_ratio=p, ",
+          "method=tf.image.ResizeMethod.%s)" % method.upper()
+      ]
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       for s in expected_text:
         self.assertIn(s, new_text)
@@ -1225,6 +1516,14 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_rnn_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.rnn")
+    self.assertIn("tf.contrib.rnn.* has been deprecated", report)
+
+  def test_contrib_cudnn_rnn_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.cudnn_rnn")
+    self.assertIn("tf.contrib.cudnn_rnn.* has been deprecated", report)
+
   def test_max_pool_2d(self):
     text = "tf.nn.max_pool(value=4)"
     expected_text = "tf.nn.max_pool2d(input=4)"
@@ -1242,12 +1541,21 @@ def _log_prob(self, x):
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
-  def test_contrib_rnn(self):
-    api_symbols = ["BasicLSTMCell", "BasicRNNCell", "GRUCell", "LSTMCell",
-                   "MultiRNNCell"]
+  def test_contrib_rnn_cell(self):
+    api_symbols = ["RNNCell", "BasicLSTMCell", "BasicRNNCell", "GRUCell",
+                   "LSTMCell", "MultiRNNCell"]
     for symbol in api_symbols:
       text = "tf.contrib.rnn." + symbol
       expected_text = "tf.compat.v1.nn.rnn_cell." + symbol
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+  def test_contrib_rnn_function(self):
+    api_symbols = ["static_rnn", "static_state_saving_rnn",
+                   "static_bidirectional_rnn"]
+    for symbol in api_symbols:
+      text = "tf.contrib.rnn." + symbol
+      expected_text = "tf.compat.v1.nn." + symbol
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
@@ -1342,6 +1650,167 @@ def _log_prob(self, x):
     expected = "tf.compat.v2.saved_model.load('/tmp/blah')"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_uniform_unit_scaling_initializer(self):
+    text = "tf.uniform_unit_scaling_initializer(0.5)"
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.initializers.uniform_unit_scaling(0.5)"
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_name_scope(self):
+    text = "tf.name_scope(None, default_name, [some, values])"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(default_name=default_name, values=stuff)"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(name=n, default_name=d, values=s)"
+    expected_text = "tf.compat.v1.name_scope(name=n, default_name=d, values=s)"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("`name` passed to `name_scope`", report)
+
+    text = "tf.name_scope(name=None, values=stuff)"
+    _, _, errors, _ = self._upgrade(text)
+    self.assertIn("name_scope call with neither name nor default_name",
+                  errors[0])
+
+  @parameterized.parameters(
+      # Rename parameter: delimiter -> sep and add .to_sparse()
+      ["tf.string_split('test', delimiter=' ')",
+       "tf.strings.split(input='test', sep=' ').to_sparse()"],
+      # Rename parameter: source -> input
+      ["tf.strings.split(source='test1')",
+       "tf.strings.split(input='test1').to_sparse()"],
+      # Use compat.v1 for skip_empty parameter.
+      ["tf.string_split('test', ' ', True)",
+       "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"],
+      ["tf.string_split('test', ' ', skip_empty=False)",
+       "tf.strings.split(input='test', sep=' ').to_sparse()"],
+      # Split behavior for sep=None changed.  (In particular, it now splits on
+      # all whitespace, not just the space character)
+      ["tf.string_split(x)",
+       "tf.compat.v1.string_split(source=x)"],
+      # Split behavior for sep='' changed:
+      ["tf.string_split(x, '')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, sep='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, delimiter='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, '', result_type='RaggedTensor')",
+       "tf.strings.bytes_split(input=x)"],
+      # If sep is a variable, we can't tell if it's empty:
+      ["tf.string_split(x, sep)",
+       "tf.compat.v1.string_split(source=x, sep=sep)"],
+      # If sep is a non-empty string literal, then we don't need compat.v1.
+      ["tf.string_split(x, 'non-empty-sep')",
+       "tf.strings.split(input=x, sep='non-empty-sep').to_sparse()"],
+      # Add to_sparse unless result_type is RaggedTensor:
+      ["tf.string_split(x, ' ')",
+       "tf.strings.split(input=x, sep=' ').to_sparse()"],
+      ["tf.string_split(x, ' ', result_type='SparseTensor')",
+       "tf.strings.split(input=x, sep=' ').to_sparse()"],
+      ["tf.string_split(x, ' ', result_type='RaggedTensor')",
+       "tf.strings.split(input=x, sep=' ')"],
+      ["tf.string_split(x, ' ', result_type=x)",
+       "tf.compat.v1.string_split(source=x, sep=' ', result_type=x)"],
+  )  # pyformat: disable
+  # TODO(b/129398290)
+  def DISABLED_test_string_split(self, text, expected_text):
+    """Tests for transforming from tf.string_split."""
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  @parameterized.parameters(
+      # Add to_sparse unless result_type is RaggedTensor:
+      ["tf.strings.split(x, sep)",
+       "tf.strings.split(x, sep).to_sparse()"],
+      ["tf.strings.split(x, sep, result_type='SparseTensor')",
+       "tf.strings.split(x, sep).to_sparse()"],
+      ["tf.strings.split(x, sep, result_type='RaggedTensor')",
+       "tf.strings.split(x, sep)"],
+      ["tf.strings.split(x, sep, result_type=x)",
+       "tf.compat.v1.strings.split(x, sep, result_type=x)"],
+  )  # pyformat: disable
+  def test_strings_split(self, text, expected_text):
+    """Tests for transforming from tf.strings.split."""
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_sdca_to_raw_ops(self):
+    text = "tf.train.sdca_fprint(input_tensor)"
+    expected_text = "tf.raw_ops.SdcaFprint(input=input_tensor)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.train.sdca_fprint(input, name=n)"
+    expected_text = "tf.raw_ops.SdcaFprint(input=input, name=n)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.train.sdca_shrink_l1(w, l, ll)"
+    expected_text = "tf.raw_ops.SdcaShrinkL1(weights=w, l1=l, l2=ll)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = (
+        "tf.train.sdca_optimizer(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)")
+    expected_text = (
+        "tf.raw_ops.SdcaOptimizer(sparse_example_indices=a, "
+        "sparse_feature_indices=b, sparse_feature_values=c, dense_features=d, "
+        "example_weights=e, example_labels=f, sparse_indices=g, "
+        "sparse_weights=h, dense_weights=i, example_state_data=j, loss_type=k, "
+        "l1=l, l2=m, num_loss_partitions=n, num_inner_iterations=o)")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testXlaExperimental(self):
+    text = "tf.xla.experimental.jit_scope(0)"
+    expected_text = "tf.xla.experimental.jit_scope(0)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.xla.experimental.compile(0)"
+    expected_text = "tf.xla.experimental.compile(0)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testNnErosion2d(self):
+    text = "tf.nn.erosion2d(v, k, s, r, p)"
+    expected_text = "tf.nn.erosion2d(v, k, s, r, p, data_format='NHWC')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testPywrapTensorflowWarning(self):
+    text = "tf.pywrap_tensorflow.foo()"
+    expected = "tf.pywrap_tensorflow.foo()"
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("`tf.pywrap_tensorflow` will not be distributed", errors[0])
+
+  def testKerasSaveModelFormat(self):
+    text = "tf.keras.models.save_model(model, path)"
+    expected_text = "tf.keras.models.save_model(model, path, save_format='h5')"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertNotIn(
+        "saves to the Tensorflow SavedModel format by default", report)
+
+    _, report, _, _ = self._upgrade("model.save(path)")
+    self.assertIn(
+        "saves to the Tensorflow SavedModel format by default", report)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

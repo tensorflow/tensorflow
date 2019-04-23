@@ -15,9 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/broadcast_to_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -80,6 +80,10 @@ class BroadcastToOp : public OpKernel {
                 errors::InvalidArgument(
                     "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
                     output_shape.DebugString()));
+    OP_REQUIRES(ctx, BCast::ToShape(bcast.output_shape()) == output_shape,
+                errors::InvalidArgument("Unable to broadcast tensor of shape ",
+                                        input_shape, " to tensor of shape ",
+                                        output_shape));
 
     functor::BroadcastTo<Device, T>()(device, ctx, *output_tensor, output_shape,
                                       input_tensor, input_shape, bcast);

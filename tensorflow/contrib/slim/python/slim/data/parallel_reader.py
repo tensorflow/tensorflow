@@ -252,8 +252,9 @@ def parallel_read(data_sources,
       common_queue = data_flow_ops.FIFOQueue(
           capacity=capacity, dtypes=dtypes, name='common_queue')
 
-    summary.scalar('fraction_of_%d_full' % capacity,
-                   math_ops.to_float(common_queue.size()) * (1. / capacity))
+    summary.scalar(
+        'fraction_of_%d_full' % capacity,
+        math_ops.cast(common_queue.size(), tf_dtypes.float32) * (1. / capacity))
 
     return ParallelReader(
         reader_class,

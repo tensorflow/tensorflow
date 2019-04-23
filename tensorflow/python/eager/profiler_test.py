@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.profiler import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.platform import gfile
 
 
 class ProfilerTest(test_util.TensorFlowTestCase):
@@ -43,6 +46,19 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     self.assertTrue('Mul' in profile_pb_str)
     with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
+
+  def test_save_profile(self):
+    logdir = self.get_temp_dir()
+    profile_pb = trace_events_pb2.Trace()
+    profile_result = profile_pb.SerializeToString()
+    profiler.save(logdir, profile_result)
+    file_list = gfile.ListDirectory(logdir)
+    self.assertEqual(len(file_list), 2)
+    for file_name in gfile.ListDirectory(logdir):
+      if gfile.IsDirectory(os.path.join(logdir, file_name)):
+        self.assertEqual(file_name, 'plugins')
+      else:
+        self.assertTrue(file_name.endswith('.profile-empty'))
 
 
 if __name__ == '__main__':

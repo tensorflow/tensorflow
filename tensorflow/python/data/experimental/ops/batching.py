@@ -91,7 +91,8 @@ def _batch_dense_window(dataset):
 
   def batch_init_fn(_):
     batch_shape = array_ops.concat([[0], shape], 0)
-    return gen_array_ops.empty(batch_shape, dtype=dataset.output_types)
+    return gen_array_ops.empty(
+        batch_shape, dtype=dataset_ops.get_legacy_output_types(dataset))
 
   def batch_reduce_fn(state, value):
     return array_ops.concat([state, [value]], 0)
@@ -131,7 +132,8 @@ def _batch_sparse_window(dataset):
     indices_shape = array_ops.concat([[0], [array_ops.size(shape) + 1]], 0)
     return sparse_tensor.SparseTensor(
         indices=gen_array_ops.empty(indices_shape, dtype=dtypes.int64),
-        values=constant_op.constant([], shape=[0], dtype=dataset.output_types),
+        values=constant_op.constant(
+            [], shape=[0], dtype=dataset_ops.get_legacy_output_types(dataset)),
         dense_shape=array_ops.concat(
             [np.array([0], dtype=np.int64),
              math_ops.cast(shape, dtypes.int64)], 0))
@@ -336,7 +338,8 @@ def _padded_batch_sparse_window(dataset, padded_shape):
                                      0)
     return sparse_tensor.SparseTensor(
         indices=gen_array_ops.empty(indices_shape, dtype=dtypes.int64),
-        values=constant_op.constant([], shape=[0], dtype=dataset.output_types),
+        values=constant_op.constant(
+            [], shape=[0], dtype=dataset_ops.get_legacy_output_types(dataset)),
         dense_shape=array_ops.concat(
             [np.array([0], dtype=np.int64), padded_shape], 0))
 
@@ -447,15 +450,16 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
-    if not isinstance(input_dataset.output_types, dtypes.DType):
+    if not isinstance(
+        dataset_ops.get_legacy_output_types(input_dataset), dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
                       "have a single component, whereas the input has %r." %
-                      input_dataset.output_types)
+                      dataset_ops.get_legacy_output_types(input_dataset))
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape
     self._structure = structure.SparseTensorStructure(
-        input_dataset.output_types,
+        dataset_ops.get_legacy_output_types(input_dataset),
         tensor_shape.vector(None).concatenate(self._row_shape))
 
     variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
@@ -517,7 +521,8 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
       if flat_original_types != flat_new_types:
         raise ValueError(
             "Dataset with output types %r cannot be restructured to have "
-            "output types %r" % (dataset.output_types, output_types))
+            "output types %r" %
+            (dataset_ops.get_legacy_output_types(dataset), output_types))
 
     input_shapes = dataset_ops.get_legacy_output_shapes(dataset)
     if output_shapes is None:
@@ -660,6 +665,11 @@ def map_and_batch_with_legacy_function(map_func,
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.map(map_func, num_parallel_calls)` followed by "
+    "`tf.data.Dataset.batch(batch_size, drop_remainder)`. Static tf.data "
+    "optimizations will take care of using the fused implementation.")
 @tf_export("data.experimental.map_and_batch")
 def map_and_batch(map_func,
                   batch_size,

@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -493,14 +493,9 @@ Status ConstructHostGraph(
     device_ordinal_attr.set_i(0);
     protobuf::Map<string, AttrValue> attrs;
     attrs["device_ordinal"] = device_ordinal_attr;
-    FunctionBody* host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *fld->Find(host_func), AttrSlice(&attrs), fld,
-        [&](const string& op, const OpDef** sig) {
-          return fld->LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+        *fld->Find(host_func), AttrSlice(&attrs), fld, &host_fbody));
 
     // We use ReverseDFS() to copy nodes. Make sure all nodes are reverse
     // reachable from sink node so all nodes will be copied.
@@ -581,10 +576,9 @@ Status ConstructHostGraph(
       &host_graph, outside_compilation_attr_name));
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("extract_outside_compilation_host_graph_for_",
-                     xla_cluster_name),
-        host_graph, fld);
+    DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
+                                 xla_cluster_name),
+                    host_graph, fld);
   }
 
   FunctionDef host_graph_fdef;
@@ -605,7 +599,8 @@ Status ConstructHostGraph(
 Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
                                     FunctionLibraryDefinition* fld,
                                     const string& host_graph_func_name,
-                                    Node* xla_computation_node) {
+                                    Node* xla_computation_node,
+                                    Node* pivot_node) {
   // Temporarily use "0" as "device_ordinal". It will be rewritten with the
   // correct value in a later pass. We cannot just use placeholder value here
   // because FunctionDef instantiation does not allow placeholder value for
@@ -614,14 +609,9 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(host_graph_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(host_graph_func_name),
+                                             AttrSlice(&attrs), fld, &fbody));
   Graph* host_graph = fbody->graph;
 
   // We use ReverseDFS() to copy nodes. Make sure all nodes are reverse
@@ -631,7 +621,11 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
 
   // Copy all nodes.
   std::map<const Node*, Node*> node_map;
-  node_map[host_graph->source_node()] = main_graph->source_node();
+  if (pivot_node) {
+    node_map[host_graph->source_node()] = pivot_node;
+  } else {
+    node_map[host_graph->source_node()] = main_graph->source_node();
+  }
   node_map[host_graph->sink_node()] = main_graph->sink_node();
   Status s = Status::OK();
   auto copy_node_fn = [&](const Node* n) {
@@ -684,21 +678,16 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
 // 2) Remove control edges.
 // 3) Prune nodes that are not useful for shape inference.
 Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
-                                  Graph* host_graph,
+                                  Graph* host_graph, Node* pivot_node,
                                   FunctionLibraryDefinition* fld) {
   // Use "0" as "device_ordinal". It does not matter for shape inference.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
+  std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+      *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find SendFromHost node.
@@ -733,41 +722,45 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
     for (Node* n : nodes) {
       g->RemoveNode(n);
     }
-
-    std::map<const Node*, Node*> node_map;
-    node_map[host_graph->source_node()] = g->source_node();
-    Status s;
-    auto copy_node_fn = [&](const Node* n) {
-      if (!s.ok()) {
-        return;
-      }
-
-      if (node_map.find(n) != node_map.end()) {
-        return;
-      }
-
-      NodeDef copy_def = n->def();
-      Node* copy = g->AddNode(copy_def, &s);
-      if (!s.ok()) {
-        return;
-      }
-      for (auto e : n->in_edges()) {
-        if (node_map.find(e->src()) == node_map.end()) {
-          s = errors::Internal("Cannot find node image for ",
-                               e->src()->DebugString());
-          return;
-        }
-        g->AddEdge(node_map[e->src()], e->src_output(), copy, e->dst_input());
-      }
-
-      node_map[n] = copy;
+    Node* start_node = pivot_node ? pivot_node : host_graph->source_node();
+    // Reverse DFS from send_from_host_main_graph, and stop at start_node.
+    struct Visit {
+      Node* n;
+      bool is_exiting;
     };
-    // TODO(b/77601805): consolidate copy graph functions.
-    ReverseDFSFrom(*host_graph,
-                   std::vector<const Node*>{send_from_host_main_graph},
-                   /*enter=*/nullptr, copy_node_fn, NodeComparatorID());
-    if (!s.ok()) {
-      return s;
+    std::vector<Visit> stack{{send_from_host_main_graph, false}};
+    std::map<Node*, Node*> node_map;
+    node_map[host_graph->source_node()] = g->source_node();
+    while (!stack.empty()) {
+      Visit& curr = stack.back();
+      if (curr.is_exiting) {
+        if (node_map.find(curr.n) == node_map.end()) {
+          Node* copy = g->CopyNode(curr.n);
+          if (curr.n != start_node) {
+            for (const Edge* e : curr.n->in_edges()) {
+              auto node_iter = node_map.find(e->src());
+              if (node_iter == node_map.end()) {
+                return errors::Internal("Cannot find node image for ",
+                                        e->src()->DebugString());
+              }
+              g->AddEdge(node_iter->second, e->src_output(), copy,
+                         e->dst_input());
+            }
+          }
+          node_map[curr.n] = copy;
+        }
+        stack.pop_back();
+      } else {
+        curr.is_exiting = true;
+        if (curr.n != start_node) {
+          for (const Edge* e : curr.n->in_edges()) {
+            if (node_map.find(e->src()) != node_map.end()) {
+              continue;
+            }
+            stack.push_back({e->src(), false});
+          }
+        }
+      }
     }
 
     send_from_host = node_map[send_from_host_main_graph];
@@ -789,7 +782,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                               std::unordered_set<const Node*>{send_from_host});
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(shape_inference_graph_name, *g, fld);
+    DumpGraphToFile(shape_inference_graph_name, *g, fld);
   }
 
   // Replace original shape inference graph.
@@ -831,14 +824,9 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(func_name),
+                                             AttrSlice(&attrs), fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find or create the key placeholder node.
@@ -962,14 +950,10 @@ Status AddSendLoopPredToLoopCond(FunctionLibraryDefinition* fld,
                                  const string& while_node_name,
                                  const string& host_transfer_key) {
   // Instantiate the loop cond function.
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(loop_cond_func.name()), AttrSlice(&loop_cond_func.attr()), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(loop_cond_func.name()),
+                                             AttrSlice(&loop_cond_func.attr()),
+                                             fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find the _Retval node and the loop cond node.
@@ -1033,14 +1017,9 @@ Status RewriteHostWhileLoopCond(
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_temp_value;
-  FunctionBody* cond_fbody = nullptr;
+  std::unique_ptr<FunctionBody> cond_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &cond_fbody));
-  std::unique_ptr<FunctionBody> cond_fbody_deleter(cond_fbody);
+      *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld, &cond_fbody));
   Graph* cond_graph = cond_fbody->graph;
   Node* key_arg = nullptr;
   for (Node* n : cond_graph->nodes()) {
@@ -1113,14 +1092,9 @@ Status RewriteHostWhileLoopBody(
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_temp_value;
-  FunctionBody* body_fbody = nullptr;
+  std::unique_ptr<FunctionBody> body_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(body_host_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &body_fbody));
-  std::unique_ptr<FunctionBody> body_fbody_deleter(body_fbody);
+      *fld->Find(body_host_func_name), AttrSlice(&attrs), fld, &body_fbody));
   Graph* body_graph = body_fbody->graph;
   Node* key_arg = nullptr;
   for (Node* n : body_graph->nodes()) {
@@ -1620,7 +1594,7 @@ Status ExtractOutsideCompilationForFunction(
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
       fbody->graph, outside_compilation_attr_name));
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
+    DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
         *fbody->graph, fld);
   }
@@ -1705,7 +1679,7 @@ Status ExtractOutsideCompilationForFunction(
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(updated_fdef));
   }
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
+    DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_after_", func_name),
         *graph_out, fld);
   }
@@ -1719,16 +1693,17 @@ Status ExtractOutsideCompilation(
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
     FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld) {
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_before", *g, fld);
+    DumpGraphToFile("extract_outside_compilation_before", *g, fld);
   }
 
-  std::vector<string> shape_inference_graphs;
+  auto node_name_index = g->BuildNodeNameIndex();
   for (auto& iter : clusters) {
     string xla_cluster_name = iter.first;
     Node* n = iter.second.node;
     auto const& func_name_attrs = iter.second.func_name_attrs;
     auto const& host_compute_core = iter.second.host_compute_core;
 
+    std::vector<string> shape_inference_graphs;
     bool has_outside_compilation;
     string host_graph_func_name = absl::StrCat("oc_host_graph_", n->name());
     TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
@@ -1736,18 +1711,22 @@ Status ExtractOutsideCompilation(
         func_name_attrs, func_name_attrs.name(), host_graph_func_name,
         host_compute_core, flr, fld, &shape_inference_graphs,
         &has_outside_compilation));
-    TF_RETURN_IF_ERROR(
-        ExpandHostGraphIntoMainGraph(g, fld, host_graph_func_name, n));
-    TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
-  }
 
-  for (auto shape_inference_graph_name : shape_inference_graphs) {
-    TF_RETURN_IF_ERROR(
-        RewriteShapeInferenceGraph(shape_inference_graph_name, g, fld));
+    string pivot_name = absl::StrCat(xla_cluster_name, "/pivot");
+    Node* pivot_node = node_name_index[pivot_name];
+    TF_RETURN_IF_ERROR(ExpandHostGraphIntoMainGraph(
+        g, fld, host_graph_func_name, n, pivot_node));
+
+    TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
+
+    for (auto shape_inference_graph_name : shape_inference_graphs) {
+      TF_RETURN_IF_ERROR(RewriteShapeInferenceGraph(shape_inference_graph_name,
+                                                    g, pivot_node, fld));
+    }
   }
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_after", *g, fld);
+    DumpGraphToFile("extract_outside_compilation_after", *g, fld);
   }
   return Status::OK();
 }

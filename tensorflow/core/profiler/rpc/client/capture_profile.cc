@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
+#include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -73,6 +74,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   request.add_tools("input_pipeline");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
+  request.add_tools("pod_viewer");
   *request.mutable_opts() = opts;
   return request;
 }
@@ -162,6 +164,23 @@ Status NewSession(const string& service_addr,
   return Status::OK();
 }
 
+// Creates an empty event file if not already exists, which indicates that we
+// have a plugins/profile/ directory in the current logdir.
+Status MaybeCreateEmptyEventFile(const tensorflow::string& logdir) {
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
+  constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
+  for (const string& child : children) {
+    if (str_util::EndsWith(child, kProfileEmptySuffix)) {
+      return Status::OK();
+    }
+  }
+  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  return event_writer.InitWithSuffix(kProfileEmptySuffix);
+}
+
 // Starts tracing on a single or multiple TPU hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
@@ -177,6 +196,8 @@ Status StartTracing(const tensorflow::string& service_addr,
       io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<tensorflow::string> hostnames =
       tensorflow::str_util::Split(workers_list, ",");
+
+  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
@@ -208,25 +229,24 @@ Status StartTracing(const tensorflow::string& service_addr,
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
-    return status;
   }
-  return Status::OK();
+  return status;
 }
 
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
+MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
+                                      bool timestamp) {
   MonitorRequest request;
   request.set_duration_ms(duration_ms);
   request.set_monitoring_level(monitoring_level);
+  request.set_timestamp(timestamp);
   return request;
 }
 
-// Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
 void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries) {
+                     int monitoring_level, bool timestamp, int num_queries) {
   for (int query = 0; query < num_queries; ++query) {
     MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level);
+        PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
 
     ::grpc::ClientContext context;
     ::grpc::ChannelArguments channel_args;
@@ -248,4 +268,3 @@ void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
 }  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
-

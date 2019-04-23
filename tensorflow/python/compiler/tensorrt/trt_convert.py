@@ -20,10 +20,15 @@ from __future__ import print_function
 
 import six as _six
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
@@ -32,9 +37,21 @@ from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+
+# Import TRT library. This is fine since we don't import TF-TRT in
+# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
+# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
+# tensorflow/python/BUILD depends on it.
+#
+# We need this import so that when users import this module, they can execute a
+# TRT-converted graph without calling any of the methods in this module.
+trt_ops.load_trt_ops()
 
 
 def _to_bytes(s):
@@ -92,9 +109,11 @@ class GraphConverter(object):
   ```
   """
 
+  # TODO(laigd): clean up the parameters.
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
+               input_saved_model_signature_key=None,
                input_graph_def=None,
                nodes_blacklist=None,
                session_config=None):
@@ -104,6 +123,8 @@ class GraphConverter(object):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -116,21 +137,31 @@ class GraphConverter(object):
     Raises:
       ValueError: if the combination of the parameters is invalid.
     """
-    if input_graph_def and input_saved_model_dir:
-      raise ValueError(
-          "Can only specify one of input_graph_def and input_saved_model_dir")
-    if not input_graph_def and not input_saved_model_dir:
-      raise ValueError("Must specify one of input_graph_def and "
-                       "input_saved_model_dir")
+    if context.executing_eagerly():
+      if input_graph_def or not input_saved_model_dir:
+        raise ValueError(
+            "TF 2.0 only supports conversion of SavedModel, please specify "
+            "input_saved_model_dir as input.")
+    else:
+      if input_graph_def and input_saved_model_dir:
+        raise ValueError(
+            "Can only specify one of input_graph_def and input_saved_model_dir")
+      if not input_graph_def and not input_saved_model_dir:
+        raise ValueError("Must specify one of input_graph_def and "
+                         "input_saved_model_dir")
 
-    self._input_graph_def = input_graph_def
-    self._nodes_blacklist = nodes_blacklist
+      self._input_graph_def = input_graph_def
+      self._nodes_blacklist = nodes_blacklist
+
     self._input_saved_model_dir = input_saved_model_dir
     self._converted = False
     self._grappler_meta_graph_def = None
 
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
+    self._input_saved_model_signature_key = (
+        input_saved_model_signature_key or
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
     self._session_config = session_config or config_pb2.ConfigProto()
 
     # For calibration usage.
@@ -172,6 +203,16 @@ class GraphConverter(object):
         graph_id=b"tf_graph")
     self._converted = True
 
+  def _add_nodes_blacklist(self):
+    if self._nodes_blacklist:
+      collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
+      blacklist = collection_def.node_list.value
+      for i in self._nodes_blacklist:
+        if isinstance(i, ops.Tensor):
+          blacklist.append(_to_bytes(i.name))
+        else:
+          blacklist.append(_to_bytes(i))
+
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
     graph = ops.Graph()
@@ -179,18 +220,7 @@ class GraphConverter(object):
       importer.import_graph_def(self._input_graph_def, name="")
     self._grappler_meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True), graph=graph)
-    if self._nodes_blacklist:
-      output_collection = meta_graph_pb2.CollectionDef()
-      output_list = output_collection.node_list.value
-      for i in self._nodes_blacklist:
-        if isinstance(i, ops.Tensor):
-          output_list.append(_to_bytes(i.name))
-        else:
-          output_list.append(_to_bytes(i))
-      # TODO(laigd): use another key as the self._nodes_blacklist are really
-      # not train_op.
-      self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
-          output_collection)
+    self._add_nodes_blacklist()
 
     self._run_conversion()
 
@@ -200,17 +230,16 @@ class GraphConverter(object):
     with session.Session(graph=graph, config=self._session_config) as sess:
       input_meta_graph_def = loader.load(sess, self._input_saved_model_tags,
                                          self._input_saved_model_dir)
+      input_signature_def = input_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key]
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
         return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
 
       # Get input and outputs from all SignatureDef.
-      output_node_names = set()
-      for key in input_meta_graph_def.signature_def:
-        signature_def = input_meta_graph_def.signature_def[key]
-        output_node_names.update(_gather_names(signature_def.inputs))
-        output_node_names.update(_gather_names(signature_def.outputs))
+      output_node_names = _gather_names(input_signature_def.inputs).union(
+          _gather_names(input_signature_def.outputs))
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
@@ -233,29 +262,62 @@ class GraphConverter(object):
           self._grappler_meta_graph_def.collection_def[key].CopyFrom(
               input_meta_graph_def.collection_def[key])
 
+      self._add_nodes_blacklist()
+
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
           input_meta_graph_def.meta_info_def)
-      for key in input_meta_graph_def.signature_def:
-        self._grappler_meta_graph_def.signature_def[key].CopyFrom(
-            input_meta_graph_def.signature_def[key])
+      self._grappler_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key].CopyFrom(input_signature_def)
       # TODO(laigd): maybe add back AssetFileDef.
 
     self._run_conversion()
+
+  # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
+  # use it here (b/124792963).
+  def _convert_saved_model_v2(self):
+    """Convert the input SavedModel in 2.0 format."""
+    assert context.executing_eagerly()
+
+    self._saved_model = load.load(self._input_saved_model_dir,
+                                  self._input_saved_model_tags)
+    func = self._saved_model.signatures[self._input_saved_model_signature_key]
+    frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    self._grappler_meta_graph_def = saver.export_meta_graph(
+        graph_def=frozen_func.graph.as_graph_def(), graph=frozen_func.graph)
+
+    # Add a collection 'train_op' so that Grappler knows the outputs.
+    fetch_collection = meta_graph_pb2.CollectionDef()
+    for array in frozen_func.inputs + frozen_func.outputs:
+      fetch_collection.node_list.value.append(array.name)
+    self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
+        fetch_collection)
+
+    # Run TRT optimizer in Grappler to convert the graph.
+    self._run_conversion()
+    self._converted_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in frozen_func.inputs],
+        [tensor.name for tensor in frozen_func.outputs])
 
   def convert(self):
     """Run the conversion.
 
     Returns:
-      The converted GraphDef.
+      The converted GraphDef for TF 1.x, or the converted ConcreteFunction in TF
+      2.0+.
     """
     assert not self._converted
 
-    if self._input_graph_def:
-      self._convert_graph_def()
+    if context.executing_eagerly():
+      self._convert_saved_model_v2()
+      return self._converted_func
     else:
-      self._convert_saved_model()
-    return self._converted_graph_def
+      if self._input_graph_def:
+        self._convert_graph_def()
+      else:
+        self._convert_saved_model()
+      return self._converted_graph_def
 
   def calibrate(self,
                 fetch_names,
@@ -279,12 +341,17 @@ class GraphConverter(object):
 
     Raises:
       ValueError: if the input combination is invalid.
+      RuntimeError: if this method is called in eager mode.
 
     Returns:
       The GraphDef after the calibration.
     """
     assert self._converted
     assert not self._calibration_sess
+
+    if context.executing_eagerly():
+      raise RuntimeError("Calibration for TF 2.0 is not supported yet.")
+
     if (feed_dict_fn and input_map_fn) or (not feed_dict_fn and
                                            not input_map_fn):
       raise ValueError(
@@ -330,22 +397,30 @@ class GraphConverter(object):
     """
     assert self._converted
 
-    if self._input_graph_def:
-      raise ValueError(
-          "Not able to save to a SavedModel since input is a GraphDef")
+    if context.executing_eagerly():
+      # Rewrite the signature map using the optimized ConcreteFunction.
+      signatures = {
+          key: value for key, value in self._saved_model.signatures.items()
+      }
+      signatures[self._input_saved_model_signature_key] = self._converted_func
+      save.save(self._saved_model, output_saved_model_dir, signatures)
+    else:
+      if self._input_graph_def:
+        raise ValueError(
+            "Not able to save to a SavedModel since input is a GraphDef")
 
-    # Write the transformed graphdef as SavedModel.
-    saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
-    with ops.Graph().as_default():
-      importer.import_graph_def(self._converted_graph_def, name="")
-      # We don't use any specific converter here.
-      with session.Session(config=self._session_config) as sess:
-        saved_model_builder.add_meta_graph_and_variables(
-            sess,
-            self._input_saved_model_tags,
-            signature_def_map=self._grappler_meta_graph_def.signature_def)
-    # Ignore other meta graphs from the input SavedModel.
-    saved_model_builder.save()
+      # Write the transformed graphdef as SavedModel.
+      saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
+      with ops.Graph().as_default():
+        importer.import_graph_def(self._converted_graph_def, name="")
+        # We don't use any specific converter here.
+        with session.Session(config=self._session_config) as sess:
+          saved_model_builder.add_meta_graph_and_variables(
+              sess,
+              self._input_saved_model_tags,
+              signature_def_map=self._grappler_meta_graph_def.signature_def)
+      # Ignore other meta graphs from the input SavedModel.
+      saved_model_builder.save()
 
 
 class TrtPrecisionMode(object):
@@ -366,7 +441,7 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 class TrtGraphConverter(GraphConverter):
   """A GraphConverter for TRT transformation."""
 
-  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF_TRT_Calibration"
+  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 
   @classmethod
   def get_tensorrt_rewriter_config(
@@ -379,7 +454,8 @@ class TrtGraphConverter(GraphConverter):
       is_dynamic_op=False,
       maximum_cached_engines=1,
       cached_engine_batches=None,
-      use_calibration=True):
+      use_calibration=True,
+      use_function_backup=True):
     """Returns a RewriterConfig proto for TRT transformation.
 
     Args:
@@ -407,12 +483,15 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Returns:
       A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -421,14 +500,6 @@ class TrtGraphConverter(GraphConverter):
       TypeError: if any of the parameters are of unexpected type.
       ValueError: if any of the parameters are of unexpected value.
     """
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-    # Import a random symbol to trigger loading of TRT library.
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-
     if rewriter_config_template is not None and not isinstance(
         rewriter_config_template, rewriter_config_pb2.RewriterConfig):
       raise TypeError(
@@ -458,11 +529,13 @@ class TrtGraphConverter(GraphConverter):
       optimizer.parameter_map["cached_engine_batches"].list.i.extend(
           cached_engine_batches)
     optimizer.parameter_map["use_calibration"].b = use_calibration
+    optimizer.parameter_map["use_function_backup"].b = use_function_backup
     return rewriter_config_with_trt
 
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
+               input_saved_model_signature_key=None,
                input_graph_def=None,
                nodes_blacklist=None,
                session_config=None,
@@ -473,13 +546,16 @@ class TrtGraphConverter(GraphConverter):
                is_dynamic_op=False,
                maximum_cached_engines=1,
                cached_engine_batches=None,
-               use_calibration=True):
+               use_calibration=True,
+               use_function_backup=True):
     """Initialize the converter.
 
     Args:
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -510,12 +586,15 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -524,21 +603,18 @@ class TrtGraphConverter(GraphConverter):
     super(TrtGraphConverter, self).__init__(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_tags=input_saved_model_tags,
+        input_saved_model_signature_key=input_saved_model_signature_key,
         input_graph_def=input_graph_def,
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
 
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,line-too-long
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-    # pylint: enable=g-import-not-at-top,line-too-long
-
+    # TODO(laigd): move all the validations below to
+    # get_tensorrt_rewriter_config().
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
     loaded_version = get_loaded_tensorrt_version()
+    tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
+    tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
     version_mismatch = False
     if loaded_version[0] < compiled_version[0]:
       tf_logging.error(
@@ -562,11 +638,12 @@ class TrtGraphConverter(GraphConverter):
                       ".".join([str(x) for x in loaded_version]))
 
     # Check input arguments.
-    if precision_mode not in TrtPrecisionMode.supported_precision_modes():
-      raise ValueError(("precision mode '{}' is not supported."
-                        "It should be one of {}").format(
-                            precision_mode,
-                            TrtPrecisionMode.supported_precision_modes))
+    supported_precision_modes = TrtPrecisionMode.supported_precision_modes()
+    if precision_mode not in supported_precision_modes:
+      raise ValueError(
+          ("precision mode '{}' is not supported."
+           "It should be one of {}").format(precision_mode,
+                                            supported_precision_modes))
 
     if cached_engine_batches:
       if not isinstance(cached_engine_batches, list):
@@ -577,6 +654,13 @@ class TrtGraphConverter(GraphConverter):
 
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+    self._use_function_backup = use_function_backup
+
+    # TODO(laigd): consider provide a mechanism to remove the fallback path
+    # after calibration is done.
+    if self._need_calibration and not use_function_backup:
+      raise ValueError(
+          "Calibration requires enabling fallback to TF function execution.")
 
     # TODO(laigd):
     # - Get rid of is_dynamic_op option, it should always be True, and it should
@@ -602,7 +686,8 @@ class TrtGraphConverter(GraphConverter):
         is_dynamic_op=self._is_dynamic_op,
         maximum_cached_engines=self._maximum_cached_engines,
         cached_engine_batches=self._cached_engine_batches,
-        use_calibration=self._need_calibration)
+        use_calibration=self._need_calibration,
+        use_function_backup=self._use_function_backup)
 
   def finalize_calibration(self):
     assert self._need_calibration
@@ -673,9 +758,9 @@ def create_inference_graph(
     is_dynamic_op=False,
     maximum_cached_engines=1,
     cached_engine_batches=None,
-    use_calibration=True,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
+    input_saved_model_signature_key=None,
     output_saved_model_dir=None,
     session_config=None):
   """Python wrapper for the TRT transformation.
@@ -705,18 +790,11 @@ def create_inference_graph(
       determine the batch sizes of the cached engines, instead of making the
       decision on the fly. This is useful when we know the most common batch
       size(s) the application is going to generate.
-    use_calibration: this argument is ignored if precision_mode is not INT8. If
-      set to True, a calibration graph will be created to calibrate the missing
-      ranges. The calibration graph must be converted to an inference graph
-      using calib_graph_to_infer_graph() after running calibration. if set to
-      False, quantization nodes will be expected for every tensor in the graph
-      (exlcuding those which will be fused). If a range is missing, an error
-      will occur. Please note that accuracy may be negatively affected if there
-      is a mismatch between which tensors TRT quantizes and which tensors were
-      trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
+    input_saved_model_signature_key: the key of the signature to optimize the
+      graph for.
     output_saved_model_dir: if not None, construct a SavedModel using the
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
@@ -746,11 +824,11 @@ def create_inference_graph(
 
   Raises:
     ValueError: if the combination of the parameters is invalid.
-    RuntimeError: if the TensorRT library version is incompatible.
   """
   trt_converter = TrtGraphConverter(
       input_saved_model_dir=input_saved_model_dir,
       input_saved_model_tags=input_saved_model_tags,
+      input_saved_model_signature_key=input_saved_model_signature_key,
       input_graph_def=input_graph_def,
       nodes_blacklist=outputs,
       session_config=session_config,
@@ -761,7 +839,7 @@ def create_inference_graph(
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
       cached_engine_batches=cached_engine_batches,
-      use_calibration=use_calibration)
+      use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)

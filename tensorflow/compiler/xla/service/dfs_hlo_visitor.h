@@ -112,6 +112,7 @@ class DfsHloVisitorBase {
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
@@ -197,6 +198,9 @@ class DfsHloVisitorBase {
   }
   virtual Status HandleXor(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
+  }
+  virtual Status HandlePopulationCount(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
@@ -287,6 +291,7 @@ class DfsHloVisitorBase {
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
   void ReserveVisitStates(int num) { visit_state_.reserve(num); }
+  size_t VisitStateSize() const { return visit_state_.size(); }
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.

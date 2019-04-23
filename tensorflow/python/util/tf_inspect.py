@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
+import collections
 import functools
 import inspect as _inspect
 
@@ -31,7 +31,7 @@ ArgSpec = _inspect.ArgSpec
 if hasattr(_inspect, 'FullArgSpec'):
   FullArgSpec = _inspect.FullArgSpec  # pylint: disable=invalid-name
 else:
-  FullArgSpec = namedtuple('FullArgSpec', [
+  FullArgSpec = collections.namedtuple('FullArgSpec', [
       'args', 'varargs', 'varkw', 'defaults', 'kwonlyargs', 'kwonlydefaults',
       'annotations'
   ])
@@ -143,7 +143,7 @@ def getargspec(obj):
       pass
 
   # The `type(target)` ensures that if a class is received we don't return
-  # the signature of it's __call__ method.
+  # the signature of its __call__ method.
   return _getargspec(type(target).__call__)
 
 
@@ -198,17 +198,24 @@ def _get_argspec_for_partial(obj):
   # Partial function may give default value to any argument, therefore length
   # of default value list must be len(args) to allow each argument to
   # potentially be given a default value.
-  all_defaults = [None] * len(args)
+  no_default = object()
+  all_defaults = [no_default] * len(args)
+
   if defaults:
     all_defaults[-len(defaults):] = defaults
 
   # Fill in default values provided by partial function in all_defaults.
   for kw, default in six.iteritems(partial_keywords):
-    idx = args.index(kw)
-    all_defaults[idx] = default
+    if kw in args:
+      idx = args.index(kw)
+      all_defaults[idx] = default
+    elif not keywords:
+      raise ValueError('Function does not have **kwargs parameter, but '
+                       'contains an unknown partial keyword.')
 
   # Find first argument with default value set.
-  first_default = next((idx for idx, x in enumerate(all_defaults) if x), None)
+  first_default = next(
+      (idx for idx, x in enumerate(all_defaults) if x is not no_default), None)
 
   # If no default values are found, return ArgSpec with defaults=None.
   if first_default is None:
@@ -216,7 +223,8 @@ def _get_argspec_for_partial(obj):
 
   # Checks if all arguments have default value set after first one.
   invalid_default_values = [
-      args[i] for i, j in enumerate(all_defaults) if not j and i > first_default
+      args[i] for i, j in enumerate(all_defaults)
+      if j is no_default and i > first_default
   ]
 
   if invalid_default_values:
@@ -242,9 +250,11 @@ def getfullargspec(obj):
     directly on the callable.
   """
   decorators, target = tf_decorator.unwrap(obj)
-  return next((_convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
-               for d in decorators
-               if d.decorator_argspec is not None), _getfullargspec(target))
+
+  for d in decorators:
+    if d.decorator_argspec is not None:
+      return _convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
+  return _getfullargspec(target)
 
 
 def getcallargs(func, *positional, **named):
@@ -364,6 +374,11 @@ def isframe(object):  # pylint: disable=redefined-builtin
 def isgenerator(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.isgenerator."""
   return _inspect.isgenerator(tf_decorator.unwrap(object)[1])
+
+
+def isgeneratorfunction(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.isgeneratorfunction."""
+  return _inspect.isgeneratorfunction(tf_decorator.unwrap(object)[1])
 
 
 def ismethod(object):  # pylint: disable=redefined-builtin

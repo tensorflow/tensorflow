@@ -67,6 +67,11 @@ KernelAndDeviceOp::~KernelAndDeviceOp() {
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
+  if (flr_ == nullptr) {
+    return errors::Internal(
+        "A valid FunctionLibraryRuntime must be provided when running ops "
+        "based on OpKernel.");
+  }
   TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
   kernel_.reset(k);
   return Status::OK();
@@ -75,8 +80,18 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
 Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
-  const FunctionDef* function_def =
-      flr_->GetFunctionLibraryDefinition()->Find(ndef.op());
+  const FunctionDef* function_def;
+  if (flr_ == nullptr) {
+    // If function is being executed without an explicit device request,
+    // lookup the FunctionDef in the CPU's FLR. All FLRs share the same
+    // library.
+    function_def = pflr_->GetFLR(host_cpu_device_->name())
+                       ->GetFunctionLibraryDefinition()
+                       ->Find(ndef.op());
+  } else {
+    function_def = flr_->GetFunctionLibraryDefinition()->Find(ndef.op());
+  }
+
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -86,11 +101,13 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.target = device_->name();
+  options.target = device_ == nullptr ? "" : device_->name();
   options.is_multi_device_function = true;
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.input_tensor_shapes = input_tensor_shapes_;
+  options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -127,18 +144,40 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 #endif
   options.graph_collector = graph_collector;
 
+  // In Eager mode we always inline all functions into the top-level
+  // function body graph, to get a single executable graph, that could be
+  // optimized across function boundaries (e.g. prune unused inputs and outputs
+  // in a function call chain). This is required to mimic graph mode execution,
+  // with aggressive pruning of nodes not in the transitive fanin of fetches.
+  options.config_proto.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
-  return Status::OK();
 }
 
-Status KernelAndDevice::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
-                            std::vector<Tensor>* outputs, NodeExecStats* stats,
-                            StepStats* step_stats,
-                            GraphCollector* graph_collector) {
+Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+                              std::vector<Tensor>* outputs,
+                              NodeExecStats* stats, StepStats* step_stats,
+                              GraphCollector* graph_collector) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  return this->Run(&step_container, inputs, outputs, stats, step_stats,
+                   graph_collector);
+}
+
+Status KernelAndDeviceFunc::Run(
+    const gtl::InlinedVector<TensorValue, 4>& inputs,
+    std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
+    GraphCollector* graph_collector) {
+  const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
+  ScopedStepContainer step_container(0, [&devices](const string& name) {
+    for (Device* device : devices) {
+      device->resource_manager()->Cleanup(name).IgnoreError();
+    }
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
                    graph_collector);
@@ -179,6 +218,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
                               GraphCollector* graph_collector) {
+  gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
+  for (size_t i = 0; i < in_attrs.size(); ++i) {
+    in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
+                            tensorflow::HOST_MEMORY);
+  }
   std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
   for (size_t i = 0; i < out_attrs.size(); ++i) {
     out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
@@ -200,6 +244,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.inputs = &inputs;
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
+  params.input_alloc_attrs = &in_attrs;
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
@@ -247,7 +292,10 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
     // are negligible.
     if (device_->TraceUsingAnnotations()) {
-      tracing::ScopedAnnotation activity(op_name, kernel_->type_string());
+      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       tracing::ScopedActivity activity(op_name, kernel_->type_string());
@@ -278,8 +326,10 @@ Status KernelAndDeviceFunc::Run(
   // function library runtime to create a new for this call. We could have
   // created one here but it requires more state to be kept in
   // KernelAndDeviceFunc.
-  opts.rendezvous = nullptr;
-  opts.create_rendezvous = true;
+  Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
+  opts.rendezvous = rendezvous;
+  opts.create_rendezvous = false;
+
   opts.cancellation_manager = &cm_;
   cm_.Reset();
   // eager runtime does not yet support collective ops.
@@ -305,13 +355,14 @@ Status KernelAndDeviceFunc::Run(
     input_vector.push_back(*tensor_value.tensor);
   }
 
-  flr_->Run(opts, handle_, input_vector, outputs,
-            [&status, &done](const Status& s) {
-              status = s;
-              done.Notify();
-            });
+  pflr_->Run(opts, handle_, input_vector, outputs,
+             [&status, &done](const Status& s) {
+               status = s;
+               done.Notify();
+             });
   done.WaitForNotification();
 
+  rendezvous->Unref();
   if (step_stats_collector != nullptr) {
     step_stats_collector->Finalize();
   }

@@ -25,7 +25,6 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
@@ -33,7 +32,6 @@ from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
-from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -44,8 +42,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-@keras_export('keras.models.save_model')
-def save_model(model, filepath, overwrite=True, include_optimizer=True):
+def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -142,9 +139,8 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
       f.close()
 
 
-@keras_export('keras.models.load_model')
-def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
-  """Loads a model saved via `save_model`.
+def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
+  """Loads a model saved via `save_model_to_hdf5`.
 
   Arguments:
       filepath: One of the following:
@@ -685,25 +681,10 @@ def save_weights_to_hdf5_group(f, layers):
   f.attrs['backend'] = K.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
-  # On TPUs, modifying the graph between session.runs() triggers some expensive
-  # recompilation overhead. To avoid this, we build up the full set of tensors
-  # to save before fetching weights, thus only modifying the graph once.
-  layer_weights_dict = {}
-  for layer in layers:
-    layer_weights_dict[layer.name] = [ops.convert_to_tensor(w)
-                                      for w in layer.weights]
-
   for layer in layers:
     g = f.create_group(layer.name)
-    symbolic_weights = layer_weights_dict[layer.name]
-    weight_values = K.batch_get_value(symbolic_weights)
-    weight_names = []
-    for i, (w, val) in enumerate(zip(symbolic_weights, weight_values)):
-      if hasattr(w, 'name') and w.name:
-        name = str(w.name)
-      else:
-        name = 'param_' + str(i)
-      weight_names.append(name.encode('utf8'))
+    weight_values = K.batch_get_value(layer.weights)
+    weight_names = [w.name.encode('utf8') for w in layer.weights]
     save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
     for name, val in zip(weight_names, weight_values):
       param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)

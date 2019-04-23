@@ -465,7 +465,7 @@ def _SeluGrad(op, grad):
 
 @ops.RegisterGradient("Softplus")
 def _SoftplusGrad(op, grad):
-  return gen_nn_ops.softplus_grad(grad, op.inputs[0])
+  return grad * math_ops.sigmoid(op.inputs[0])
 
 
 @ops.RegisterGradient("SoftplusGrad")
@@ -698,13 +698,15 @@ def _MaxPoolGradV2(op, grad):
 
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
+  del unused_argmax_grad
   return gen_nn_ops.max_pool_grad_with_argmax(
       op.inputs[0],
       grad,
       op.outputs[1],
       op.get_attr("ksize"),
       op.get_attr("strides"),
-      padding=op.get_attr("padding"))
+      padding=op.get_attr("padding"),
+      include_batch_in_index=op.get_attr("include_batch_in_index"))
 
 
 @ops.RegisterGradient("MaxPoolGrad")

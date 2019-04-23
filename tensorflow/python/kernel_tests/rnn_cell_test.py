@@ -2425,6 +2425,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
         gpu_stats = ds.node_stats
     return cpu_stats, gpu_stats
 
+  @test_util.run_v1_only("b/124229375")
   def testRNNOnCPUCellOnGPU(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2447,6 +2448,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     # Scatters happen to get initial input into TensorArray
     _assert_in("TensorArrayScatter", cpu_stats, gpu_stats)
 
+  @test_util.run_v1_only("b/124229375")
   def testRNNOnCPUCellOnCPU(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2463,6 +2465,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     # All TensorArray operations happen on CPU
     _assert_in("TensorArray", cpu_stats, gpu_stats)
 
+  @test_util.run_v1_only("b/124229375")
   def testInputOnGPUCellNotDeclared(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2861,21 +2864,20 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     # States are left untouched
     self.assertAllClose(res_m_new, res_m_new_res)
 
-  @test_util.run_v1_only("b/124229375")
-  def testDeviceWrapper(self):
-    with variable_scope.variable_scope(
-        "root", initializer=init_ops.constant_initializer(0.5)):
-      x = array_ops.zeros([1, 3])
-      m = array_ops.zeros([1, 3])
-      wrapped = rnn_cell_impl.GRUCell(3)
-      cell = rnn_cell_impl.DeviceWrapper(wrapped, "/cpu:14159")
-      (name, dep), = cell._checkpoint_dependencies
-      cell.get_config()  # Should not throw an error
-      self.assertIs(dep, wrapped)
-      self.assertEqual("cell", name)
+  @parameterized.parameters(
+      [rnn_cell_impl.DeviceWrapper, rnn_cell_impl.DeviceWrapperV2])
+  def testDeviceWrapper(self, wrapper_type):
+    x = array_ops.zeros([1, 3])
+    m = array_ops.zeros([1, 3])
+    cell = rnn_cell_impl.GRUCell(3)
+    wrapped_cell = wrapper_type(cell, "/cpu:0")
+    (name, dep), = wrapped_cell._checkpoint_dependencies
+    wrapped_cell.get_config()  # Should not throw an error
+    self.assertIs(dep, cell)
+    self.assertEqual("cell", name)
 
-      outputs, _ = cell(x, m)
-      self.assertTrue("cpu:14159" in outputs.device.lower())
+    outputs, _ = wrapped_cell(x, m)
+    self.assertIn("cpu:0", outputs.device.lower())
 
   def _retrieve_cpu_gpu_stats(self, run_metadata):
     cpu_stats = None
@@ -2888,6 +2890,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         gpu_stats = ds.node_stats
     return cpu_stats, gpu_stats
 
+  @test_util.run_v1_only("b/124229375")
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
     if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
@@ -2975,7 +2978,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
   def testWrapperKerasStyle(self, wrapper, wrapper_v2):
     """Tests if wrapper cell is instantiated in keras style scope."""
     wrapped_cell_v2 = wrapper_v2(rnn_cell_impl.BasicRNNCell(1))
-    self.assertTrue(wrapped_cell_v2._keras_style)
+    self.assertIsNone(getattr(wrapped_cell_v2, "_keras_style", None))
 
     wrapped_cell = wrapper(rnn_cell_impl.BasicRNNCell(1))
     self.assertFalse(wrapped_cell._keras_style)
@@ -3014,22 +3017,21 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testWrapperWeights(self, wrapper):
     """Tests that wrapper weights contain wrapped cells weights."""
-
-    with base_layer.keras_style_scope():
-      base_cell = rnn_cell_impl.BasicRNNCell(1, name="basic_rnn_cell")
+    base_cell = keras_layers.SimpleRNNCell(1, name="basic_rnn_cell")
     rnn_cell = wrapper(base_cell)
     rnn_layer = keras_layers.RNN(rnn_cell)
     inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
     rnn_layer(inputs)
 
-    expected_weights = ["rnn/" + var for var in ("kernel:0", "bias:0")]
-    self.assertEqual(len(rnn_cell.weights), 2)
+    expected_weights = ["rnn/" + var for var in
+                        ("kernel:0", "recurrent_kernel:0", "bias:0")]
+    self.assertEqual(len(rnn_cell.weights), 3)
     self.assertCountEqual([v.name for v in rnn_cell.weights], expected_weights)
     self.assertCountEqual([v.name for v in rnn_cell.trainable_variables],
                           expected_weights)
     self.assertCountEqual([v.name for v in rnn_cell.non_trainable_variables],
                           [])
-    self.assertCountEqual([v.name for v in rnn_cell._cell.weights],
+    self.assertCountEqual([v.name for v in rnn_cell.cell.weights],
                           expected_weights)
 
   @parameterized.parameters(

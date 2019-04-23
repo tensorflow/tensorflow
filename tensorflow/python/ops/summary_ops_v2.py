@@ -52,19 +52,35 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-# A global dictionary mapping graph keys to a list of summary writer init ops.
-_SUMMARY_WRITER_INIT_OP = {}
+# Name for graph collection of summary writer init ops, which is only exposed
+# as a legacy API for tf.contrib.summary in TF 1.x.
+_SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
 _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
-def _should_record_summaries_internal():
-  """Returns boolean Tensor if summaries should/shouldn't be recorded, or None.
+def _should_record_summaries_internal(default_state):
+  """Returns boolean Tensor if summaries should/shouldn't be recorded.
+
+  Now the summary condition is decided by logical "and" of two conditions:
+  ctx.summary_recording and ctx.summary_recording_distribution_strategy. The
+  former one is usually set by user, and the latter one is controlled by
+  DistributionStrategy (tf.distribute.ReplicaContext).
+
+  Args:
+    default_state: can be True or False. The default summary behavior when user
+      does not specify ctx.summary_recording and
+      ctx.summary_recording_distribution_strategy is True.
   """
-  condition = context.context().recording_summaries
-  return condition() if callable(condition) else condition
+  ctx = context.context()
+  resolve = lambda x: x() if callable(x) else x
+  cond_distributed = resolve(ctx.summary_recording_distribution_strategy)
+  cond = resolve(ctx.summary_recording)
+  if cond is None:
+    cond = default_state
+  return math_ops.logical_and(cond_distributed, cond)
 
 
 def _should_record_summaries_v2():
@@ -73,14 +89,12 @@ def _should_record_summaries_v2():
   If no recording status has been set, this defaults to True, unlike the public
   should_record_summaries().
   """
-  result = _should_record_summaries_internal()
-  return True if result is None else result
+  return _should_record_summaries_internal(default_state=True)
 
 
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
-  result = _should_record_summaries_internal()
-  return False if result is None else result
+  return _should_record_summaries_internal(default_state=False)
 
 
 @tf_export("summary.record_if", v1=[])
@@ -99,12 +113,12 @@ def record_if(condition):
     Returns a context manager that sets this value on enter and restores the
     previous value on exit.
   """
-  old = context.context().recording_summaries
+  old = context.context().summary_recording
   try:
-    context.context().recording_summaries = condition
+    context.context().summary_recording = condition
     yield
   finally:
-    context.context().recording_summaries = old
+    context.context().summary_recording = old
 
 
 # TODO(apassos) consider how to handle local step here.
@@ -127,6 +141,36 @@ def always_record_summaries():
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
   return record_if(False)
+
+
+@tf_export("summary.experimental.get_step", v1=[])
+def get_step():
+  """Returns the default summary step for the current thread.
+
+  Returns:
+    The step set by `tf.summary.experimental.set_step()` if one has been set,
+    otherwise None.
+  """
+  return context.context().summary_step
+
+
+@tf_export("summary.experimental.set_step", v1=[])
+def set_step(step):
+  """Sets the default summary step for the current thread.
+
+  For convenience, this function sets a default value for the `step` parameter
+  used in summary-writing functions elsewhere in the API so that it need not
+  be explicitly passed in every such invocation. The value can be a constant
+  or a variable, and can be retrieved via `tf.summary.experimental.get_step()`.
+
+  Note: when using this with @tf.functions, the step value will be captured at
+  the time the function is traced, so changes to the step outside the function
+  will not be reflected inside the function unless using a `tf.Variable` step.
+
+  Args:
+    step: An `int64`-castable default step value, or None to unset.
+  """
+  context.context().summary_step = step
 
 
 @tf_export("summary.SummaryWriter", v1=[])
@@ -173,30 +217,28 @@ class ResourceSummaryWriter(SummaryWriter):
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
     else:
-      global _SUMMARY_WRITER_INIT_OP
-      key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-      _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(self._init_op)
+      ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
   def set_as_default(self):
     """Enables this summary writer for the current thread."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    context.context().summary_writer_resource = self._resource
+    context.context().summary_writer = self
 
   @tf_contextlib.contextmanager
   def as_default(self):
     """Returns a context manager that enables summary writing."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    old = context.context().summary_writer_resource
+    old = context.context().summary_writer
     try:
-      context.context().summary_writer_resource = self._resource
+      context.context().summary_writer = self
       yield self
       # Flushes the summary writer in eager mode or in graph functions, but
       # not in legacy graph mode (you're on your own there).
       self.flush()
     finally:
-      context.context().summary_writer_resource = old
+      context.context().summary_writer = old
 
   def init(self):
     """Initializes the summary writer."""
@@ -275,7 +317,7 @@ def initialize(
   """
   if context.executing_eagerly():
     return
-  if context.context().summary_writer_resource is None:
+  if context.context().summary_writer is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
     session = ops.get_default_session()
@@ -336,7 +378,7 @@ def create_file_writer_v2(logdir,
       if context.executing_eagerly():
         shared_name = context.shared_name()
       else:
-        shared_name = ops._name_from_scope_name(scope)  # pylint: disable=protected-access
+        shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
       return ResourceSummaryWriter(
           shared_name=shared_name,
           init_op_fn=functools.partial(
@@ -494,18 +536,16 @@ def summary_writer_initializer_op():
     raise RuntimeError(
         "tf.contrib.summary.summary_writer_initializer_op is only "
         "supported in graph mode.")
-  global _SUMMARY_WRITER_INIT_OP
-  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  return _SUMMARY_WRITER_INIT_OP.setdefault(key, [])
+  return ops.get_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME)
 
 
 _INVALID_SCOPE_CHARACTERS = re.compile(r"[^-_/.A-Za-z0-9]")
 
 
-@tf_export("summary.summary_scope", v1=[])
+@tf_export("summary.experimental.summary_scope", v1=[])
 @tf_contextlib.contextmanager
 def summary_scope(name, default_name="summary", values=None):
-  """A context manager for use when defining a custom summary op.
+  """Experimental context manager for use when defining a custom summary op.
 
   This behaves similarly to `tf.name_scope`, except that it returns a generated
   summary tag in addition to the scope name. The tag is structurally similar to
@@ -544,7 +584,7 @@ def summary_scope(name, default_name="summary", values=None):
 
 
 @tf_export("summary.write", v1=[])
-def write(tag, tensor, step, metadata=None, name=None):
+def write(tag, tensor, step=None, metadata=None, name=None):
   """Writes a generic summary to the default SummaryWriter if one exists.
 
   This exists primarily to support the definition of type-specific summary ops
@@ -555,17 +595,28 @@ def write(tag, tensor, step, metadata=None, name=None):
     tag: string tag used to identify the summary (e.g. in TensorBoard), usually
       generated with `tf.summary.summary_scope`
     tensor: the Tensor holding the summary data to write
-    step: `int64`-castable monotonic step value for this summary
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
     metadata: Optional SummaryMetadata, as a proto or serialized bytes
     name: Optional string name for this op.
 
   Returns:
     True on success, or false if no summary was written because no default
     summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
   """
   with ops.name_scope(name, "write_summary") as scope:
-    if context.context().summary_writer_resource is None:
+    if context.context().summary_writer is None:
       return constant_op.constant(False)
+    if step is None:
+      step = get_step()
+      if step is None:
+        raise ValueError("No step set via 'step' argument or "
+                         "tf.summary.experimental.set_step()")
     if metadata is None:
       serialized_metadata = b""
     elif hasattr(metadata, "SerializeToString"):
@@ -578,13 +629,61 @@ def write(tag, tensor, step, metadata=None, name=None):
       # Note the identity to move the tensor to the CPU.
       with ops.device("cpu:0"):
         write_summary_op = gen_summary_ops.write_summary(
-            context.context().summary_writer_resource,
+            context.context().summary_writer._resource,  # pylint: disable=protected-access
             step,
             array_ops.identity(tensor),
             tag,
             serialized_metadata,
             name=scope)
         with ops.control_dependencies([write_summary_op]):
+          return constant_op.constant(True)
+
+    return smart_cond.smart_cond(
+        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+
+
+@tf_export("summary.experimental.write_raw_pb", v1=[])
+def write_raw_pb(tensor, step=None, name=None):
+  """Writes a summary using raw `tf.compat.v1.Summary` protocol buffers.
+
+  Experimental: this exists to support the usage of V1-style manual summary
+  writing (via the construction of a `tf.compat.v1.Summary` protocol buffer)
+  with the V2 summary writing API.
+
+  Args:
+    tensor: the string Tensor holding one or more serialized `Summary` protobufs
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
+    name: Optional string name for this op.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
+  """
+  with ops.name_scope(name, "write_raw_pb") as scope:
+    if context.context().summary_writer is None:
+      return constant_op.constant(False)
+    if step is None:
+      step = get_step()
+      if step is None:
+        raise ValueError("No step set via 'step' argument or "
+                         "tf.summary.experimental.set_step()")
+
+    def record():
+      """Record the actual summary and return True."""
+      # Note the identity to move the tensor to the CPU.
+      with ops.device("cpu:0"):
+        raw_summary_op = gen_summary_ops.write_raw_proto_summary(
+            context.context().summary_writer._resource,  # pylint: disable=protected-access
+            step,
+            array_ops.identity(tensor),
+            name=scope)
+        with ops.control_dependencies([raw_summary_op]):
           return constant_op.constant(True)
 
     return smart_cond.smart_cond(
@@ -613,7 +712,7 @@ def summary_writer_function(name, tensor, function, family=None):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
 
-  if context.context().summary_writer_resource is None:
+  if context.context().summary_writer is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
@@ -635,7 +734,7 @@ def generic(name, tensor, metadata=None, family=None, step=None):
       serialized_metadata = metadata
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         array_ops.identity(tensor),
         tag,
@@ -667,7 +766,7 @@ def scalar(name, tensor, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_scalar_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -682,7 +781,7 @@ def histogram(name, tensor, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_histogram_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -699,7 +798,7 @@ def image(name, tensor, bad_color=None, max_images=3, family=None, step=None):
                   if bad_color is None else bad_color)
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_image_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -716,7 +815,7 @@ def audio(name, tensor, sample_rate, max_outputs, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_audio_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -760,7 +859,7 @@ def graph(param, step=None, name=None):
   if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
     raise TypeError("graph() needs a tf.Tensor (e.g. tf.placeholder) in graph "
                     "mode, but was: %s" % type(param))
-  writer = context.context().summary_writer_resource
+  writer = context.context().summary_writer
   if writer is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
@@ -769,13 +868,12 @@ def graph(param, step=None, name=None):
     else:
       tensor = array_ops.identity(param)
     return gen_summary_ops.write_graph_summary(
-        writer, _choose_step(step), tensor, name=name)
+        writer._resource, _choose_step(step), tensor, name=name)  # pylint: disable=protected-access
 
 
 _graph = graph  # for functions with a graph parameter
 
 
-@tf_export("summary.import_event", v1=[])
 def import_event(tensor, name=None):
   """Writes a `tf.Event` binary proto.
 
@@ -792,7 +890,7 @@ def import_event(tensor, name=None):
     The created `tf.Operation`.
   """
   return gen_summary_ops.import_event(
-      context.context().summary_writer_resource, tensor, name=name)
+      context.context().summary_writer._resource, tensor, name=name)  # pylint: disable=protected-access
 
 
 @tf_export("summary.flush", v1=[])
@@ -811,14 +909,16 @@ def flush(writer=None, name=None):
     The created `tf.Operation`.
   """
   if writer is None:
-    writer = context.context().summary_writer_resource
+    writer = context.context().summary_writer
     if writer is None:
       return control_flow_ops.no_op()
+  if isinstance(writer, ResourceSummaryWriter):
+    resource = writer._resource  # pylint: disable=protected-access
   else:
-    if isinstance(writer, SummaryWriter):
-      writer = writer._resource  # pylint: disable=protected-access
+    # Assume we were passed a raw resource tensor.
+    resource = writer
   with ops.device("cpu:0"):
-    return gen_summary_ops.flush_summary_writer(writer, name=name)
+    return gen_summary_ops.flush_summary_writer(resource, name=name)
 
 
 _flush_fn = flush  # for within SummaryWriter.flush()
@@ -877,7 +977,7 @@ def _check_create_file_writer_args(inside_function, **kwargs):
             "create_file_writer()." % (arg_name, arg))
 
 
-def run_metadata(name, data, step):
+def run_metadata(name, data, step=None):
   """Writes entire RunMetadata summary.
 
   A RunMetadata can contain DeviceStats, partition graphs, and function graphs.
@@ -887,11 +987,17 @@ def run_metadata(name, data, step):
     name: A name for this summary. The summary tag used for TensorBoard will be
       this name prefixed by any active name scopes.
     data: A RunMetadata proto to write.
-    step: Required `int64`-castable monotonic step value.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
 
   Returns:
     True on success, or false if no summary was written because no default
     summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
   """
   summary_metadata = summary_pb2.SummaryMetadata()
   # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
@@ -911,18 +1017,24 @@ def run_metadata(name, data, step):
         metadata=summary_metadata)
 
 
-def run_metadata_graphs(name, data, step):
+def run_metadata_graphs(name, data, step=None):
   """Writes graphs from a RunMetadata summary.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be
       this name prefixed by any active name scopes.
     data: A RunMetadata proto to write.
-    step: Required `int64`-castable monotonic step value.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
 
   Returns:
     True on success, or false if no summary was written because no default
     summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
   """
   summary_metadata = summary_pb2.SummaryMetadata()
   # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
@@ -946,21 +1058,28 @@ def run_metadata_graphs(name, data, step):
         metadata=summary_metadata)
 
 
-def keras_model(name, data, step):
+def keras_model(name, data, step=None):
   """Writes a Keras model as JSON to as a Summary.
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
-  render a conceptual graph, as opposed to graph of ops.
+  render a conceptual graph, as opposed to graph of ops. In case the model fails
+  to serialze as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be
       this name prefixed by any active name scopes.
     data: A Keras Model to write.
-    step: Required `int64`-castable monotonic step value.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
 
   Returns:
-    True on success, or false if no summary was written because no default
+    True on success, or False if no summary was written because no default
     summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
   """
   summary_metadata = summary_pb2.SummaryMetadata()
   # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
@@ -969,7 +1088,12 @@ def keras_model(name, data, step):
   # version number = 1
   summary_metadata.plugin_data.content = b"1"
 
-  json_string = data.to_json()
+  try:
+    json_string = data.to_json()
+  except Exception as exc:  # pylint: disable=broad-except
+    # An exception should not break a model code.
+    logging.warn("Model failed to serialize as JSON. Ignoring... %s" % exc)
+    return False
 
   with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
     return write(
@@ -984,17 +1108,32 @@ _current_trace_context_lock = threading.Lock()
 _current_trace_context = None
 
 
-@tf_export("summary.enable_trace", v1=[])
-def enable_trace(graph=True, profiler=False):
-  """Enables execution trace.
+@tf_export("summary.trace_on", v1=[])
+def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
+  """Starts a trace to record computation graphs and profiling information.
+
+  Must be invoked in eager mode.
+
+  When enabled, TensorFlow runtime will collection information that can later be
+  exported and consumed by TensorBoard. The trace is activated across the entire
+  TensorFlow runtime and affects all threads of execution.
+
+  To stop the trace and export the collected information, use
+  `tf.summary.trace_export`. To stop the trace without exporting, use
+  `tf.summary.trace_off`.
 
   Args:
-    graph: whether to collect graphs used in execution
-    profiler: whether to enable profiler.
+    graph: If True, enables collection of executed graphs. It includes ones from
+        tf.function invocation and ones from the legacy graph mode. The default
+        is True.
+    profiler: If True, enables the advanced profiler. Enabling profiler
+        implicitly enables the graph collection. The profiler may incur a high
+        memory overhead. The default is False.
 
-  Returns:
-    None
   """
+  if ops.inside_function():
+    logging.warn("Cannot enable trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Must enable trace in eager mode.")
     return
@@ -1014,23 +1153,32 @@ def enable_trace(graph=True, profiler=False):
     _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
 
 
-@tf_export("summary.export_trace", v1=[])
-def export_trace(name, step, profiler_outdir=None):
-  """Exports trace as a Summary and/or profile file.
+@tf_export("summary.trace_export", v1=[])
+def trace_export(name, step=None, profiler_outdir=None):
+  """Stops and exports the active trace as a Summary and/or profile file.
+
+  Stops the trace and exports all metadata collected during the trace to the
+  default SummaryWriter, if one has been set.
 
   Args:
     name: A name for the summary to be written.
-    step: Required `int64`-castable monotonic step value.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
     profiler_outdir: Output directory for profiler. It is required when profiler
       is enabled when trace was started. Otherwise, it is ignored.
 
-  Returns:
-    None
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
   """
   # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
   # the SummaryWriter's logdir.
   global _current_trace_context
 
+  if ops.inside_function():
+    logging.warn("Cannot export trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Can only export trace while executing eagerly.")
     return
@@ -1038,7 +1186,7 @@ def export_trace(name, step, profiler_outdir=None):
   with _current_trace_context_lock:
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
-    graph, profiler = _current_trace_context
+    graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
     if profiler and profiler_outdir is None:
       raise ValueError("Required profiler_outdir is not specified")
 
@@ -1052,12 +1200,12 @@ def export_trace(name, step, profiler_outdir=None):
   if profiler:
     _profiler.save(profiler_outdir, _profiler.stop())
 
-  disable_trace()
+  trace_off()
 
 
-@tf_export("summary.disable_trace", v1=[])
-def disable_trace():
-  """Disables and resets the trace state."""
+@tf_export("summary.trace_off", v1=[])
+def trace_off():
+  """Stops the current trace and discards any collected information."""
   global _current_trace_context
   with _current_trace_context_lock:
     _current_trace_context = None

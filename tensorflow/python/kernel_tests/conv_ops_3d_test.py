@@ -56,9 +56,9 @@ class Conv3DTest(test.TestCase):
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float64, dtypes.float32, dtypes.float16]
+        return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
     else:
-      return [dtypes.float64, dtypes.float32, dtypes.float16]
+      return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
@@ -653,7 +653,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
-  # Test the fast path in gemm_pack_rhs/mkldnn_gemm_pack, when channel
+  # Test the fast path in gemm_pack_rhs/gemm_pack_colmajor_block, when channel
   # dimension is a multiple of packet size.
   @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOneFastPath(self):
@@ -741,6 +741,7 @@ class Conv3DTest(test.TestCase):
       self.assertArrayNear(expected_value.flatten(), actual_value.flatten(),
                            err)
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():
@@ -756,6 +757,7 @@ class Conv3DTest(test.TestCase):
             err=1e-5,
             mode="filter")
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropInputStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():

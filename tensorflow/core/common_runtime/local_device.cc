@@ -16,8 +16,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/local_device.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -28,8 +28,40 @@ limitations under the License.
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+namespace {
+class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
+ public:
+  explicit EigenThreadPoolWrapper(thread::ThreadPool* pool) : pool_(pool) {}
+  ~EigenThreadPoolWrapper() override {}
+
+  void Schedule(std::function<void()> fn) override {
+    pool_->Schedule(std::move(fn));
+  }
+  int NumThreads() const override { return pool_->NumThreads(); }
+  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
+
+ private:
+  thread::ThreadPool* pool_ = nullptr;
+};
+
+bool OverrideGlobalThreadPoolFromEnvironment() {
+  static const bool override_global_threadpool = [] {
+    bool flag;
+    auto status = ReadBoolFromEnvVar("TF_OVERRIDE_GLOBAL_THREADPOOL",
+                                     /*default_val=*/false, &flag);
+    if (!status.ok()) {
+      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.error_message();
+      return false;
+    }
+    return flag;
+  }();
+  return override_global_threadpool;
+}
+
+}  // namespace
 
 /* static */
 bool LocalDevice::use_global_threadpool_ = true;
@@ -78,14 +110,21 @@ struct LocalDevice::EigenThreadPoolInfo {
     eigen_worker_threads_.workers = new thread::ThreadPool(
         options.env, thread_opts, strings::StrCat("numa_", numa_node, "_Eigen"),
         intra_op_parallelism_threads);
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
-    if (allocator) {
+    Eigen::ThreadPoolInterface* threadpool =
+        eigen_worker_threads_.workers->AsEigenThreadPool();
+    if (threadpool == nullptr) {
+      // This fallback code path is not executed since ThreadPool's current
+      // implementation of AsEigenThreadPool() always returns a non-null
+      // pointer.
+      eigen_threadpool_wrapper_ = absl::make_unique<EigenThreadPoolWrapper>(
+          eigen_worker_threads_.workers);
+      threadpool = eigen_threadpool_wrapper_.get();
+    }
+    if (allocator != nullptr) {
       eigen_allocator_.reset(new EigenAllocator(allocator));
     }
     eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads,
-        eigen_allocator_.get()));
+        threadpool, eigen_worker_threads_.num_threads, eigen_allocator_.get()));
   }
 
   ~EigenThreadPoolInfo() {
@@ -107,6 +146,11 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   // could speed up performance and are available on the current CPU.
   port::InfoAboutUnusedCPUFeatures();
   LocalDevice::EigenThreadPoolInfo* tp_info;
+
+  if (OverrideGlobalThreadPoolFromEnvironment()) {
+    set_use_global_threadpool(false);
+  }
+
   if (use_global_threadpool_) {
     mutex_lock l(global_tp_mu_);
     if (options.config.experimental().use_numa_affinity()) {

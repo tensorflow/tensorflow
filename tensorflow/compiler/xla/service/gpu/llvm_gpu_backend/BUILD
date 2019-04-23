@@ -22,19 +22,19 @@ cc_library(
     srcs = [
         "dump_ir_pass.cc",
         "utils.cc",
-    ] + if_cuda_is_configured(if_cuda([
+    ] + if_cuda_is_configured([
         "nvptx_backend_lib.cc",
-    ])) + if_rocm_is_configured(if_rocm([
+    ]) + if_rocm_is_configured([
         "amdgpu_backend_lib.cc",
-    ])),
+    ]),
     hdrs = [
         "dump_ir_pass.h",
         "utils.h",
-    ] + if_cuda_is_configured(if_cuda([
+    ] + if_cuda_is_configured([
         "nvptx_backend_lib.h",
-    ])) + if_rocm_is_configured(if_rocm([
+    ]) + if_rocm_is_configured([
         "amdgpu_backend_lib.h",
-    ])),
+    ]),
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

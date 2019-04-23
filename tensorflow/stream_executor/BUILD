@@ -466,15 +466,6 @@ tf_proto_library(
     provide_cc_alias = True,
 )
 
-tf_proto_library(
-    name = "logging_proto",
-    srcs = ["logging.proto"],
-    cc_api_version = 2,
-    protodeps = [":dnn_proto"],
-    provide_cc_alias = True,
-    visibility = [":friends"],
-)
-
 cc_library(
     name = "dnn",
     srcs = ["dnn.cc"],
@@ -679,44 +670,7 @@ alias(
     actual = "//tensorflow/stream_executor/cuda:all_runtime",
 )
 
-cc_library(
+alias(
     name = "rocm_platform",
-    srcs = if_rocm_is_configured(
-        glob(
-            [
-                "gpu/*.cc",
-                "rocm/*.cc",
-            ],
-        ),
-    ),
-    hdrs = if_rocm_is_configured(
-        glob(
-            [
-                "gpu/*.h",
-                "rocm/*.h",
-            ],
-        ),
-    ),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":scratch_allocator",
-        ":stream_executor",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-        "//tensorflow/stream_executor/platform:dso_loader",
-        "@com_google_absl//absl/strings",
-        "@local_config_rocm//rocm:rocm_headers",
-    ] + if_rocm_is_configured([
-        "//tensorflow/core:rocm",
-        "@local_config_rocm//rocm:hiprand",
-        "@local_config_rocm//rocm:rocfft",
-        "@local_config_rocm//rocm:rocblas",
-        "@local_config_rocm//rocm:miopen",
-    ]),
-    alwayslink = 1,
+    actual = "//tensorflow/stream_executor/rocm:all_runtime",
 )

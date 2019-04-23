@@ -42,12 +42,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
 
     // Test some properties.
     switch (opcode) {
-      case HloOpcode::kEq:
-      case HloOpcode::kNe:
-      case HloOpcode::kGt:
-      case HloOpcode::kLt:
-      case HloOpcode::kGe:
-      case HloOpcode::kLe:
+      case HloOpcode::kCompare:
         EXPECT_TRUE(HloOpcodeIsComparison(opcode));
         break;
       default:
@@ -59,6 +54,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
       case HloOpcode::kConcatenate:
+      case HloOpcode::kConditional:
       case HloOpcode::kCustomCall:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:

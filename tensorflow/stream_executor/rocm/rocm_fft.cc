@@ -21,9 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#if  !(defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING))
-  #include "tensorflow/stream_executor/platform/dso_loader.h"
-#endif 
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -41,8 +39,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
 
 namespace wrap {
 
-#if defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
-
+#ifdef PLATFORM_GOOGLE
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO
@@ -61,14 +58,14 @@ namespace wrap {
 
 #define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
   struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
+    static const char *kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
+    static void *GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
+      void *f;                                                            \
       auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
                                                           kName, &f);     \
       CHECK(s.ok()) << "could not find " << kName                         \
@@ -80,30 +77,39 @@ namespace wrap {
       return f;                                                           \
     }                                                                     \
     template <typename... Args>                                           \
-    hipfftResult operator()(GpuExecutor* parent, Args... args) {          \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
       gpu::ScopedActivateExecutorContext sac{parent};                     \
       return DynLoad()(args...);                                          \
     }                                                                     \
   } __name;                                                               \
-  const char* DynLoadShim__##__name::kName = #__name;
+  const char *DynLoadShim__##__name::kName = #__name;
 
 #endif
 
-#define ROCFFT_ROUTINE_EACH(__macro)                                           \
-  __macro(hipfftDestroy) __macro(hipfftSetStream) __macro(hipfftPlan1d)        \
-      __macro(hipfftPlan2d) __macro(hipfftPlan3d) __macro(hipfftPlanMany)      \
-          __macro(hipfftCreate) __macro(hipfftSetAutoAllocation)               \
-              __macro(hipfftSetWorkArea) __macro(hipfftGetSize1d)              \
-                  __macro(hipfftMakePlan1d) __macro(hipfftGetSize2d)           \
-                      __macro(hipfftMakePlan2d) __macro(hipfftGetSize3d)       \
-                          __macro(hipfftMakePlan3d) __macro(hipfftGetSizeMany) \
-                              __macro(hipfftMakePlanMany)                      \
-                                  __macro(hipfftExecD2Z)                       \
-                                      __macro(hipfftExecZ2D)                   \
-                                          __macro(hipfftExecC2C)               \
-                                              __macro(hipfftExecC2R)           \
-                                                  __macro(hipfftExecZ2Z)       \
-                                                      __macro(hipfftExecR2C)
+#define ROCFFT_ROUTINE_EACH(__macro) \
+  __macro(hipfftDestroy)             \
+  __macro(hipfftSetStream)           \
+  __macro(hipfftPlan1d)              \
+  __macro(hipfftPlan2d)              \
+  __macro(hipfftPlan3d)              \
+  __macro(hipfftPlanMany)            \
+  __macro(hipfftCreate)              \
+  __macro(hipfftSetAutoAllocation)   \
+  __macro(hipfftSetWorkArea)         \
+  __macro(hipfftGetSize1d)           \
+  __macro(hipfftMakePlan1d)          \
+  __macro(hipfftGetSize2d)           \
+  __macro(hipfftMakePlan2d)          \
+  __macro(hipfftGetSize3d)           \
+  __macro(hipfftMakePlan3d)          \
+  __macro(hipfftGetSizeMany)         \
+  __macro(hipfftMakePlanMany)        \
+  __macro(hipfftExecD2Z)             \
+  __macro(hipfftExecZ2D)             \
+  __macro(hipfftExecC2C)             \
+  __macro(hipfftExecC2R)             \
+  __macro(hipfftExecZ2Z)             \
+  __macro(hipfftExecR2C)             \
 
 ROCFFT_ROUTINE_EACH(STREAM_EXECUTOR_ROCFFT_WRAP)
 

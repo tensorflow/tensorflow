@@ -34,6 +34,9 @@ struct RunConvOptions {
 
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
+
+  // This is the first call to conv runner from the algorithm picker
+  bool first_call_from_algorithm_picker;
 };
 
 // This file contains low-level routines for running cudnn convolutions.

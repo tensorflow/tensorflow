@@ -14,15 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
+Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+                  GraphDef* graph_def) {
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  Node* input_node = nullptr;
+  SerializationContext serialization_ctx({});
+  TF_RETURN_IF_ERROR(
+      db.AddInputDataset(&serialization_ctx, dataset, &input_node));
+  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
+  return Status::OK();
+}
+
+Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,
                                   std::vector<int>* indices) {
   FunctionLibraryRuntime::Handle fn_handle;
@@ -77,31 +92,6 @@ std::vector<bool> ComputeMoveVector(const std::vector<int>& indices) {
     can_move[i] = last_use[indices[i]] == i;
   }
   return can_move;
-}
-
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
-  std::vector<Tensor> return_values;
-
-  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
-                                                            &return_values));
-
-  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
-        TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-    return errors::InvalidArgument(
-        "Function must return a single scalar of dtype DT_VARIANT.");
-  }
-
-  // Retrieve the dataset that was created in `f`.
-  DatasetBase* returned_dataset;
-  TF_RETURN_IF_ERROR(
-      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
-
-  // Create an iterator for the dataset that was returned by `f`.
-  return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -261,5 +251,39 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
   }
   return base->AddLibrary(to_add);
 }
+
+std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
+    std::function<void(std::function<void()>)> runner, int max_parallelism) {
+  return std::bind(
+      [max_parallelism](
+          // Note: `runner` is a const reference to avoid copying it.
+          const std::function<void(std::function<void()>)>& runner,
+          std::function<void()> fn) {
+        std::function<void()> scoped_fn = std::bind(
+            [max_parallelism](const std::function<void()>& fn) {
+              ScopedPerThreadMaxParallelism scope(max_parallelism);
+              fn();
+            },
+            std::move(fn));
+        runner(std::move(scoped_fn));
+      },
+      std::move(runner), std::placeholders::_1);
+}
+
+Status CreateFunctionLibraryDefinition(
+    const FunctionLibraryDefinition* lib_def, const string& func_name,
+    std::shared_ptr<FunctionLibraryDefinition>* result) {
+  DCHECK(lib_def != nullptr);
+  const FunctionDef* fdef = lib_def->Find(func_name);
+  if (TF_PREDICT_FALSE(fdef == nullptr)) {
+    return tensorflow::errors::FailedPrecondition(tensorflow::strings::StrCat(
+        "Could not find required function definition ", func_name));
+  }
+  *result = std::make_shared<FunctionLibraryDefinition>(
+      lib_def->ReachableDefinitions(*fdef));
+  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow

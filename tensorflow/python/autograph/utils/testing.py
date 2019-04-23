@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 def fake_tf():
   """Creates a fake module that looks like TensorFlow, for testing."""
   mod = imp.new_module('tensorflow')
-  mod_contents = dict()
+  mod_contents = {}
   mod_contents.update(gen_math_ops.__dict__)
   mod_contents.update(math_ops.__dict__)
   mod_contents.update(ops.__dict__)

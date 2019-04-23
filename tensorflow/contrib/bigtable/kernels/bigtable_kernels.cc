@@ -264,7 +264,7 @@ class ToBigtableOp : public AsyncOpKernel {
         }
         grpc::Status mutation_status;
         std::vector<::google::cloud::bigtable::FailedMutation> failures =
-            resource->table().BulkApply(std::move(mutation), mutation_status);
+            resource->table().BulkApply(mutation, mutation_status);
         if (!mutation_status.ok()) {
           LOG(ERROR) << "Failure applying mutation: "
                      << mutation_status.error_code() << " - "
@@ -272,13 +272,13 @@ class ToBigtableOp : public AsyncOpKernel {
                      << mutation_status.error_details() << ").";
         }
         if (!failures.empty()) {
+          ::google::bigtable::v2::MutateRowsRequest request;
+          mutation.MoveTo(&request);
           for (const auto& failure : failures) {
             LOG(ERROR) << "Failure applying mutation on row ("
-                       << failure.original_index()
-                       << "): " << failure.mutation().row_key()
-                       << " - error: " << failure.status().error_message()
-                       << " (Details: " << failure.status().error_details()
-                       << ").";
+                       << failure.original_index() << "): "
+                       << request.entries(failure.original_index()).row_key()
+                       << " - error: " << failure.status().message() << ".";
           }
         }
         OP_REQUIRES_ASYNC(

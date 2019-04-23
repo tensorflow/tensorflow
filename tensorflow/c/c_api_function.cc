@@ -442,12 +442,21 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     } else {
       signature_name = control_outputs[i]->name();
     }
+    if (signature_name.empty()) {
+      return errors::InvalidArgument("Control output name must be not empty");
+    }
     if (!control_output_names_set.insert(signature_name).second) {
       return errors::InvalidArgument("Repeated control output name: ",
                                      signature_name);
     }
+    const string control_output_node =
+        node_names.Lookup(control_outputs[i]->name());
+    if (control_output_node.empty()) {
+      return errors::InvalidArgument(
+          "Control output node name must be not empty");
+    }
     fdef->mutable_signature()->add_control_output(signature_name);
-    (*fdef->mutable_control_ret())[signature_name] = control_outputs[i]->name();
+    (*fdef->mutable_control_ret())[signature_name] = control_output_node;
   }
 
   return Status::OK();
@@ -572,13 +581,13 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   std::unordered_map<const Node*, std::vector<int>> input_nodes;
   status->status = tensorflow::ProcessInputs(fn_body, fn_name, ninputs, inputs,
                                              &input_tensors, &input_nodes);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Process outputs.
   std::vector<tensorflow::OutputTensor> output_tensors;
   status->status = tensorflow::ProcessOutputs(fn_body, fn_name, noutputs,
                                               outputs, &output_tensors);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Process output names.
   std::vector<string> output_names_vec;
@@ -602,7 +611,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   std::vector<const Node*> body_nodes;
   status->status = tensorflow::ComputeBodyNodes(
       fn_body, fn_name, num_opers, opers, input_nodes, &body_nodes);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Compute body nodes.
   std::vector<const Node*> control_output_nodes;
@@ -617,7 +626,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
       fn_body->graph, fn_name, append_hash_to_fn_name != 0, body_nodes,
       input_tensors, output_tensors, output_names_vec, control_output_nodes,
       control_output_names_vec, description, &tf_function->fdef);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     TF_DeleteFunction(tf_function);
     return nullptr;
   }

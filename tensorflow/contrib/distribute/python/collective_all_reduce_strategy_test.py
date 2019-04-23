@@ -22,18 +22,19 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import multi_worker_test_base
-from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as core_collective_all_reduce_strategy
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
@@ -56,13 +57,15 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class MockCollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
   """Mock the strategy to allow cluster resolver as an argument."""
 
   def __init__(self, cluster_resolver):
     super(MockCollectiveAllReduceStrategy, self).__init__(
         core_collective_all_reduce_strategy.CollectiveAllReduceExtended(
-            self, cluster_resolver=cluster_resolver))
+            self,
+            communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
+            cluster_resolver=cluster_resolver))
 
 
 def create_test_objects(cluster_spec=None,
@@ -173,7 +176,7 @@ class CollectiveAllReduceStrategyTestBase(
       def update(v, g):
         return v.assign_sub(0.05 * g, use_locking=True)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -263,7 +266,7 @@ class CollectiveAllReduceStrategyTestBase(
                              target=master_target) as sess:
       with d.scope():
         train_op = d.extended.call_for_each_replica(model_fn)
-        train_op = d.group(d.unwrap(train_op))
+        train_op = d.group(d.experimental_local_results(train_op))
 
       sess.run(variables.global_variables_initializer())
       sess.run(train_op)
@@ -290,8 +293,8 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.extended.call_for_each_replica(model_fn)
-      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
-      x = distribution.unwrap(x)[0]
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
+      x = distribution.experimental_local_results(x)[0]
 
       sess.run(variables.global_variables_initializer())
 
@@ -477,6 +480,24 @@ class DistributedCollectiveAllReduceStrategyTest(
                      new_rewrite_options.scoped_allocator_optimization)
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testEnableCollectiveOps(self):
+    mock_called = [False]
+
+    # pylint: disable=dangerous-default-value
+    def mock_enable_collective_ops(server_def, mock_called=mock_called):
+      self.assertEqual('worker', server_def.job_name)
+      self.assertEqual(1, server_def.task_index)
+      self.assertEqual('grpc', server_def.protocol)
+      mock_called[0] = True
+
+    with test.mock.patch.object(context.context(), 'enable_collective_ops',
+                                mock_enable_collective_ops):
+      strategy, _, _ = self._get_test_object(
+          task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
+    self.assertTrue(strategy.extended._std_server_started)
+    self.assertTrue(mock_called[0])
 
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(

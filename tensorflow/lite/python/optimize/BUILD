@@ -12,6 +12,7 @@ cc_library(
     hdrs = ["calibration_wrapper.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
@@ -53,11 +54,15 @@ py_library(
 py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
-    data = [":test_data"],
+    data = [
+        ":test_data",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",
+        "//tensorflow/lite/python:lite_constants",
         "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_calibration_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",

@@ -89,6 +89,7 @@ class ExponentialOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_deprecated_v1
   def testNonsymmetricComplex(self):
 
     if test.is_built_with_rocm():

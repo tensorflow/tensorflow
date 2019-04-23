@@ -6,7 +6,6 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_py_test",
-    "tf_cc_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
@@ -28,7 +27,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "audio_microfrontend_test",
     size = "small",
     srcs = ["audio_microfrontend_test.cc"],
@@ -99,5 +98,5 @@ tf_py_test(
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_pip"],
+    tags = ["no_pip", "no_rocm_v2"],
 )

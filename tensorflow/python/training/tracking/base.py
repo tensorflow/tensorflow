@@ -96,8 +96,9 @@ class CheckpointInitialValue(ops.Tensor):
 class NoRestoreSaveable(saveable_object.SaveableObject):
   """Embeds a tensor in a checkpoint with no restore ops."""
 
-  def __init__(self, tensor, name, dtype=None):
-    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype)
+  def __init__(self, tensor, name, dtype=None, device=None):
+    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype,
+                                    device=device)
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -174,7 +175,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
     return NoRestoreSaveable(
         tensor=_constant_state,
         dtype=dtypes.string,
-        name=self.name)
+        name=self.name,
+        device="cpu:0")
 
   def python_restore(self, restored_strings):
     """Called to restore Python state."""
@@ -450,12 +452,12 @@ def no_automatic_dependency_tracking(method):
   """
 
   def _method_wrapper(self, *args, **kwargs):
-    previous_value = getattr(self, "_setattr_tracking", True)
-    self._setattr_tracking = False  # pylint: disable=protected-access
+    previous_value = getattr(self, "_self_setattr_tracking", True)
+    self._self_setattr_tracking = False  # pylint: disable=protected-access
     try:
       result = method(self, *args, **kwargs)
     finally:
-      self._setattr_tracking = previous_value  # pylint: disable=protected-access
+      self._self_setattr_tracking = previous_value  # pylint: disable=protected-access
     return result
 
   return tf_decorator.make_decorator(
@@ -471,6 +473,40 @@ class Trackable(object):
   checks.
   """
 
+  # For compatibility with wrapt.ObjectProxy, attributes are all prefixed with
+  # _self_. We have some properties to forward semi-public attributes to their
+  # _self_ equivalents.
+
+  @property
+  def _setattr_tracking(self):
+    if not hasattr(self, "_self_setattr_tracking"):
+      self._self_setattr_tracking = True
+    return self._self_setattr_tracking
+
+  @_setattr_tracking.setter
+  def _setattr_tracking(self, value):
+    self._self_setattr_tracking = value
+
+  @property
+  def _update_uid(self):
+    return self._self_update_uid
+
+  @_update_uid.setter
+  def _update_uid(self, value):
+    self._self_update_uid = value
+
+  @property
+  def _unconditional_checkpoint_dependencies(self):
+    return self._self_unconditional_checkpoint_dependencies
+
+  @property
+  def _unconditional_dependency_names(self):
+    return self._self_unconditional_dependency_names
+
+  @property
+  def _name_based_restores(self):
+    return self._self_name_based_restores
+
   # Trackable does not do automatic dependency tracking, but uses the
   # no_automatic_dependency_tracking decorator so it can avoid adding
   # dependencies if a subclass is Trackable / inherits from Model (both of
@@ -481,7 +517,7 @@ class Trackable(object):
 
     Not __init__, since most objects will forget to call it.
     """
-    if hasattr(self, "_unconditional_checkpoint_dependencies"):
+    if hasattr(self, "_self_unconditional_checkpoint_dependencies"):
       # __init__ already called. This check means that we don't need
       # Trackable.__init__() in the constructor of every TensorFlow object.
       return
@@ -489,21 +525,21 @@ class Trackable(object):
     # `Trackable`, notably `Optimizer`s, may override the
     # _checkpoint_dependencies property with conditional dependencies
     # (e.g. based on the current graph when saving).
-    self._unconditional_checkpoint_dependencies = []
+    self._self_unconditional_checkpoint_dependencies = []
     # Maps names -> Trackable objects
-    self._unconditional_dependency_names = {}
+    self._self_unconditional_dependency_names = {}
     # Restorations for other Trackable objects on which this object may
     # eventually depend. Maps local name -> CheckpointPosition list. Optimizers
     # tack on conditional dependencies, and so need separate management of
     # deferred dependencies too.
-    self._unconditional_deferred_dependencies = {}
+    self._self_unconditional_deferred_dependencies = {}
     # The UID of the highest assignment to this object. Used to ensure that the
     # last requested assignment determines the final value of an object.
-    if hasattr(self, "_update_uid"):
+    if hasattr(self, "_self_update_uid"):
       raise AssertionError(
           "Internal error: the object had an update UID set before its "
           "initialization code was run.")
-    self._update_uid = -1
+    self._self_update_uid = -1
     # When executing eagerly, holds a collection of _NameBasedRestoreCoordinator
     # instances, which should be checked when creating variables or other
     # saveables. These are passed on recursively to all dependencies, since
@@ -511,7 +547,7 @@ class Trackable(object):
     # being restored in advance. This mechanism is only necessary for
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
-    self._name_based_restores = set()
+    self._self_name_based_restores = set()
 
   def _no_dependency(self, value):
     """If automatic dependency tracking is enabled, ignores `value`."""
@@ -519,10 +555,10 @@ class Trackable(object):
 
   def _name_based_attribute_restore(self, checkpoint):
     """Restore the object's attributes from a name-based checkpoint."""
-    self._name_based_restores.add(checkpoint)
-    if self._update_uid < checkpoint.restore_uid:
+    self._self_name_based_restores.add(checkpoint)
+    if self._self_update_uid < checkpoint.restore_uid:
       checkpoint.eager_restore(self)
-      self._update_uid = checkpoint.restore_uid
+      self._self_update_uid = checkpoint.restore_uid
 
   @property
   def _checkpoint_dependencies(self):
@@ -535,7 +571,7 @@ class Trackable(object):
       `Trackable` dependencies which should be saved along with this
       object.
     """
-    return self._unconditional_checkpoint_dependencies
+    return self._self_unconditional_checkpoint_dependencies
 
   @property
   def _deferred_dependencies(self):
@@ -550,7 +586,7 @@ class Trackable(object):
       A dictionary mapping from local name to a list of CheckpointPosition
       objects.
     """
-    return self._unconditional_deferred_dependencies
+    return self._self_unconditional_deferred_dependencies
 
   def _lookup_dependency(self, name):
     """Look up a dependency by name.
@@ -563,7 +599,7 @@ class Trackable(object):
       A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
-    return self._unconditional_dependency_names.get(name, None)
+    return self._self_unconditional_dependency_names.get(name, None)
 
   def _add_variable_with_custom_getter(
       self, name, shape=None, dtype=dtypes.float32,
@@ -713,14 +749,15 @@ class Trackable(object):
       # This is a weird thing to do, but we're not going to stop people from
       # using __setattr__.
       for index, (old_name, _) in enumerate(
-          self._unconditional_checkpoint_dependencies):
+          self._self_unconditional_checkpoint_dependencies):
         if name == old_name:
-          self._unconditional_checkpoint_dependencies[index] = new_reference
+          self._self_unconditional_checkpoint_dependencies[
+              index] = new_reference
     elif current_object is None:
-      self._unconditional_checkpoint_dependencies.append(new_reference)
+      self._self_unconditional_checkpoint_dependencies.append(new_reference)
       self._handle_deferred_dependencies(
           name=name, trackable=trackable)
-    self._unconditional_dependency_names[name] = trackable
+    self._self_unconditional_dependency_names[name] = trackable
     return trackable
 
   def _handle_deferred_dependencies(self, name, trackable):
@@ -757,7 +794,7 @@ class Trackable(object):
 
     # Pass on any name-based restores queued in this object.
     for name_based_restore in sorted(
-        self._name_based_restores,
+        self._self_name_based_restores,
         key=lambda checkpoint: checkpoint.restore_uid,
         reverse=True):
       trackable._name_based_attribute_restore(name_based_restore)  # pylint: disable=protected-access
@@ -787,9 +824,9 @@ class Trackable(object):
     # If the UID of this restore is lower than our current update UID, we don't
     # need to actually restore the object. However, we should pass the
     # restoration on to our dependencies.
-    if checkpoint.restore_uid > self._update_uid:
+    if checkpoint.restore_uid > self._self_update_uid:
       restore_ops = checkpoint_position.restore_ops()
-      self._update_uid = checkpoint.restore_uid
+      self._self_update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
     for child in checkpoint_position.object_proto.children:

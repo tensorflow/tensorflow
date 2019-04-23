@@ -158,13 +158,13 @@ class _CheckpointRestoreCoordinator(object):
         raise AssertionError(
             ("Saveable keys changed when validating. Got back %s, was "
              "expecting %s") % (tensor_saveables.keys(), validated_names))
-      new_restore_ops = functional_saver.restore_from_saveable_objects(
-          self.save_path_tensor, validated_saveables)
+      new_restore_ops = functional_saver.MultiDeviceSaver(
+          validated_saveables).restore(self.save_path_tensor)
       if not context.executing_eagerly():
-        restore_ops.extend(new_restore_ops)
-        for saveable, restore_op in zip(validated_saveables, new_restore_ops):
-          assert saveable.name not in self.restore_ops_by_name
-          self.restore_ops_by_name[saveable.name] = restore_op
+        for name, restore_op in sorted(new_restore_ops.items()):
+          restore_ops.append(restore_op)
+          assert name not in self.restore_ops_by_name
+          self.restore_ops_by_name[name] = restore_op
     return restore_ops
 
 
@@ -201,8 +201,12 @@ class _NameBasedRestoreCoordinator(object):
           # fails.
           saveable = saveable_factory()
         except TypeError:
-          self.unused_attributes.setdefault(trackable, []).append(
-              attribute_name)
+          # Even if we can't name this object, we should construct it and check
+          # whether it's optional to restore it. If it's optional we don't need
+          # to make assertions fail.
+          if not saveable_factory("").optional_restore:
+            self.unused_attributes.setdefault(trackable, []).append(
+                attribute_name)
           continue
       else:
         saveable = saveable_factory
@@ -237,7 +241,10 @@ class _NameBasedRestoreCoordinator(object):
         else:
           tensor_missing = True
 
-      if not tensor_missing:
+      if tensor_missing:
+        # Record that this variable didn't match so assertions will fail.
+        self.unused_attributes.setdefault(trackable, []).append(saveable.name)
+      else:
         # Ignores values missing from the checkpoint, as with object-based
         # restore. Status assertions can be used to check exact matches,
         # although it's unlikely to ever happen for name-based checkpoints.
@@ -282,11 +289,11 @@ def _default_getter(name, shape, dtype, initializer=None,
 
 
 def add_variable(trackable, name, shape=None, dtype=dtypes.float32,
-                 initializer=None):
+                 initializer=None, trainable=True):
   """Add a variable to a Trackable with no scope influence."""
   return trackable._add_variable_with_custom_getter(  # pylint: disable=protected-access
       name=name, shape=shape, dtype=dtype,
-      initializer=initializer, getter=_default_getter)
+      initializer=initializer, getter=_default_getter, trainable=trainable)
 
 
 def object_metadata(save_path):
@@ -916,9 +923,11 @@ class TrackableSaver(object):
         # var_list.
         or context.executing_eagerly()
         or ops.inside_function()):
-      saver = functional_saver.Saver(named_saveable_objects)
+      saver = functional_saver.MultiDeviceSaver(named_saveable_objects)
+      save_op = saver.save(file_prefix)
       with ops.device("/cpu:0"):
-        self._cached_save_operation = saver.save(file_prefix)
+        with ops.control_dependencies([save_op]):
+          self._cached_save_operation = array_ops.identity(file_prefix)
       self._last_save_object_graph = graph_proto
     return self._cached_save_operation, feed_additions
 
@@ -1117,7 +1126,7 @@ def frozen_saver(root_trackable):
   """
   named_saveable_objects = graph_view_lib.ObjectGraphView(
       root_trackable).frozen_saveable_objects()
-  return functional_saver.Saver(named_saveable_objects)
+  return functional_saver.MultiDeviceSaver(named_saveable_objects)
 
 
 def saver_with_op_caching(obj):
@@ -1131,8 +1140,9 @@ def saver_with_op_caching(obj):
       saveables_cache=saveables_cache))
 
 
-@tf_export("train.Checkpoint")
-class Checkpoint(tracking.AutoTrackable):
+# Mentions graph building / Sessions. The v2 version is below.
+@tf_export(v1=["train.Checkpoint"])
+class CheckpointV1(tracking.AutoTrackable):
   """Groups trackable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1218,6 +1228,11 @@ class Checkpoint(tracking.AutoTrackable):
   `Regress` using `tf.train.Checkpoint` will also save all the variables created
   by the `Dense` layer.
 
+  When variables are assigned to multiple workers, each worker writes its own
+  section of the checkpoint. These sections are then merged/re-indexed to behave
+  as a single checkpoint. This avoids copying all variables to one worker, but
+  does require that all workers see a common filesystem.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1232,7 +1247,7 @@ class Checkpoint(tracking.AutoTrackable):
     Raises:
       ValueError: If objects in `kwargs` are not trackable.
     """
-    super(Checkpoint, self).__init__()
+    super(CheckpointV1, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       if not isinstance(v, (base.Trackable, def_function.Function)):
         raise ValueError(
@@ -1255,7 +1270,7 @@ class Checkpoint(tracking.AutoTrackable):
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+                         dtype=dtypes.int64, trainable=False))
 
   def write(self, file_prefix, session=None):
     """Writes a training checkpoint.
@@ -1459,6 +1474,285 @@ class Checkpoint(tracking.AutoTrackable):
           explicitly specified, the default session is used. No effect when
           executing eagerly (restore operations are run eagerly). May only be
           called when `save_path` is not `None`.
+    """
+    status = self._saver.restore(save_path=save_path)
+    # Create the save counter now so it gets initialized with other variables
+    # when graph building. Creating it earlier would lead to double
+    # initialization when executing eagerly.
+    self._maybe_create_save_counter()
+    return status
+
+
+@tf_export("train.Checkpoint", v1=[])
+class Checkpoint(tracking.AutoTrackable):
+  """Groups trackable objects, saving and restoring them.
+
+  `Checkpoint`'s constructor accepts keyword arguments whose values are types
+  that contain trackable state, such as `tf.train.Optimizer`
+  implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
+  `tf.keras.Model` implementations. It saves these values with a checkpoint, and
+  maintains a `save_counter` for numbering checkpoints.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  import os
+
+  checkpoint_directory = "/tmp/training_checkpoints"
+  checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+  checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
+  for _ in range(num_training_steps):
+    optimizer.minimize( ... )  # Variables will be restored on creation.
+  status.assert_consumed()  # Optional sanity checks.
+  checkpoint.save(file_prefix=checkpoint_prefix)
+  ```
+
+  `Checkpoint.save` and `Checkpoint.restore` write and read object-based
+  checkpoints, in contrast to TensorFlow 1.x's `tf.train.Saver` which writes and
+  reads `variable.name` based checkpoints. Object-based checkpointing saves a
+  graph of dependencies between Python objects (`Layer`s, `Optimizer`s,
+  `Variable`s, etc.) with named edges, and this graph is used to match variables
+  when restoring a checkpoint. It can be more robust to changes in the Python
+  program, and helps to support restore-on-create for variables.
+
+  `Checkpoint` objects have dependencies on the objects passed as keyword
+  arguments to their constructors, and each dependency is given a name that is
+  identical to the name of the keyword argument for which it was created.
+  TensorFlow classes like `Layer`s and `Optimizer`s will automatically add
+  dependencies on their variables (e.g. "kernel" and "bias" for
+  `tf.keras.layers.Dense`). Inheriting from `tf.keras.Model` makes managing
+  dependencies easy in user-defined classes, since `Model` hooks into attribute
+  assignment. For example:
+
+  ```python
+  class Regress(tf.keras.Model):
+
+    def __init__(self):
+      super(Regress, self).__init__()
+      self.input_transform = tf.keras.layers.Dense(10)
+      # ...
+
+    def call(self, inputs):
+      x = self.input_transform(inputs)
+      # ...
+  ```
+
+  This `Model` has a dependency named "input_transform" on its `Dense` layer,
+  which in turn depends on its variables. As a result, saving an instance of
+  `Regress` using `tf.train.Checkpoint` will also save all the variables created
+  by the `Dense` layer.
+
+  When variables are assigned to multiple workers, each worker writes its own
+  section of the checkpoint. These sections are then merged/re-indexed to behave
+  as a single checkpoint. This avoids copying all variables to one worker, but
+  does require that all workers see a common filesystem.
+
+  Attributes:
+    save_counter: Incremented when `save()` is called. Used to number
+      checkpoints.
+  """
+
+  def __init__(self, **kwargs):
+    """Group objects into a training checkpoint.
+
+    Args:
+      **kwargs: Keyword arguments are set as attributes of this object, and are
+        saved with the checkpoint. Values must be trackable objects.
+    Raises:
+      ValueError: If objects in `kwargs` are not trackable.
+    """
+    super(Checkpoint, self).__init__()
+    for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
+      if not isinstance(v, (base.Trackable, def_function.Function)):
+        raise ValueError(
+            ("`Checkpoint` was expecting a trackable object (an object "
+             "derived from `TrackableBase`), got %s. If you believe this "
+             "object should be trackable (i.e. it is part of the "
+             "TensorFlow Python API and manages state), please open an issue.")
+            % (v,))
+      setattr(self, k, v)
+    self._save_counter = None  # Created lazily for restore-on-create.
+    self._save_assign_op = None
+    self._saver = saver_with_op_caching(self)
+
+  def _maybe_create_save_counter(self):
+    """Create a save counter if it does not yet exist."""
+    if self._save_counter is None:
+      # Initialized to 0 and incremented before saving.
+      with ops.device("/cpu:0"):
+        # add_variable creates a dependency named "save_counter"; NoDependency
+        # prevents creating a second dependency named "_save_counter".
+        self._save_counter = data_structures.NoDependency(
+            add_variable(self, name="save_counter", initializer=0,
+                         dtype=dtypes.int64, trainable=False))
+
+  def write(self, file_prefix):
+    """Writes a training checkpoint.
+
+    The checkpoint includes variables created by this object and any
+    trackable objects it depends on at the time `Checkpoint.write()` is
+    called.
+
+    `write` does not number checkpoints, increment `save_counter`, or update the
+    metadata used by `tf.train.latest_checkpoint`. It is primarily intended for
+    use by higher level checkpoint management utilities. `save` provides a very
+    basic implementation of these features.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix).
+
+    Returns:
+      The full path to the checkpoint (i.e. `file_prefix`).
+    """
+    output = self._saver.save(
+        file_prefix=file_prefix)
+    if tensor_util.is_tensor(output):
+      if context.executing_eagerly():
+        return compat.as_str(output.numpy())
+      else:
+        # Function building
+        return output
+    else:
+      # Graph + Session, so we already session.ran it.
+      return compat.as_str(output)
+
+  @property
+  def save_counter(self):
+    """An integer variable which starts at zero and is incremented on save.
+
+    Used to number checkpoints.
+
+    Returns:
+      The save counter variable.
+    """
+    self._maybe_create_save_counter()
+    return self._save_counter
+
+  def save(self, file_prefix):
+    """Saves a training checkpoint and provides basic checkpoint management.
+
+    The saved checkpoint includes variables created by this object and any
+    trackable objects it depends on at the time `Checkpoint.save()` is
+    called.
+
+    `save` is a basic convenience wrapper around the `write` method,
+    sequentially numbering checkpoints using `save_counter` and updating the
+    metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
+    management, for example garbage collection and custom numbering, may be
+    provided by other utilities which also wrap `write`
+    (`tf.contrib.checkpoint.CheckpointManager` for example).
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix). Names are generated based on this
+        prefix and `Checkpoint.save_counter`.
+
+    Returns:
+      The full path to the checkpoint.
+    """
+    graph_building = not context.executing_eagerly()
+    if graph_building:
+      if ops.inside_function():
+        raise NotImplementedError(
+            "Calling tf.train.Checkpoint.save() from a function is not "
+            "supported, as save() modifies saving metadata in ways not "
+            "supported by TensorFlow Operations. Consider using "
+            "tf.train.Checkpoint.write(), a lower-level API which does not "
+            "update metadata. tf.train.latest_checkpoint and related APIs will "
+            "not see this checkpoint.")
+      session = ops.get_default_session()
+      if self._save_counter is None:
+        # When graph building, if this is a new save counter variable then it
+        # needs to be initialized before assign_add. This is only an issue if
+        # restore() has not been called first.
+        session.run(self.save_counter.initializer)
+    if not graph_building or self._save_assign_op is None:
+      with ops.colocate_with(self.save_counter):
+        assign_op = self.save_counter.assign_add(1, read_value=True)
+      if graph_building:
+        self._save_assign_op = data_structures.NoDependency(assign_op)
+    if graph_building:
+      checkpoint_number = session.run(self._save_assign_op)
+    else:
+      checkpoint_number = assign_op.numpy()
+    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number))
+    checkpoint_management.update_checkpoint_state_internal(
+        save_dir=os.path.dirname(file_prefix),
+        model_checkpoint_path=file_path,
+        all_model_checkpoint_paths=[file_path],
+        save_relative_paths=True)
+    return file_path
+
+  def restore(self, save_path):
+    """Restore a training checkpoint.
+
+    Restores this `Checkpoint` and any objects it depends on.
+
+    Either assigns values immediately if variables to restore have been created
+    already, or defers restoration until the variables are created. Dependencies
+    added after this call will be matched if they have a corresponding object in
+    the checkpoint (the restore request will queue in any trackable object
+    waiting for the expected dependency to be added).
+
+    To ensure that loading is complete and no more assignments will take place,
+    use the `assert_consumed()` method of the status object returned by
+    `restore`:
+
+    ```python
+    checkpoint = tf.train.Checkpoint( ... )
+    checkpoint.restore(path).assert_consumed()
+    ```
+
+    An exception will be raised if any Python objects in the dependency graph
+    were not found in the checkpoint, or if any checkpointed values do not have
+    a matching Python object.
+
+    Name-based `tf.train.Saver` checkpoints from TensorFlow 1.x can be loaded
+    using this method. Names are used to match variables. Re-encode name-based
+    checkpoints using `tf.train.Checkpoint.save` as soon as possible.
+
+    Args:
+      save_path: The path to the checkpoint, as returned by `save` or
+        `tf.train.latest_checkpoint`. If None (as when there is no latest
+        checkpoint for `tf.train.latest_checkpoint` to return), returns an
+        object which may run initializers for objects in the dependency
+        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
+        names are used to match variables.
+
+    Returns:
+      A load status object, which can be used to make assertions about the
+      status of a checkpoint restoration.
+
+      The returned status object has the following methods:
+
+      * `assert_consumed()`:
+          Raises an exception if any variables/objects are unmatched: either
+          checkpointed values which don't have a matching Python object or
+          Python objects in the dependency graph with no values in the
+          checkpoint. This method returns the status object, and so may be
+          chained with other assertions.
+
+      * `assert_existing_objects_matched()`:
+          Raises an exception if any existing Python objects in the dependency
+          graph are unmatched. Unlike `assert_consumed`, this assertion will
+          pass if values in the checkpoint have no corresponding Python
+          objects. For example a `tf.keras.Layer` object which has not yet been
+          built, and so has not created any variables, will pass this assertion
+          but fail `assert_consumed`. Useful when loading part of a larger
+          checkpoint into a new Python program, e.g. a training checkpoint with
+          a `tf.train.Optimizer` was saved but only the state required for
+          inference is being loaded. This method returns the status object, and
+          so may be chained with other assertions.
+
+      * `assert_nontrivial_match()`: Asserts that something aside from the root
+          object was matched. This is a very weak assertion, but is useful for
+          sanity checking in library code where objects may exist in the
+          checkpoint which haven't been created in Python and some Python
+          objects may not have a checkpointed value.
     """
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables

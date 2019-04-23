@@ -45,7 +45,7 @@ class GPUDevice : public BaseGPUDevice {
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGPUHostAllocator(0);
+        return ps->GetGpuHostAllocator(0);
       } else {
         return cpu_allocator_;
       }
@@ -94,7 +94,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
-      return ps->GetGPUHostAllocator(numa_node_);
+      return ps->GetGpuHostAllocator(numa_node_);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
@@ -109,6 +109,12 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 // The associated factory.
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    devices->push_back("/physical_device:CPU:0");
+
+    return Status::OK();
+  }
+
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
     int n = 1;

@@ -117,10 +117,19 @@ class HloComputation {
   // instruction.
   Status RemoveUnusedParameters();
 
-  // Add new parameter instruction to the computation.
+  // Adds a new parameter instruction to a fusion computation.
+  //
   // This should be a new parameter. Instruction will be appended to parameters
   // and inserted to the instruction list.
   HloInstruction* AddParameter(std::unique_ptr<HloInstruction> instruction);
+
+  // Adds a new parameter instruction to the entry computation and update
+  // the parent module config to reflect the change.
+  //
+  // This should be a new parameter. Instruction will be appended to parameters
+  // and inserted to the instruction list.
+  HloInstruction* AddEntryComputationParameter(
+      std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
@@ -261,7 +270,12 @@ class HloComputation {
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool operator==(const HloComputation& other) const;
+  bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
+
+  // Return whether `*this` and `other` are functionally equivalent.
+  bool operator==(const HloComputation& other) const {
+    return Equal(other, true);
+  }
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.

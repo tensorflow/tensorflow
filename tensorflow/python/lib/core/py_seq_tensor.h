@@ -30,7 +30,7 @@ namespace tensorflow {
 // representing the desired dtype of the resulting Tensor.
 // This is used only as a hint, *ret may not have that dtype on
 // success and may require a cast.
-Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret);
+Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret);
 
 }  // namespace tensorflow
 

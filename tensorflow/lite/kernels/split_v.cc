@@ -183,10 +183,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(
-          context,
-          "Only float32, uint8 and int16 are currently supported, got %d.",
-          op_context.input->type);
+      context->ReportError(context, "Type %s currently not supported.",
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT_V

@@ -41,7 +41,7 @@ TEST_F(TripCountAnnotatorTest, KnownSmallTripCount) {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
       trip_count = s32[] constant(10)
-      ROOT done = pred[] less-than(i, trip_count)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
     }
 
     ENTRY test {
@@ -77,7 +77,7 @@ TEST_F(TripCountAnnotatorTest, KnownLargeTripCount) {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
       trip_count = s32[] constant(1000000)
-      ROOT done = pred[] less-than(i, trip_count)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
     }
 
     ENTRY test {
@@ -113,7 +113,7 @@ TEST_F(TripCountAnnotatorTest, NonzeroStart) {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
       trip_count = s32[] constant(1000000)
-      ROOT done = pred[] less-than(i, trip_count)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
     }
 
     ENTRY test {
@@ -149,7 +149,7 @@ TEST_F(TripCountAnnotatorTest, LessThanOrEqualTo) {
       param = (s32[]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
       trip_count = s32[] constant(1000000)
-      ROOT done = pred[] less-than-or-equal-to(i, trip_count)
+      ROOT done = pred[] compare(i, trip_count), direction=LE
     }
 
     ENTRY test {
@@ -188,7 +188,7 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
       param = (s64[]) parameter(0)
       i = s64[] get-tuple-element(param), index=0
       trip_count = s64[] constant(9223372036854775807) // 2^63-1
-      ROOT done = pred[] less-than-or-equal-to(i, trip_count)
+      ROOT done = pred[] compare(i, trip_count), direction=LE
     }
 
     ENTRY test {

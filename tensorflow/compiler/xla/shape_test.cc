@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 
 #include <numeric>
+
+#include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -35,6 +37,8 @@ class ShapeTest : public ::testing::Test {
   const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
   const Shape token_ = ShapeUtil::MakeTokenShape();
   const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_with_tile_ =
+      ShapeUtil::MakeShapeWithLayout(F32, {}, {}, {Tile({256})});
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
   const Shape tuple_ =
@@ -66,6 +70,8 @@ TEST_F(ShapeTest, ShapeToString) {
 
   EXPECT_EQ("opaque[]", opaque_.ToString(/*print_layout=*/true));
   EXPECT_EQ("f32[]", scalar_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("f32[]{:T(256)}",
+            scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
@@ -204,6 +210,12 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       "-> "
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       prog.ToString());
+}
+
+TEST_F(ShapeTest, SupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
+       nested_tuple_, dyanmic_matrix_}));
 }
 
 }  // namespace

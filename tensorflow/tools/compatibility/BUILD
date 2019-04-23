@@ -109,8 +109,10 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 # Keep for reference, this test will succeed in 0.11 but fail in 1.0
@@ -172,6 +174,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_test(

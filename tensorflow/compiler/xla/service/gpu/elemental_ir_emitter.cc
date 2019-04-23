@@ -34,8 +34,9 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -73,16 +74,15 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
     llvm::IRBuilder<>* b, NestedComputer compute_nested)
     : ElementalIrEmitter(hlo_module_config, module, b),
       hlo_module_config_(hlo_module_config),
-      compute_nested_(std::move(compute_nested)) {}
+      compute_nested_(std::move(compute_nested)){}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
-    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    TargetFunctionID callee_id, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // The libdevice math functions differentiate between "double" and "float" by
   // appending an 'f' to the function's name. libdevice doesn't have f16 math
   // functions, so we convert the operands to f32 before calling the function
   // and then convert the result back to f16.
-  string munged_callee = callee_name;
   bool cast_result_to_fp16 = false;
   std::vector<llvm::Value*> converted_operands(operands.begin(),
                                                operands.end());
@@ -101,18 +101,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       output_type = F32;
       TF_FALLTHROUGH_INTENDED;
     case F32:
-      StrAppend(&munged_callee, "_f32");
       break;
     case F64:
-      StrAppend(&munged_callee, "_f64");
       break;
     default:
       return Unimplemented("Bad type for libdevice math call: %s",
                            PrimitiveType_Name(output_type));
   }
-  llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
-                                     converted_input_types, output_type)
-                            .ValueOrDie();
+  llvm::Value* result =
+      EmitCallToTargetFunction(callee_id, converted_operands,
+                               converted_input_types, output_type, {}, {}, b_);
   if (cast_result_to_fp16) {
     result = FPCast(result, b_->getHalfTy());
   }
@@ -177,9 +175,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
 
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
-      return EmitLibdeviceMathCall("__ocml_fmod", {lhs_value, rhs_value},
-                                   {lhs_input_type, rhs_input_type},
-                                   output_type);
+      return EmitLibdeviceMathCall(
+          TargetFunctionID::kFmod, {lhs_value, rhs_value},
+          {lhs_input_type, rhs_input_type}, output_type);
     }
     case HloOpcode::kPower: {
       return EmitPowerOp(op, lhs_value, rhs_value);
@@ -197,95 +195,76 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
   PrimitiveType output_type = op->shape().element_type();
   llvm::Type* llvm_ty = lhs_value->getType();
 
-  auto make_sqrt = [&, this]() -> StatusOr<llvm::Value*> {
-    // NVPTX has four relevant square root instructions:
-    //   sqrt.approx{.ftz}.f32
-    //   sqrt.rn{.ftz}.f32
-    //   sqrt.rn.f64
-    //   rsqrt.approx.f64
-    // We rely on LLVM's NVPTX backend to pick the right one based on our
-    // fast-math options.  (If fast-math is enabled, llvm may compute the 64-bit
-    // sqrt from the rsqrt approximation.)
-    return EmitLlvmIntrinsicMathCall("llvm.sqrt", {lhs_value}, {lhs_input_type},
-                                     output_type);
-  };
-
-  const HloInstruction* rhs = op->operand(1);
-  if (IsFPLiteralWithValue(rhs, .5)) {
-    VLOG(10) << "emitting pow(A, .5) as sqrt(A): " << op->ToString();
-    return make_sqrt();
-  }
-
-  if (IsFPLiteralWithValue(rhs, -.5)) {
-    VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
-    // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
-    // rsqrt.approx instruction.
-    //
-    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
-    // we force-enable it?
-    TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
-    return FDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
-  }
-
   VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
-  return EmitLibdeviceMathCall("__ocml_pow", {lhs_value, rhs_value},
+  return EmitLibdeviceMathCall(TargetFunctionID::kPow, {lhs_value, rhs_value},
                                {lhs_input_type, rhs_input_type}, output_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_erfcinv", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kErfcinv, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_log", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kLog, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_log1p", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kLog1p, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_sin", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kSin, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_cos", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kCos, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_exp", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kExp, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall("__ocml_expm1", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kExpm1, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitLibdeviceMathCall("__ocml_pow", {lhs, rhs}, {prim_type, prim_type},
-                               prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kPow, {lhs, rhs},
+                               {prim_type, prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
                                                        llvm::Value* value) {
-  return EmitLibdeviceMathCall("__nv_sqrt", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kSqrt, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
                                                         llvm::Value* value) {
-  return EmitLibdeviceMathCall("__nv_rsqrt", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kRsqrt, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitLibdeviceMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
+  return EmitLibdeviceMathCall(TargetFunctionID::kAtan2, {lhs, rhs},
+                               {prim_type, prim_type}, prim_type);
+}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
@@ -310,7 +289,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
     // When the llvm.round is fixed, we may still want to use __nv_round here as
     // expanding the non-trivial implementation early while inlining allows
     // better optimizations.
-    return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
+    return EmitLibdeviceMathCall(TargetFunctionID::kRound, {value}, {prim_type},
+                                 prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
@@ -332,7 +312,7 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
       b_->GetInsertBlock()
           ->getModule()
-          ->getOrInsertFunction(llvm_ir::AsStringRef(callee_name), callee_type)
+          ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
   for (auto attribute : attributes) {
@@ -419,12 +399,12 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
 
-        IrArray::Index input_index(index_type, index.size());
+        std::vector<llvm::Value*> input_multi_index(index.size());
         llvm::Value* in_bounds = b_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = NSWMul(
               index[i], index_typed_const(window.dimensions(i).stride()));
-          input_index[i] = NSWSub(
+          input_multi_index[i] = NSWSub(
               NSWAdd(stridden_index,
                      NSWMul(window_index[i],
                             index_typed_const(
@@ -433,24 +413,24 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
           // We need to verify that we are not in the dilated base area.
           llvm::Value* dilation_condition = ICmpEQ(
-              SRem(input_index[i],
+              SRem(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation())),
               index_typed_const(0));
           in_bounds = And(in_bounds, dilation_condition);
 
           // Apply base dilation to the index.
-          input_index[i] =
-              SDiv(input_index[i],
+          input_multi_index[i] =
+              SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_index[i] < bound, as otherwise
-          // we are in the pad and so can skip the computation. This
+          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
-          // input_index[i] < bound, as a negative value wraps to a large
+          // input_multi_index[i] < bound, as a negative value wraps to a large
           // positive value.
           in_bounds =
               And(in_bounds,
-                  ICmpULT(input_index[i],
+                  ICmpULT(input_multi_index[i],
                           index_typed_const(operand->shape().dimensions(i))));
         }
 
@@ -459,6 +439,8 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(if_data.true_block, b_);
 
         // We are not in pad, so do the computation.
+        IrArray::Index input_index(input_multi_index, operand->shape(),
+                                   index_type);
         TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                             operand_to_generator.at(operand)(input_index));
         TF_ASSIGN_OR_RETURN(
@@ -485,19 +467,22 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         b()->CreateStore(init_value, accum_ptr);
 
         llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
-        IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
-            operand->shape(), hlo->dimensions(), "reduction_dim");
+        std::vector<llvm::Value*> input_multi_index =
+            loops.AddLoopsForShapeOnDimensions(
+                operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {
-          // Here only input_index[hlo->dimensions()] are non-null, so we must
-          // set the rest.
+          // Here only input_multi_index[hlo->dimensions()] are non-null, so we
+          // must set the rest.
           size_t j = 0;
-          for (size_t i = 0; i < input_index.size(); ++i) {
-            if (input_index[i] == nullptr) {
-              input_index[i] = output_index[j++];
+          for (auto& i : input_multi_index) {
+            if (i == nullptr) {
+              i = output_index[j++];
             }
           }
           CHECK_EQ(output_index.size(), j);
         }
+        llvm_ir::IrArray::Index input_index(
+            input_multi_index, hlo->operand(0)->shape(), index_type);
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
         TF_ASSIGN_OR_RETURN(

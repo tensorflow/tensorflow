@@ -97,12 +97,13 @@ cc_library(
     ),
 )
 
+# TODO(b/122597976) Restore portability by avoiding tf_cc_test
 tf_cc_test(
     name = "imagenet_topk_eval_test",
     srcs = ["imagenet_topk_eval_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = ["tflite_not_portable"],
     deps = [
         ":imagenet_topk_eval",
         "@com_google_googletest//:gtest",

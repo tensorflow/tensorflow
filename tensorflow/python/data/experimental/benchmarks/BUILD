@@ -125,6 +125,22 @@ py_test(
 )
 
 py_test(
+    name = "choose_fastest_branch_benchmark",
+    srcs = ["choose_fastest_branch_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/experimental/ops:sleep",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
     srcs_version = "PY2AND3",

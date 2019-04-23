@@ -184,15 +184,17 @@ class CholeskyOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
-      matrix1 = random_ops.random_normal([5, 5], seed=42)
-      matrix2 = random_ops.random_normal([5, 5], seed=42)
-      matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
-      matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
-      c1 = linalg_ops.cholesky(matrix1)
-      c2 = linalg_ops.cholesky(matrix2)
-      c1_val, c2_val = self.evaluate([c1, c2])
-      self.assertAllClose(c1_val, c2_val)
+    # TODO: Re-enable this test when ROCm support for CholeskyOp is added
+    if not test.is_built_with_rocm():
+      with self.session(use_gpu=True) as sess:
+        matrix1 = random_ops.random_normal([5, 5], seed=42)
+        matrix2 = random_ops.random_normal([5, 5], seed=42)
+        matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
+        matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
+        c1 = linalg_ops.cholesky(matrix1)
+        c2 = linalg_ops.cholesky(matrix2)
+        c1_val, c2_val = self.evaluate([c1, c2])
+        self.assertAllClose(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):

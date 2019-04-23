@@ -26,6 +26,9 @@ limitations under the License.
 #endif
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
+#if TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
+#endif 
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -256,6 +259,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+#if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
@@ -267,6 +271,12 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
                                       output_desc, &output_data,
                                       &scratch_allocator)
                     .ok();
+#else 
+  bool status = stream
+                    ->ThenPoolForward(pooling_desc, input_desc, input_data,
+                                      output_desc, &output_data)
+                    .ok();
+#endif 
   OP_REQUIRES(context, status,
               errors::Internal("cudnn PoolForward launch failed"));
 #if CUDNN_VERSION < 7300
@@ -414,10 +424,12 @@ void DnnPoolingGradOp<T>::Compute(
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+#if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
       );
+
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
   bool status =
@@ -427,6 +439,18 @@ void DnnPoolingGradOp<T>::Compute(
                              output_backprop_data, &input_backprop_data,
                              &scratch_allocator)
           .ok();
+#else 
+  bool status =
+      stream
+          ->ThenPoolBackward(pooling_desc, orig_input_desc, orig_input_data,
+                             orig_output_desc, orig_output_data,
+                             output_backprop_data, &input_backprop_data)
+          .ok();
+#endif 
+
+
+
+
   OP_REQUIRES(context, status,
               errors::Internal("cudnn PoolBackward launch failed"));
 

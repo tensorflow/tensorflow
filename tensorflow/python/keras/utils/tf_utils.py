@@ -112,11 +112,19 @@ def get_reachable_from_inputs(inputs, targets=None):
 
   while queue:
     x = queue.pop()
+    if isinstance(x, tuple(_user_convertible_tensor_types)):
+      # Can't find consumers of user-specific types.
+      continue
+
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access
     elif isinstance(x, variables.Variable):
-      outputs = [x.op]
+      try:
+        outputs = [x.op]
+      except AttributeError:
+        # Variables can be created in an Eager context.
+        outputs = []
     elif tensor_util.is_tensor(x):
       outputs = x.consumers()
     else:
@@ -171,7 +179,7 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
 
 
 def convert_shapes(input_shape, to_tuples=True):
-  """Converts nested shape representations  to desired format.
+  """Converts nested shape representations to desired format.
 
   Performs:
 
@@ -193,17 +201,16 @@ def convert_shapes(input_shape, to_tuples=True):
     Nested structure of shapes in desired format.
   """
 
-  def _is_shape_component(element):
-    value = tensor_shape.as_dimension(element).value
-    return value is None or isinstance(value, int)
+  def _is_shape_component(value):
+    return value is None or isinstance(value, (int, tensor_shape.Dimension))
 
   def _is_atomic_shape(input_shape):
     # Ex: TensorShape or (None, 10, 32) or 5 or `None`
-    if input_shape is None or isinstance(input_shape, int):
+    if _is_shape_component(input_shape):
       return True
     if isinstance(input_shape, tensor_shape.TensorShape):
       return True
-    if (isinstance(input_shape, tuple) and
+    if (isinstance(input_shape, (tuple, list)) and
         all(_is_shape_component(ele) for ele in input_shape)):
       return True
     return False
@@ -237,7 +244,7 @@ def convert_inner_node_data(nested, wrap=False):
       unwraps `ListWrapper` objects into lists.
 
   Returns:
-    Strucutre of same type as nested, with lists wrapped/unwrapped.
+    Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
   def _is_atomic_nested(nested):
@@ -311,14 +318,20 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
+  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
   if isinstance(tensor, variables.Variable):
-    return not context.executing_eagerly()
+    # Variables that are output of a Keras Layer in Functional API mode
+    # should be considered symbolic.
+    # TODO(omalleyt): We need a better way to check this in order to
+    # enable `run_eagerly=True` for Models containing Layers that
+    # return Variables as outputs.
+    return (getattr(tensor, '_keras_history', False) or
+            not context.executing_eagerly())
   if isinstance(tensor, composite_tensor.CompositeTensor):
     return tensor._is_graph_tensor  # pylint: disable=protected-access
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    return hasattr(ops.convert_to_tensor(tensor), 'graph')
   return False
 
 

@@ -55,10 +55,15 @@ TfLiteStatus FlatBufferIntVectorToArray(
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
+  *type = kTfLiteNoType;
   switch (tensor_type) {
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
+    case TensorType_FLOAT16:
+      error_reporter->Report("Unimplemented data type float16 in tensor\n",
+                             tensor_type);
+      return kTfLiteError;
     case TensorType_INT16:
       *type = kTfLiteInt16;
       break;
@@ -83,10 +88,10 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_COMPLEX64:
       *type = kTfLiteComplex64;
       break;
-    default:
-      error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
-                             EnumNameTensorType(tensor_type), tensor_type);
-      return kTfLiteError;
+  }
+  if (*type == kTfLiteNoType) {
+    error_reporter->Report("Unsupported data type %d in tensor\n", tensor_type);
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -395,6 +400,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
           case LSTMKernelType_BASIC:
             params->kernel_type = kTfLiteLSTMBasicKernel;
             break;
+          default:
+            error_reporter->Report("Unhandled LSTM kernel type: %d",
+                                   lstm_params->kernel_type());
+            return kTfLiteError;
         }
       }
       *builtin_data = reinterpret_cast<void*>(params);
@@ -683,8 +692,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-
-    // Below are the ops with no builtin_data strcture.
+    // Below are the ops with no builtin_data structure.
     case BuiltinOperator_ABS:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
@@ -708,6 +716,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOG:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_MATRIX_DIAG:
+    case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
     case BuiltinOperator_NEG:
@@ -744,6 +754,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_GATHER_ND:
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
+    case BuiltinOperator_QUANTIZE:
       break;
   }
   return kTfLiteOk;

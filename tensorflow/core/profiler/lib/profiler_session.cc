@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include <cstddef>
 #include <string>
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -35,12 +36,42 @@ namespace {
 // DeviceTracer).
 std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 
+void AssignLanes(RunMetadata* run_metadata) {
+  for (size_t device_id = 0;
+       device_id < run_metadata->step_stats().dev_stats_size(); ++device_id) {
+    auto* device_stats =
+        run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
+    if (device_stats->thread_names_size() > 0 ||
+        device_stats->node_stats_size() == 0) {
+      continue;
+    }
+    std::vector<uint64> lanes;
+    for (auto ns = device_stats->mutable_node_stats()->rbegin();
+         ns != device_stats->mutable_node_stats()->rend(); ns++) {
+      uint64 end_micros = ns->all_start_micros() + ns->all_end_rel_micros();
+      bool found_lane = false;
+      for (size_t l = 0; l < lanes.size(); l++) {
+        if (end_micros <= lanes[l]) {
+          ns->set_thread_id(l);
+          found_lane = true;
+          lanes[l] = ns->all_start_micros();
+          break;
+        }
+      }
+      if (!found_lane) {
+        ns->set_thread_id(lanes.size());
+        lanes.push_back(ns->all_start_micros());
+      }
+    }
+  }
+}
+
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
                                     profiler::Trace* trace,
-                                    const uint64 profile_start_time_micros) {
+                                    const uint64 profile_start_time_micros,
+                                    const uint64 profile_end_time_micros) {
+  AssignLanes(run_metadata);
   auto trace_devices = trace->mutable_devices();
-  // TODO(fishx): use a lighter representation instead of GraphDef to insert
-  // python information into trace event.
 
   for (size_t device_id = 0;
        device_id < run_metadata->step_stats().dev_stats_size(); ++device_id) {
@@ -65,17 +96,15 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Emit events.
     for (auto node :
          run_metadata->step_stats().dev_stats(device_id).node_stats()) {
-      if (node.all_start_micros() < profile_start_time_micros) {
+      if (node.all_start_micros() < profile_start_time_micros ||
+          node.all_start_micros() + node.all_end_rel_micros() >
+              profile_end_time_micros) {
         continue;
       }
       auto* event = trace->add_trace_events();
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
-      if (device_stats->device().find("host:CPU") != string::npos) {
-        event->set_resource_id(node.thread_id());
-      } else {
-        event->set_resource_id(0);
-      }
+      event->set_resource_id(node.thread_id());
       event->set_name(node.node_name());
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *
@@ -120,7 +149,9 @@ Status ProfilerSession::SerializeToString(string* content) {
 
   profiler::Trace trace;
 
-  ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
+  ConvertRunMetadataToTraceEvent(
+      &run_metadata, &trace, start_time_micros_,
+      Env::Default()->NowNanos() / EnvTime::kMicrosToNanos);
 
   trace.SerializeToString(content);
   return Status::OK();

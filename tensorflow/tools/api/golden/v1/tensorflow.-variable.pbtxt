@@ -9,6 +9,10 @@ tf_class {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "aggregation"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "constraint"
     mtype: "<type \'property\'>"
   }
@@ -42,6 +46,10 @@ tf_class {
   }
   member {
     name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "synchronization"
     mtype: "<type \'property\'>"
   }
   member {
@@ -79,6 +87,10 @@ tf_class {
   member_method {
     name: "from_proto"
     argspec: "args=[\'variable_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gather_nd"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_shape"
@@ -123,6 +135,10 @@ tf_class {
   member_method {
     name: "set_shape"
     argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sparse_read"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "to_proto"

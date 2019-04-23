@@ -32,8 +32,8 @@ class NcclReducer : public CollectiveImplementationInterface {
   Status InitializeCollectiveContext(CollectiveContext* col_ctx) override;
 
   // Initialize nccl communicator key.
-  Status InitializeInstanceBeforeGroupDiscovery(
-      CollectiveParams* col_params) override;
+  Status InitializeCollectiveGroupRuntimeDetails(
+      CollGroupRuntimeDetails* col_group_runtime_details) override;
 
   // Hands off all reduce to NcclManager.
   void Run(StatusCallback done) override;

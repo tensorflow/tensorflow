@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # Lazy load since some of the performance benchmark skylark rules
@@ -53,7 +54,7 @@ class Calibrator(object):
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
 
-  def calibrate_and_quantize(self, dataset_gen):
+  def calibrate_and_quantize(self, dataset_gen, input_type, output_type):
     """Calibrates the model with specified generator and then quantizes it.
 
     Returns:
@@ -61,8 +62,12 @@ class Calibrator(object):
 
     Args:
       dataset_gen: A generator that generates calibration samples.
+      input_type: A tf.dtype representing the desired real-value input type.
+      output_type: A tf.dtype representing the desired real-value output type.
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor([calibration_sample])
-    return self._calibrator.QuantizeModel()
+      self._calibrator.FeedTensor(calibration_sample)
+    return self._calibrator.QuantizeModel(
+        np.dtype(input_type.as_numpy_dtype()).num,
+        np.dtype(output_type.as_numpy_dtype()).num)

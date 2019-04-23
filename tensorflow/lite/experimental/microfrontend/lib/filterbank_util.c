@@ -28,9 +28,7 @@ void FilterbankFillConfigWithDefaults(struct FilterbankConfig* config) {
   config->output_scale_shift = 7;
 }
 
-static float FreqToMel(float freq) {
-  return 1127.0 * log(1.0 + (freq / 700.0));
-}
+static float FreqToMel(float freq) { return 1127.0 * log1p(freq / 700.0); }
 
 static void CalculateCenterFrequencies(const int num_channels,
                                        const float lower_frequency_limit,
@@ -42,22 +40,22 @@ static void CalculateCenterFrequencies(const int num_channels,
   const float mel_low = FreqToMel(lower_frequency_limit);
   const float mel_hi = FreqToMel(upper_frequency_limit);
   const float mel_span = mel_hi - mel_low;
-  const float mel_spacing = mel_span / ((float) num_channels);
+  const float mel_spacing = mel_span / ((float)num_channels);
   int i;
   for (i = 0; i < num_channels; ++i) {
     center_frequencies[i] = mel_low + (mel_spacing * (i + 1));
   }
 }
 
-static void QuantizeFilterbankWeights(const float float_weight,
-                                      int16_t* weight, int16_t* unweight) {
+static void QuantizeFilterbankWeights(const float float_weight, int16_t* weight,
+                                      int16_t* unweight) {
   *weight = floor(float_weight * (1 << kFilterbankBits) + 0.5);
   *unweight = floor((1.0 - float_weight) * (1 << kFilterbankBits) + 0.5);
 }
 
 int FilterbankPopulateState(const struct FilterbankConfig* config,
-                            struct FilterbankState* state,
-                            int sample_rate, int spectrum_size) {
+                            struct FilterbankState* state, int sample_rate,
+                            int spectrum_size) {
   state->num_channels = config->num_channels;
   const int num_channels_plus_1 = config->num_channels + 1;
 
@@ -83,10 +81,8 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
       malloc(num_channels_plus_1 * sizeof(*actual_channel_widths));
 
   if (state->channel_frequency_starts == NULL ||
-      state->channel_weight_starts == NULL ||
-      state->channel_widths == NULL ||
-      center_mel_freqs == NULL ||
-      actual_channel_starts == NULL ||
+      state->channel_weight_starts == NULL || state->channel_widths == NULL ||
+      center_mel_freqs == NULL || actual_channel_starts == NULL ||
       actual_channel_widths == NULL) {
     free(center_mel_freqs);
     free(actual_channel_starts);
@@ -99,7 +95,7 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
                              config->upper_band_limit, center_mel_freqs);
 
   // Always exclude DC.
-  const float hz_per_sbin = 0.5 * sample_rate / ((float) spectrum_size - 1);
+  const float hz_per_sbin = 0.5 * sample_rate / ((float)spectrum_size - 1);
   state->start_index = 1.5 + config->lower_band_limit / hz_per_sbin;
   state->end_index = 0;  // Initialized to zero here, but actually set below.
 
@@ -117,7 +113,7 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
   for (chan = 0; chan < num_channels_plus_1; ++chan) {
     // Keep jumping frequencies until we overshoot the bound on this channel.
     int freq_index = chan_freq_index_start;
-    while (FreqToMel((freq_index) * hz_per_sbin) <= center_mel_freqs[chan]) {
+    while (FreqToMel((freq_index)*hz_per_sbin) <= center_mel_freqs[chan]) {
       ++freq_index;
     }
 
@@ -148,8 +144,7 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
       // alignment?
       const int aligned_start =
           (chan_freq_index_start / index_alignment) * index_alignment;
-      const int aligned_width =
-          (chan_freq_index_start - aligned_start + width);
+      const int aligned_width = (chan_freq_index_start - aligned_start + width);
       const int padded_width =
           (((aligned_width - 1) / kFilterbankChannelBlockSize) + 1) *
           kFilterbankChannelBlockSize;

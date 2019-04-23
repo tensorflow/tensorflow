@@ -20,12 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import sys
 import types
 import numpy as np
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -111,8 +111,8 @@ class Metric(Layer):
   ```
   class BinaryTruePositives(tf.keras.metrics.Metric):
 
-    def __init__(self, name='binary_true_positives'):
-      super(BinaryTruePositives, self).__init__(name=name)
+    def __init__(self, name='binary_true_positives', **kwargs):
+      super(BinaryTruePositives, self).__init__(name=name, **kwargs)
       self.true_positives = self.add_weight(name='tp', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
@@ -123,11 +123,12 @@ class Metric(Layer):
       values = tf.cast(values, self.dtype)
       if sample_weight is not None:
         sample_weight = tf.cast(sample_weight, self.dtype)
+        sample_weight = tf.broadcast_weights(sample_weight, values)
         values = tf.multiply(values, sample_weight)
-      return self.true_positives.assign_add(tf.reduce_sum(values))
+      self.true_positives.assign_add(tf.reduce_sum(values))
 
     def result(self):
-      return tf.identity(self.true_positives)
+      return self.true_positives
   ```
   """
 
@@ -140,24 +141,19 @@ class Metric(Layer):
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
 
-    if sys.version_info < (3,):
-      # Wrap methods in `weakmethod` function to remove binding and create a
-      # weak reference. This is to remove reference cycle that is created here.
-      # This is not an issue in python versions > 3.
-      if context.executing_eagerly():
-        obj.update_state = metrics_utils.weakmethod(obj.update_state)
-      obj.update_state = metrics_utils.weakmethod(
-          types.MethodType(
-              metrics_utils.update_state_wrapper(obj.update_state), obj))
-      result = metrics_utils.weakmethod(obj.result)
-      obj.result = metrics_utils.weakmethod(
-          types.MethodType(metrics_utils.result_wrapper(result), obj))
+    # TODO(psv): We are excluding wrapping `update_state` of built-in metrics
+    # with function here because of b/121302287. With this, built-in metrics
+    # will continue to work with TPUs and custom metrics will not, however
+    # users writing custom metrics need not worry about control dependencies
+    # and returning ops.
+    if cls.__module__ == Metric.__module__:
+      update_state_fn = obj.update_state
     else:
-      obj.update_state = types.MethodType(
-          metrics_utils.update_state_wrapper(obj.update_state), obj)
-      obj.result = types.MethodType(
-          metrics_utils.result_wrapper(obj.result), obj)
+      update_state_fn = def_function.function(obj.update_state)
 
+    obj.update_state = types.MethodType(
+        metrics_utils.update_state_wrapper(update_state_fn), obj)
+    obj.result = types.MethodType(metrics_utils.result_wrapper(obj.result), obj)
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -171,9 +167,9 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)
+    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
     with ops.control_dependencies([update_op]):
-      result_t = self.result()
+      result_t = self.result()  # pylint: disable=not-callable
 
       # We are adding the metric object as metadata on the result tensor.
       # This is required when we want to use a metric with `add_metric` API on
@@ -181,9 +177,9 @@ class Metric(Layer):
       # to reset variable state after each epoch of training.
       # Example:
       #   model = Model()
-      #   model.add_metric(Mean()(values), name='mean')
-      if not context.executing_eagerly():
-        result_t._metric_obj = self  # pylint: disable=protected-access
+      #   mean = Mean()
+      #   model.add_metric(mean(values), name='mean')
+      result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
   @property
@@ -215,6 +211,9 @@ class Metric(Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
+
+    Please use `tf.config.experimental_run_functions_eagerly(True)` to execute
+    this function eagerly for debugging or profiling.
 
     Args:
       *args:
@@ -496,7 +495,7 @@ class MeanRelativeError(Mean):
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
         y_pred, self.normalizer)
-    y_pred.shape.assert_is_compatible_with(y_pred.shape)
+    y_pred.shape.assert_is_compatible_with(y_true.shape)
     relative_errors = math_ops.div_no_nan(
         math_ops.abs(y_true - y_pred), self.normalizer)
 
@@ -1570,7 +1569,8 @@ class AUC(Metric):
   (computed using the aforementioned variables). The `num_thresholds` variable
   controls the degree of discretization with larger numbers of thresholds more
   closely approximating the true AUC. The quality of the approximation may vary
-  dramatically depending on `num_thresholds`.
+  dramatically depending on `num_thresholds`. The `thresholds` parameter can be
+  used to manually specify thresholds which split the predictions more evenly.
 
   For best results, `predictions` should be distributed approximately uniformly
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
@@ -1608,7 +1608,8 @@ class AUC(Metric):
                curve='ROC',
                summation_method='interpolation',
                name=None,
-               dtype=None):
+               dtype=None,
+               thresholds=None):
     """Creates an `AUC` instance.
 
     Args:
@@ -1625,10 +1626,14 @@ class AUC(Metric):
           'majoring' that does the opposite.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
+      thresholds: (Optional) A list of floating point values to use as the
+        thresholds for discretizing the curve. If set, the `num_thresholds`
+        parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
+        equal to {-epsilon, 1+epsilon} for a small positive epsilon value will
+        be automatically included with these to correctly handle predictions
+        equal to exactly 0 or 1.
     """
     # Validate configurations.
-    if num_thresholds <= 1:
-      raise ValueError('`num_thresholds` must be > 1.')
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
         metrics_utils.AUCCurve):
       raise ValueError('Invalid curve: "{}". Valid options are: "{}"'.format(
@@ -1642,7 +1647,24 @@ class AUC(Metric):
               summation_method, list(metrics_utils.AUCSummationMethod)))
 
     # Update properties.
-    self.num_thresholds = num_thresholds
+    if thresholds is not None:
+      # If specified, use the supplied thresholds.
+      self.num_thresholds = len(thresholds) + 2
+      thresholds = sorted(thresholds)
+    else:
+      if num_thresholds <= 1:
+        raise ValueError('`num_thresholds` must be > 1.')
+
+      # Otherwise, linearly interpolate (num_thresholds - 2) thresholds in
+      # (0, 1).
+      self.num_thresholds = num_thresholds
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+
+    # Add an endpoint "threshold" below zero and above one for either
+    # threshold method to account for floating point imprecisions.
+    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
     else:
@@ -1657,27 +1679,20 @@ class AUC(Metric):
     # Create metric variables
     self.true_positives = self.add_weight(
         'true_positives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.true_negatives = self.add_weight(
         'true_negatives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.false_positives = self.add_weight(
         'false_positives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.false_negatives = self.add_weight(
         'false_negatives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
-
-    # Compute `num_thresholds` thresholds in [0, 1]
-    thresholds = [
-        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
-    ]
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
-    # epsilon - to account for floating point imprecisions.
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1804,15 +1819,18 @@ class AUC(Metric):
         name=self.name)
 
   def reset_states(self):
-    num_thresholds = len(self.thresholds)
     K.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+        [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
         'num_thresholds': self.num_thresholds,
         'curve': self.curve.value,
         'summation_method': self.summation_method.value,
+        # We remove the endpoint thresholds as an inverse of how the thresholds
+        # were initialized. This ensures that a metric initialized from this
+        # config has the same thresholds.
+        'thresholds': self.thresholds[1:-1],
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -1823,7 +1841,7 @@ class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
   cosine similarity = (a . b) / ||a|| ||b||
-  (https://en.wikipedia.org/wiki/Cosine_similarity)
+  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
   similarity is 0.5.
@@ -2174,7 +2192,7 @@ class Poisson(MeanMetricWrapper):
 
 @keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
-  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
   `metric = y_true * log(y_true / y_pred)`
 
@@ -2394,7 +2412,7 @@ class MeanTensor(Metric):
     elif values.shape != self._shape:
       raise ValueError('MeanTensor input values must always have the same '
                        'shape. Expected shape (set during the first call): {}. '
-                       'Got: {}'.format(self._shape, values.get_shape()))
+                       'Got: {}'.format(self._shape, values.shape))
 
     num_values = array_ops.ones_like(values)
     if sample_weight is not None:
@@ -2489,7 +2507,6 @@ class BinaryCrossentropy(MeanMetricWrapper):
         e.g. `label_smoothing=0.2` means that we will use a value of `0.1` for
         label `0` and `0.9` for label `1`"
     """
-    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
 
     super(BinaryCrossentropy, self).__init__(
         binary_crossentropy,
@@ -2553,7 +2570,6 @@ class CategoricalCrossentropy(MeanMetricWrapper):
                dtype=None,
                from_logits=False,
                label_smoothing=0):
-    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
 
     super(CategoricalCrossentropy, self).__init__(
         categorical_crossentropy,
@@ -2692,7 +2708,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
-  y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
@@ -2715,8 +2731,8 @@ def categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -2739,8 +2755,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):

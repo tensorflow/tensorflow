@@ -115,14 +115,23 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  // Tensorflow functions do not prune stateful or dataset-output ops from
-  // the function body (see PruneFunctionBody in common_runtime/function.cc).
+  absl::optional<FunctionLibraryDefinition> fn_library;
   if (!optimization_options_.allow_pruning_stateful_and_dataset_ops) {
-    FunctionLibraryDefinition fn_library(OpRegistry::Global(), graph.library());
-    for (const NodeDef& node : graph.node()) {
-      if (IsStateful(node, &fn_library) || IsDataset(node)) {
-        result.insert(node.name());
-      }
+    fn_library.emplace(OpRegistry::Global(), graph.library());
+  }
+  for (const NodeDef& node : graph.node()) {
+    // Tensorflow functions do not prune stateful or dataset-output ops from
+    // the function body (see PruneFunctionBody in common_runtime/function.cc).
+    if (!optimization_options_.allow_pruning_stateful_and_dataset_ops &&
+        (IsStateful(node, &*fn_library) || IsDataset(node))) {
+      result.insert(node.name());
+    }
+
+    // Do not remove ops with attribute _grappler_do_not_remove. This is useful
+    // for debugging.
+    auto iter = node.attr().find("_grappler_do_not_remove");
+    if (iter != node.attr().end() && iter->second.b()) {
+      result.insert(node.name());
     }
   }
 

@@ -161,6 +161,7 @@ class KernelMappingScheme {
   }
 
   IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
+
   // Returns the index for the first tile in the block with the given block
   // index.
   IrArray::Index GetTileIndexForBlockOrigin(const IrArray::Index& block_index);

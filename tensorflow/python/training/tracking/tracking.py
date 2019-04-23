@@ -71,7 +71,7 @@ class AutoTrackable(base.Trackable):
 
   def __setattr__(self, name, value):
     """Support self.foo = trackable syntax."""
-    if getattr(self, "_setattr_tracking", True):
+    if getattr(self, "_self_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
           trackable=self, value=value, name=name)
     super(AutoTrackable, self).__setattr__(name, value)
@@ -93,7 +93,7 @@ class AutoTrackable(base.Trackable):
 
   def _list_functions_for_serialization(self):
     """Return a dict of `Function`s of a trackable."""
-    functions = dict()
+    functions = {}
     for attribute_name in dir(self):
       try:
         attribute_value = getattr(self, attribute_name, None)
@@ -162,7 +162,7 @@ class TrackableResource(base.Trackable):
 
   def _create_resource(self):
     """A function that creates a resource handle."""
-    raise NotImplementedError("TrackableResource.create_resource not "
+    raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
 
   def _initialize(self):

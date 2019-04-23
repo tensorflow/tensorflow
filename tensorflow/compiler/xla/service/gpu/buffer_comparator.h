@@ -19,50 +19,47 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
 
-// A fp16 comparator that internally keeps a reference buffer, and compares it
-// against other test buffers.
-class F16BufferComparator {
+// A device-side comparator that compares buffers.
+class BufferComparator {
  public:
-  F16BufferComparator(const F16BufferComparator&) = delete;
-  F16BufferComparator(F16BufferComparator&&) = default;
+  BufferComparator(const BufferComparator&) = delete;
+  BufferComparator(BufferComparator&&) = default;
 
-  // Creates a new comparator. It internally allocates a buffer initialized by
-  // ref_buffer.
-  static StatusOr<F16BufferComparator> Create(
-      se::DeviceMemory<Eigen::half> ref_buffer, Compiler* compiler,
-      DeviceMemoryAllocator* allocator, se::Stream* stream);
+  static StatusOr<BufferComparator> Create(const Shape& buffer_shape,
+                                           se::StreamExecutor* stream_exec,
+                                           Compiler* compiler);
 
-  // Returns true if the internally allocated buffer "compares equal" to
-  // test_buffer. The definition of "equal" is:
+  // Returns true if the two buffers compare equal. The definition of "equal"
+  // is:
   // * All NaNs equal.
-  // * All infs are treated as 65505 or -65505, so that this checker is tolerant
-  //   to fp16 overflows.
+  // * All fp16 infs are treated as 65505 or -65505. Otherwise,
+  //   infs and negative infs compare equal.
   // * With NaNs and infs taken care of, a and b compare equal iff:
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  StatusOr<bool> CompareEqual(se::DeviceMemory<Eigen::half> test_buffer);
+  StatusOr<bool> CompareEqual(se::Stream* stream,
+                              DeviceMemoryAllocator* allocator,
+                              se::DeviceMemoryBase lhs,
+                              se::DeviceMemoryBase rhs);
 
  private:
-  F16BufferComparator(se::Stream* stream, DeviceMemoryAllocator* allocator,
-                      std::unique_ptr<Executable> exec,
-                      ScopedShapedBuffer ref_buffer)
-      : stream_(stream),
-        allocator_(allocator),
-        exec_(std::move(exec)),
-        ref_buffer_(std::move(ref_buffer)) {}
+  BufferComparator(const Shape& shape, std::unique_ptr<Executable> exec)
+      : shape_(shape), comparator_exec_(std::move(exec)) {}
 
-  StatusOr<bool> CompareEqualImpl(se::DeviceMemory<Eigen::half> test_buffer);
+  StatusOr<bool> CompareEqualImpl(se::Stream* stream,
+                                  DeviceMemoryAllocator* allocator,
+                                  se::DeviceMemoryBase lhs,
+                                  se::DeviceMemoryBase rhs);
 
-  se::Stream* stream_;
-  DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<Executable> exec_;
-  ScopedShapedBuffer ref_buffer_;
+  Shape shape_;
+  std::unique_ptr<Executable> comparator_exec_;
 };
 
 }  // namespace gpu

@@ -68,8 +68,10 @@ class Placer {
   //
   // The "graph", "devices", and "default_device" pointer arguments are borrowed
   // by this Placer, and must outlive it.
-  Placer(Graph* graph, const DeviceSet* devices, const SessionOptions* options,
-         const Device* default_device);
+  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device,
+         bool allow_soft_placement, bool log_device_placement);
+
+  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device);
 
   Placer(Graph* graph, const DeviceSet* devices);
 
@@ -90,9 +92,9 @@ class Placer {
 
   Graph* const graph_;              // Not owned.
   const DeviceSet* const devices_;  // Not owned.
-  const SessionOptions* options_;   // Not owned.
+  const Device* default_device_;    // Not owned.
+  const bool allow_soft_placement_;
   const bool log_device_placement_;
-  const Device* default_device_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(Placer);
 };

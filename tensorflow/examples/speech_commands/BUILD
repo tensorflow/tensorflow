@@ -35,6 +35,7 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_library(
@@ -45,6 +46,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -59,6 +61,7 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_binary(
@@ -91,6 +94,7 @@ tf_py_test(
         ":train",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_binary(
@@ -130,6 +134,7 @@ tf_py_test(
         ":freeze",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_binary(
@@ -169,6 +174,7 @@ tf_py_test(
         ":wav_to_features",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_binary(
@@ -208,6 +214,7 @@ tf_py_test(
         ":generate_streaming_test_wav",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 tf_cc_binary(
@@ -258,6 +265,7 @@ tf_py_test(
         ":label_wav",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 cc_library(

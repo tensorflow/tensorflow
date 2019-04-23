@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "convert_image_dtype"
@@ -74,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "draw_bounding_boxes"
-    argspec: "args=[\'images\', \'boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'images\', \'boxes\', \'name\', \'colors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "encode_jpeg"
@@ -178,7 +178,7 @@ tf_module {
   }
   member_method {
     name: "resize"
-    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\'], "
+    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "resize_area"
@@ -186,11 +186,11 @@ tf_module {
   }
   member_method {
     name: "resize_bicubic"
-    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "resize_bilinear"
-    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "resize_image_with_crop_or_pad"
@@ -202,11 +202,11 @@ tf_module {
   }
   member_method {
     name: "resize_images"
-    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\'], "
+    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "resize_nearest_neighbor"
-    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "rgb_to_grayscale"

@@ -36,7 +36,8 @@ class MinimalLogger {
   static void Log(LogSeverity severity, const char* format, ...);
 
   // Logging hook that takes a formatted va_list.
-  static void VLog(LogSeverity severity, const char* format, va_list args);
+  static void LogFormatted(LogSeverity severity, const char* format,
+                           va_list args);
 
  private:
   static const char* GetSeverityName(LogSeverity severity);
@@ -52,5 +53,27 @@ class MinimalLogger {
 // that should always be logged in user builds.
 #define TFLITE_LOG_PROD(severity, format, ...) \
   tflite::logging_internal::MinimalLogger::Log(severity, format, ##__VA_ARGS__);
+
+// Convenience macro for logging a statement *once* for a given process lifetime
+// in production builds.
+#define TFLITE_LOG_PROD_ONCE(severity, format, ...)    \
+  do {                                                 \
+    static const bool s_logged = [&] {                 \
+      TFLITE_LOG_PROD(severity, format, ##__VA_ARGS__) \
+      return true;                                     \
+    }();                                               \
+    (void)s_logged;                                    \
+  } while (false);
+
+#ifndef NDEBUG
+// In debug builds, always log.
+#define TFLITE_LOG TFLITE_LOG_PROD
+#else
+// In prod builds, never log, but ensure the code is well-formed and compiles.
+#define TFLITE_LOG(severity, format, ...)             \
+  while (false) {                                     \
+    TFLITE_LOG_PROD(severity, format, ##__VA_ARGS__); \
+  }
+#endif
 
 #endif  // TENSORFLOW_LITE_MINIMAL_LOGGING_H_
