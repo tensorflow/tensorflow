@@ -315,7 +315,11 @@ tf_cc_binary(
 
 py_library(
     name = "transform_graph_py",
-    srcs = ["__init__.py"],
+    srcs = [
+        "__init__.py",
+        "transform_graph.py",
+        "transform_saved_model.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
