@@ -10,7 +10,6 @@ exports_files(["LICENSE"])
 py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )

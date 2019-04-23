@@ -10,7 +10,6 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 py_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
-    python_version = "PY2",
     deps = [":upgrade_schema_main_lib"],
 )
 
@@ -36,7 +35,6 @@ py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

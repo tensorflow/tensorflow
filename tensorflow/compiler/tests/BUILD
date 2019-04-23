@@ -65,7 +65,6 @@ py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
-    python_version = "PY2",
     deps = [
         ":xla_test",
     ],

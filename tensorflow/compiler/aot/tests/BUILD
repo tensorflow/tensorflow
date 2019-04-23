@@ -36,7 +36,6 @@ py_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",

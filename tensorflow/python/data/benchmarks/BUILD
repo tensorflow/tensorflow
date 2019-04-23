@@ -9,7 +9,6 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 py_test(
     name = "meta_benchmark",
     srcs = ["meta_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:session",
@@ -32,7 +31,6 @@ py_library(
 py_test(
     name = "batch_benchmark",
     srcs = ["batch_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
@@ -45,7 +43,6 @@ py_test(
 py_test(
     name = "filter_benchmark",
     srcs = ["filter_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
@@ -56,7 +53,6 @@ py_test(
 py_test(
     name = "from_tensor_slices_benchmark",
     srcs = ["from_tensor_slices_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
@@ -68,7 +64,6 @@ py_test(
 py_test(
     name = "list_files_benchmark",
     srcs = ["list_files_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
@@ -84,7 +79,6 @@ py_test(
 py_test(
     name = "map_benchmark",
     srcs = ["map_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
@@ -95,7 +89,6 @@ py_test(
 py_test(
     name = "range_benchmark",
     srcs = ["range_benchmark.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":benchmark_base",
