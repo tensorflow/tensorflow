@@ -24,7 +24,7 @@ namespace xla {
 // togather.
 class SliceDelaying: public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "slice delaying"; }
+  tensorflow::StringPiece name() const override { return "slice-delaying"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_delaying.h"
 #include <algorithm>
 #include <utility>
-#include <set>
 #include <vector>
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -26,100 +26,123 @@ namespace {
 
 class SliceDelayer {
  public:
-  // Returns whether the instruction has been visited and computed change cost
+  // Returns whether the instruction has been visited. The visited instruction
+  // has been grouped in a true user group with its peers and it should not be
+  // grouped in another true user group.
   bool IsVisited(const HloInstruction* instruction) const;
 
   // Returns whether the slices are delayed successfully.
-  Status MergeWithPeers(const HloInstruction* inst);
+  StatusOr<bool> MergeWithPeers(const HloInstruction* inst);
 
-  // Elimenate dead instructions.
+  // Eliminates dead instructions.
   void EliminateDeadInstructions();
 
-  // Clear containers.
-  void Clear();
-
  private:
-  // Collects true operands of inst.
+  // Collects true operands of inst. The inst's operands should all be slices,
+  // and the true operands are the operands of slices. Returns true operand
+  // vector if all true operands are found, or return an empty vector.
   StatusOr<std::vector<HloInstruction*>> GetTrueOperands(
       const HloInstruction* inst);
 
-  // Collects true users of operands with the same opcode of inst, and update
-  // visited_
+  // Collects the true user group included inst. The slice from true operand is
+  // operand-slice. The true user's operands are all operand-slices.
+  // The operand-slices of a true user should be sliced from the same range of
+  // the true operands. It means the operand-slices have the same slice_starts,
+  // slice_limits, and slice_strides.
+  // The true users in a group have the same opcode and the same true operands
+  // in order. Of course, the inst is a true user, and the others in the group
+  // are the inst's peers.
+  // Returns an empty vector if the cost of change is more than the profit.
+  // Additionally, records the user which has been visited in a true user group,
+  // and skips it in later traverse.
   StatusOr<std::vector<HloInstruction*>> GetTrueUsers(
       const HloInstruction* inst,
       const std::vector<HloInstruction*>& operands);
 
-  // Generate new operation instead of sliced operations, then slice the result.
-  // Record the stale users and slices for prepare removing
+  // Generates the new user with the whole tensor and slices its output instead
+  // of the true users with sliced tensor.
+  // Records the stale true users and their operand-slices to prepare removing.
   void GenerateNewOp(const std::vector<HloInstruction*>& operands,
       const std::vector<HloInstruction*>& users);
 
-  std::set<const HloInstruction*> visited_;
+  absl::flat_hash_set<const HloInstruction*> visited_;
 
-  std::set<HloInstruction*> slices_;
+  absl::flat_hash_set<HloInstruction*> slices_;
 
-  std::set<HloInstruction*> removed_;
+  absl::flat_hash_set<HloInstruction*> removed_;
 };
 
 // Computes the cost of implimentation of delaying slice, and returns whether
 // it should be changed.
 bool ShouldReplace(const std::vector<HloInstruction*>& operands,
     const std::vector<HloInstruction*>& users) {
-  // operands and user have the same shape because of elementwise operation
   int64 sum = 0;
+  // Sums the total element number of the true users.
   for (HloInstruction* user : users) {
-    sum += xla::ShapeUtil::ElementsIn(user->shape());
+    sum += ShapeUtil::ElementsIn(user->shape());
   }
+  // Operand and user have the same element number in shape because of
+  // elementwise operation, so the elements in operands[0] is the same as in
+  // new user if new user is generated.
+  // Compares the total elements in all true users and the elements of the new
+  // user with whole shape.
   return sum >= xla::ShapeUtil::ElementsIn(operands[0]->shape());
 }
 
 }  // namespace
 
 bool SliceDelayer::IsVisited(const HloInstruction* instruction) const {
-  return std::find(visited_.begin(), visited_.end(), instruction)
-      != visited_.end();
+  return visited_.contains(instruction);
 }
 
 // =================================Before======================================
 //
-//       +-----operand-----+        <operands>
+//       +--true-operand---+         <operands>
 //       |                 |
 //       v                 v
-// bundled-slice     bundled-slice   <bundled-slices>
+// operand-slice     operand-slice   <bundled-slices>
 //       |                 |
 //       v                 v
-//      user              user      <users>
+//   true-user         true-user     <users>
 //
 // ==================================After======================================
 //
-//            operand
+//          true-operand
 //               |
 //               v
 //       +----new-user-----+
 //       |                 |
 //       v                 v
-// bundled-slice     bundled-slice   <bundled-slices>
+//   user-slice       user-slice     <bundled-slices>
 //
-Status SliceDelayer::MergeWithPeers(const HloInstruction* inst) {
+StatusOr<bool> SliceDelayer::MergeWithPeers(const HloInstruction* inst) {
+  // Collects true operands of inst.
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> operands,
                       GetTrueOperands(inst));
+  if (operands.empty()) {
+    return false;
+  }
 
+  // Collects true users grouped togather with inst.
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> users,
                       GetTrueUsers(inst, operands));
+  if (users.empty()) {
+    return false;
+  }
 
-  // Change HLO graph
+  // Change HLO graph.
   GenerateNewOp(operands, users);
-  return Status::OK();
+  return true;
 }
 
 void SliceDelayer::EliminateDeadInstructions() {
-  // Remove dead users
+  // Remove dead users.
   for (auto inst : removed_) {
     VLOG(10) << "Delete: " << inst->ToString();
     inst->parent()->RemoveInstruction(inst);
   }
 
-  // Remove dead slices
+  // Remove dead slices.
   for (auto inst : slices_) {
     if (inst->user_count() == 0) {
       VLOG(10) << "Delete: " << inst->ToString();
@@ -128,56 +151,55 @@ void SliceDelayer::EliminateDeadInstructions() {
   }
 }
 
-void SliceDelayer::Clear() {
-  visited_.clear();
-  slices_.clear();
-  removed_.clear();
-}
-
 StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
     const HloInstruction* inst) {
   std::vector<HloInstruction*> operands;
   // Check operand:
-  // the inst's operand should be a slice of the true operand.
-  // the operands-vector keeps the true-operands.
-  for (HloInstruction* slice : inst->operands()) {
-    if (slice->opcode() != HloOpcode::kSlice) {
+  // The inst's operand should be a slice of the true operand.
+  // The operands-vector keeps all true operands of inst.
+  for (HloInstruction* operand_slice : inst->operands()) {
+    if (operand_slice->opcode() != HloOpcode::kSlice) {
+      // If the operand is not operand-slice, returns empty vector.
       visited_.insert(inst);
-      return tensorflow::errors::FailedPrecondition(
-          "Operation's operand should be slice");
+      operands.clear();
+      return operands;
     }
-    HloInstruction* operand = slice->mutable_operand(0);
+    // The operand-slice's operand is a true operand.
+    HloInstruction* operand = operand_slice->mutable_operand(0);
     operands.push_back(operand);
   }
 
-  // No operands, skip this instruction
+  // No true operands found. returns empty vector.
   if (operands.empty()) {
-    return tensorflow::errors::FailedPrecondition(
-        "Operation has no true operands");
+    visited_.insert(inst);
+    return operands;
   }
 
   // Check operands:
-  // true operands should have the same shape.(because of elementwise)
+  // True operands should have the same shape because inst is elementwise.
   const Shape shape = operands[0]->shape();
   for (const HloInstruction* operand : operands) {
     // Only support element-wise now
-    if (!ShapeUtil::Equal(operand->shape(), shape)) {
+    if (!ShapeUtil::Compatible(operand->shape(), shape)) {
       visited_.insert(inst);
-      return tensorflow::errors::FailedPrecondition(
-          "Operation's true operand should be the same shape");
+      operands.clear();
+      return operands;
     }
   }
-  // operands should slice from the same location of true operands
+  // Inst's operand-slices should be sliced from the same location of true
+  // operands.
   const HloInstruction* operand0 = inst->operand(0);
   for (const HloInstruction* operand : inst->operands()) {
     if (operand0->slice_starts() != operand->slice_starts() ||
         operand0->slice_limits() != operand->slice_limits() ||
         operand0->slice_strides() != operand->slice_strides()) {
       visited_.insert(inst);
-      return tensorflow::errors::FailedPrecondition(
-          "Operation's true operand should be the same shape");
+      operands.clear();
+      return operands;
     }
   }
+
+  // Returns all true operands of inst.
   return operands;
 }
 
@@ -187,82 +209,84 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueUsers(
   std::vector<HloInstruction*> users;
   HloInstruction* operand0 = operands[0];
 
-  for (const HloInstruction* slice_0 : operand0->users()) {
-    // skip non-slice user
-    if (slice_0->opcode() != HloOpcode::kSlice) {
+  // Traverses a true operand's all operand-slices.
+  for (const HloInstruction* operand_slice0 : operand0->users()) {
+    // Skips not-slices
+    if (operand_slice0->opcode() != HloOpcode::kSlice) {
       continue;
     }
 
-    for (HloInstruction* user : slice_0->users()) {
-      // user should be the same operation and same operand count as inst
-      // skip the visited user to avoid redundant computation
+    // The user of operand-slices is a candidate of true user.
+    for (HloInstruction* user : operand_slice0->users()) {
+      // The inst's peers should be the same operation and same operand count as
+      // inst. The visited user is in another group of other true users. Skips
+      // them to avoid useless match.
       if (IsVisited(user) || user->opcode() != inst->opcode() ||
           user->operand_count() != inst->operand_count()) {
         continue;
       }
 
-      // user's every operand should be a slice of the true operand in order
-      bool isValidUser = true;
+      // Checks operand-slices:
+      bool isTrueUser = true;
       for (int64 j = 0; j < operands.size(); ++j) {
-        const HloInstruction* slice_j = user->operand(j);
-        // the slice of operands should sliced from the same location (only for
-        // elementwise)
-        if (slice_j->opcode() != HloOpcode::kSlice ||
-            slice_j->operand(0) != operands[j] ||
-            slice_0->slice_starts() != slice_j->slice_starts() ||
-            slice_0->slice_limits() != slice_j->slice_limits() ||
-            slice_0->slice_strides() != slice_j->slice_strides()) {
-          isValidUser = false;
+        // User's operands should be operand-slices of the true operands in
+        // order.
+        // The operand-slices of the same true user should be sliced from the
+        // same location of true operands. (because of elementwise)
+        const HloInstruction* operand_slice = user->operand(j);
+        if (operand_slice->opcode() != HloOpcode::kSlice ||
+            operand_slice->operand(0) != operands[j] ||
+            operand_slice0->slice_starts() != operand_slice->slice_starts() ||
+            operand_slice0->slice_limits() != operand_slice->slice_limits() ||
+            operand_slice0->slice_strides() != operand_slice->slice_strides()) {
+          isTrueUser = false;
           break;
         }
       }
-      if (!isValidUser) {
+      if (!isTrueUser) {
         continue;
       }
 
-      // found the user
+      // Found the true user.
       users.push_back(user);
       visited_.insert(user);
-    }  // end for loop slice_0->users
-  }  // end for loop operand0's slice users
-
-  // calculate the cost. If the no user found or only few small users, skip this
-  // instruction.
-  if (users.empty()) {
-    return tensorflow::errors::FailedPrecondition(
-        "No found valid users");
-  } else if (!ShouldReplace(operands, users)) {
-    return tensorflow::errors::FailedPrecondition(
-        "No Enough elements slice");
-  } else {
-    return users;
+    }
   }
+
+  // Calculates the costs. If cost is more than profit, returns empty vector.
+  if (!ShouldReplace(operands, users)) {
+    users.clear();
+  }
+  return users;
 }
 
 void SliceDelayer::GenerateNewOp(const std::vector<HloInstruction*>& operands,
     const std::vector<HloInstruction*>& users) {
-  // generate new ops
+  // Generates new user.
   const Shape shape = operands[0]->shape();
   HloComputation* computation = users[0]->parent();
-  auto new_op = computation->AddInstruction(
+  auto new_user = computation->AddInstruction(
       users[0]->CloneWithNewOperands(shape, operands));
-  VLOG(10) << "Add NewOp: " << new_op->ToString();
+  VLOG(10) << "Add NewUser: " << new_user->ToString();
 
-  // replace the old user and its slice operands with new operation and its
-  // slice user.
+  // Replaces the true users with new user and its user-slices.
   for (HloInstruction* user : users) {
-    const HloInstruction* slice = user->operand(0);
-    auto new_user = computation->AddInstruction(
-        slice->CloneWithNewOperands(user->shape(), {new_op}));
-    VLOG(10) << "Add NewSlice: " << new_user->ToString()
-            << "\nReplace: " << user->ToString();
-    user->ReplaceAllUsesWith(new_user);
+    const HloInstruction* operand_slice = user->operand(0);
+    // Generates user slices of new user.
+    auto user_slice = computation->AddInstruction(
+        operand_slice->CloneWithNewOperands(user->shape(), {new_user}));
+    VLOG(10) << "Add NewSlice: " << user_slice->ToString()
+             << " Replace: " << user->ToString();
+    // Replaces true users with user slices.
+    user->ReplaceAllUsesWith(user_slice);
 
-    for (HloInstruction* slice_operand : user->operands()) {
-      slices_.insert(slice_operand);
+    // Records the operand-slices. They may be dead nodes.
+    for (HloInstruction* slice : user->operands()) {
+      slices_.insert(slice);
     }
+    // The true users are dead nodes now.
     removed_.insert(user);
-  }  // end for users
+  }
 }
 
 StatusOr<bool> SliceDelaying::Run(HloModule* module) {
@@ -274,20 +298,21 @@ StatusOr<bool> SliceDelaying::Run(HloModule* module) {
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction :
         computation->MakeInstructionPostOrder()) {
-      // Skip the visited instruction tries merge elementwise instruction with
-      // its peers.
+      // Skips the visited instruction and tries merge elementwise instruction
+      // with its peers.
       if (!slice_delayer.IsVisited(instruction) &&
           instruction->IsElementwise() && instruction->operand_count() != 0) {
-        // TODO(xinan): more other instructions
+        // TODO(xinan): Supports more non-elementwise instructions.
         VLOG(10) << "Merge inst: " << instruction->ToString();
-        changed |= slice_delayer.MergeWithPeers(instruction).ok();
+        TF_ASSIGN_OR_RETURN(bool success,
+                            slice_delayer.MergeWithPeers(instruction));
+        changed |= success;
       }
-    }  // end for instructions in computation
-  }  // end for computations in module
+    }
+  }
 
-  // Clears dead nodes
+  // Clears dead nodes.
   slice_delayer.EliminateDeadInstructions();
-  slice_delayer.Clear();
   VLOG(10) << "after: " << name() << "\n" <<  module->ToString();
   return changed;
 }
