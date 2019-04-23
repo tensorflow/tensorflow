@@ -456,8 +456,8 @@ def check_bazel_version(min_version, max_version):
   """Check installed bazel version is between min_version and max_version.
 
   Args:
-    min_version: string for minimum bazel version.
-    max_version: string for maximum bazel version.
+    min_version: string for minimum bazel version (must exist!).
+    max_version: string for maximum bazel version (must exist!).
 
   Returns:
     The bazel version detected.
@@ -1387,7 +1387,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.0')
+  current_bazel_version = check_bazel_version('0.24.1', '0.24.1')
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()

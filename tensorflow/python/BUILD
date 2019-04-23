@@ -196,7 +196,7 @@ py_library(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/tools:component_api_helper",
+        "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
         "//tensorflow/python/tpu:tpu_noestimator",
         "//third_party/py/numpy",
@@ -2908,6 +2908,12 @@ py_test(
 )
 
 py_library(
+    name = "mixed_precision_global_state",
+    srcs = ["training/experimental/mixed_precision_global_state.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "mixed_precision",
     srcs = ["training/experimental/mixed_precision.py"],
     srcs_version = "PY2AND3",
@@ -2915,6 +2921,7 @@ py_library(
         ":config",
         ":loss_scale",
         ":loss_scale_optimizer",
+        ":mixed_precision_global_state",
         "//tensorflow/python:util",
     ],
 )
@@ -3425,6 +3432,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":platform",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
     ],
 )
 
@@ -4714,6 +4722,7 @@ py_library(
         ":pywrap_tensorflow",
         ":session_ops",
         ":util",
+        "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
     ],
 )

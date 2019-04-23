@@ -260,7 +260,7 @@ class XentTest(test.TestCase):
       op_names = [
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
-      if compat.forward_compatible(2019, 4, 18):
+      if compat.forward_compatible(2019, 4, 25):
         self.assertIn("BatchMatMulV2", op_names)
       else:
         self.assertIn("BatchMatMul", op_names)

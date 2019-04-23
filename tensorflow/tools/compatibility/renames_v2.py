@@ -116,7 +116,7 @@ renames = {
     'tf.SessionLog':
         'tf.compat.v1.SessionLog',
     'tf.SparseConditionalAccumulator':
-        'tf.sparse.SparseConditionalAccumulator',
+        'tf.compat.v1.SparseConditionalAccumulator',
     'tf.SparseFeature':
         'tf.io.SparseFeature',
     'tf.SparseTensorValue':
@@ -605,6 +605,8 @@ renames = {
         'tf.compat.v1.lite.constants.TFLITE',
     'tf.lite.experimental.convert_op_hints_to_stubs':
         'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.get_potentially_supported_ops':
+        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
     'tf.lite.experimental.nn.TFLiteLSTMCell':
         'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
     'tf.lite.experimental.nn.TfLiteRNNCell':
@@ -879,6 +881,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':
@@ -1129,6 +1133,8 @@ renames = {
         'tf.sets.union',
     'tf.space_to_depth':
         'tf.compat.v1.space_to_depth',
+    'tf.sparse.SparseConditionalAccumulator':
+        'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge':

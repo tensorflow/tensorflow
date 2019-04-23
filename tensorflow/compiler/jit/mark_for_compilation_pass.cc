@@ -498,6 +498,18 @@ class MarkForCompilationPassImpl {
       return resource_var_operation_node_ids_;
     }
 
+    string DebugString(const Graph& graph) const {
+      Node* node = graph.FindNodeId(cycles_graph_node_id());
+      if (!node) {
+        // This should never happen but we try to be resilient because this is a
+        // debugging aid.
+        return absl::StrCat("NULL NODE IN #", cycles_graph_node_id());
+      }
+
+      return absl::StrCat("<", node->name(), " + ", cluster_size(), " others #",
+                          cycles_graph_node_id(), ">");
+    }
+
    private:
     int cluster_size_ = 1;
     int cycles_graph_node_id_;
@@ -520,6 +532,10 @@ class MarkForCompilationPassImpl {
   // Initialize some internal data structures.
   Status Initialize();
 
+  // Runs through all the nodes in `cycles_graph_` and tries to create clusters.
+  // Returns true if any new clusters were created.
+  StatusOr<bool> RunEdgeContractionLoopInPostOrderOnce();
+
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
   // `clusters_`.
@@ -540,10 +556,9 @@ class MarkForCompilationPassImpl {
   // true if successful.
   StatusOr<bool> TryToContractEdge(Cluster* from, Cluster* to);
 
-  // Tries to contract each edge from `cluster_from`.  Returns true as soon as a
-  // single edge contraction is successful.  Returns true if no edges were
-  // contracted.
-  StatusOr<bool> TryToContractEdgeFrom(Cluster* cluster_from);
+  // Tries to contract each edge from `cluster_from`.  Returns true if any edges
+  // were contracted, false otherwise.
+  StatusOr<bool> TryToContractEdgesFrom(Cluster* cluster_from);
 
   // Nodes that XLA can compile are put in `compilation_candidates_`.
   Status FindCompilationCandidates();
@@ -551,7 +566,7 @@ class MarkForCompilationPassImpl {
   bool CompilationDisallowedByXlaCompileAttr(Node* node,
                                              const DeviceType& jit_device_type);
 
-  // Populates `clusters_` and `worklist_`.
+  // Populates `clusters_`.
   Status BuildInitialClusterSet();
 
   StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
@@ -610,6 +625,32 @@ class MarkForCompilationPassImpl {
     return cluster;
   }
 
+  bool LogNotContractableAndReturnFalse(Cluster* from, Cluster* to,
+                                        absl::string_view reason);
+
+  // Finds a path in `cycles_graph_` from `from` to `to` that is not a direct
+  // edge from `from` to `to`.
+  //
+  // Tries to find a path that contains at least one unclusterable node.
+  std::vector<int> FindAlternatePathForDebugging(int from, int to);
+
+  // Returns a string representing `cycles_graph_node_id`.  If the node is
+  // unclusterable (either it is a phatom "frame" node or is not a compilation
+  // candidate) then set `*found_unclustered` to true.
+  string DebugStringForCyclesGraphNode(int node_id, bool* found_unclustered);
+
+  // We could not contract the edge from `from` to `to`.  Return a string
+  // describing an alternate path from `from` to `to` (besides the direct edge
+  // from `from` to `to`) which would have created a cycle had we contracted the
+  // edge.
+  //
+  // Tries (if possible) to find a path that contains at least one unclusterable
+  // node as it is surprising to the user if we print "A->B could not be
+  // contracted because of the path [P,Q,R]" where P, Q and R are all clusters
+  // since in that case a natural question is why we could not form a {A, P, Q,
+  // R, B} cluster.
+  string DescribePotentialCycle(int from, int to);
+
   // Merge the clusters `cluster_from` and `cluster_to`.  After this step the
   // larger combined cluster is represented by `cluster_from`'s ID in
   // `cycles_graph_`.
@@ -617,7 +658,11 @@ class MarkForCompilationPassImpl {
     int from = cluster_from->cycles_graph_node_id();
     int to = cluster_to->cycles_graph_node_id();
 
-    if (!graph_cycles_.ContractEdge(from, to)) {
+    if (!cycles_graph_.ContractEdge(from, to)) {
+      VLOG(3) << "Could not contract " << cluster_from->DebugString(*graph_)
+              << " -> " << cluster_to->DebugString(*graph_)
+              << " because contracting the edge would create a cycle via "
+              << DescribePotentialCycle(from, to) << ".";
       return false;
     }
 
@@ -644,13 +689,100 @@ class MarkForCompilationPassImpl {
 
   std::vector<std::unique_ptr<Cluster>> cluster_storage_;
   std::vector<UnionFind<Cluster*>> cluster_for_node_;
-  std::deque<Cluster*> worklist_;
-  GraphCycles graph_cycles_;
+  GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
   int64 iteration_count_ = 0;
   absl::flat_hash_set<std::pair<int, int>> unsafe_resource_deps_;
 };
+
+std::vector<int> MarkForCompilationPassImpl::FindAlternatePathForDebugging(
+    int from, int to) {
+  std::vector<int> rpo = cycles_graph_.AllNodesInPostOrder();
+  absl::c_reverse(rpo);
+
+  // best_pred_for_node[n] contains a predecessor of `n` that has an
+  // unclusterable node in some path from `from` to itself.
+  // best_pred_for_node[n] is unpopulated for nodes that are not reachable from
+  // `from`.  We build this table up inductively by traversing the cycles graph
+  // in RPO.
+  absl::flat_hash_map<int, int> best_pred_for_node;
+  best_pred_for_node[from] = -1;
+
+  int rpo_index = 0, current_rpo_node;
+  do {
+    current_rpo_node = rpo[rpo_index++];
+    absl::optional<int> some_pred, preferred_pred;
+    for (int pred : cycles_graph_.Predecessors(current_rpo_node)) {
+      if (!best_pred_for_node.contains(pred)) {
+        continue;
+      }
+
+      // Ignore the from->to edge since we're trying to find an alternate path.
+      if (current_rpo_node == to && pred == from) {
+        continue;
+      }
+
+      some_pred = pred;
+      if (GetClusterForCyclesGraphNode(pred) == nullptr) {
+        preferred_pred = pred;
+      }
+    }
+
+    if (some_pred || preferred_pred) {
+      best_pred_for_node[current_rpo_node] =
+          preferred_pred.has_value() ? *preferred_pred : *some_pred;
+    }
+  } while (current_rpo_node != to);
+
+  auto get_best_pred = [&](int n) {
+    auto it = best_pred_for_node.find(n);
+    CHECK(it != best_pred_for_node.end());
+    return it->second;
+  };
+
+  std::vector<int> path;
+  int current_path_node = get_best_pred(to);
+  while (current_path_node != from) {
+    path.push_back(current_path_node);
+    current_path_node = get_best_pred(current_path_node);
+  }
+
+  absl::c_reverse(path);
+  return path;
+}
+
+string MarkForCompilationPassImpl::DebugStringForCyclesGraphNode(
+    int cycles_graph_node_id, bool* found_unclustered) {
+  Cluster* cluster = GetClusterForCyclesGraphNode(cycles_graph_node_id);
+  if (cluster) {
+    return cluster->DebugString(*graph_);
+  }
+
+  *found_unclustered = true;
+  if (cycles_graph_node_id >= graph_->num_node_ids()) {
+    return absl::StrCat("<oob #", cycles_graph_node_id, ">");
+  }
+
+  Node* node = graph_->FindNodeId(cycles_graph_node_id);
+  if (!node) {
+    return absl::StrCat("<bad #", cycles_graph_node_id, ">");
+  }
+
+  return node->name();
+}
+
+string MarkForCompilationPassImpl::DescribePotentialCycle(int from, int to) {
+  std::vector<string> path_str;
+  bool found_unclustered = false;
+  absl::c_transform(FindAlternatePathForDebugging(from, to),
+                    std::back_inserter(path_str), [&](int node_id) {
+                      return DebugStringForCyclesGraphNode(node_id,
+                                                           &found_unclustered);
+                    });
+  return absl::StrCat(!found_unclustered ? "(all clusters) " : "", "[",
+                      absl::StrJoin(path_str, ","), "]");
+}
 
 void MarkForCompilationPassImpl::Cluster::Merge(Cluster* other) {
   // We keep our own cycles_graph_node_id_ to mirror what GraphCycles does.
@@ -735,7 +867,7 @@ Status MarkForCompilationPassImpl::Initialize() {
   }
 
   TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
-                      CreateCycleDetectionGraph(graph_, &graph_cycles_));
+                      CreateCycleDetectionGraph(graph_, &cycles_graph_));
   if (!cycle_detection_graph_ok) {
     return Status::OK();
   }
@@ -751,28 +883,55 @@ Status MarkForCompilationPassImpl::Initialize() {
   return BuildInitialClusterSet();
 }
 
+StatusOr<bool>
+MarkForCompilationPassImpl::RunEdgeContractionLoopInPostOrderOnce() {
+  bool changed = false;
+  // Iterating over the graph once in post-order is sufficient to produce a
+  // maximal clustering:
+  //
+  // A. We visit a cluster only after maximally clustering all its children.
+  // B. By the time we're done with `node` (in `TryToContractEdgesFrom`) all of
+  //    its children that could have been absorbed into `node` have been
+  //    absorbed.
+  // C. We have an invariant that making a cluster larger does not make edges
+  //    leaving it more contractable. That is, if we have
+  //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
+  //    to contract Y->Z if Y->Z was not contractible originally.
+  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+    // We have to check `graph_->FindNodeId(node) == nullptr` because we add all
+    // nodes in [0, graph_->num_node_ids()) to the cycle detection graph but the
+    // TF graph may be missing some node ids.
+    if (node >= graph_->num_node_ids() || graph_->FindNodeId(node) == nullptr) {
+      continue;
+    }
+
+    Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
+    if (cluster_from == nullptr) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(bool contracted_one_edge,
+                        TryToContractEdgesFrom(cluster_from));
+    changed |= contracted_one_edge;
+  }
+
+  return changed;
+}
+
 Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   TF_RET_CHECK(initialized_ && !edges_contracted_ && !clusters_created_);
   edges_contracted_ = true;
 
   // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
   // example, from the Grappler fusion pass).
-  while (!worklist_.empty()) {
-    Cluster* cluster_from = worklist_.front();
-    worklist_.pop_front();
 
-    TF_ASSIGN_OR_RETURN(bool contracted_one_edge,
-                        TryToContractEdgeFrom(cluster_from));
+  TF_ASSIGN_OR_RETURN(bool changed, RunEdgeContractionLoopInPostOrderOnce());
 
-    if (contracted_one_edge) {
-      worklist_.push_back(cluster_from);
-    }
-  }
-
-  VLOG(1) << iteration_count_ << " iterations in inner loop for graph with "
-          << compilation_candidates_.size()
-          << " compilation candidates.  Iterations per compilation candidate: "
-          << ((1.0 * iteration_count_) / compilation_candidates_.size());
+  // Check that RunEdgeContractionLoopInPostOrderOnce is idempotent.  Once the
+  // linear time post-order scheme has been battle tested we can move this to
+  // happen only in debug builds.
+  TF_ASSIGN_OR_RETURN(changed, RunEdgeContractionLoopInPostOrderOnce());
+  TF_RET_CHECK(!changed);
 
   return Status::OK();
 }
@@ -853,7 +1012,7 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   // TODO(b/117085735): We probably want to handle the reciprocal of this case
   // where a cluster is producing data for multiple devices.
   for (const auto& in_id :
-       graph_cycles_.Predecessors(cluster_to.cycles_graph_node_id())) {
+       cycles_graph_.Predecessors(cluster_to.cycles_graph_node_id())) {
     if (in_id >= graph_->num_node_ids()) {
       continue;
     }
@@ -966,7 +1125,6 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
         /*is_xla_compile_attr_true=*/is_xla_compile_attr_true,
         GetXlaScope(node));
 
-    worklist_.push_back(new_cluster);
     cluster_for_node_[node->id()].Get() = new_cluster;
   }
 
@@ -1138,11 +1296,11 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
   return false;
 }
 
-// Is 'node' an operator that consumes only the shape of its input, not the
-// data itself?
-bool IsShapeConsumerOp(const Node& node) {
-  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
-         node.type_string() == "Size";
+bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
+    Cluster* from, Cluster* to, absl::string_view reason) {
+  VLOG(3) << "Could not contract " << from->DebugString(*graph_) << " -> "
+          << to->DebugString(*graph_) << " because " << reason << ".";
+  return false;
 }
 
 StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
@@ -1150,38 +1308,36 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
-    return false;
+    return LogNotContractableAndReturnFalse(
+        from, to, "the two nodes have mismatching deadness");
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
                       AreDevicesCompatible(*from, *to));
   if (!devices_compatible) {
-    return false;
+    return LogNotContractableAndReturnFalse(
+        from, to, "the two nodes have incompatible devices");
   }
 
   if (from->xla_scope().has_value() && to->xla_scope().has_value() &&
       *from->xla_scope() != *to->xla_scope()) {
-    return false;
-  }
-
-  // Ops that consume shapes cannot be the root of a cluster. This is an
-  // optimization.
-  if (from->cluster_size() == 1 &&
-      IsShapeConsumerOp(*graph_->FindNodeId(from->GetIdOfOnlyNode()))) {
-    return false;
+    return LogNotContractableAndReturnFalse(
+        from, to, "the two nodes have mismatching XLA scopes");
   }
 
   // Don't exceed the maximum cluster size.
   if (from->cluster_size() + to->cluster_size() >
       debug_options_.max_cluster_size) {
-    return false;
+    return LogNotContractableAndReturnFalse(
+        from, to, "the new cluster will be larger than the max cluster size");
   }
 
   TF_ASSIGN_OR_RETURN(bool will_introduce_cross_device_dependency,
                       ClusteringWillIntroduceInterDeviceDependency(*to));
 
   if (will_introduce_cross_device_dependency) {
-    return false;
+    return LogNotContractableAndReturnFalse(
+        from, to, "the new cluster will introduce a cross device dependency");
   }
 
   // Check if contracting this edge will break the resource variable concurrency
@@ -1200,7 +1356,9 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
       // n^2 pairs of resource variable operations are forbidden.
       if (unsafe_resource_deps_.contains(
               {resource_var_from, resource_var_to})) {
-        return false;
+        return LogNotContractableAndReturnFalse(
+            from, to,
+            "the new cluster would break resource variable semantics");
       }
     }
   }
@@ -1208,10 +1366,12 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   return MergeClusters(from, to);
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgeFrom(
+StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
     Cluster* cluster_from) {
+  bool changed = false;
+  // Needs to be RPO because of shape consumer opt
   for (int to :
-       graph_cycles_.Successors(cluster_from->cycles_graph_node_id())) {
+       cycles_graph_.Successors(cluster_from->cycles_graph_node_id())) {
     iteration_count_++;
     if (to >= graph_->num_node_ids()) {
       // Node is a fictitious node that is present only in the cycle detection
@@ -1227,12 +1387,10 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgeFrom(
     TF_ASSIGN_OR_RETURN(bool contracted_edge,
                         TryToContractEdge(cluster_from, cluster_to));
 
-    if (contracted_edge) {
-      return true;
-    }
+    changed |= contracted_edge;
   }
 
-  return false;
+  return changed;
 }
 
 Status MarkForCompilationPassImpl::Run() {

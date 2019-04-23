@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import config
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer
 from tensorflow.python.training.experimental import loss_scale_optimizer as loss_scale_optimizer_v1
+from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -134,30 +136,6 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
   `tf.gradients`/`tf.GradientTape` will not. If you do directly use
   `tf.gradients` or `tf.GradientTape`, your model may train to a worse quality.
 
-  Note: If you explicitly pass a ConfigProto to your Session, you must set the
-  `auto_mixed_precision` option to ON. If you do not pass any ConfigProto to
-  your Session, no extra work needs to be done. For example:
-
-  ```
-  loss, trainable_vars = ...
-  opt = tf.keras.optimizers.SGD(0.001)
-  opt = tf.train.experimental.enable_mixed_precision_graph_rewrite(opt)
-  train_op = opt.minimize(loss, vars=trainable_vars)
-
-  # No extra work needs to be done, as no ConfigProto is passed to the Session
-  with tf.Session() as sess:
-    sess.run(train_op)
-
-  # If a ConfigProto is passed to Session, you MUST set the
-  # `auto_mixed_precision` field to ON.
-  config = tf.ConfigProto()
-  from tensorflow.core.protobuf import rewriter_config_pb2
-  config.graph_options.rewrite_options.auto_mixed_precision = (
-      rewriter_config_pb2.RewriterConfig.ON)
-  with tf.Session(config=config) as sess:
-    sess.run(train_op)
-  ```
-
   Currently, mixed precision is only enabled on Volta GPUs and above. TPU
   support is coming soon. CPUs are not supported, as CPUs do not run float16
   operations faster than float32 operations.
@@ -181,6 +159,13 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
 def _enable_mixed_precision_graph_rewrite_base(opt, loss_scale,
                                                use_v1_behavior):
   """Enables mixed precision. See `enable_mixed_precision_graph_rewrite`."""
+  if mixed_precision_global_state.non_mixed_precision_session_created:
+    # TODO(reedwm): Give the stacktrace of the existing Sessions. And if the
+    # Sessions have already been closed, do not raise this error message.
+    tf_logging.warn('You already have existing Sessions that do not use mixed '
+                    'precision. enable_mixed_precision_graph_rewrite() will '
+                    'not affect these Sessions.')
   opt = _wrap_optimizer(opt, loss_scale, use_v1_behavior=use_v1_behavior)
   config.set_optimizer_experimental_options({'auto_mixed_precision': True})
+  mixed_precision_global_state.mixed_precision_is_enabled = True
   return opt

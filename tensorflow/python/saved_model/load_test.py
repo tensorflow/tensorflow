@@ -1484,6 +1484,21 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
 
+  def test_model_with_custom_function_attached(self, cycles):
+    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
+
+    @def_function.function
+    def _use_sequential(x):
+      return root.model.call(x)
+
+    root.model.traced_call = _use_sequential
+
+    original = root.model.traced_call(array_ops.zeros([1, 1])).numpy()
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(
+        original,
+        root.model.traced_call(array_ops.zeros([1, 1])).numpy())
+
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
     conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)

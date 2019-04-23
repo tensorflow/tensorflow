@@ -299,7 +299,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
         HloInstruction::CreateConvert(changed_shape, hlo));
   }
 
-  // Transposes a dot operand such that the batch dimensions are the msot major,
+  // Transposes a dot operand such that the batch dimensions are the most major,
   // and the contracting dimensions are most minor.
   StatusOr<HloInstruction*> NormalizeDotOperandToBatchMajorAndContractingMinor(
       HloInstruction* dot_operand, absl::Span<const int64> batch_dimensions,

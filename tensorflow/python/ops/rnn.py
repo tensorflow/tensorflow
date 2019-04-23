@@ -580,7 +580,9 @@ def dynamic_rnn(cell,
         tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`. Used
       to copy-through state and zero-out outputs when past a batch element's
-      sequence length.  So it's more for performance than correctness.
+      sequence length.  This argument enables this API to extract
+      the last VALID state of RNN instead of a PADDED time step, so it is 
+      for correctness.
     initial_state: (optional) An initial state for the RNN. If `cell.state_size`
       is an integer, this must be a `Tensor` of appropriate type and shape
       `[batch_size, cell.state_size]`. If `cell.state_size` is a tuple, this

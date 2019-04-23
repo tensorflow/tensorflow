@@ -465,6 +465,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.weighted_cross_entropy_with_logits": {
             "targets": "labels",
         },
+        "tf.decode_raw": {
+            "bytes": "input_bytes",
+        },
+        "tf.io.decode_raw": {
+            "bytes": "input_bytes",
+        }
     }
 
     # Mapping from function to the new name of the function

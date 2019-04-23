@@ -27,21 +27,14 @@ import tempfile as _tempfile
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
+from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
-# Lazy load since some of the performance benchmark skylark rules
-# break dependencies.
-_toco_python = LazyLoader(
-    "tensorflow_wrap_toco", globals(),
-    "tensorflow.lite.toco.python."
-    "tensorflow_wrap_toco")
-del LazyLoader
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -119,8 +112,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # switch this on.
   if not _toco_from_proto_bin:
     try:
-      model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                           input_data_str)
+      model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
+                                                 toco_flags_str, input_data_str)
       return model_str
     except Exception as e:
       raise ConverterError("TOCO failed: %s" % e)

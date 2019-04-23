@@ -637,8 +637,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  Placer placer(graph.get(), optimization_options.flib_def, &device_set,
-                default_device, options.config_proto.allow_soft_placement(),
+  Placer placer(graph.get(), function_name, optimization_options.flib_def,
+                &device_set, default_device,
+                options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
 

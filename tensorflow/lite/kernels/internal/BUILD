@@ -172,6 +172,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
@@ -215,6 +216,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",

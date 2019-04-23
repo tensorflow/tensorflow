@@ -50,8 +50,8 @@ string IOColocationGroups::DebugString() const {
         "Group(", group_id, " members = [", absl::StrJoin(members, ", "),
         "] requested_device_name = \"",
         DeviceNameUtils::ParsedNameToString(devices.requested_device_name),
-        " assigned_device_name = \"",
-        DeviceNameUtils::ParsedNameToString(devices.assigned_device_name),
+        "\" resource_device_name = \"",
+        DeviceNameUtils::ParsedNameToString(devices.resource_device_name),
         "\" device_types = [",
         absl::StrJoin(
             devices.device_types, ", ",
@@ -90,14 +90,15 @@ class ColocationGraphToIOColocationGroups {
     }
   }
 
-  void FillGroups(std::vector<PossibleDevices>* group_devices) {
+  Status FillGroups(std::vector<PossibleDevices>* group_devices) {
     group_devices->resize(group_ids_.size());
     for (const auto& it : group_ids_) {
       int assigned_group_id = it.second;
       PossibleDevices& possible_devices = (*group_devices)[assigned_group_id];
       const Member& member = colocation_graph_->members()[it.first];
-      member.FillPossibleDevices(&possible_devices);
+      TF_RETURN_IF_ERROR(member.FillPossibleDevices(&possible_devices));
     }
+    return Status::OK();
   }
 
  private:
@@ -108,12 +109,14 @@ class ColocationGraphToIOColocationGroups {
 };
 
 InspectingPlacer::InspectingPlacer(const Graph* graph,
+                                   const FunctionStack& stack,
                                    const FunctionLibraryDefinition* flib_def,
                                    const DeviceSet* device_set,
                                    const Device* default_device,
                                    bool allow_soft_placement,
                                    bool log_device_placement)
     : graph_(*graph),
+      stack_(stack),
       flib_def_(*flib_def),
       device_set_(*device_set),
       default_device_(default_device),
@@ -132,16 +135,25 @@ Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
 
   TF_RETURN_IF_ERROR(
       IsolatePlacerInspectionRequiredOps(flib_def_, fbody->graph));
-  // TODO(iga): Detect recursive function calls and raise an error.
-  ColocationGraph colocation_graph(fbody->graph, &flib_def_, &device_set_,
-                                   default_device_, allow_soft_placement_,
-                                   log_device_placement_);
+  if (stack_.HasFunction(func.name())) {
+    return errors::Unimplemented(
+        "Recursive function calls are not supported. Node ",
+        FormatNodeForError(node), " inside the body of ",
+        errors::FormatFunctionForError(stack_.current_function_name()),
+        " calls function ", errors::FormatFunctionForError(func.name()),
+        " which is already present in the call stack:\n  ",
+        stack_.FormatForError());
+  }
+
+  ColocationGraph colocation_graph(
+      fbody->graph, stack_.Push(&node, func.name()), &flib_def_, &device_set_,
+      default_device_, allow_soft_placement_, log_device_placement_);
   TF_RETURN_IF_ERROR(colocation_graph.Initialize());
 
   ColocationGraphToIOColocationGroups converter(&colocation_graph);
   converter.AssignGroups(fbody->arg_nodes, &groups->input_groups);
   converter.AssignGroups(fbody->ret_nodes, &groups->output_groups);
-  converter.FillGroups(&groups->group_devices);
+  TF_RETURN_IF_ERROR(converter.FillGroups(&groups->group_devices));
   return Status::OK();
 }
 

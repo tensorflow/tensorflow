@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import autograph
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -65,6 +64,9 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+# Prefix that is added to the TF op layer names.
+_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 
 @keras_export('keras.layers.Layer')
@@ -592,25 +594,6 @@ class Layer(module.Module):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
-
-          # Wrapping `call` function in autograph to allow for dynamic control
-          # dependencies in call. We are limiting this to subclassed layers as
-          # autograph is strictly needed only for subclassed layers.
-          if base_layer_utils.is_subclassed(self):
-            decorators, original_func = tf_decorator.unwrap(self.call)
-            # TODO(psv): Remove optional_features param from the call here
-            # after b/129001876 is fixed.
-            converted_func = autograph.convert(
-                recursive=True, optional_features=None)(
-                    original_func)
-            if decorators:
-              call_fn = tf_decorator.rewrap(self.call, original_func,
-                                            converted_func)
-            else:
-              call_fn = converted_func
-          else:
-            call_fn = self.call
-
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
@@ -630,18 +613,20 @@ class Layer(module.Module):
                   self._mixed_precision_policy.should_cast_variables), (
                       base_layer_utils.AutoAddUpdates(self,
                                                       inputs)) as auto_updater:
-                outputs = call_fn(inputs, *args, **kwargs)
+                outputs = self.call(inputs, *args, **kwargs)
                 auto_updater.set_outputs(outputs)
 
             except TypeError as e:
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
               exception_str = str(e)
-              exception_msg = 'Tensor objects are only iterable when eager'
-              if exception_msg in exception_str:
-                raise TypeError('You are attempting to use Python control '
-                                'flow in a layer that was not declared to be '
-                                'dynamic. Pass `dynamic=True` to the class '
-                                'constructor.\nEncountered error:\n"""\n' +
-                                exception_str + '\n"""')
+              for msg in messages:
+                if msg in exception_str:
+                  raise TypeError('You are attempting to use Python control '
+                                  'flow in a layer that was not declared to be '
+                                  'dynamic. Pass `dynamic=True` to the class '
+                                  'constructor.\nEncountered error:\n"""\n' +
+                                  exception_str + '\n"""')
               raise
           else:
             # We will use static shape inference to return symbolic tensors
@@ -1375,7 +1360,8 @@ class Layer(module.Module):
     """
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
+        with tf_utils.maybe_init_scope(self):
+          self.build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1839,7 +1825,11 @@ class Layer(module.Module):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      # Any setup work performed only once should happen in an `init_scope`
+      # to avoid creating symbolic Tensors that will later pollute any eager
+      # operations.
+      with tf_utils.maybe_init_scope(self):
+        self.build(input_shapes)
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
@@ -2163,7 +2153,7 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
-        name=name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
     # Layer uses original op unless it is called on new inputs.
@@ -2279,4 +2269,3 @@ def default(method):
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
 InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
-

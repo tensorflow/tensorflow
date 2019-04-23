@@ -395,7 +395,12 @@ class _SavedModelBuilder(object):
     in serialized format.
 
     Args:
-      as_text: Writes the SavedModel protocol buffer in text format to disk.
+      as_text: Writes the SavedModel protocol buffer in text format to
+        disk. Protocol buffers in text format are useful for debugging, but
+        parsing fails when it encounters an unknown field and so is not forward
+        compatible. This means changes to TensorFlow may prevent deployment of
+        new text format SavedModels to existing serving binaries. Do not deploy
+        `as_text` SavedModels to production.
 
     Returns:
       The path to which the SavedModel protocol buffer was written.

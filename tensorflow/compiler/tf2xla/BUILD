@@ -507,6 +507,39 @@ cc_library(
 )
 
 cc_library(
+    name = "rearrange_function_argument_pass",
+    srcs = [
+        "rearrange_function_argument_pass.cc",
+    ],
+    hdrs = [
+        "rearrange_function_argument_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "rearrange_function_argument_pass_registration",
+    srcs = [
+        "rearrange_function_argument_pass_registration.cc",
+    ],
+    deps = [
+        ":rearrange_function_argument_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "functionalize_control_flow_pass_registration",
     srcs = [
         "functionalize_control_flow_pass_registration.cc",

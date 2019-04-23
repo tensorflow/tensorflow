@@ -150,6 +150,8 @@ class Network(base_layer.Layer):
       # Subclassed network
       self._init_subclassed_network(**kwargs)
 
+    tf_utils.assert_no_legacy_layers(self.layers)
+
   # Several Network methods have "no_automatic_dependency_tracking"
   # annotations. Since Network does automatic dependency tracking on attribute
   # assignment, including for common data structures such as lists, by default
@@ -391,14 +393,20 @@ class Network(base_layer.Layer):
     """Add Trackable dependencies on a list of Layers."""
     weight_layer_index = 0
     for layer_index, layer in enumerate(layers):
-      if layer.weights:
-        # Keep a separate index for layers which have weights. This allows users
-        # to insert Layers without weights anywhere in the network without
-        # breaking checkpoints.
-        self._track_trackable(
-            layer, name='layer_with_weights-%d' % weight_layer_index,
-            overwrite=True)
-        weight_layer_index += 1
+      try:
+        if layer.weights:
+          # Keep a separate index for layers which have weights. This allows
+          # users to insert Layers without weights anywhere in the network
+          # without breaking checkpoints.
+          self._track_trackable(
+              layer, name='layer_with_weights-%d' % weight_layer_index,
+              overwrite=True)
+          weight_layer_index += 1
+      except ValueError:
+        # The layer might have weights, but may not be built yet. We just treat
+        # it as layer without weight.
+        pass
+
       # Even if it doesn't have weights, we should still track everything in
       # case it has/will have Trackable dependencies.
       self._track_trackable(
@@ -464,6 +472,7 @@ class Network(base_layer.Layer):
     Returns:
       A list of variables.
     """
+    self._assert_weights_created()
     weights = []
     for layer in self._layers:
       weights += layer.weights
@@ -686,6 +695,7 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
+    self._assert_weights_created()
     return trackable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
@@ -693,6 +703,7 @@ class Network(base_layer.Layer):
 
   @property
   def non_trainable_weights(self):
+    self._assert_weights_created()
     return trackable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
@@ -1360,6 +1371,7 @@ class Network(base_layer.Layer):
             format.
         ValueError: For invalid/unknown format arguments.
     """
+    self._assert_weights_created()
     filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
@@ -1493,6 +1505,7 @@ class Network(base_layer.Layer):
           'Unable to load weights saved in HDF5 format into a subclassed '
           'Model which has not created its variables yet. Call the Model '
           'first, then load the weights.')
+    self._assert_weights_created()
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
@@ -1665,6 +1678,7 @@ class Network(base_layer.Layer):
       ValueError: If the layers depend on `Input`s not found in this Model.
     """
     layers = nest.flatten(layers)
+    tf_utils.assert_no_legacy_layers(layers)
     node_to_depth = {}
     for depth, nodes in self._nodes_by_depth.items():
       node_to_depth.update({node: depth for node in nodes})
@@ -1722,6 +1736,32 @@ class Network(base_layer.Layer):
       self._layers_by_depth[depth].append(layer)
       self._layers.append(layer)
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
+  def _assert_weights_created(self):
+    """Asserts that all the weights for the network have been created.
+
+    For a non-dynamic network, the weights must already be created after the
+    layer has been called. For a dynamic network, the exact list of weights can
+    never be known for certain since it may change at any time during execution.
+
+    We run this check right before accessing weights or getting the Numpy value
+    for the current weights. Otherwise, if the layer has never been called,
+    the user would just get an empty list, which is misleading.
+
+    Raises:
+      ValueError: if the weights of the network has not yet been created.
+    """
+    if self.dynamic:
+      return
+    if (not self._is_graph_network and
+        'build' in self.__class__.__dict__ and
+        not self.built):
+      # For any model that has customized build() method but hasn't
+      # been invoked yet, this will cover both sequential and subclass model.
+      raise ValueError('Weights for model %s have not yet been created. '
+                       'Weights are created when the Model is first called on '
+                       'inputs or `build()` is called with an `input_shape`.' %
+                       self.name)
 
 
 def _is_hdf5_filepath(filepath):

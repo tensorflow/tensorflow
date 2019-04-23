@@ -928,11 +928,11 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot`    | matrix [m x n]        | matrix-matrix           |
 : matrix [k x n]          :                       : multiplication          :
 
-The operation performs sum of products over the last dimension of `lhs` and the
-one-before-last dimension of `rhs`. These are the "contracted" dimensions. The
-contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
-it can be used to perform dot products between vectors, vector/matrix
-multiplications or matrix/matrix multiplications.
+The operation performs sum of products over the second dimension of `lhs` (or
+the first if it has rank 1) and the first dimension of `rhs`. These are the
+"contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
+the same size. In practice, it can be used to perform dot products between
+vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
 ## DotGeneral
 

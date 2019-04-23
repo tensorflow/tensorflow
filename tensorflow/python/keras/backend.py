@@ -245,7 +245,7 @@ def manual_variable_initialization(value):
   variables should be initialized
   as they are instantiated (default), or if
   the user should handle the initialization
-  (e.g. via `tf.initialize_all_variables()`).
+  (e.g. via `tf.compat.v1.initialize_all_variables()`).
 
   Arguments:
       value: Python boolean.
@@ -814,13 +814,6 @@ def constant(value, dtype=None, shape=None, name=None):
   if dtype is None:
     dtype = floatx()
 
-  # If the outer context is eager but we are executing under the keras
-  # FuncGraph, we create EagerTensors and use them as constants.
-  if (ops.executing_eagerly_outside_functions() and
-      getattr(get_graph(), 'name', '') == 'keras_graph'):
-    with ops.init_scope():
-      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
-
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
@@ -848,7 +841,7 @@ def is_keras_tensor(x):
       >>> np_var = numpy.array([1, 2])
       >>> K.is_keras_tensor(np_var) # A numpy array is not a symbolic tensor.
       ValueError
-      >>> k_var = tf.placeholder('float32', shape=(1,1))
+      >>> k_var = tf.compat.v1.placeholder('float32', shape=(1,1))
       >>> K.is_keras_tensor(k_var) # A variable indirectly created outside of
       keras is not a Keras tensor.
       False

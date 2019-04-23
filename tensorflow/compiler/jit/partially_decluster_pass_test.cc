@@ -467,5 +467,37 @@ TEST(PartiallyDeclusterPassTest, EliminatedUnusedNodes) {
   EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer1Name), nullptr);
 }
 
+TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
+  Output b = ops::Shape(in_cluster_and.WithOpName("b"), a);
+  Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
+  Output d = ops::Size(in_cluster_and.WithOpName("d"), c);
+  (void)ops::Shape(in_cluster_and.WithOpName("e"), d);
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), absl::nullopt);
+
+  Node* n_d = FindNodeByName(*graph, "d");
+  ASSERT_NE(n_d, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_d), absl::nullopt);
+
+  Node* n_e = FindNodeByName(*graph, "e");
+  ASSERT_NE(n_e, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_e), absl::nullopt);
+}
+
 }  // namespace
 }  // namespace tensorflow

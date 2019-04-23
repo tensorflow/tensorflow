@@ -466,19 +466,61 @@ class RandomTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 5)
 
-  def test_random_gamma(self):
+  def test_random_gamma_invariant_alpha(self):
 
     def loop_fn(_):
       return random_ops.random_gamma([3], alpha=[0.5])
 
     self._test_loop_fn(loop_fn, 5)
 
-  def test_random_poisson_v2(self):
+  def test_random_gamma_varying_alpha(self):
+    alphas = math_ops.exp(random_ops.random_normal([5, 3, 2]))
+
+    def loop_fn(i):
+      alphas_i = array_ops.gather(alphas, i)
+      # Test both scalar and non-scalar params and shapes.
+      return (random_ops.random_gamma(alpha=alphas_i[0, 0], shape=[]),
+              random_ops.random_gamma(alpha=alphas_i, shape=[]),
+              random_ops.random_gamma(alpha=alphas_i[0, 0], shape=[3]),
+              random_ops.random_gamma(alpha=alphas_i, shape=[3]))
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+
+  def test_random_poisson_v2_invariant_rate(self):
 
     def loop_fn(_):
       return random_ops.random_poisson(lam=[1.3], shape=[3])
 
     self._test_loop_fn(loop_fn, 5)
+
+  def test_random_poisson_v2_varying_rate(self):
+    rates = math_ops.exp(random_ops.random_normal([5, 3, 2]))
+
+    def loop_fn(i):
+      rates_i = array_ops.gather(rates, i)
+      # Test both scalar and non-scalar params and shapes.
+      return (random_ops.random_poisson(lam=rates_i[0, 0], shape=[]),
+              random_ops.random_poisson(lam=rates_i, shape=[]),
+              random_ops.random_poisson(lam=rates_i[0, 0], shape=[3]),
+              random_ops.random_poisson(lam=rates_i, shape=[3]))
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+
+  def test_random_multinomial_invariant_logits(self):
+
+    def loop_fn(_):
+      return random_ops.categorical(logits=[[1., -1.]], num_samples=3)
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
+
+  def test_random_multinomial_varying_logits(self):
+    logits = random_ops.random_normal([5, 3, 2])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return random_ops.categorical(logits_i, num_samples=3)
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
 
 
 class LoggingTest(PForTestCase):

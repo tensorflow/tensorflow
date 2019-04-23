@@ -57,11 +57,16 @@ void SpatialConvolutionFunc(const Device& d, Output output, Input input,
                             Filter filter, int row_stride, int col_stride,
                             int row_dilation, int col_dilation,
                             const Eigen::PaddingType& padding,
-                            const OutputKernel& output_kernel) {
-  // Need to swap row/col when calling Eigen.
-  output.device(d) =
-      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding,
-                                col_dilation, row_dilation, output_kernel);
+                            const OutputKernel& output_kernel,
+                            int padding_top = 0, int padding_bottom = 0,
+                            int padding_left = 0, int padding_right = 0) {
+  // Need to swap row/col, padding_top/padding_left, and
+  // padding_bottom/padding_right when calling Eigen. Eigen expects the tensor
+  // in NWHC format, but the tensor given is in NHWC.
+  output.device(d) = Eigen::SpatialConvolution(
+      input, filter, col_stride, row_stride, padding, col_dilation,
+      row_dilation, output_kernel, padding_left, padding_right, padding_top,
+      padding_bottom);
 }
 
 template <typename Device, typename T,
@@ -75,6 +80,18 @@ struct SpatialConvolution {
                   const OutputKernel& output_kernel = OutputKernel()) {
     SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
                            row_dilation, col_dilation, padding, output_kernel);
+  }
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor output,
+                  typename TTypes<T, 4>::ConstTensor input,
+                  typename TTypes<T, 4>::ConstTensor filter, int row_stride,
+                  int col_stride, int row_dilation, int col_dilation,
+                  int padding_top, int padding_bottom, int padding_left,
+                  int padding_right,
+                  const OutputKernel& output_kernel = OutputKernel()) {
+    SpatialConvolutionFunc(
+        d, output, input, filter, row_stride, col_stride, row_dilation,
+        col_dilation, Eigen::PaddingType::PADDING_VALID, output_kernel,
+        padding_top, padding_bottom, padding_left, padding_right);
   }
 };
 
@@ -91,6 +108,22 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
         Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
                                   col_stride, row_stride, padding, col_dilation,
                                   row_dilation, output_kernel)
+            .template cast<Eigen::half>();
+  }
+  void operator()(const Device& d,
+                  typename TTypes<Eigen::half, 4>::Tensor output,
+                  typename TTypes<Eigen::half, 4>::ConstTensor input,
+                  typename TTypes<Eigen::half, 4>::ConstTensor filter,
+                  int row_stride, int col_stride, int row_dilation,
+                  int col_dilation, int padding_top, int padding_bottom,
+                  int padding_left, int padding_right,
+                  const OutputKernel& output_kernel = OutputKernel()) {
+    output.device(d) =
+        Eigen::SpatialConvolution(
+            input.cast<float>(), filter.cast<float>(), col_stride, row_stride,
+            Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+            output_kernel, padding_left, padding_right, padding_top,
+            padding_bottom)
             .template cast<Eigen::half>();
   }
 };

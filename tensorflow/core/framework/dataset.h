@@ -269,6 +269,19 @@ class GraphDefBuilderWrapper {
 class StatsAggregator;
 class FunctionHandleCache;
 
+// A utility class for running a function and ensuring that there is always a
+// `tensorflow::data` symbol on the stack.
+class Runner {
+ public:
+  virtual ~Runner() {}
+
+  // Runs the given function.
+  virtual void Run(const std::function<void()>& f) = 0;
+
+  // Returns a global singleton Runner.
+  static Runner* get();
+};
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -296,9 +309,7 @@ class IteratorContext {
           thread_factory(ctx->thread_factory()) {}
 
     explicit Params(OpKernelContext* ctx)
-        : env(ctx->env()),
-          flr(ctx->function_library()),
-          runner(*(ctx->runner())) {
+        : env(ctx->env()), flr(ctx->function_library()) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -312,6 +323,21 @@ class IteratorContext {
       } else {
         runner_threadpool_size = port::NumSchedulableCPUs();
       }
+
+      // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
+      // that a symbol in the tensorflow::data namespace is always on the stack
+      // when executing a function inside a Dataset.
+      runner = std::bind(
+          [](
+              // Note: `runner` is a const reference to avoid copying it.
+              const std::function<void(std::function<void()>)>& ctx_runner,
+              std::function<void()> fn) {
+            std::function<void()> wrapped_fn = std::bind(
+                [](const std::function<void()>& fn) { Runner::get()->Run(fn); },
+                std::move(fn));
+            ctx_runner(std::move(wrapped_fn));
+          },
+          *ctx->runner(), std::placeholders::_1);
     }
 
     // The Allocator to be used to allocate the output of an iterator.

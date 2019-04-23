@@ -284,28 +284,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto compute_out_size = [padding](int image_size, int filter_size, int stride,
-                                    int dilation_rate) -> int {
-    int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
-    return padding == kTfLitePaddingSame
-               ? (image_size + stride - 1) / stride
-               : padding == kTfLitePaddingValid
-                     ? (image_size - effective_filter_size + stride) / stride
-                     : 0;
-  };
-
-  int out_width = compute_out_size(width, filter_width, params->stride_width,
-                                   params->dilation_width_factor);
-  int out_height =
-      compute_out_size(height, filter_height, params->stride_height,
-                       params->dilation_height_factor);
-
-  data->padding.height =
-      ComputePadding(params->stride_height, params->dilation_height_factor,
-                     height, filter_height, out_height);
-  data->padding.width =
-      ComputePadding(params->stride_width, params->dilation_width_factor, width,
-                     filter_width, out_width);
+  int out_width, out_height;
+  data->padding = ComputePaddingHeightWidth(
+      params->stride_height, params->stride_width,
+      params->dilation_height_factor, params->dilation_width_factor, height,
+      width, filter_height, filter_width, padding, &out_height, &out_width);
 
   TF_LITE_ENSURE(context, has_bias);
 

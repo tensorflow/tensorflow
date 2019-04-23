@@ -2272,7 +2272,6 @@ cuda_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,

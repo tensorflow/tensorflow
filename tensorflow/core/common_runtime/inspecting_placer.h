@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/placer_inspection_required_ops_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -30,19 +31,13 @@ namespace tensorflow {
 
 // TODO(iga): Convert this struct into a class to ensure invariants between
 // device names, i.e.
-//  DeviceNameUtils::IsSpecification(assigned_device_name,
-//                                   requested_device_name)
-//  and
 //  DeviceNameUtils::IsSpecification(resource_device_name,
 //                                   requested_device_name)
-// TODO(iga): Remove assigned_device_name. It should not be needed since we
-// don't assign devices to nested functions.
+// PossibleDevices does not contain assigned_device_name because we don't
+// assign devices to nested functions.
 struct PossibleDevices {
   // The same as Member::requested_device_name_ in colocation_graph.cc.
   DeviceNameUtils::ParsedName requested_device_name;
-
-  // The same as Member::assigned_device_name_
-  DeviceNameUtils::ParsedName assigned_device_name;
 
   // The same as Member::resource_device_name_ in colocation_graph.cc.
   DeviceNameUtils::ParsedName resource_device_name;
@@ -74,7 +69,7 @@ class InspectingPlacer {
   // TODO(iga): Add a "stack trace" to detect recursion and improve log
   // messages. Currently, we will enter an infinite loop for recursive
   // functions.
-  InspectingPlacer(const Graph* graph,
+  InspectingPlacer(const Graph* graph, const FunctionStack& stack,
                    const FunctionLibraryDefinition* flib_def,
                    const DeviceSet* device_set, const Device* default_device,
                    bool allow_soft_placement, bool log_device_placement);
@@ -86,6 +81,7 @@ class InspectingPlacer {
 
  private:
   const Graph& graph_;
+  const FunctionStack stack_;
   const FunctionLibraryDefinition& flib_def_;
   const DeviceSet& device_set_;
   const Device* default_device_;

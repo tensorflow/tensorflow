@@ -34,7 +34,10 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -400,6 +403,55 @@ std::unordered_set<int32> GraphCycles::Successors(int32 node) const {
 
 std::unordered_set<int32> GraphCycles::Predecessors(int32 node) const {
   return rep_->nodes_[node]->in;
+}
+
+namespace {
+void SortInPostOrder(absl::Span<Node* const> nodes,
+                     std::vector<int32>* to_sort) {
+  absl::c_sort(*to_sort, [&](int32 a, int32 b) {
+    DCHECK(a == b || nodes[a]->rank != nodes[b]->rank);
+    return nodes[a]->rank > nodes[b]->rank;
+  });
+}
+}  // namespace
+
+std::vector<int32> GraphCycles::AllNodesInPostOrder() const {
+  absl::flat_hash_set<int32> free_nodes_set;
+  absl::c_copy(rep_->free_nodes_,
+               std::inserter(free_nodes_set, free_nodes_set.begin()));
+
+  std::vector<int32> all_nodes;
+  all_nodes.reserve(rep_->nodes_.size() - free_nodes_set.size());
+  for (int64 i = 0, e = rep_->nodes_.size(); i < e; i++) {
+    if (!free_nodes_set.contains(i)) {
+      all_nodes.push_back(i);
+    }
+  }
+
+  SortInPostOrder(rep_->nodes_, &all_nodes);
+  return all_nodes;
+}
+
+string GraphCycles::DebugString() const {
+  absl::flat_hash_set<int32> free_nodes_set;
+  for (int32 free_node : rep_->free_nodes_) {
+    free_nodes_set.insert(free_node);
+  }
+
+  string result = "digraph {\n";
+  for (int i = 0; i < rep_->nodes_.size(); i++) {
+    if (free_nodes_set.contains(i)) {
+      continue;
+    }
+
+    for (int32 succ : rep_->nodes_[i]->out) {
+      absl::StrAppend(&result, "  \"", i, "\" -> \"", succ, "\"\n");
+    }
+  }
+
+  absl::StrAppend(&result, "}\n");
+
+  return result;
 }
 
 }  // namespace tensorflow

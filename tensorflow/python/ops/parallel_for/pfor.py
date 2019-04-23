@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -1678,9 +1679,27 @@ def _convert_identity_n(pfor_input):
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_dim = array_ops.shape(t)[:1]
-  new_shape = array_ops.concat([new_dim, shape], axis=0)
+  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
+
+
+@RegisterPFor("BroadcastTo")
+def _convert_broadcast_to(pfor_input):
+  t = pfor_input.stacked_input(0)
+  shape = pfor_input.unstacked_input(1)
+  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+
+  # Expand dims of stacked t to broadcast against the new shape.
+  # TODO(davmre): consider factoring out common code with
+  # `expanddim_inputs_for_broadcast`, which has similar logic but with
+  # implicit shapes (of input Tensors) rather than explicit shapes.
+  rank_diff = array_ops.shape(new_shape)[0] - array_ops.rank(t)
+  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
+  t_shape = array_ops.shape(t)
+  t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
+
+  return wrap(array_ops.broadcast_to(array_ops.reshape(t, t_expanded_shape),
+                                     new_shape), True)
 
 
 @RegisterPFor("ExpandDims")
@@ -2328,12 +2347,20 @@ def _convert_select(pfor_input):
 # random_ops
 
 
+def _transpose_dim_to_front(x, dim):
+  rank = array_ops.rank(x)
+  return array_ops.transpose(
+      x,
+      perm=array_ops.concat([
+          [dim],
+          math_ops.range(0, dim),
+          math_ops.range(dim + 1, rank)], axis=0))
+
+
 @RegisterPForWithArgs("RandomUniform")
 @RegisterPForWithArgs("RandomUniformInt")
 @RegisterPForWithArgs("RandomStandardNormal")
 @RegisterPForWithArgs("TruncatedNormal")
-@RegisterPForWithArgs("RandomGamma")
-@RegisterPForWithArgs("RandomPoissonV2")
 def _convert_random(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args
@@ -2349,6 +2376,64 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
       inputs, [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   return [wrap(x, True) for x in outputs]
+
+
+@RegisterPFor("RandomGamma")
+@RegisterPFor("RandomPoissonV2")
+def _convert_random_with_param(pfor_input):
+  shape = pfor_input.unstacked_input(0)
+  # param is lam (Poisson rate) or alpha (Gamma shape).
+  param, param_stacked, _ = pfor_input.input(1)
+  logging.warning(
+      "Note that %s inside pfor op may not give same output as "
+      "inside a sequential loop.", pfor_input.op_type)
+
+  if param_stacked:
+    samples = _create_op(
+        pfor_input.op_type,
+        inputs=[shape, param],
+        op_dtypes=[x.dtype for x in pfor_input.outputs],
+        attrs=pfor_input.op.node_def.attr).outputs[0]
+    loop_dim = array_ops.shape(shape)[0]
+    stacked_samples = _transpose_dim_to_front(samples, loop_dim)
+  else:
+    shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+    stacked_samples = _create_op(
+        pfor_input.op_type,
+        inputs=[shape, param],
+        op_dtypes=[x.dtype for x in pfor_input.outputs],
+        attrs=pfor_input.op.node_def.attr).outputs[0]
+
+  return wrap(stacked_samples, True)
+
+
+@RegisterPFor("Multinomial")
+def _convert_multinomial(pfor_input):
+  logits, logits_stacked, _ = pfor_input.input(0)
+  num_samples = pfor_input.unstacked_input(1)
+  seed = pfor_input.get_attr("seed")
+  seed2 = pfor_input.get_attr("seed2")
+  output_dtype = pfor_input.get_attr("output_dtype")
+  logging.warning(
+      "Note that Multinomial inside pfor op may not give same output as "
+      "inside a sequential loop.")
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  if logits_stacked:
+    flattened_logits = _flatten_first_two_dims(logits)
+    samples = gen_random_ops.multinomial(
+        flattened_logits,
+        num_samples,
+        seed=seed, seed2=seed2, output_dtype=output_dtype)
+    stacked_samples = _unflatten_first_dim(samples, [n])
+  else:
+    samples = gen_random_ops.multinomial(
+        logits, num_samples * n,
+        seed=seed, seed2=seed2, output_dtype=output_dtype)
+    stacked_samples = array_ops.transpose(
+        array_ops.reshape(samples, [-1, n, num_samples]), [1, 0, 2])
+
+  return wrap(stacked_samples, True)
 
 
 # linalg_ops

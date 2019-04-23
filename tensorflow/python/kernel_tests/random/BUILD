@@ -155,7 +155,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
-# TODO(b/130359919)
+# TODO(b/130359919): Reenable test when it becomes stable
 tf_py_test(
     name = "random_binomial_test",
     size = "medium",
@@ -170,6 +170,7 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:stateful_random_ops",
     ],
+    tags = ["no_oss"],
 )
 
 cuda_py_test(
