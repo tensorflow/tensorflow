@@ -2396,8 +2396,13 @@ bool ConstantFolding::IsReductionWithConstantIndices(
   }
   const TensorProto& reduction_indices_tensor =
       reductions_indices->attr().at("value").tensor();
-  *indices_is_empty =
-      reduction_indices_tensor.tensor_shape().dim(0).size() == 0;
+  *indices_is_empty = false;
+  for (const auto& dim : reduction_indices_tensor.tensor_shape().dim()) {
+    if (dim.size() == 0) {
+      *indices_is_empty = true;
+      break;
+    }
+  }
   return true;
 }
 
