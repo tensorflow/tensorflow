@@ -1576,13 +1576,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 
     auto stream_exec = executor.ValueOrDie();
-    int64 free_bytes;
-    int64 total_bytes;
-    if (!stream_exec->DeviceMemoryUsage(&free_bytes, &total_bytes)) {
-      // Logs internally on failure.
-      free_bytes = 0;
-      total_bytes = 0;
-    }
     const auto& description = stream_exec->GetDeviceDescription();
 #if GOOGLE_CUDA
     int cc_major;
@@ -1596,9 +1589,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << " major: " << cc_major
               << " minor: " << cc_minor
               << " memoryClockRate(GHz): " << description.clock_rate_ghz()
-              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
+              << "\npciBusID: " << description.pci_bus_id();
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description.rocm_amdgpu_isa_version(&isa_version)) {
@@ -1609,10 +1600,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
               << isa_version << "\nmemoryClockRate (GHz) "
               << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << description.pci_bus_id();
 #endif
   }
   // Checking peering and shows matrix if more than one gpu found.
