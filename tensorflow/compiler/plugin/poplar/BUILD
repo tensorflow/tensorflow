@@ -267,6 +267,7 @@ cc_library(
         "driver/poplar_transfer_manager.h",
         "driver/tensor.h",
         "driver/tools/conversions.h",
+        "driver/tools/spsc_queue.h",
         "driver/vertex_templates.h",
         "driver/visitors/deferred_allocation_visitor.h",
         "driver/visitors/entry_visitor.h",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/spsc_queue.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
 #include "tensorflow/compiler/xla/literal.h"
@@ -582,19 +583,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     std::unique_ptr<tensorflow::data::IteratorBase> iterator;
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx;
     const std::vector<xla::Shape> shapes;
-    std::vector<bool> used;
-    std::condition_variable tensors_dequeued_cv;
 
-    std::vector<tensorflow::Tensor> tensors;
-
-    // Need to acquire mutex before calling this function
-    bool all_tensors_used() {
-      return absl::c_all_of(used, [](bool v) { return v; });
-    }
-
-    // Mutex used to make sure only one callback is accessing the dataset
-    // iterator.
-    std::mutex mutex;
+    std::vector<std::unique_ptr<SPSCQueue<tensorflow::TensorBuffer*, 2048>>>
+        tensor_queues;
 
     InfeedDatasetIterator(
         std::unique_ptr<tensorflow::data::IteratorBase> iterator,
@@ -602,8 +593,18 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
         const std::vector<xla::Shape>& shapes)
         : iterator(std::move(iterator)),
           iterator_ctx(std::move(iterator_ctx)),
-          shapes(std::move(shapes)),
-          used(shapes.size(), true) {}
+          shapes(std::move(shapes)) {
+      for (uint64 i = 0; i < shapes.size(); i++) {
+        tensor_queues.emplace_back(
+            new SPSCQueue<tensorflow::TensorBuffer*, 2048>(
+                nullptr, [](tensorflow::TensorBuffer*& buffer) {
+                  if (buffer) {
+                    buffer->Unref();
+                    buffer = nullptr;
+                  }
+                }));
+      }
+    }
   };
 
   absl::flat_hash_map<std::string, std::unique_ptr<InfeedDatasetIterator>>
