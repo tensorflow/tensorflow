@@ -115,10 +115,12 @@ class BackendUtilsTest(test.TestCase):
 
   def test_cast_to_floatx(self):
     x = np.array([2.1, 3.8], dtype='float32')
-    self.assertEqual(keras.backend.cast_to_floatx(x).dtype, keras.backend.floatx())
+    self.assertEqual(keras.backend.cast_to_floatx(x).dtype,
+                     keras.backend.floatx())
 
     x = np.array([2, 3], dtype='int64')
-    self.assertEqual(keras.backend.cast_to_floatx(x).dtype, keras.backend.floatx())
+    self.assertEqual(keras.backend.cast_to_floatx(x).dtype,
+                     keras.backend.floatx())
 
   def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
