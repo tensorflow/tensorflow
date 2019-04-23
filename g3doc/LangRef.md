@@ -600,7 +600,7 @@ Syntax:
 
 ``` {.ebnf}
 // Sized integers like i1, i4, i8, i16, i32.
-integer-type ::= `i[1-9][0-9]*`
+integer-type ::= `i` [1-9][0-9]*
 ```
 
 MLIR supports arbitrary precision integer types. Integer types are signless, but
