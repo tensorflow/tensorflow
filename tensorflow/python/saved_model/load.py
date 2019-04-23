@@ -291,8 +291,7 @@ class _Loader(object):
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
-    del proto
-    return _RestoredResource(), setattr
+    return _RestoredResource(device=proto.device), setattr
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
