@@ -98,7 +98,7 @@ public:
         threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
     session.getMainJITDylib().setGenerator(
         cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-            layout)));
+            layout.getGlobalPrefix())));
   }
 
   // Create a JIT engine for the current host.
