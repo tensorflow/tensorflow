@@ -80,7 +80,8 @@ public:
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) {
-    return kind == QuantizationTypes::UniformQuantized;
+    return kind == QuantizationTypes::UniformQuantized ||
+           kind == QuantizationTypes::UniformQuantizedPerAxis;
   }
 
   /// Gets the minimum possible stored by a storageType. storageTypeMin must

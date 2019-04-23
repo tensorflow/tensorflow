@@ -35,6 +35,123 @@ struct LowerUniformRealMathPass
   void runOnFunction() override;
 };
 
+struct LowerUniformCastsPass : public FunctionPass<LowerUniformCastsPass> {
+  void runOnFunction() override;
+};
+
+} // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// Dequantize
+//===----------------------------------------------------------------------===//
+
+static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
+                                            UniformQuantizedType elementType,
+                                            PatternRewriter &rewriter) {
+  // Pre-conditions.
+  if (!elementType.isSigned()) {
+    // TODO: Support unsigned storage type.
+    return rewriter.getContext()->emitDiagnostic(
+               loc, "unimplemented: dequantize signed uniform",
+               MLIRContext::DiagnosticKind::Warning),
+           nullptr;
+  }
+
+  Type storageType = elementType.castToStorageType(input->getType());
+  Type realType = elementType.castToExpressedType(input->getType());
+  Type intermediateType =
+      castElementType(storageType, IntegerType::get(32, rewriter.getContext()));
+  assert(storageType && "cannot cast to storage type");
+  assert(realType && "cannot cast to expressed type");
+
+  // Cast to storage type.
+  input = rewriter.create<StorageCastOp>(loc, storageType, input);
+
+  // Promote to intermediate type.
+  input = rewriter.create<ConvertISOp>(loc, intermediateType, input);
+
+  // Apply zero-point offset.
+  if (elementType.getZeroPoint() != 0) {
+    Value *negZeroPointConst = rewriter.create<ConstantOp>(
+        loc, broadcastScalarConstIntValue(intermediateType,
+                                          -elementType.getZeroPoint()));
+    input = rewriter.create<AddIOp>(loc, input, negZeroPointConst);
+  }
+
+  // Convert to float.
+  input = rewriter.create<ConvertISToFOp>(loc, realType, input);
+
+  // Mul by scale.
+  Value *scaleConst = rewriter.create<ConstantOp>(
+      loc, broadcastScalarConstFloatValue(realType,
+                                          APFloat(elementType.getScale())));
+  return rewriter.create<MulFOp>(loc, input, scaleConst);
+}
+
+static Value *
+emitUniformPerAxisDequantize(Location loc, Value *input,
+                             UniformQuantizedPerAxisType elementType,
+                             PatternRewriter &rewriter) {
+  // TODO: Support per-axis dequantize.
+  return rewriter.getContext()->emitDiagnostic(
+             loc, "unimplemented: per-axis uniform dequantization",
+             MLIRContext::DiagnosticKind::Warning),
+         nullptr;
+
+  return input->getDefiningOp()->emitWarning(
+             "unimplemented: per-axis uniform dequantization"),
+         nullptr;
+}
+
+static Value *emitDequantize(Location loc, Value *input,
+                             PatternRewriter &rewriter) {
+  Type inputType = input->getType();
+  QuantizedType qElementType =
+      QuantizedType::getQuantizedElementType(inputType);
+  if (auto uperLayerElementType =
+          qElementType.dyn_cast_or_null<UniformQuantizedType>()) {
+    return emitUniformPerLayerDequantize(loc, input, uperLayerElementType,
+                                         rewriter);
+  } else if (auto uperAxisElementType =
+                 qElementType.dyn_cast_or_null<UniformQuantizedPerAxisType>()) {
+    return emitUniformPerAxisDequantize(loc, input, uperAxisElementType,
+                                        rewriter);
+  } else {
+    return nullptr;
+  }
+}
+
+namespace {
+
+struct UniformDequantizePattern : public RewritePattern {
+  UniformDequantizePattern(MLIRContext *context)
+      : RewritePattern(DequantizeCastOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const {
+    auto dcastOp = op->cast<DequantizeCastOp>();
+    Type inputType = dcastOp.arg()->getType();
+    Type outputType = dcastOp.getResult()->getType();
+
+    QuantizedType inputElementType =
+        QuantizedType::getQuantizedElementType(inputType);
+    Type expressedOutputType = inputElementType.castToExpressedType(inputType);
+    if (expressedOutputType != outputType) {
+      // Not a valid uniform cast.
+      return matchFailure();
+    }
+
+    Value *dequantizedValue =
+        emitDequantize(dcastOp.getLoc(), dcastOp.arg(), rewriter);
+    if (!dequantizedValue) {
+      return matchFailure();
+    }
+
+    rewriter.replaceOp(op, dequantizedValue);
+    return matchSuccess();
+  }
+};
+
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
@@ -256,6 +373,10 @@ struct UniformRealMulEwPattern : public RewritePattern {
 
 } // end anonymous namespace
 
+//===----------------------------------------------------------------------===//
+// LowerUniformRealMath pass
+//===----------------------------------------------------------------------===//
+
 void LowerUniformRealMathPass::runOnFunction() {
   auto &fn = getFunction();
   OwningRewritePatternList patterns;
@@ -269,6 +390,26 @@ FunctionPassBase *createLowerUniformRealMathPass() {
   return new LowerUniformRealMathPass();
 }
 
-static PassRegistration<LowerUniformRealMathPass>
-    pass("fxpmath-lower-uniform-real-math",
-         "Lowers uniform-quantized real math ops to integer arithmetic.");
+static PassRegistration<LowerUniformRealMathPass> lowerUniformRealMathPass(
+    "fxpmath-lower-uniform-real-math",
+    "Lowers uniform-quantized real math ops to integer arithmetic.");
+
+//===----------------------------------------------------------------------===//
+// LowerUniformCasts pass
+//===----------------------------------------------------------------------===//
+
+void LowerUniformCastsPass::runOnFunction() {
+  auto &fn = getFunction();
+  OwningRewritePatternList patterns;
+  auto *context = &getContext();
+  patterns.push_back(llvm::make_unique<UniformDequantizePattern>(context));
+  applyPatternsGreedily(fn, std::move(patterns));
+}
+
+FunctionPassBase *createLowerUniformCastsPass() {
+  return new LowerUniformCastsPass();
+}
+
+static PassRegistration<LowerUniformCastsPass>
+    lowerUniformCastsPass("fxpmath-lower-uniform-casts",
+                          "Lowers uniform-quantized casts.");

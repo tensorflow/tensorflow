@@ -33,6 +33,10 @@ namespace fxpmath {
 /// floating point form.
 FunctionPassBase *createLowerUniformRealMathPass();
 
+/// Creates a pass that lowers uniform-quantized qcast/dcast ops to equivalent
+/// operations that perform quantize/dequantize.
+FunctionPassBase *createLowerUniformCastsPass();
+
 } // namespace fxpmath
 } // namespace mlir
 

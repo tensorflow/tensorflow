@@ -196,6 +196,35 @@ inline Attribute broadcastScalarConstIntValue(Type t, int64_t value) {
   return IntegerAttr::get(integerType, value);
 }
 
+/// Given an APFloat, converts it to the float semantics that matches the
+/// given FloatType, silently ignoring inexact conversions.
+inline APFloat convertFloatToType(FloatType ft, APFloat value) {
+  bool losesInfo;
+  auto status = value.convert(ft.getFloatSemantics(),
+                              APFloat::rmNearestTiesToEven, &losesInfo);
+  assert((status & (APFloat::opDivByZero | APFloat::opInvalidOp)) == 0 &&
+         "could not convert to float const");
+  return value;
+}
+
+/// Creates an IntegerAttr with a type that matches the shape of 't' (which can
+/// be a primitive/vector/tensor).
+inline Attribute broadcastScalarConstFloatValue(Type t, APFloat value) {
+  if (auto vt = t.dyn_cast<VectorOrTensorType>()) {
+    FloatType floatElementType = vt.getElementType().dyn_cast<FloatType>();
+    assert(floatElementType &&
+           "float broadcast element type must be float like");
+    APFloat apValue = convertFloatToType(floatElementType, value);
+    return SplatElementsAttr::get(vt,
+                                  FloatAttr::get(vt.getElementType(), apValue));
+  } else {
+    auto floatType = t.dyn_cast<FloatType>();
+    assert(floatType && "float broadcast must be of float type");
+    APFloat apValue = convertFloatToType(floatType, value);
+    return FloatAttr::get(floatType, apValue);
+  }
+}
+
 } // namespace detail
 } // namespace fxpmath
 } // namespace mlir

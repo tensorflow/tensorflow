@@ -119,6 +119,21 @@ def fxpmath_ConvertISOp :
   let results = (outs IntegerLike);
 }
 
+def fxpmath_ConvertISToFOp :
+    fxpmath_Op<"convertistof",
+               [NoSideEffect, SameValueShape]> {
+  let summary =
+      "Does an element-wise conversion from a signed integer to a float";
+  let description = [{
+    Similar to an element-wise static_cast in C++, from a signed integer
+    element type to a floating point element type, rounding to the nearest
+    floating point value.
+  }];
+  let arguments = (ins IntegerLike:$arg);
+  let results = (outs FloatLike);
+}
+
+
 def fxpmath_VecScalarSaturatingRoundingDoublingHighMulISOp :
     fxpmath_Op<"vs_saturating_rounding_doubling_high_mulis",
                [NoSideEffect, SameValueType]> {
