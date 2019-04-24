@@ -725,7 +725,9 @@ class Layer(module.Module):
 
   @property
   def updates(self):
-    return self._get_unfiltered_updates(check_trainable=True)
+    if not self.trainable and not self.stateful:
+      return []
+    return self._updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -1071,25 +1073,16 @@ class Layer(module.Module):
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
-    # Updates disabled if layer is not trainable and not explicitly stateful.
-    if not self.trainable and not self.stateful:
-      return []
-
     if inputs is None:
       # Requesting unconditional updates.
-      return [
-          x for x in self._get_unfiltered_updates() if x._unconditional_update  # pylint: disable=protected-access
-      ]
+      return [u for u in self.updates if u._unconditional_update]
 
     # Requesting input-conditional updates.
+    updates = [u for u in self.updates if not u._unconditional_update]
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(
-        inputs, self._get_unfiltered_updates())
-    return [u for u in self._get_unfiltered_updates() if u in reachable]  # pylint: disable=protected-access
+    reachable = tf_utils.get_reachable_from_inputs(inputs, updates)
+    return [u for u in updates if u in reachable]
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1099,26 +1092,16 @@ class Layer(module.Module):
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if inputs is None:
       # Requesting unconditional losses.
-      return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
+      return [l for l in self.losses if l._unconditional_loss]
 
     # Requesting input-conditional losses.
+    losses = [l for l in self.losses if not l._unconditional_loss]
     inputs = nest.flatten(inputs)
-    # Retrieve the set of tensors in the TF graph that depend on `inputs`.
-    # The losses we want to return will be part of this set.
-    # To avoid unnecessary work, we stop the search in case all of
-    # `self.losses` have been retrieved.
-    reachable = tf_utils.get_reachable_from_inputs(inputs, self.losses)
-    losses = []
-    for loss in self.losses:
-      if loss in reachable:
-        losses.append(loss)
-    return losses
+    reachable = tf_utils.get_reachable_from_inputs(inputs, losses)
+    return [l for l in losses if l in reachable]
 
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
@@ -1989,11 +1972,6 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
-
-  def _get_unfiltered_updates(self, check_trainable=True):
-    if check_trainable and not self.trainable and not self.stateful:
-      return []
-    return self._updates + self._gather_children_attribute('updates')
 
 
 class Node(object):

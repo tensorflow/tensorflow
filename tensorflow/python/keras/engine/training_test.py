@@ -1058,13 +1058,32 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
 
   @keras_parameterized.run_all_keras_modes
+  def test_unconditional_add_loss_correctness(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, training=None):
+        # Reachable from the inputs but marked as unconditional.
+        self.add_loss(math_ops.reduce_sum(inputs))
+        return inputs
+
+    inputs = keras.Input((3,))
+    layer = MyLayer()
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    self.assertEqual(len(model.losses), 1)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
+    self.assertEqual(loss, 2 * 3)
+
+  @keras_parameterized.run_all_keras_modes
   def test_clear_losses(self):
 
     class LayerWithSharedNestedLossLayer(keras.layers.Layer):
 
       def __init__(self):
         super(LayerWithSharedNestedLossLayer, self).__init__()
-        self.loss_layer = keras.layers.ActivityRegularization()
+        self.loss_layer = keras.layers.ActivityRegularization(l2=0.001)
         self.add_weight(shape=(1,), regularizer='l2')
 
       def call(self, x):
@@ -1074,12 +1093,20 @@ class TrainingTest(keras_parameterized.TestCase):
     inputs = keras.Input(shape=(1,))
     outputs = LayerWithSharedNestedLossLayer()(inputs)
     model = keras.Model(inputs, outputs)
+    # Weight loss + 2 activity losses.
+    self.assertEqual(len(model.losses), 3)
 
-    model(array_ops.ones((1, 1)))
-    self.assertEqual(len(model.losses), 3)  # Weight loss + 2 activity losses.
-
-    model(array_ops.ones((1, 1)))
-    self.assertEqual(len(model.losses), 3)  # Losses are reset upon __call__.
+    x = array_ops.ones((1, 1))
+    model(x)
+    y = array_ops.ones((1, 1))
+    model(y)
+    if context.executing_eagerly():
+      # Eager losses are cleared every `__call__`.
+      self.assertEqual(len(model.losses), 3)
+    else:
+      self.assertEqual(len(model.get_losses_for(x)), 2)
+      self.assertEqual(len(model.get_losses_for(y)), 2)
+      self.assertEqual(len(model.get_losses_for(None)), 1)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
