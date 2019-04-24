@@ -203,9 +203,12 @@ public:
 
   // Support result iteration.
   using result_iterator = ResultIterator;
+  using result_range = llvm::iterator_range<result_iterator>;
+
   result_iterator result_begin();
   result_iterator result_end();
-  llvm::iterator_range<result_iterator> getResults();
+
+  result_range getResults();
 
   MutableArrayRef<OpResult> getOpResults() {
     return {getTrailingObjects<OpResult>(), numResults};

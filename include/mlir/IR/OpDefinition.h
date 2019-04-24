@@ -470,6 +470,37 @@ public:
   }
 };
 
+namespace detail {
+/// Utility trait base that provides accessors for derived traits that have
+/// multiple results.
+template <typename ConcreteType, template <typename> class TraitType>
+struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
+  using result_iterator = Operation::result_iterator;
+  using result_range = Operation::result_range;
+
+  /// Return the number of results.
+  unsigned getNumResults() { return this->getOperation()->getNumResults(); }
+
+  /// Return the result at index 'i'.
+  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+
+  /// Set the result at index 'i' to 'value'.
+  void setResult(unsigned i, Value *value) {
+    this->getOperation()->setResult(i, value);
+  }
+
+  /// Return the type of the `i`-th result.
+  Type getType(unsigned i) { return getResult(i)->getType(); }
+
+  /// Result iterator access.
+  result_iterator result_begin() {
+    return this->getOperation()->result_begin();
+  }
+  result_iterator result_end() { return this->getOperation()->result_end(); }
+  result_range getResults() { return this->getOperation()->getResults(); }
+};
+} // end namespace detail
+
 /// This class provides return value APIs for ops that are known to have a
 /// single result.
 template <typename ConcreteType>
@@ -499,14 +530,9 @@ public:
 template <unsigned N> class NResults {
 public:
   template <typename ConcreteType>
-  class Impl : public TraitBase<ConcreteType, NResults<N>::Impl> {
+  class Impl
+      : public detail::MultiResultTraitBase<ConcreteType, NResults<N>::Impl> {
   public:
-    static unsigned getNumResults() { return N; }
-
-    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
-
-    Type getType(unsigned i) { return getResult(i)->getType(); }
-
     static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyNResults(op, N);
     }
@@ -521,12 +547,9 @@ public:
 template <unsigned N> class AtLeastNResults {
 public:
   template <typename ConcreteType>
-  class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
+  class Impl : public detail::MultiResultTraitBase<ConcreteType,
+                                                   AtLeastNResults<N>::Impl> {
   public:
-    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
-
-    Type getType(unsigned i) { return getResult(i)->getType(); }
-
     static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyAtLeastNResults(op, N);
     }
@@ -536,26 +559,8 @@ public:
 /// This class provides the API for ops which have an unknown number of
 /// results.
 template <typename ConcreteType>
-class VariadicResults : public TraitBase<ConcreteType, VariadicResults> {
-public:
-  unsigned getNumResults() { return this->getOperation()->getNumResults(); }
-
-  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
-
-  void setResult(unsigned i, Value *value) {
-    this->getOperation()->setResult(i, value);
-  }
-
-  // Support result iteration.
-  using result_iterator = Operation::result_iterator;
-  result_iterator result_begin() {
-    return this->getOperation()->result_begin();
-  }
-  result_iterator result_end() { return this->getOperation()->result_end(); }
-  llvm::iterator_range<result_iterator> getResults() {
-    return this->getOperation()->getResults();
-  }
-};
+class VariadicResults
+    : public detail::MultiResultTraitBase<ConcreteType, VariadicResults> {};
 
 /// This class provides verification for ops that are known to have the same
 /// operand and result shape: both are scalars, vectors/tensors of the same
