@@ -1899,7 +1899,13 @@ class Layer(module.Module):
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
-      super(tracking.AutoTrackable, self).__setattr__(name, value)
+      try:
+        super(tracking.AutoTrackable, self).__setattr__(name, value)
+      except AttributeError:
+        raise AttributeError(
+            ('Can\'t set the attribute "{}", likely because it conflicts with '
+             'an existing read-only @property of the object. Please choose a '
+             'different name.').format(name))
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
