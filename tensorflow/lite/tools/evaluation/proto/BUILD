@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tools/build_defs/proto/cpp:deprecated_cc_proto_library_alias.bzl", "deprecated_cc_proto_library_alias")
-
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
@@ -27,7 +25,7 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
-deprecated_cc_proto_library_alias(
+cc_proto_library(
     name = "evaluation_stages_cc_proto",
     deps = ["evaluation_stages_proto"],
 )
@@ -41,7 +39,7 @@ proto_library(
     deps = [":evaluation_stages_proto"],
 )
 
-deprecated_cc_proto_library_alias(
+cc_proto_library(
     name = "evaluation_config_cc_proto",
     deps = ["evaluation_config_proto"],
 )
