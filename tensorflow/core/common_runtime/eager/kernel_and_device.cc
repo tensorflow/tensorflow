@@ -122,6 +122,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }
+    options.config_proto.mutable_experimental()->set_executor_type("eager");
     grappler::GrapplerItem::OptimizationOptions optimization_options;
 
     // Tensorflow 2.0 in eager mode with automatic control dependencies will

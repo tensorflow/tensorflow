@@ -368,6 +368,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem optimized_item = item;
   optimized_graph->Swap(&optimized_item.graph);
 
+  optimized_item.executor_type = config_proto_.experimental().executor_type();
+
   GraphOptimizationResult optimization_result(item.id);
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;

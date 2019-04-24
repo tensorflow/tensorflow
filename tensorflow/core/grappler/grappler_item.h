@@ -117,6 +117,8 @@ struct GrapplerItem {
   const OptimizationOptions& optimization_options() const;
   OptimizationOptions& optimization_options();
 
+  string executor_type;
+
  private:
   // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
   // TODO(ezhulenev): Migrate all unordered collections to absl.
