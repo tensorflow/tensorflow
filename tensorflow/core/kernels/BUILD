@@ -53,6 +53,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load(
@@ -3032,11 +3033,18 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cusolver",
-    ])
+    ] + if_static(
+        [
+            "@local_config_cuda//cuda:cusolver",
+            "@local_config_cuda//cuda:cublas",
+        ],
+        [
+            "//tensorflow/stream_executor/cuda:cusolver_stub",
+            "//tensorflow/stream_executor/cuda:cublas_stub",
+        ],
+    )),
 )
 
 tf_kernel_library(
@@ -3046,8 +3054,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_config_cuda//cuda:cusparse",
-    ],
+    ] + if_static(
+        ["@local_config_cuda//cuda:cusparse"],
+        ["//tensorflow/stream_executor/cuda:cusparse_stub"],
+    ),
 )
 
 LINALG_DEPS = [
@@ -4377,6 +4387,7 @@ cc_library(
     deps = [
         ":decode_compressed_op",
         ":decode_csv_op",
+        ":decode_padded_raw_op",
         ":decode_raw_op",
         ":example_parsing_ops",
         ":parse_tensor_op",
@@ -4400,6 +4411,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_raw_op",
     prefix = "decode_raw_op",
+    deps = PARSING_DEPS,
+)
+
+tf_kernel_library(
+    name = "decode_padded_raw_op",
+    prefix = "decode_padded_raw_op",
     deps = PARSING_DEPS,
 )
 

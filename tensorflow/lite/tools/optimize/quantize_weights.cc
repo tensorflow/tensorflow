@@ -99,11 +99,11 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
     return {1, 2};
   } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_lstm.cc
-    return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16,
-            18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33};
+    return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16, 18, 19, 20, 21,
+            22, 23, 24, 25, 26, 27, 28, 33, 40, 41, 42, 43, 44, 45, 46, 47};
   } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
-    return {1, 2, 4, 5};
+    return {1, 2, 4, 5, 6, 8, 9, 10, 11};
   } else if (builtin_op_code == BuiltinOperator_GATHER) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/gather.cc
     return {0};

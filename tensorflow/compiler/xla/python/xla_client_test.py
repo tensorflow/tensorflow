@@ -137,6 +137,14 @@ class ComputationsWithConstantsTest(ComputationTest):
     c.Add(c.ConstantS64Scalar(1), c.ConstantS64Scalar(2))
     self._ExecuteAndCompareClose(c, expected=3)
 
+  def testConstantVectorMulF16(self):
+    c = self._NewComputation()
+    c.Mul(
+        c.Constant(np.array([2.5, 3.3, -1.2, 0.7], np.float16)),
+        c.Constant(np.array([-1.2, 2, -2, -3], np.float16)))
+    self._ExecuteAndCompareClose(
+        c, expected=np.array([-3, 6.6, 2.4, -2.1], np.float16), rtol=2e-3)
+
   def testConstantVectorMulF32(self):
     c = self._NewComputation()
     c.Mul(

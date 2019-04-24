@@ -101,6 +101,10 @@ tf_py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
     ],
+    tags = [
+        "no_rocm",
+        "no_cuda",
+    ],
 )
 
 tf_py_test(

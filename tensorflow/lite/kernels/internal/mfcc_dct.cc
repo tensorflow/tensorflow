@@ -41,7 +41,7 @@ bool MfccDct::Initialize(int input_length, int coefficient_count) {
   cosines_.resize(coefficient_count_);
   double fnorm = sqrt(2.0 / input_length_);
   // Some platforms don't have M_PI, so define a local constant here.
-  const double pi = atan(1) * 4;
+  const double pi = atan(1.0) * 4.0;
   double arg = pi / input_length_;
   for (int i = 0; i < coefficient_count_; ++i) {
     cosines_[i].resize(input_length_);

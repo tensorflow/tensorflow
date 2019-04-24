@@ -50,6 +50,7 @@ from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
 from tensorflow.python.eager import function as _function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
@@ -108,7 +109,7 @@ class RepresentativeDataset(object):
   converted floating point model.
   """
 
-  def __init__(self, input_gen, output_gen=None):
+  def __init__(self, input_gen):
     """Creates a representative dataset.
 
     Args:
@@ -116,14 +117,8 @@ class RepresentativeDataset(object):
         for the model. This must be a callable object that returns an object
         that supports the `iter()` protocol (e.g. a generator function). The
         elements generated must have same type and shape as inputs to the model.
-      output_gen: (optional) an output generator that can be used to generate
-        output samples for the model. This must be a callable object that
-        returns an object that supports the `iter()` protocol (e.g. a generator
-        function). The elements generated must have same type and shape as
-        outputs to the model. (default None)
     """
     self.input_gen = input_gen
-    self.output_gen = output_gen
 
 
 @_tf_export("lite.TargetSpec")
@@ -694,6 +689,26 @@ class TFLiteConverter(object):
     Returns:
       TFLiteConverter class.
     """
+    # Handles Keras when Eager mode is enabled.
+    if context.executing_eagerly():
+      if input_arrays or output_arrays:
+        raise ValueError("`input_arrays` and `output_arrays` are unsupported "
+                         "with Eager mode. If your model requires any of these "
+                         "parameters, please use disable_eager_execution().")
+
+      _keras.backend.set_learning_phase(False)
+      keras_model = _keras.models.load_model(model_file, custom_objects)
+
+      function = _saving_utils.trace_model_call(keras_model)
+      concrete_func = function.get_concrete_function()
+
+      frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
+          concrete_func)
+      _set_tensor_shapes(frozen_func.inputs, input_shapes)
+      return cls(frozen_func.graph.as_graph_def(), frozen_func.inputs,
+                 frozen_func.outputs)
+
+    # Handles Keras when Eager mode is disabled.
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
     keras_model = _keras.models.load_model(model_file, custom_objects)
@@ -782,9 +797,8 @@ class TFLiteConverter(object):
       quantized_stats = None
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError(
-            "representative_dataset must be an instance of "
-            "RepresentativeDataset")
+        self.representative_dataset = RepresentativeDataset(
+            self.representative_dataset)
       if self.representative_dataset.input_gen is None:
         raise ValueError(
             "Provide an input generator for representative_dataset")

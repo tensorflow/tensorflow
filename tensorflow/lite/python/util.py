@@ -149,7 +149,7 @@ def set_tensor_shapes(tensors, shapes):
 
 
 def get_grappler_config(enable_layout_optimizer=False, function_only=False):
-  """Creates a tf.ConfigProto for configuring Grappler.
+  """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
 
   Args:
     enable_layout_optimizer: Bool indicating whether to run the layout

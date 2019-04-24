@@ -336,6 +336,7 @@ class Context(object):
     self._server_def = server_def
     self._collective_ops_server_def = None
 
+    self._device_lock = threading.Lock()
     self._physical_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
@@ -371,7 +372,7 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
-  def _initialize_devices(self):
+  def _initialize_logical_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
     self._logical_devices = []
@@ -423,7 +424,7 @@ class Context(object):
         pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
-      self._initialize_devices()
+      self._initialize_logical_devices()
 
   def _clear_caches(self):
     self.scalar_cache().clear()
@@ -462,7 +463,7 @@ class Context(object):
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()
 
-      self._initialize_devices()
+      self._initialize_logical_devices()
 
   def enable_collective_ops(self, server_def):
     """Enable collective ops with an appropriate server_def.
@@ -486,7 +487,7 @@ class Context(object):
                                                 server_def_str)
 
       self._clear_caches()
-      self._initialize_devices()
+      self._initialize_logical_devices()
 
   @property
   def _handle(self):
@@ -667,6 +668,9 @@ class Context(object):
   @property
   def config(self):
     """Return the ConfigProto with all runtime deltas applied."""
+    # Ensure physical devices have been discovered and config has been imported
+    self._initialize_physical_devices()
+
     config = config_pb2.ConfigProto()
     if self._config is not None:
       config.CopyFrom(self._config)
@@ -720,6 +724,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -728,7 +733,7 @@ class Context(object):
     # Compute device counts
     config.device_count["CPU"] = 0
     config.device_count["GPU"] = 0
-    for dev in self.list_physical_devices():
+    for dev in self._physical_devices:
       if dev not in self._visible_device_list:
         continue
 
@@ -886,6 +891,31 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
+  def _initialize_physical_devices(self):
+    """Get local devices visible to the system."""
+    # We lazy initialize self._physical_devices since we do not want to do this
+    # the constructor since the backend may not be initialized yet.
+    with self._device_lock:
+      if self._physical_devices is not None:
+        return
+
+      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
+      self._physical_devices = [
+          PhysicalDevice(name=d.decode(),
+                         device_type=d.decode().split(":")[1]) for d in devs]
+      # Construct the visible device list from all physical devices but ignore
+      # XLA devices
+      self._visible_device_list = [
+          d for d in self._physical_devices
+          if not d.device_type.startswith("XLA")
+      ]
+      self._memory_growth_map = {
+          d: None for d in self._physical_devices if d.device_type == "GPU"
+      }
+
+    # Import device settings that may have been passed into the constructor
+    self._import_config()
+
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.
 
@@ -899,26 +929,7 @@ class Context(object):
     Returns:
       List of PhysicalDevice objects.
     """
-    # We lazy initialize self._physical_devices since we do not want to do this
-    # the constructor since the backend may not be initialized yet.
-    if self._physical_devices is None:
-      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
-      self._physical_devices = [
-          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
-          for d in devs
-      ]
-      # Construct the visible device list from all physical devices but ignore
-      # XLA devices
-      self._visible_device_list = [
-          d for d in self._physical_devices
-          if not d.device_type.startswith("XLA")
-      ]
-      self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
-      }
-
-      # Import device settings that may have been passed into the constructor
-      self._import_config()
+    self._initialize_physical_devices()
 
     if device_type is not None:
       return [
@@ -950,11 +961,22 @@ class Context(object):
 
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
     gpu_count = self._config.device_count.get("GPU", None)
-    if gpu_count == 0:
-      self.set_visible_devices([], "GPU")
-    elif gpu_count is not None:
-      # TODO(gjn): Handle importing existing virtual GPU configuration
-      self.set_visible_devices(gpus[:gpu_count], "GPU")
+
+    visible_gpus = []
+    # TODO(gjn): Handle importing existing virtual GPU configuration
+    visible_indices = self._config.gpu_options.visible_device_list
+    if visible_indices:
+      for index in visible_indices.split(","):
+        if int(index) >= len(gpus):
+          raise ValueError("Invalid visible device index: %s" % index)
+        visible_gpus.append(gpus[int(index)])
+    else:
+      visible_gpus = gpus
+
+    if gpu_count is not None:
+      visible_gpus = visible_gpus[:gpu_count]
+
+    self.set_visible_devices(visible_gpus, "GPU")
 
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
@@ -971,6 +993,8 @@ class Context(object):
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
+    self._initialize_physical_devices()
+
     if device_type is None:
       return self._visible_device_list
     else:
@@ -982,6 +1006,8 @@ class Context(object):
     """Set the list of visible devices."""
     if self._context_handle is not None:
       raise RuntimeError("Visible devices must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if not isinstance(devices, list):
       devices = [devices]
@@ -1003,6 +1029,8 @@ class Context(object):
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1012,6 +1040,8 @@ class Context(object):
     """Set if memory growth should be enabled for a PhysicalDevice."""
     if self._context_handle is not None:
       raise RuntimeError("Memory growth must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1024,6 +1054,8 @@ class Context(object):
 
   def get_virtual_device_configuration(self, dev):
     """Get the virtual device configuration for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1033,6 +1065,8 @@ class Context(object):
     """Set the virtual device configuration for a PhysicalDevice."""
     if self._context_handle is not None:
       raise RuntimeError("Virtual devices must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1095,6 +1129,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1339,9 +1374,9 @@ def internal_operation_seed():
 def executing_eagerly():
   """Returns True if the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via `tf.enable_eager_execution`,
-  but may also be enabled within the context of a Python function via
-  tf.contrib.eager.py_func.
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
   """
   if context_safe() is None:
     return default_execution_mode == EAGER_MODE
@@ -1411,7 +1446,7 @@ def device(name):
   with tf.device('gpu:0'):
     with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
-    x = tf.truncated_normal(shape, tf.float32)
+    x = tf.random.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
   operation runs on GPU 0.

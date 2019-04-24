@@ -203,9 +203,9 @@ tf_cuda_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:recent_request_ids",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
 

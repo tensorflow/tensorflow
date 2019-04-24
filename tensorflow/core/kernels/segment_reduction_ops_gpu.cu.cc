@@ -19,12 +19,13 @@ limitations under the License.
 
 // We need to include gpu_kernel_helper.h before segment_reduction_ops.h
 // See comment in segment_reduction_ops.h for more details.
+// clang-format off
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
-
 
 namespace tensorflow {
 

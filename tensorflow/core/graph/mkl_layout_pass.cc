@@ -348,7 +348,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
-                      CopyAttrsAddN, AddNRewrite});
+                      CopyAttrsAddN, AlwaysRewrite});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.avg_pool,
@@ -1401,20 +1401,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return do_rewrite;
   }
 
-  static bool AddNRewrite(const Node* n) {
-    CHECK_NOTNULL(n);
-
-    int num;
-    CHECK_EQ(GetNodeAttr(n->def(), "N", &num).ok(), true);
-
-    // Condition that specifies non-batch-wise and non-depth-wise pooling.
-    if (num == 2) {
-      return true;
-    }
-
-    return false;
-  }
-
   static bool FusedConv2DRewrite(const Node* n) {
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
@@ -1681,12 +1667,6 @@ static void FillInputs(const Node* n,
     }
   }
   std::sort(control_edges->begin(), control_edges->end());
-  if (n->op_def().is_commutative()) {
-    // For commutative inputs, we sort the input by the input Node*
-    // to get a canonical ordering (so that add(a,b) and add(b, a) will
-    // hash to the same value if is_commutative is true for 'add').
-    std::sort(in->begin(), in->end());
-  }
 }
 
 void MklLayoutRewritePass::GetNodesProducingTFTensorList(

@@ -66,6 +66,9 @@ extern const char* kModelWithCustomOp;
 // Test model with a argmax op.
 extern const char* kModelWithArgMaxOp;
 
+// Test model with a argmax op.
+extern const char* kModelWithFCOp;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

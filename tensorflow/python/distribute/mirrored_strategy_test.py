@@ -1485,8 +1485,11 @@ class MirroredStrategyDefunTest(test.TestCase):
             combinations.NamedDistribution(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.MirroredStrategy(mirrored_strategy.
-                                                           all_local_devices()),
+                lambda: mirrored_strategy.MirroredStrategy(
+                    devices=mirrored_strategy.all_local_devices(),
+                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
+                        "/job:worker/task:0", "/job:worker/task:1"
+                    ], context.num_gpus())),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1588,14 +1591,21 @@ class MultiWorkerMirroredStrategyTestWithChief(
         num_workers=2, num_ps=0, has_chief=True)
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
+  def _make_cross_device_ops(self):
+    return cross_device_ops_lib.MultiWorkerAllReduce(
+        ["/job:chief/task:0", "/job:worker/task:0", "/job:worker/task:1"],
+        context.num_gpus())
+
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy()
+    strategy = mirrored_strategy.MirroredStrategy(
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testMinimizeLossGraphMirroredStrategy(self):
     strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices())
+        mirrored_strategy.all_local_devices(),
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
@@ -1608,19 +1618,22 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.MirroredStrategy()
       self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                             cross_device_ops_lib.NcclAllReduce)
+    self.skipTest('b/130551176, run the following once fixed.')
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testInitializeFromTFConfig(self):
     tf_config = {"cluster": self._cluster_spec}
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
-      strategy = mirrored_strategy.MirroredStrategy()
+      strategy = mirrored_strategy.MirroredStrategy(
+          cross_device_ops=self._make_cross_device_ops())
       self.assertEqual(
           max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
   def testSummaryForReplicaZeroOnly(self):
     strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices())
+        mirrored_strategy.all_local_devices(),
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_summary_for_replica_zero_only(strategy)
 

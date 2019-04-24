@@ -337,7 +337,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops/losses:loss_reduction",
     ],
 )
 
@@ -1363,19 +1363,6 @@ tf_py_test(
             "no_rocm",
             "no_cuda",
     ],
-)
-
-tf_py_test(
-    name = "control_flow_test",
-    size = "medium",
-    srcs = ["engine/control_flow_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
-    shard_count = 8,
 )
 
 tf_py_test(

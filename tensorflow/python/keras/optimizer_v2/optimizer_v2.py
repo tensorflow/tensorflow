@@ -150,9 +150,9 @@ class OptimizerV2(trackable.Trackable):
 
   This optimizer class is `tf.distribute.Strategy` aware, which means it
   automatically sums gradients across all replicas. To average gradients,
-  you divide your loss by the global batch size, which is done automatically
-  if you use a member of `tf.keras.losses` or `tf.losses`. See the
-  `reduction` argument of your loss which should be set to
+  you divide your loss by the global batch size, which is done
+  automatically if you use `tf.keras` built-in training or evaluation loops.
+  See the `reduction` argument of your loss which should be set to
   `tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
   `tf.keras.losses.Reduction.SUM` for not.
 

@@ -60,10 +60,12 @@ XlaOp Any(XlaOp predicates);
 // Returns the argmax of `input` along `axis`. `output_type` is the type to
 // use for the output.
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis);
 
 // Returns the argmin of `input` along `axis`. `output_type` is the type to
 // use for the output.
 XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis);
 
 }  // namespace xla
 

@@ -42,9 +42,7 @@ void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
 }
 
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
-  if (!mem->is_sub_buffer()) {
-    delete[] static_cast<char *>(mem->opaque());
-  }
+  delete[] static_cast<char *>(mem->opaque());
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,

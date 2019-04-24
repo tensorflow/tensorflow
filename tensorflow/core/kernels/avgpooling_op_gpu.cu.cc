@@ -18,12 +18,12 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
-#include <iostream>
 
-#include "tensorflow/core/kernels/avgpooling_op.h"
+#include <iostream>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/avgpooling_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {

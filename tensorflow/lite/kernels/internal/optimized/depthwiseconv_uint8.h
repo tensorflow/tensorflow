@@ -2106,7 +2106,7 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context = nullptr) {
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -2128,8 +2128,9 @@ inline void DepthwiseConv(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
-  thread_count = std::max(1, std::min(thread_count, max_threads));
+  // TODO(b/130555917): Allow multi-threading after fixing ARM accuracy issues.
+  constexpr int kMaxThreads = 1;
+  thread_count = std::max(1, std::min(thread_count, kMaxThreads));
 
   if (thread_count == 1) {
     DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
@@ -2148,7 +2149,7 @@ inline void DepthwiseConv(
           thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 

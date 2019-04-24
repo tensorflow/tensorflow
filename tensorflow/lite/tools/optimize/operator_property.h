@@ -44,6 +44,9 @@ struct OperatorProperty {
   bool restrict_same_input_output_scale;
   bool restriction_on_output;
   std::pair<float, float> restricted_value_on_output;
+
+  // Op version.
+  int version;
 };
 
 TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,

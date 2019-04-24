@@ -1079,6 +1079,11 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_HASHTABLE_LOOKUP>;
         }
         break;
+      case kTfLiteBuiltinPrelu:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_PRELU>;
+        }
+        break;
       default:
         // All other operators are not mapped.
         return nullptr;

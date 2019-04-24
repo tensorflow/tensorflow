@@ -17,12 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/multinomial_op.h"
-
 #include <assert.h>
 #include <stdio.h>
 
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/multinomial_op.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"

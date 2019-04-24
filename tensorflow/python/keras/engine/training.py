@@ -1329,13 +1329,8 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.IteratorV2) or
-          (isinstance(inputs, dataset_ops.DatasetV2))):
-        inputs = training_utils.cast_if_floating_dtype(inputs)
-      elif isinstance(inputs, collections.Sequence):
-        inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
-
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1686,21 +1681,26 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          # Reset reduction on the loss so that we can get the per sample loss
-          # value. We use this to get both the stateless and stateful loss
-          # values without having to compute the underlying loss function
-          # twice.
           weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
-            current_loss_reduction = loss_fn.reduction
-            loss_fn.reduction = losses_utils.ReductionV2.NONE
-            weighted_losses = loss_fn(
-                y_true, y_pred, sample_weight=sample_weight)
-            loss_fn.reduction = current_loss_reduction
+            per_sample_losses = loss_fn.call(y_true, y_pred)
+            weighted_losses = losses_utils.compute_weighted_loss(
+                per_sample_losses,
+                sample_weight=sample_weight,
+                reduction=losses_utils.ReductionV2.NONE)
+            loss_reduction = loss_fn.reduction
+
+            # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
+            # compile use cases.
+            if loss_reduction == losses_utils.ReductionV2.AUTO:
+              loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
-                weighted_losses, reduction=current_loss_reduction)
+                weighted_losses, reduction=loss_reduction)
+            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
+              output_loss = losses_utils.scale_loss_for_distribution(
+                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1708,6 +1708,8 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            # For custom losses we assume reduction was mean.
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor and function for the loss.
@@ -2774,10 +2776,12 @@ class DistributedCallbackModel(Model):
   def __getattr__(self, item):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
-    if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + ' of the '
-                      'DistributedCallbackModel that may not have been set '
-                      'correctly.')
+    if item in ('_setattr_tracking', '_layers'):
+      return super(DistributedCallbackModel, self).__getattr__(item)
+
+    logging.warning('You are accessing attribute ' + item + ' of the '
+                    'DistributedCallbackModel that may not have been set '
+                    'correctly.')
 
 
 def _is_symbolic_tensor(x):

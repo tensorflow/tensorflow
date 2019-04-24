@@ -79,7 +79,7 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
                                              FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
-#if GOOGLE_CUDA  
+#if GOOGLE_CUDA
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
 #else // TENSORFLOW_USE_ROCM#
   hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -23,8 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/gemm_support.h"
-#include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
+#include "tensorflow/lite/kernels/gemmlowp_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -114,7 +115,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
-  gemm_support::IncrementUsageCounter(context);
+  gemmlowp_support::IncrementUsageCounter(context);
   auto* op_data = new OpData();
   context->AddTensors(context, /*tensors_to_add=*/2,
                       &op_data->scratch_tensor_index);
@@ -122,7 +123,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  gemm_support::DecrementUsageCounter(context);
+  gemmlowp_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -319,7 +320,7 @@ template <KernelType kernel_type>
 void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
                         const TfLiteTensor* filter, const TfLiteTensor* bias,
                         TfLiteTensor* output,
-                        gemmlowp::GemmContext* gemm_context) {
+                        gemmlowp::GemmContext* gemmlowp_context) {
   FullyConnectedParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
@@ -333,13 +334,15 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
         GetTensorShape(bias), GetTensorData<int32_t>(bias),
-        GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+        GetTensorShape(output), GetTensorData<int8_t>(output),
+        gemmlowp_context);
   } else {
     optimized_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
         GetTensorShape(filter), GetTensorData<int8_t>(filter),
         GetTensorShape(bias), GetTensorData<int32_t>(bias),
-        GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+        GetTensorShape(output), GetTensorData<int8_t>(output),
+        gemmlowp_context);
   }
 }
 }  // namespace
@@ -350,7 +353,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* input,
                            const TfLiteTensor* filter, const TfLiteTensor* bias,
                            TfLiteTensor* output) {
-  gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+  gemmlowp::GemmContext* gemmlowp_context =
+      gemmlowp_support::GetFromContext(context);
 
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -filter->params.zero_point;
@@ -370,7 +374,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
         GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
         GetTensorShape(output), GetTensorData<output_data_type>(output), \
-        gemm_context);                                                   \
+        gemmlowp_context);                                               \
   }
   // Only the Pie path supports quantized models and float inputs/outputs.
   if (input->type == kTfLiteFloat32) {
@@ -389,7 +393,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         break;
       case kTfLiteInt8:
         FullyConnectedInt8<kernel_type>(data, input, filter, bias, output,
-                                        gemm_context);
+                                        gemmlowp_context);
         break;
       case kTfLiteInt16:
         if (kernel_type == kReference) {
@@ -418,7 +422,8 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
                                    const TfLiteTensor* bias,
                                    TfLiteTensor* output,
                                    TfLiteTensor* shuffled_input_workspace) {
-  gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+  gemmlowp::GemmContext* gemmlowp_context =
+      gemmlowp_support::GetFromContext(context);
 
   // TODO(b/110697972) decide more consistently if / how / where we want
   // to perform this kind of runtime data type checks.
@@ -427,19 +432,19 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
 
-#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                           \
-  {                                                                      \
-    FullyConnectedParams op_params;                                      \
-    op_params.output_multiplier = data->output_multiplier;               \
-    op_params.output_shift = data->output_shift;                         \
-    op_params.quantized_activation_min = data->output_activation_min;    \
-    op_params.quantized_activation_max = data->output_activation_max;    \
-    type::ShuffledFullyConnected(                                        \
-        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
-        GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
-        GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
-        GetTensorShape(output), GetTensorData<int16_t>(output),          \
-        GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context); \
+#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                               \
+  {                                                                          \
+    FullyConnectedParams op_params;                                          \
+    op_params.output_multiplier = data->output_multiplier;                   \
+    op_params.output_shift = data->output_shift;                             \
+    op_params.quantized_activation_min = data->output_activation_min;        \
+    op_params.quantized_activation_max = data->output_activation_max;        \
+    type::ShuffledFullyConnected(                                            \
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),     \
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),              \
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),                  \
+        GetTensorShape(output), GetTensorData<int16_t>(output),              \
+        GetTensorData<uint8_t>(shuffled_input_workspace), gemmlowp_context); \
   }
   if (kernel_type == kReference) {
     TF_LITE_SHUFFLED_FULLY_CONNECTED(reference_ops);

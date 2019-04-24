@@ -1902,8 +1902,8 @@ inline void LstmCell(
     const RuntimeShape& unextended_concat_temp_shape,
     uint8* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
+  (void)gemmlowp_context;  // only used in optimized code.
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
   int accum_shift = params.accum_shift;

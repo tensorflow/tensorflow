@@ -382,6 +382,7 @@ cc_library(
     srcs = ["resource_operation_safety_analysis.cc"],
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
+        ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
@@ -532,6 +533,7 @@ cc_library(
         ":device_info_cache",
         ":encapsulate_util",
         ":flags",
+        ":resource_operation_safety_analysis",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
@@ -576,7 +578,6 @@ cc_library(
     hdrs = ["xla_cluster_util.h"],
     deps = [
         ":flags",
-        ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

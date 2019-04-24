@@ -794,7 +794,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
@@ -844,7 +844,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
