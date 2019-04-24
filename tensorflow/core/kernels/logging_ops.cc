@@ -182,15 +182,15 @@ class PrintV2Op : public OpKernel {
         listener(msg.c_str());
       }
     } else if (output_stream_ == "stdout") {
-      std::cout << msg;
+      std::cout << msg << std::flush;
     } else if (output_stream_ == "stderr") {
-      std::cerr << msg;
+      std::cerr << msg << std::flush;
     } else if (output_stream_ == "log(info)") {
-      LOG(INFO) << msg;
+      LOG(INFO) << msg << std::flush;
     } else if (output_stream_ == "log(warning)") {
-      LOG(WARNING) << msg;
+      LOG(WARNING) << msg << std::flush;
     } else if (output_stream_ == "log(error)") {
-      LOG(ERROR) << msg;
+      LOG(ERROR) << msg << std::flush;
     } else {
       string error_msg = strings::StrCat(
           "Unknown output stream: ", output_stream_, ", Valid streams are:");
