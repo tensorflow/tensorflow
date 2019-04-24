@@ -207,10 +207,14 @@ Status BuildLoopBody(const Graph& graph, Frame* frame,
       node_map[arg.enter->id()] = arg_node;
       output->AddEdge(arg_node, 0, retval_node, 0);
     } else {
-      // Argument is loop-varying. Note that DT_RESOURCE is always loop
-      // invariant in the graph generated from tf.while and should not fall
-      // into this case.
-      TF_RET_CHECK(dtype != DT_RESOURCE);
+      // Argument is loop-varying.
+      if (dtype == DT_RESOURCE) {
+        // DT_RESOURCE arguments should always be loop-invariant in the graph
+        // generated from TF.
+        return errors::Unimplemented("Loop-varying DT_RESOURCE Enter node ",
+                                     arg.enter->name(), " is currently not",
+                                     " supported.");
+      }
       node_map[arg.switch_node->id()] = arg_node;
       // The Switch node has two outputs, but _Arg only has one. This tells
       // the CopySubgraph function to rewrite the output number of edges from
