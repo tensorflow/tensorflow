@@ -74,6 +74,16 @@ poplar::Tensor DoCachedDot(poplar::Graph& graph, CompilerResources& res,
                      poplar::program::Sequence& p) {
       poplar::OptionFlags opts;
       opts.set("fullyConnectedPass", GetMatMulPassName(pass));
+
+      if (VLOG_IS_ON(2)) {
+        std::stringstream stream;
+        poplin::matMulGroupedReportPlan(stream, graph, args[0].elementType(),
+                                        args[0].shape(), args[1].shape(), opts,
+                                        &res.dot_cache);
+        VLOG(2) << "MatMul " << debugPrefix << ". Type "
+                << GetMatMulPassName(pass) << ". Plan " << stream.str();
+      }
+
       return poplin::matMulGrouped(graph, args[0], args[1], p, debugPrefix,
                                    opts, &res.dot_cache);
     };

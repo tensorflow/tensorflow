@@ -172,6 +172,15 @@ poplar::Tensor DoCachedConvolution(
   }
   auto opts = res.default_conv_options;
   opts.set("pass", ConvClassificationTypeToString(conv_type));
+
+  if (VLOG_IS_ON(2)) {
+    std::stringstream stream;
+    poplin::reportPlanInfo(stream, graph, params, opts, &res.convolution_cache);
+    VLOG(2) << "Convolution " << debug_prefix << ". Type "
+            << ConvClassificationTypeToString(conv_type) << ". Plan "
+            << stream.str();
+  }
+
   using namespace poputil::graphfn;
   auto f = TensorFunction(
       graph, {input(in, "in"), input(weights, "weights")},
@@ -199,6 +208,14 @@ poplar::Tensor DoCachedConvolutionScaledInplace(
 
   poplar::OptionFlags opts = res.default_conv_options;
   opts.set("pass", ConvClassificationTypeToString(conv_type));
+
+  if (VLOG_IS_ON(2)) {
+    std::stringstream stream;
+    poplin::reportPlanInfo(stream, graph, params, opts, &res.convolution_cache);
+    VLOG(2) << "Convolution " << GetDebugName(inst) << ". Type "
+            << ConvClassificationTypeToString(conv_type) << ". Plan "
+            << stream.str();
+  }
 
   auto c_out = poplin::convolution(graph, in_shuffled, deltas_shuffled, params,
                                    false, seq, GetDebugName(inst), opts,
