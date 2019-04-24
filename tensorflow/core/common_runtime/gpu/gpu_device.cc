@@ -1420,15 +1420,14 @@ static int GetDefaultMinGPUMultiprocessorCount(
   // Find the highest multi-processor count across all visible GPUs.
   int max_count = -1;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    auto exec_status =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_order[i]);
-    if (!exec_status.ok()) {
+    int visible_gpu_id = visible_gpu_order[i].value();
+    auto description_status = gpu_manager->DescriptionForDevice(visible_gpu_id);
+    if (!description_status.ok()) {
       continue;
     }
 
-    se::StreamExecutor* se = exec_status.ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
-    max_count = std::max(max_count, desc.core_count());
+    auto description = description_status.ConsumeValueOrDie();
+    max_count = std::max(max_count, description->core_count());
   }
 
   if (max_count < 0 || kDefaultMinGPUMultiprocessorCount < max_count) {
@@ -1578,39 +1577,37 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     std::vector<PlatformGpuId>* ids) {
   se::Platform* gpu_manager = GPUMachineManager();
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    const PlatformGpuId visible_gpu_id = visible_gpu_order[i];
-    auto executor =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_id);
-    if (!executor.ok()) {
-      return executor.status();
+    int visible_gpu_id = visible_gpu_order[i].value();
+    auto description_status = gpu_manager->DescriptionForDevice(visible_gpu_id);
+    if (!description_status.ok()) {
+      return description_status.status();
     }
 
-    auto stream_exec = executor.ValueOrDie();
-    const auto& description = stream_exec->GetDeviceDescription();
+    auto description = description_status.ConsumeValueOrDie();
 #if GOOGLE_CUDA
     int cc_major;
     int cc_minor;
-    if (!description.cuda_compute_capability(&cc_major, &cc_minor)) {
+    if (!description->cuda_compute_capability(&cc_major, &cc_minor)) {
       // Logs internally on failure.
       cc_major = 0;
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << " major: " << cc_major
+              << "\nname: " << description->name() << " major: " << cc_major
               << " minor: " << cc_minor
-              << " memoryClockRate(GHz): " << description.clock_rate_ghz()
-              << "\npciBusID: " << description.pci_bus_id();
+              << " memoryClockRate(GHz): " << description->clock_rate_ghz()
+              << "\npciBusID: " << description->pci_bus_id();
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
-    if (!description.rocm_amdgpu_isa_version(&isa_version)) {
+    if (!description->rocm_amdgpu_isa_version(&isa_version)) {
       // Logs internally on failure.
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
+              << "\nname: " << description->name() << "\nAMDGPU ISA: gfx"
               << isa_version << "\nmemoryClockRate (GHz) "
-              << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id();
+              << description->clock_rate_ghz() << "\npciBusID "
+              << description->pci_bus_id();
 #endif
   }
 
@@ -1638,23 +1635,23 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   // Filter out devices that don't have the right capability or power.
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     const PlatformGpuId visible_gpu_id = visible_gpu_order[i];
-    auto exec_status =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_id);
-    if (!exec_status.ok()) {
+    auto description_status =
+        gpu_manager->DescriptionForDevice(visible_gpu_id.value());
+    if (!description_status.ok()) {
       LOG(INFO) << "Ignoring visible gpu device " << visible_gpu_id
                 << " whose executor is in invalid state: "
-                << exec_status.status().ToString();
+                << description_status.status().ToString();
       continue;
     }
-    se::StreamExecutor* se = exec_status.ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
+
+    auto desc = description_status.ConsumeValueOrDie();
 
 #if GOOGLE_CUDA
     CudaVersion device_capability;
-    if (!desc.cuda_compute_capability(&device_capability.major_part,
-                                      &device_capability.minor_part)) {
+    if (!desc->cuda_compute_capability(&device_capability.major_part,
+                                       &device_capability.minor_part)) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "whose CUDA compute capability is not available.";
       continue;
@@ -1663,7 +1660,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // accepted.
     if (device_capability < min_supported_capability) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "with Cuda compute capability " << device_capability
                 << ". The minimum required Cuda capability is "
@@ -1672,14 +1669,14 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 #elif TENSORFLOW_USE_ROCM
     int device_isa;
-    if (!desc.rocm_amdgpu_isa_version(&device_isa)) {
+    if (!desc->rocm_amdgpu_isa_version(&device_isa)) {
       continue;
     }
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
     if (device_isa < min_supported_isa) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "with AMDGPU ISA gfx" << device_isa
                 << ". The minimum required AMDGPU ISA is gfx"
@@ -1692,11 +1689,11 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // count than the fastest GPU are filtered out, unless they have 8 or more
     // multiprocessors. If the TF_MIN_GPU_MULTIPROCESSOR_COUNT environment
     // variable is set, its value will be used to filter out GPUs.
-    if (desc.core_count() < min_gpu_core_count) {
+    if (desc->core_count() < min_gpu_core_count) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
-                << "with core count: " << desc.core_count()
+                << "with core count: " << desc->core_count()
                 << ". The minimum required count is " << min_gpu_core_count
                 << ". You can adjust this requirement with the env var "
                    "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
