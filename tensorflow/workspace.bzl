@@ -218,11 +218,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "gemmlowp",
-        sha256 = "dcf6e2aed522d74ac76b54038c19f0138565f4778a8821ab6679738755ebf6c2",
-        strip_prefix = "gemmlowp-dec2b7dd5f6f0043070af4587d2a9dc156f4ebab",
+        sha256 = "88a5a506efbe0ad9c0502eef30b693c9b76d738686773dc47f1baddda7131ffc",
+        strip_prefix = "gemmlowp-f0077a59ec6d1df4ff2751cb74993994c2cca1d1",
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
-            "https://github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
+            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
+            "https://github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
         ],
     )
 
