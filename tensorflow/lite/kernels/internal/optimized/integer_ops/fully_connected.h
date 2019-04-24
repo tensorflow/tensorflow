@@ -481,6 +481,8 @@ inline void FullyConnected(
   return;
 #endif  // GEMMLOWP_NEON
 
+  (void)gemmlowp_context;
+
   // If both GEMMLOWP_NEON && NEON paths are skipped, fallback to reference
   // implementation.
   reference_integer_ops::FullyConnected(params, input_shape, input_data,
