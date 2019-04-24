@@ -27,7 +27,8 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
                   Distribution dist, int64 output_size, int64 alg_tag_skip,
                   ScopedUnlockUnrefVar* state_var_guard, Tensor* state_tensor,
-                  typename Distribution::ResultElementType* output_data) {
+                  typename Distribution::ResultElementType* output_data)
+      UNLOCK_FUNCTION() {
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
     auto state_data = state_tensor_flat.data();
     // Delegates to PhiloxRandom to do the actual increasing.
