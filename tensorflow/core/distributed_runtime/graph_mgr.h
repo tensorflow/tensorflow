@@ -92,12 +92,6 @@ class GraphMgr {
                     StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, StatusCallback done);
-  void ExecuteAsync(const string& handle, const int64 step_id,
-                    WorkerSession* session, const ExecutorOpts& opts,
-                    StepStatsCollector* collector,
-                    MutableRunGraphResponseWrapper* response,
-                    CancellationManager* cancellation_manager,
                     const NamedTensors& in,
                     tracing::TraceCollector* trace_collector,
                     StatusCallback done);

@@ -247,4 +247,27 @@ const char* GetLogDir();
 #include "tensorflow/core/platform/default/tracing_impl.h"
 #endif
 
+#ifdef _MSC_VER
+#define __thread __declspec(thread)
+#endif
+
+// TODO(pbar) Move this to platform specific header file?
+// Static thread local variable for POD types.
+#define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
+  static __thread _Type_ s_obj_##_var_;                            \
+  namespace {                                                      \
+  class ThreadLocal_##_var_ {                                      \
+   public:                                                         \
+    ThreadLocal_##_var_() {}                                       \
+    void Init() {}                                                 \
+    inline _Type_ *pointer() const { return &s_obj_##_var_; }      \
+    inline _Type_ *safe_pointer() const { return &s_obj_##_var_; } \
+    _Type_ &get() const { return s_obj_##_var_; }                  \
+    bool is_native_tls() const { return true; }                    \
+                                                                   \
+   private:                                                        \
+    TF_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
+  } _var_;                                                         \
+  }  // namespace
+
 #endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_
