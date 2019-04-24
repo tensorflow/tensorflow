@@ -23,6 +23,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import saving
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -169,7 +170,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
                                               node.input_tensors)
         # Call layer.
         kwargs = node.arguments or {}
-        output_tensors = layer(computed_tensors, **kwargs)
+        output_tensors = base_layer.Layer.__call__(layer, computed_tensors,
+                                                   **kwargs)
 
         # Thread-safe way to keep track of what node was created.
         first_output_tensor = nest.flatten(output_tensors)[0]
