@@ -27,6 +27,8 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "public/gemmlowp.h"
+
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
@@ -1925,9 +1927,10 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const uint8_t* input_data, int32 input_zero_point,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
-                 float output_scale, gemmlowp::GemmContext* gemmlowp_context) {
+                 float output_scale, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
-
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);

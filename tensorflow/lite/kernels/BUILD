@@ -289,7 +289,6 @@ cc_library(
         ":activation_functor",
         ":cpu_backend_support",
         ":eigen_support",
-        ":gemmlowp_support",
         ":kernel_util",
         ":lstm_eval",
         ":op_macros",

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/legacy_reference_ops.h"
@@ -303,6 +304,202 @@ void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                     output_offset, output_multiplier, output_shift,
                     output_activation_min, output_activation_max, output_data,
                     output_dims);
+}
+
+template <typename T, typename TS>
+struct LegacyDepthwiseConvWorkerTask : public gemmlowp::Task {
+  LegacyDepthwiseConvWorkerTask(
+      const DepthwiseParams& params, const RuntimeShape& input_shape,
+      const T* input_data, const RuntimeShape& filter_shape,
+      const T* filter_data, const RuntimeShape& bias_shape, const TS* bias_data,
+      const RuntimeShape& output_shape, T* output_data, int thread_start,
+      int thread_end, int thread_dim)
+      : params_(params),
+        input_shape_(input_shape),
+        input_data_(input_data),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        thread_start_(thread_start),
+        thread_end_(thread_end),
+        thread_dim_(thread_dim) {}
+
+  void Run() override {
+    DepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
+                      filter_data_, bias_shape_, bias_data_, output_shape_,
+                      output_data_, thread_start_, thread_end_, thread_dim_);
+  }
+
+ private:
+  const DepthwiseParams& params_;
+  const RuntimeShape& input_shape_;
+  const T* input_data_;
+  const RuntimeShape& filter_shape_;
+  const T* filter_data_;
+  const RuntimeShape& bias_shape_;
+  const TS* bias_data_;
+  const RuntimeShape& output_shape_;
+  T* output_data_;
+  int thread_start_;
+  int thread_end_;
+  int thread_dim_;
+};
+
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int output_batches = output_shape.Dims(0);
+  const int output_rows = output_shape.Dims(1);
+  int thread_count_batch = HowManyConvThreads(output_shape, filter_shape, 0);
+  int thread_count_row = HowManyConvThreads(output_shape, filter_shape, 1);
+  int thread_dim, thread_count, thread_dim_size;
+  if (thread_count_batch > thread_count_row) {
+    thread_dim = 0;
+    thread_dim_size = output_batches;
+    thread_count = thread_count_batch;
+  } else {
+    thread_dim = 1;
+    thread_dim_size = output_rows;
+    thread_count = thread_count_row;
+  }
+
+  const int max_threads =
+      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
+  thread_count = std::max(1, std::min(thread_count, max_threads));
+
+  if (thread_count == 1) {
+    DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
+                      filter_data, bias_shape, bias_data, output_shape,
+                      output_data, /*thread_start=*/0,
+                      /*thread_end=*/output_rows, /*thread_dim=*/1);
+  } else {
+    std::vector<gemmlowp::Task*> tasks(thread_count);
+    int thread_start = 0;
+    for (int i = 0; i < thread_count; ++i) {
+      int thread_end =
+          thread_start + (thread_dim_size - thread_start) / (thread_count - i);
+      tasks[i] = new LegacyDepthwiseConvWorkerTask<uint8, int32>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      thread_start = thread_end;
+    }
+    gemmlowp_context->workers_pool()->Execute(tasks);
+  }
+}
+
+template <typename T, typename TS>
+struct LegacyPerChannelDepthwiseConvWorkerTask : public gemmlowp::Task {
+  LegacyPerChannelDepthwiseConvWorkerTask(
+      const DepthwiseParams& params, const int32* output_multiplier,
+      const int32* output_shift, const RuntimeShape& input_shape,
+      const T* input_data, const RuntimeShape& filter_shape,
+      const T* filter_data, const RuntimeShape& bias_shape, const TS* bias_data,
+      const RuntimeShape& output_shape, T* output_data, int thread_start,
+      int thread_end, int thread_dim)
+      : params_(params),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        input_shape_(input_shape),
+        input_data_(input_data),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        thread_start_(thread_start),
+        thread_end_(thread_end),
+        thread_dim_(thread_dim) {}
+
+  void Run() override {
+    optimized_integer_ops::DepthwiseConvImpl(
+        params_, output_multiplier_, output_shift_, input_shape_, input_data_,
+        filter_shape_, filter_data_, bias_shape_, bias_data_, output_shape_,
+        output_data_, thread_start_, thread_end_, thread_dim_);
+  }
+
+ private:
+  const DepthwiseParams& params_;
+  const int32* output_multiplier_;
+  const int32* output_shift_;
+  const RuntimeShape& input_shape_;
+  const T* input_data_;
+  const RuntimeShape& filter_shape_;
+  const T* filter_data_;
+  const RuntimeShape& bias_shape_;
+  const TS* bias_data_;
+  const RuntimeShape& output_shape_;
+  T* output_data_;
+  int thread_start_;
+  int thread_end_;
+  int thread_dim_;
+};
+
+inline void DepthwiseConvPerChannel(
+    const DepthwiseParams& params, const int32* output_multiplier,
+    const int32* output_shift, const RuntimeShape& input_shape,
+    const int8* input_data, const RuntimeShape& filter_shape,
+    const int8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
+    gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
+
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int output_batches = output_shape.Dims(0);
+  const int output_rows = output_shape.Dims(1);
+  int thread_count_batch = HowManyConvThreads(output_shape, filter_shape, 0);
+  int thread_count_row = HowManyConvThreads(output_shape, filter_shape, 1);
+  int thread_dim, thread_count, thread_dim_size;
+  if (thread_count_batch > thread_count_row) {
+    thread_dim = 0;
+    thread_dim_size = output_batches;
+    thread_count = thread_count_batch;
+  } else {
+    thread_dim = 1;
+    thread_dim_size = output_rows;
+    thread_count = thread_count_row;
+  }
+
+  const int max_threads =
+      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
+  thread_count = std::max(1, std::min(thread_count, max_threads));
+
+  if (thread_count == 1) {
+    optimized_integer_ops::DepthwiseConvImpl(
+        params, output_multiplier, output_shift, input_shape, input_data,
+        filter_shape, filter_data, bias_shape, bias_data, output_shape,
+        output_data, /*thread_start=*/0,
+        /*thread_end=*/output_rows, /*thread_dim=*/1);
+  } else {
+    std::vector<gemmlowp::Task*> tasks(thread_count);
+    int thread_start = 0;
+    for (int i = 0; i < thread_count; ++i) {
+      int thread_end =
+          thread_start + (thread_dim_size - thread_start) / (thread_count - i);
+      tasks[i] = new LegacyPerChannelDepthwiseConvWorkerTask<int8, int32>(
+          params, output_multiplier, output_shift, input_shape, input_data,
+          filter_shape, filter_data, bias_shape, bias_data, output_shape,
+          output_data, thread_start, thread_end, thread_dim);
+      thread_start = thread_end;
+    }
+    gemmlowp_context->workers_pool()->Execute(tasks);
+  }
 }
 
 inline void AddBiasAndEvalActivationFunction(const float* bias_data,

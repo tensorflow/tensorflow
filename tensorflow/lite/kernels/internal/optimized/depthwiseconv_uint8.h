@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -2106,8 +2107,10 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
