@@ -421,6 +421,7 @@ class Callback(object):
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
           Reference of the model being trained.
+      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
@@ -1342,7 +1343,7 @@ class TensorBoard(Callback):
 
     A writer will be created if it does not yet exist.
 
-    Args:
+    Arguments:
       writer_name: The name of the directory for which to create or
         retrieve a writer. Should be either `self._train_run_name` or
         `self._validation_run_name`.
@@ -1365,6 +1366,10 @@ class TensorBoard(Callback):
     """Writes scalar summaries for metrics on every training batch.
 
     Performs profiling if current batch is in profiler_batches.
+
+    Arguments:
+      batch: Integer, index of batch within the current epoch.
+      logs: Dict. Metric results for this batch.
     """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
