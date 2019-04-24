@@ -19,13 +19,12 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
 
 class CpuBackendContext final {
  public:
-  explicit CpuBackendContext(TfLiteContext* tflite_context);
+  CpuBackendContext();
   ~CpuBackendContext();
 
   gemmlowp::GemmContext* gemmlowp_context() const {
@@ -35,11 +34,9 @@ class CpuBackendContext final {
   void set_max_num_threads(int max_num_threads);
 
  private:
-  TfLiteContext* const tflite_context_;
   // gemmlowp context used to implement this CpuBackendContext.
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
-  CpuBackendContext() = delete;
   CpuBackendContext(const CpuBackendContext&) = delete;
 };
 

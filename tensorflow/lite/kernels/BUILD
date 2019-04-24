@@ -90,7 +90,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":op_macros",
-        "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",
     ],
 )

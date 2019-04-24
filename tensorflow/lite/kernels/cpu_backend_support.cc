@@ -54,7 +54,7 @@ void IncrementUsageCounter(TfLiteContext* context) {
     refcounted = new RefCountedCpuBackendContext;
     refcounted->type = kTfLiteCpuBackendContext;
     refcounted->Refresh = Refresh;
-    refcounted->cpu_backend_context.reset(new CpuBackendContext(context));
+    refcounted->cpu_backend_context.reset(new CpuBackendContext);
     if (context->recommended_num_threads != -1) {
       refcounted->cpu_backend_context->set_max_num_threads(
           context->recommended_num_threads);

@@ -16,13 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
 
-CpuBackendContext::CpuBackendContext(TfLiteContext* tflite_context)
-    : tflite_context_(tflite_context),
-      gemmlowp_context_(new gemmlowp::GemmContext) {}
+CpuBackendContext::CpuBackendContext()
+    : gemmlowp_context_(new gemmlowp::GemmContext) {}
 
 CpuBackendContext::~CpuBackendContext() {}
 
