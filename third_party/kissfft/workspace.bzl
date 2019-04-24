@@ -12,4 +12,5 @@ def repo():
             "https://github.com/mborgerding/kissfft/archive/cddf3833fdf24fa84b79be37efdcd348cae0e39c.tar.gz",
         ],
         build_file = "//third_party/kissfft:BUILD.bazel",
+        system_build_file = "//third_party/kissfft:BUILD.system",
     )
