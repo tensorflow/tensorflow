@@ -724,6 +724,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_PRELU:
+    case BuiltinOperator_RECIPROCAL:
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_RELU_N1_TO_1:
