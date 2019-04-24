@@ -261,17 +261,17 @@ __device__ T CudaShuffleSync(unsigned mask, T value, int src_lane,
 // See b/69446944.
 __device__ inline double CudaShuffleSync(unsigned mask, double value,
                                          int src_lane, int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = CudaShuffleSync(mask, hi, src_lane, width);
   lo = CudaShuffleSync(mask, lo, src_lane, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl(static_cast<int>(hi), src_lane, width);
   lo = __shfl(static_cast<int>(lo), src_lane, width);
   return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
@@ -300,17 +300,17 @@ __device__ inline T CudaShuffleUpSync(unsigned mask, T value, unsigned delta,
 __device__ inline double CudaShuffleUpSync(unsigned mask, double value,
                                            unsigned delta,
                                            int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = CudaShuffleUpSync(mask, hi, delta, width);
   lo = CudaShuffleUpSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_up(static_cast<int>(hi), delta, width);
   lo = __shfl_up(static_cast<int>(lo), delta, width);
   return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
@@ -339,17 +339,17 @@ __device__ inline T CudaShuffleDownSync(unsigned mask, T value, unsigned delta,
 __device__ inline double CudaShuffleDownSync(unsigned mask, double value,
                                              unsigned delta,
                                              int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = CudaShuffleDownSync(mask, hi, delta, width);
   lo = CudaShuffleDownSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_down(static_cast<int>(hi), delta, width);
   lo = __shfl_down(static_cast<int>(lo), delta, width);
   return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
@@ -397,17 +397,17 @@ __device__ inline Eigen::half GpuShuffleXorSync(unsigned mask,
 __device__ inline double CudaShuffleXorSync(unsigned mask, double value,
                                             int lane_mask,
                                             int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = CudaShuffleXorSync(mask, hi, lane_mask, width);
   lo = CudaShuffleXorSync(mask, lo, lane_mask, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_xor(static_cast<int>(hi), lane_mask, width);
   lo = __shfl_xor(static_cast<int>(lo), lane_mask, width);
   return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
@@ -583,18 +583,8 @@ __device__ inline double CudaAtomicAdd(double* ptr, double value) {
   return detail::CudaAtomicCasHelper(ptr,
                                      [value](double a) { return a + value; });
 }
-#elif __clang__
-// Clang cannot compile __nvvm_atom_add_gen_d builtin yet, use inline PTX.
-// see https://reviews.llvm.org/D39638
-__device__ inline double CudaAtomicAdd(double* ptr, double value) {
-  double result;
-  asm volatile("atom.add.f64 %0, [%1], %2;"
-               : "=d"(result)
-               : "l"(ptr), "d"(value)
-               : "memory");
-  return result;
-}
 #endif
+
 // CudaAtomicAdd
 // Specializations of CudaAtomicAdd for complex types, which CudaAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section
