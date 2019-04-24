@@ -175,9 +175,9 @@ std::vector<string> RunCppShapeInference(
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
-    TF_Status* out_status) {
+    TF_Status* status) {
   if (!PyList_Check(input_constant_tensor_values)) {
-    TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Invalid python value");
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "Invalid python value");
     return std::vector<string>();
   }
 
@@ -191,13 +191,13 @@ std::vector<string> RunCppShapeInference(
 
   std::vector<string> output;
   string input_tensors_needed_out;
-  tensorflow::Status status = RunCppShapeInferenceImpl(
+  tensorflow::Status s = RunCppShapeInferenceImpl(
       graph_def_version, serialized_node_def, input_serialized_shapes,
       input_constant_tensor_values_v, input_constant_tensor_as_shape_values,
       &output, &input_tensors_needed_out);
 
-  Set_TF_Status_from_Status(out_status, status);
-  if (!status.ok()) {
+  Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
     return std::vector<string>();
   }
   output.push_back(input_tensors_needed_out);

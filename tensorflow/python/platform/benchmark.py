@@ -216,7 +216,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
 
 @tf_export("test.benchmark_config")
 def benchmark_config():
-  """Returns a tf.ConfigProto for disabling the dependency optimizer.
+  """Returns a tf.compat.v1.ConfigProto for disabling the dependency optimizer.
 
     Returns:
       A TensorFlow ConfigProto object.

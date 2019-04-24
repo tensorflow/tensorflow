@@ -107,7 +107,7 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
     loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
-                                        grouped_outputs[0])
+                                        grouped_outputs[0], axis=None)
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
     all_outputs = [loss] + all_outputs
@@ -175,18 +175,6 @@ def validate_callbacks(input_callbacks, optimizer):
   """
   if input_callbacks:
     for callback in input_callbacks:
-      if callback not in [callbacks.TensorBoard, callbacks.ReduceLROnPlateau,
-                          callbacks.LearningRateScheduler, callbacks.CSVLogger,
-                          callbacks.EarlyStopping, callbacks.ModelCheckpoint,
-                          callbacks.TerminateOnNaN, callbacks.ProgbarLogger,
-                          callbacks.History, callbacks.RemoteMonitor]:
-        logging.warning('Your input callback is not one of the predefined '
-                        'Callbacks that supports DistributionStrategy. You '
-                        'might encounter an error if you access one of the '
-                        'model\'s attributes as part of the callback since '
-                        'these attributes are not set. You can access each of '
-                        'the individual distributed models using the '
-                        '`_grouped_model` attribute of your original model.')
       if isinstance(callback, (callbacks.LearningRateScheduler,
                                callbacks.ReduceLROnPlateau)):
 
@@ -394,7 +382,8 @@ def global_batch_size_supported(distribution_strategy):
 # TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def is_dataset_shape_fully_defined(dataset):

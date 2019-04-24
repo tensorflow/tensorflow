@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/conv.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -23,8 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
-#include "tensorflow/lite/kernels/gemm_support.h"
-#include "tensorflow/lite/kernels/internal/optimized/integer_ops/conv.h"
+#include "tensorflow/lite/kernels/gemmlowp_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -110,14 +111,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to use as scratch space for im2col, and
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
-  gemm_support::IncrementUsageCounter(context);
+  gemmlowp_support::IncrementUsageCounter(context);
   eigen_support::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
   eigen_support::DecrementUsageCounter(context);
-  gemm_support::DecrementUsageCounter(context);
+  gemmlowp_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -283,28 +284,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto compute_out_size = [padding](int image_size, int filter_size, int stride,
-                                    int dilation_rate) -> int {
-    int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
-    return padding == kTfLitePaddingSame
-               ? (image_size + stride - 1) / stride
-               : padding == kTfLitePaddingValid
-                     ? (image_size - effective_filter_size + stride) / stride
-                     : 0;
-  };
-
-  int out_width = compute_out_size(width, filter_width, params->stride_width,
-                                   params->dilation_width_factor);
-  int out_height =
-      compute_out_size(height, filter_height, params->stride_height,
-                       params->dilation_height_factor);
-
-  data->padding.height =
-      ComputePadding(params->stride_height, params->dilation_height_factor,
-                     height, filter_height, out_height);
-  data->padding.width =
-      ComputePadding(params->stride_width, params->dilation_width_factor, width,
-                     filter_width, out_width);
+  int out_width, out_height;
+  data->padding = ComputePaddingHeightWidth(
+      params->stride_height, params->stride_width,
+      params->dilation_height_factor, params->dilation_width_factor, height,
+      width, filter_height, filter_width, padding, &out_height, &out_width);
 
   TF_LITE_ENSURE(context, has_bias);
 
@@ -433,7 +417,8 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteTensor* filter, TfLiteTensor* bias,
                    TfLiteTensor* im2col, TfLiteTensor* hwcn_weights,
                    TfLiteTensor* output) {
-  gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+  gemmlowp::GemmContext* gemmlowp_context =
+      gemmlowp_support::GetFromContext(context);
 
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
@@ -468,24 +453,26 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_max = data->output_activation_max;
   switch (effective_kernel_type) {
     case kReference: {
-      reference_ops::Conv(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(filter), GetTensorData<uint8_t>(filter),
-          GetTensorShape(bias), GetTensorData<int32_t>(bias),
-          GetTensorShape(output), GetTensorData<uint8_t>(output),
-          GetTensorShape(im2col), GetTensorData<uint8_t>(im2col), gemm_context);
+      reference_ops::Conv(op_params, GetTensorShape(input),
+                          GetTensorData<uint8_t>(input), GetTensorShape(filter),
+                          GetTensorData<uint8_t>(filter), GetTensorShape(bias),
+                          GetTensorData<int32_t>(bias), GetTensorShape(output),
+                          GetTensorData<uint8_t>(output),
+                          GetTensorShape(im2col),
+                          GetTensorData<uint8_t>(im2col), gemmlowp_context);
       break;
     }
     case kGenericOptimized:
     case kMultithreadOptimized:
     case kCblasOptimized: {
       // There is only one optimized implementation for Quantized Conv.
-      optimized_ops::Conv(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(filter), GetTensorData<uint8_t>(filter),
-          GetTensorShape(bias), GetTensorData<int32_t>(bias),
-          GetTensorShape(output), GetTensorData<uint8_t>(output),
-          GetTensorShape(im2col), GetTensorData<uint8_t>(im2col), gemm_context);
+      optimized_ops::Conv(op_params, GetTensorShape(input),
+                          GetTensorData<uint8_t>(input), GetTensorShape(filter),
+                          GetTensorData<uint8_t>(filter), GetTensorShape(bias),
+                          GetTensorData<int32_t>(bias), GetTensorShape(output),
+                          GetTensorData<uint8_t>(output),
+                          GetTensorShape(im2col),
+                          GetTensorData<uint8_t>(im2col), gemmlowp_context);
       break;
     }
   }
@@ -531,8 +518,8 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     case kMultithreadOptimized:
     case kCblasOptimized: {
 #ifdef GEMMLOWP_NEON
-      gemmlowp::GemmContext* gemm_context =
-          gemm_support::GetFromContext(context);
+      gemmlowp::GemmContext* gemmlowp_context =
+          gemmlowp_support::GetFromContext(context);
       optimized_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -540,7 +527,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<int8>(filter), GetTensorShape(bias),
           GetTensorData<int32>(bias), GetTensorShape(output),
           GetTensorData<int8>(output), GetTensorShape(im2col),
-          GetTensorData<int8>(im2col), gemm_context);
+          GetTensorData<int8>(im2col), gemmlowp_context);
 #endif
       break;
     }

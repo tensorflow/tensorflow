@@ -35,16 +35,16 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
 
   ```python
   v = tf.Variable(0, name='my_variable')
-  sess = tf.Session()
-  tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
+  sess = tf.compat.v1.Session()
+  tf.io.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
   ```
 
   or
 
   ```python
   v = tf.Variable(0, name='my_variable')
-  sess = tf.Session()
-  tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
+  sess = tf.compat.v1.Session()
+  tf.io.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
   ```
 
   Args:

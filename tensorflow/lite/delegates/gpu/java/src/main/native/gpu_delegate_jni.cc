@@ -17,9 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_createDelegate(JNIEnv* env,
-                                                                 jclass clazz) {
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
+    JNIEnv* env, jclass clazz) {
   // Auto-choosing the best performing config for closed release.
   TfLiteGpuDelegateOptions options;
   options.metadata = nullptr;
@@ -30,14 +29,13 @@ Java_org_tensorflow_lite_experimental_GpuDelegate_createDelegate(JNIEnv* env,
   return reinterpret_cast<jlong>(TfLiteGpuDelegateCreate(&options));
 }
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_deleteDelegate(
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
     JNIEnv* env, jclass clazz, jlong delegate) {
   TfLiteGpuDelegateDelete(reinterpret_cast<TfLiteDelegate*>(delegate));
 }
 
 JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_bindGlBufferToTensor(
+Java_org_tensorflow_lite_gpu_GpuDelegate_bindGlBufferToTensor(
     JNIEnv* env, jclass clazz, jlong delegate, jint tensor_index, jint ssbo) {
   return TfLiteGpuDelegateBindBufferToTensor(
              reinterpret_cast<TfLiteDelegate*>(delegate),

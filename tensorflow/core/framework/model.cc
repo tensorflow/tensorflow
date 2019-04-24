@@ -439,7 +439,15 @@ void Model::Optimize(int64 cpu_budget) {
         continue;
       }
       pair.second->value++;
-      int64 delta = output_time - OutputTime(snapshot);
+      int64 new_output_time = OutputTime(snapshot);
+      int64 delta = output_time - new_output_time;
+      if (delta < 0) {
+        VLOG(3) << "Increasing the parallelism of tunable parameter "
+                << pair.first << " resulted in slowdown (before=" << output_time
+                << ", after=" << new_output_time
+                << "). This should never happen because the latency "
+                   "should be monotonic w.r.t. to parallelism.";
+      }
       if (delta > best_delta) {
         best_delta = delta;
         best_parameter = pair.second.get();

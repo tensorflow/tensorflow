@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -78,28 +79,6 @@ string AlgorithmToString(const AlgorithmDesc& algo) {
 string NumBytesToString(int64 bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
-}
-
-// Acquires a process-global lock on the device pointed to by the given
-// StreamExecutor.
-//
-// This is used to prevent other XLA instances from trying to autotune on this
-// device while we're using it.
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
-                   tensorflow::mutex>();
-
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-  return tensorflow::mutex_lock{it->second};
 }
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {

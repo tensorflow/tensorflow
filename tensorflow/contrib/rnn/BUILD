@@ -345,6 +345,7 @@ tf_kernel_library(
 py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":checkpoint_convert_lib"],
 )
@@ -368,6 +369,7 @@ py_test(
     name = "checkpoint_convert_test",
     size = "small",
     srcs = ["python/tools/checkpoint_convert_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

@@ -56,10 +56,12 @@ cuda_py_test(
     name = "parameter_server_strategy_test",
     srcs = ["parameter_server_strategy_test.py"],
     additional_deps = [
+        ":parameter_server_strategy",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
-        ":parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_test_lib",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
@@ -144,6 +146,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # TODO(b/130299192)
     ],
 )
 
@@ -325,42 +328,7 @@ distribute_py_test(
     ],
     deps = [
         ":mirrored_strategy",
-        ":tpu_strategy",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/distribute:keras_test_lib",
-    ],
-)
-
-distribute_py_test(
-    name = "metrics_v1_test",
-    srcs = ["metrics_v1_test.py"],
-    main = "metrics_v1_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":tpu_strategy",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking:util",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "zero_batch_test",
-    srcs = ["zero_batch_test.py"],
-    main = "zero_batch_test.py",
-    deps = [
-        ":mirrored_strategy",
-        ":tpu_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

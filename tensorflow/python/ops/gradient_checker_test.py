@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.test.compute_gradient and tf.compute_gradient_error."""
+"""Tests for tf.compat.v1.test.compute_gradient and tf.compute_gradient_error."""
 
 from __future__ import absolute_import
 from __future__ import division

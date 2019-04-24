@@ -82,16 +82,91 @@ limitations under the License.
 %rename("%s") TFE_Py_RegisterVSpace;
 %rename("%s") TFE_Py_EncodeArg;
 %rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_ListPhysicalDevices;
 %rename("%s") TF_PickUnusedPortOrDie;
-%rename("%s") TFE_MonitoringSetGauge;
-%rename("%s") TFE_MonitoringAddCounter;
-%rename("%s") TFE_MonitoringAddSampler;
+%rename("%s") TFE_MonitoringCounterCellIncrementBy;
+%rename("%s") TFE_MonitoringCounterCellValue;
+%rename("%s") TFE_MonitoringNewCounter0;
+%rename("%s") TFE_MonitoringDeleteCounter0;
+%rename("%s") TFE_MonitoringGetCellCounter0;
+%rename("%s") TFE_MonitoringNewCounter1;
+%rename("%s") TFE_MonitoringDeleteCounter1;
+%rename("%s") TFE_MonitoringGetCellCounter1;
+%rename("%s") TFE_MonitoringNewCounter2;
+%rename("%s") TFE_MonitoringDeleteCounter2;
+%rename("%s") TFE_MonitoringGetCellCounter2;
+%rename("%s") TFE_MonitoringIntGaugeCellSet;
+%rename("%s") TFE_MonitoringIntGaugeCellValue;
+%rename("%s") TFE_MonitoringNewIntGauge0;
+%rename("%s") TFE_MonitoringDeleteIntGauge0;
+%rename("%s") TFE_MonitoringGetCellIntGauge0;
+%rename("%s") TFE_MonitoringNewIntGauge1;
+%rename("%s") TFE_MonitoringDeleteIntGauge1;
+%rename("%s") TFE_MonitoringGetCellIntGauge1;
+%rename("%s") TFE_MonitoringNewIntGauge2;
+%rename("%s") TFE_MonitoringDeleteIntGauge2;
+%rename("%s") TFE_MonitoringGetCellIntGauge2;
+%rename("%s") TFE_MonitoringStringGaugeCellSet;
+%rename("%s") TFE_MonitoringStringGaugeCellValue;
+%rename("%s") TFE_MonitoringNewStringGauge0;
+%rename("%s") TFE_MonitoringDeleteStringGauge0;
+%rename("%s") TFE_MonitoringGetCellStringGauge0;
+%rename("%s") TFE_MonitoringNewStringGauge1;
+%rename("%s") TFE_MonitoringDeleteStringGauge1;
+%rename("%s") TFE_MonitoringGetCellStringGauge1;
+%rename("%s") TFE_MonitoringNewStringGauge2;
+%rename("%s") TFE_MonitoringDeleteStringGauge2;
+%rename("%s") TFE_MonitoringGetCellStringGauge2;
+%rename("%s") TFE_MonitoringBoolGaugeCellSet;
+%rename("%s") TFE_MonitoringBoolGaugeCellValue;
+%rename("%s") TFE_MonitoringNewBoolGauge0;
+%rename("%s") TFE_MonitoringDeleteBoolGauge0;
+%rename("%s") TFE_MonitoringGetCellBoolGauge0;
+%rename("%s") TFE_MonitoringNewBoolGauge1;
+%rename("%s") TFE_MonitoringDeleteBoolGauge1;
+%rename("%s") TFE_MonitoringGetCellBoolGauge1;
+%rename("%s") TFE_MonitoringNewBoolGauge2;
+%rename("%s") TFE_MonitoringDeleteBoolGauge2;
+%rename("%s") TFE_MonitoringGetCellBoolGauge2;
+%rename("%s") TFE_MonitoringSamplerCellAdd;
+%rename("%s") TFE_MonitoringSamplerCellValue;
+%rename("%s") TFE_MonitoringNewExponentialBuckets;
+%rename("%s") TFE_MonitoringDeleteBuckets;
+%rename("%s") TFE_MonitoringNewSampler0;
+%rename("%s") TFE_MonitoringDeleteSampler0;
+%rename("%s") TFE_MonitoringGetCellSampler0;
+%rename("%s") TFE_MonitoringNewSampler1;
+%rename("%s") TFE_MonitoringDeleteSampler1;
+%rename("%s") TFE_MonitoringGetCellSampler1;
+%rename("%s") TFE_MonitoringNewSampler2;
+%rename("%s") TFE_MonitoringDeleteSampler2;
+%rename("%s") TFE_MonitoringGetCellSampler2;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+
+static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
+  std::vector<string> devices;
+  tensorflow::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  tensorflow::Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
+    Py_RETURN_NONE;
+  };
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
+}
 %}
+static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -163,10 +238,33 @@ limitations under the License.
 %typemap(in) const char* name {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
+
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* description {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 // For const parameters in a function, SWIG pretty much ignores the const.
 // See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
 // Hence the 'const_cast'.
 %typemap(in) const char* label {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label1 {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label2 {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
@@ -313,6 +411,9 @@ limitations under the License.
 %typemap(out) TF_AttrType;
 %typemap(in, numinputs=0) TF_Status *out_status;
 %typemap(argout) unsigned char* is_list;
+%typemap(in) const char* description;
+%typemap(in) const char* label1;
+%typemap(in) const char* label2;
 %typemap(in) (TFE_Context*);
 %typemap(out) (TFE_Context*);
 %typemap(in) TFE_OutputTensorHandles* outputs (TFE_OutputTensorHandles temp);

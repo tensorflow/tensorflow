@@ -35,16 +35,14 @@ XlaInterpreterExecutor::~XlaInterpreterExecutor() {}
 
 void *XlaInterpreterExecutor::Allocate(uint64 size) { return new char[size]; }
 
-void *XlaInterpreterExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                                uint64 offset_bytes,
-                                                uint64 /*size_bytes*/) {
+void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
+                                           uint64 offset_bytes,
+                                           uint64 /*size_bytes*/) {
   return parent + offset_bytes;
 }
 
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
-  if (!mem->is_sub_buffer()) {
-    delete[] static_cast<char *>(mem->opaque());
-  }
+  delete[] static_cast<char *>(mem->opaque());
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,

@@ -61,6 +61,40 @@ class LivenessTest(test.TestCase):
       expected = (expected,)
     self.assertSetEqual(live_in_strs, set(expected))
 
+  def test_live_out_try_block(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], 'x')
+    self.assertHasLiveOut(fn_body[0].body[0], 'x')
+
+  def test_live_out_if_inside_except(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          if b > 0:
+            x = b
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], 'x')
+    self.assertHasLiveOut(fn_body[0].body[0], 'x')
+    self.assertHasLiveOut(fn_body[0].body[0].handlers[0].body[0], 'x')
+
   def test_live_out_stacked_if(self):
 
     def test_fn(x, a):
@@ -176,6 +210,89 @@ class LivenessTest(test.TestCase):
     fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], ())
+
+  def test_live_in_pass(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        pass
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('x',))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_in_return_statement(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        return x
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('x',))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_in_try_block(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('x',))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_in_try_orelse(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+        else:
+          x = b
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'b', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('b', 'x'))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_in_if_inside_except(self):
+
+    def test_fn(x, a, b, c):  # pylint:disable=unused-argument
+      if a > 0:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          if b > 0:
+            x = b
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'b', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('b', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0].handlers[0].body[0], ('b', 'x'))
+    self.assertHasLiveIn(fn_body[1], ('x',))
 
   def test_live_in_stacked_if(self):
 

@@ -681,11 +681,11 @@ name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:
 
 ```python
-# Assuming than 'conv1/weights' should be restored from 'vgg16/conv1/weights'
+# Assuming that 'conv1/weights' should be restored from 'vgg16/conv1/weights'
 def name_in_checkpoint(var):
   return 'vgg16/' + var.op.name
 
-# Assuming than 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
+# Assuming that 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
 def name_in_checkpoint(var):
   if "weights" in var.op.name:
     return var.op.name.replace("weights", "params1")

@@ -285,7 +285,8 @@ class Model(network.Network):
     # Set DistributionStrategy specific parameters.
     self._distributed_model_cache = {}
 
-    if self._distribution_strategy is not None:
+    if (not context.executing_eagerly() and
+        self._distribution_strategy is not None):
       # Ensures a Session is created and configured correctly for Distribution
       # Strategy.
       K.configure_and_create_distributed_session(self._distribution_strategy)
@@ -1328,13 +1329,8 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.IteratorV2) or
-          (isinstance(inputs, dataset_ops.DatasetV2))):
-        inputs = training_utils.cast_if_floating_dtype(inputs)
-      elif isinstance(inputs, collections.Sequence):
-        inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
-
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1685,21 +1681,26 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          # Reset reduction on the loss so that we can get the per sample loss
-          # value. We use this to get both the stateless and stateful loss
-          # values without having to compute the underlying loss function
-          # twice.
           weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
-            current_loss_reduction = loss_fn.reduction
-            loss_fn.reduction = losses_utils.ReductionV2.NONE
-            weighted_losses = loss_fn(
-                y_true, y_pred, sample_weight=sample_weight)
-            loss_fn.reduction = current_loss_reduction
+            per_sample_losses = loss_fn.call(y_true, y_pred)
+            weighted_losses = losses_utils.compute_weighted_loss(
+                per_sample_losses,
+                sample_weight=sample_weight,
+                reduction=losses_utils.ReductionV2.NONE)
+            loss_reduction = loss_fn.reduction
+
+            # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
+            # compile use cases.
+            if loss_reduction == losses_utils.ReductionV2.AUTO:
+              loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
-                weighted_losses, reduction=current_loss_reduction)
+                weighted_losses, reduction=loss_reduction)
+            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
+              output_loss = losses_utils.scale_loss_for_distribution(
+                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1707,6 +1708,8 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            # For custom losses we assume reduction was mean.
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor and function for the loss.
@@ -1795,23 +1798,48 @@ class Model(network.Network):
       first_layer = layers[0]
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
+        split_batch_size = self._distribution_strategy and \
+            distributed_training_utils.global_batch_size_supported(
+                self._distribution_strategy)
+        if split_batch_size:
+          num_replicas = self._distribution_strategy.num_replicas_in_sync
 
         # Check `batch_size` argument is consistent with InputLayer.
-        if batch_size is not None and batch_size != static_batch_size:
-          raise ValueError('The `batch_size` argument value {} is incompatible '
-                           'with the specified batch size of your Input Layer: '
-                           '{}'.format(batch_size, static_batch_size))
+        if batch_size is not None:
+          if split_batch_size:
+            if batch_size % num_replicas != 0:
+              raise ValueError('The `batch_size` argument value {} cannot be '
+                               'divisible by number of replicas {}'.format(
+                                   batch_size, num_replicas))
+            per_replica_batch_size = batch_size // num_replicas
+          else:
+            per_replica_batch_size = batch_size
+
+          if per_replica_batch_size != static_batch_size:
+            raise ValueError('The `batch_size` argument value {} is '
+                             'incompatible with the specified batch size of '
+                             'your Input Layer: {}'.format(
+                                 per_replica_batch_size, static_batch_size))
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorV2)):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
-          if ds_batch_size is not None and ds_batch_size != static_batch_size:
-            raise ValueError('The batch output shape of your `Dataset` is {}, '
-                             'which is incompatible with the specified batch '
-                             'size of your Input Layer: {}'.format(
-                                 ds_batch_size, static_batch_size))
+          if ds_batch_size is not None:
+            if split_batch_size:
+              if ds_batch_size % num_replicas != 0:
+                raise ValueError(
+                    'The batch output shape of your `Dataset` {} '
+                    'cannot be divisible by number of replicas {}'.format(
+                        ds_batch_size, num_replicas))
+              ds_batch_size = ds_batch_size // num_replicas
+
+            if ds_batch_size != static_batch_size:
+              raise ValueError('The batch output shape of your `Dataset` is '
+                               '{}, which is incompatible with the specified '
+                               'batch size of your Input Layer: {}'.format(
+                                   ds_batch_size, static_batch_size))
 
         # Set inferred batch size from the InputLayer.
         if steps is None:
@@ -1823,9 +1851,24 @@ class Model(network.Network):
     return batch_size
 
   def _list_functions_for_serialization(self):
-    return {
-        '_default_save_signature': saving_utils.trace_model_call(self)
-    }
+    """If available, saves a trace of call using self.inputs."""
+    all_functions = super(Model, self)._list_functions_for_serialization()
+    try:
+      # pylint:disable=pointless-statement
+      self.inputs
+      self.input_names
+      # pylint:enable=pointless-statement
+    except AttributeError:
+      # If the model does not have inputs set, because it was not called or its
+      # input shapes were not recorded, we won't have a signature so can't trace
+      # a function. But the user may still save an object with this Model
+      # attached; we won't fail the whole tf.saved_model.save.
+      pass
+    else:
+      if '_default_save_signature' not in all_functions:
+        all_functions['_default_save_signature'] = (
+            saving_utils.trace_model_call(self))
+    return all_functions
 
   def _set_sample_weight_attributes(self, sample_weight_mode):
     """Sets sample weight related attributes on the model."""
@@ -2748,10 +2791,12 @@ class DistributedCallbackModel(Model):
   def __getattr__(self, item):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
-    if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + ' of the '
-                      'DistributedCallbackModel that may not have been set '
-                      'correctly.')
+    if item in ('_setattr_tracking', '_layers'):
+      return super(DistributedCallbackModel, self).__getattr__(item)
+
+    logging.warning('You are accessing attribute ' + item + ' of the '
+                    'DistributedCallbackModel that may not have been set '
+                    'correctly.')
 
 
 def _is_symbolic_tensor(x):

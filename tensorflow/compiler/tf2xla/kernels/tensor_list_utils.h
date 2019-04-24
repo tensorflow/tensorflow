@@ -35,6 +35,10 @@ bool IsTensorListInput(XlaOpKernelContext* ctx, int index);
 Status BuildTensorList(const xla::XlaOp& buffer, const xla::XlaOp& push_index,
                        xla::XlaOp* output_list);
 
+// Returns XLA PrimitiveType for the TensorList.
+Status GetTensorListPrimitiveType(const xla::XlaOp& op,
+                                  xla::PrimitiveType* type);
+
 // Returns the buffer for the TensorList.
 Status GetTensorListBuffer(const xla::XlaOp& op, xla::XlaOp* buffer);
 
@@ -61,6 +65,10 @@ Status IsTensorListInitialized(const xla::XlaOp& op, bool* is_initialized);
 Status InitializeTensorList(const xla::XlaOp& uninitialized_list,
                             const TensorShape& buffer_shape,
                             xla::XlaOp* output_list);
+
+// Returns a TensorList filled with zero.
+Status CreateZerosList(XlaOpKernelContext* ctx, const TensorShape& buffer_shape,
+                       xla::PrimitiveType type, xla::XlaOp* list);
 
 }  // namespace tensorflow
 

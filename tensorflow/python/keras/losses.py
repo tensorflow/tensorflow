@@ -22,6 +22,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
@@ -53,15 +54,40 @@ class Loss(object):
       return K.mean(math_ops.square(y_pred - y_true), axis=-1)
   ```
 
+  When used with `tf.distribute.Strategy`, outside of built-in training loops
+  such as `tf.keras` `compile` and `fit`, please use 'SUM' or 'NONE' reduction
+  types, and reduce losses explicitly in your training loop. Using 'AUTO' or
+  'SUM_OVER_BATCH_SIZE' will raise an error.
+
+  Please see
+  https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for more
+  details on this.
+
+  You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+  ```
+  with strategy.scope():
+    loss_obj = tf.keras.losses.CategoricalCrossentropy(
+        reduction=tf.keras.losses.Reduction.NONE)
+    ....
+    loss = (tf.reduce_sum(loss_obj(labels, predictions)) *
+            (1. / global_batch_size))
+  ```
+
   Args:
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: Optional name for the op.
   """
 
-  def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name=None):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name=None):
+    losses_utils.ReductionV2.validate(reduction)
     self.reduction = reduction
     self.name = name
 
@@ -95,7 +121,7 @@ class Loss(object):
                         (y_pred, y_true, sample_weight)):
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
-          losses, sample_weight, reduction=self.reduction)
+          losses, sample_weight, reduction=self._get_reduction())
 
   @classmethod
   def from_config(cls, config):
@@ -123,6 +149,29 @@ class Loss(object):
     """
     NotImplementedError('Must be implemented in subclasses.')
 
+  def _get_reduction(self):
+    """Handles `AUTO` reduction cases and returns the reduction value."""
+    if distribution_strategy_context.has_strategy() and (
+        self.reduction == losses_utils.ReductionV2.AUTO or
+        self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+      raise ValueError(
+          'Please use `tf.keras.losses.Reduction.SUM` or '
+          '`tf.keras.losses.Reduction.NONE` for loss reduction when losses are '
+          'used with `tf.distribute.Strategy` outside of the built-in training '
+          'loops. You can implement '
+          '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
+          'size like:\n```\nwith strategy.scope():\n'
+          '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
+          'reduction=tf.keras.losses.reduction.None)\n....\n'
+          '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
+          '(1. / global_batch_size)\n```\nPlease see '
+          'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
+          ' for more details.')
+
+    if self.reduction == losses_utils.ReductionV2.AUTO:
+      return losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
+    return self.reduction
+
 
 class LossFunctionWrapper(Loss):
   """Wraps a loss function in the `Loss` class.
@@ -131,14 +180,21 @@ class LossFunctionWrapper(Loss):
     fn: The loss function to wrap, with signature `fn(y_true, y_pred,
       **kwargs)`.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: (Optional) name for the loss.
     **kwargs: The keyword arguments that are passed on to `fn`.
   """
 
   def __init__(self,
                fn,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name=None,
                **kwargs):
     super(LossFunctionWrapper, self).__init__(reduction=reduction, name=name)
@@ -189,7 +245,7 @@ class MeanSquaredError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='mean_squared_error'):
     super(MeanSquaredError, self).__init__(
         mean_squared_error, name=name, reduction=reduction)
@@ -219,7 +275,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='mean_absolute_error'):
     super(MeanAbsoluteError, self).__init__(
         mean_absolute_error, name=name, reduction=reduction)
@@ -249,7 +305,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='mean_absolute_percentage_error'):
     super(MeanAbsolutePercentageError, self).__init__(
         mean_absolute_percentage_error, name=name, reduction=reduction)
@@ -279,7 +335,7 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='mean_squared_logarithmic_error'):
     super(MeanSquaredLogarithmicError, self).__init__(
         mean_squared_logarithmic_error, name=name, reduction=reduction)
@@ -320,17 +376,22 @@ class BinaryCrossentropy(LossFunctionWrapper):
       compute the loss between the predicted labels and a smoothed version of
       the true labels, where the smoothing squeezes the labels towards 0.5.
       Larger values of `label_smoothing` correspond to heavier smoothing.
-    reduction: (Optional) The type of `tf.keras.losses.Reduction` to use to
-      combine the computed loss values for the individual examples into a single
-      loss value for the entire batch of examples. Defaults to
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
       `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: (Optional) Name for the op.
   """
 
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='binary_crossentropy'):
     super(BinaryCrossentropy, self).__init__(
         binary_crossentropy,
@@ -379,14 +440,21 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       `label_smoothing=0.2` means that we will use a value of `0.1` for label
       `0` and `0.9` for label `1`"
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: Optional name for the op.
   """
 
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='categorical_crossentropy'):
     super(CategoricalCrossentropy, self).__init__(
         categorical_crossentropy,
@@ -426,19 +494,26 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.SparseCategoricalCrossentropy())
-  ````
+  ```
 
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: Optional name for the op.
   """
 
   def __init__(self,
                from_logits=False,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name=None):
     super(SparseCategoricalCrossentropy, self).__init__(
         sparse_categorical_crossentropy,
@@ -473,9 +548,7 @@ class Hinge(LossFunctionWrapper):
   ```
   """
 
-  def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name=None):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name=None):
     super(Hinge, self).__init__(hinge, name=name, reduction=reduction)
 
 
@@ -506,7 +579,7 @@ class SquaredHinge(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='squared_hinge'):
     super(SquaredHinge, self).__init__(
         squared_hinge, name=name, reduction=reduction)
@@ -533,7 +606,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='categorical_hinge'):
     super(CategoricalHinge, self).__init__(
         categorical_hinge, name=name, reduction=reduction)
@@ -561,9 +634,7 @@ class Poisson(LossFunctionWrapper):
   ```
   """
 
-  def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name='poisson'):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='poisson'):
     super(Poisson, self).__init__(poisson, name=name, reduction=reduction)
 
 
@@ -589,9 +660,7 @@ class LogCosh(LossFunctionWrapper):
   ```
   """
 
-  def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name='logcosh'):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='logcosh'):
     super(LogCosh, self).__init__(logcosh, name=name, reduction=reduction)
 
 
@@ -618,7 +687,7 @@ class KLDivergence(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='kullback_leibler_divergence'):
     super(KLDivergence, self).__init__(
         kullback_leibler_divergence, name=name, reduction=reduction)
@@ -655,13 +724,20 @@ class Huber(LossFunctionWrapper):
     delta: A float, the point where the Huber loss function changes from a
       quadratic to linear.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: Optional name for the op.
   """
 
   def __init__(self,
                delta=1.0,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='huber_loss'):
     super(Huber, self).__init__(
         huber_loss, name=name, reduction=reduction, delta=delta)
@@ -961,13 +1037,20 @@ class CosineSimilarity(LossFunctionWrapper):
     axis: (Optional) Defaults to -1. The dimension along which the cosine
       similarity is computed.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
     name: Optional name for the op.
   """
 
   def __init__(self,
                axis=-1,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.AUTO,
                name='cosine_similarity'):
     super(CosineSimilarity, self).__init__(
         cosine_similarity, reduction=reduction, name=name, axis=axis)

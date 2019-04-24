@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -78,6 +79,7 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
+  structure = composite_tensor.replace_composites_with_components(structure)
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
@@ -108,7 +110,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = nest.flatten_with_tuple_paths(structure)
+  flattened = nest.flatten_with_tuple_paths(structure, expand_composites=True)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
@@ -120,7 +122,7 @@ def convert_structure_to_signature(structure, arg_names=None):
     ]
 
   mapped = [encode_arg(arg, path) for path, arg in flattened]
-  return nest.pack_sequence_as(structure, mapped)
+  return nest.pack_sequence_as(structure, mapped, expand_composites=True)
 
 
 class FuncGraph(ops.Graph):
@@ -368,7 +370,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     # When capturing by value, do the read outside
     reverse_captures = dict((v, k) for k, v in self.captures.items())
@@ -381,8 +382,14 @@ class FuncGraph(ops.Graph):
             context.context())
       else:
         op = ops.get_default_graph().create_op(
-            op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_shapes, compute_device)
+            op_type,
+            uncaptured_inputs,
+            dtypes,
+            input_types,
+            name,
+            attrs,
+            op_def,
+            compute_device=compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -430,11 +437,11 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
-      return self._capture_by_value(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
+      return self._capture_by_value(op_type, inputs, dtypes, input_types, name,
+                                    attrs, op_def, compute_device)
 
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
@@ -582,10 +589,10 @@ def func_graph_from_py_func(name,
       graphs, and failing that will default to False.
     override_flat_arg_shapes: An optional list of instances that are either
       `None` or `TensorShape`.  The length must match that of
-      `nest.flatten((args, kwargs))`.  The entries containing value `None`
-      must match entries in flattened arguments containing non-tensors, while
-      entries containing a `TensorShape` must match entries in the flattened
-      arguments containing tensors.
+      `nest.flatten((args, kwargs), expand_composites=True)`.  The entries
+      containing value `None` must match entries in flattened arguments
+      containing non-tensors, while entries containing a `TensorShape` must
+      match entries in the flattened arguments containing tensors.
 
   Returns:
     A FuncGraph.
@@ -622,7 +629,7 @@ def func_graph_from_py_func(name,
 
     # Creates and names placeholders for all arguments.
     if override_flat_arg_shapes is not None:
-      flat_args = nest.flatten(args)
+      flat_args = nest.flatten(args, expand_composites=True)
       arg_shapes = override_flat_arg_shapes[:len(flat_args)]
       kwarg_shapes = override_flat_arg_shapes[len(flat_args):]
     else:
@@ -641,8 +648,8 @@ def func_graph_from_py_func(name,
         convert_structure_to_signature(func_args, arg_names),
         convert_structure_to_signature(func_kwargs))
 
-    flat_func_args = nest.flatten(func_args)
-    flat_func_kwargs = nest.flatten(func_kwargs)
+    flat_func_args = nest.flatten(func_args, expand_composites=True)
+    flat_func_kwargs = nest.flatten(func_kwargs, expand_composites=True)
     # Temporarily set inputs to allow graph building code to inspect
     # them. Reassigned below.
     func_graph.inputs = [arg for arg in flat_func_args + flat_func_kwargs
@@ -651,9 +658,10 @@ def func_graph_from_py_func(name,
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
-    func_args_before = nest.pack_sequence_as(func_args, flat_func_args)
+    func_args_before = nest.pack_sequence_as(func_args, flat_func_args,
+                                             expand_composites=True)
     func_kwargs_before = nest.pack_sequence_as(
-        func_kwargs, flat_func_kwargs)
+        func_kwargs, flat_func_kwargs, expand_composites=True)
 
     def convert(x):
       """Converts a function output to a Tensor."""
@@ -706,9 +714,10 @@ def func_graph_from_py_func(name,
 
       func_outputs = python_func(*func_args, **func_kwargs)
 
-      # invariant: `func_outputs` contains only Tensors, IndexedSlices,
-      # SparseTensors, TensorArrays and `None`s.
-      func_outputs = nest.map_structure(convert, func_outputs)
+      # invariant: `func_outputs` contains only Tensors, CompositeTensors,
+      # TensorArrays and `None`s.
+      func_outputs = nest.map_structure(convert, func_outputs,
+                                        expand_composites=True)
 
       check_mutation(func_args_before, func_args)
       check_mutation(func_kwargs_before, func_kwargs)
@@ -720,7 +729,8 @@ def func_graph_from_py_func(name,
     graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
     arg_variables = set()
     inputs = []
-    for arg in nest.flatten(func_args) + nest.flatten(func_kwargs):
+    for arg in (nest.flatten(func_args, expand_composites=True) +
+                nest.flatten(func_kwargs, expand_composites=True)):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
@@ -788,19 +798,19 @@ def check_mutation(n1, n2):
             "operations that alter input arguments, "
             "such as `list.pop`, `list.append`")
   try:
-    nest.assert_same_structure(n1, n2)
+    nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
     raise ValueError(errmsg)
 
-  for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
+  for arg1, arg2 in zip(nest.flatten(n1, expand_composites=True),
+                        nest.flatten(n2, expand_composites=True)):
     if arg1 is not arg2:
       raise ValueError(errmsg)
 
 
+# TODO(edloper): If TensorArray becomes a CompositeTensor, then delete this.
 def flatten(sequence):
-  """Like `nest.flatten` but also unpacks other Tensor-like objects.
-
-  Flattens non-tensor objects into their constituent tensors.
+  """Like nest.flatten w/ expand_composites, but returns flow for TensorArrays.
 
   Args:
     sequence: A nested structure of Tensors, CompositeTensors, and
@@ -809,15 +819,15 @@ def flatten(sequence):
   Returns:
     A list of tensors.
   """
-  # TODO(akshayka): Support `SparseTensor` in a similar fashion.
   flat_sequence = nest.flatten(sequence, expand_composites=True)
   return [
       item.flow if isinstance(item, tensor_array_ops.TensorArray) else item
       for item in flat_sequence]
 
 
+# TODO(edloper): If TensorArray becomes a CompositeTensor, then delete this.
 def pack_sequence_as(structure, flat_sequence):
-  """Like `nest.pack_sequence_as` but also packs other Tensor-like objects.
+  """Like `nest.pack_sequence_as` but also builds TensorArrays from flows.
 
   Args:
     structure: The structure to pack into. May contain Tensors,
@@ -839,7 +849,6 @@ def pack_sequence_as(structure, flat_sequence):
       flat_sequence[i] = tensor_array_ops.build_ta_with_new_flow(
           old_ta=flattened_structure[i], flow=flat_sequence[i])
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
-
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):
@@ -869,9 +878,9 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     structure: The original argument list or dictionary.
     flat_shapes: A flat list of values that are either `None` or
       instances of `TensorShape`.  If provided, then length must match
-      that of `nest.flatten(args)`; and locations where `args` are
-      instances of `Tensor` must have a corresponding `TensorShape` in
-      `flat_shapes`.  May be `None`, in which case exact shapes are read
+      that of `nest.flatten(args, expand_composites=True)`; and locations where
+      `args` are instances of `Tensor` must have a corresponding `TensorShape`
+      in `flat_shapes`.  May be `None`, in which case exact shapes are read
       directly from the args.
 
   Returns:
@@ -879,7 +888,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
 
   Raises:
     RuntimeError: if `flat_shapes` is provided, but
-     `len(flat_shapes) != len(nest.flatten(args))`.
+     `len(flat_shapes) != len(nest.flatten(args, expand_composites=True))`.
     RuntimeError: if a shape from `flat_shapes` is not None
      for an argument that is not a `Tensor`, `TensorSpec`,
      or `ResourceVariable`.
@@ -891,7 +900,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
   if flat_shapes is None:
     shapes_iter = itertools.repeat(None)
   else:
-    len_flat_args = len(nest.flatten(args))
+    len_flat_args = len(nest.flatten(args, expand_composites=True))
     if len_flat_args != len(flat_shapes):
       raise RuntimeError(
           "Length of fully flat shapes (%d) must match that of "
@@ -902,7 +911,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
              flat_shapes))
     shapes_iter = iter(flat_shapes)
   for arg_value, name in zip(args, names):
-    flattened = nest.flatten(arg_value)
+    flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
         arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
     ]
@@ -953,7 +962,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
               "a Tensor, but saw arg: '%s', shape: '%s'.  args: %s"
               % (arg, shape, args))
         function_inputs.append(arg)
-  return nest.pack_sequence_as(structure, function_inputs)
+  return nest.pack_sequence_as(structure, function_inputs,
+                               expand_composites=True)
 
 
 def _get_defun_inputs_from_kwargs(kwargs, flat_shapes):

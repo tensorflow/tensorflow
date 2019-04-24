@@ -23,19 +23,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 #ifdef GEMMLOWP_PROFILING
-#include "gemmlowp/profiling/profiler.h"
-#endif
-
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "profiling/profiler.h"
 #endif
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
@@ -44,31 +40,6 @@ void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
 namespace tflite {
 namespace benchmark {
-namespace {
-
-#if defined(__ANDROID__)
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model) {
-  TfLiteGpuDelegateOptions options;
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
-  options.compile_options.precision_loss_allowed = 1;
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
-                                        &TfLiteGpuDelegateDelete);
-}
-
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
-  return Interpreter::TfLiteDelegatePtr(
-      NnApiDelegate(),
-      // NnApiDelegate() returns a singleton, so provide a no-op deleter.
-      [](TfLiteDelegate*) {});
-}
-
-#endif  // defined(__ANDROID__)
-
-}  // namespace
 
 void ProfilingListener::SetInterpreter(tflite::Interpreter* interpreter) {
   TFLITE_BENCHMARK_CHECK(interpreter);
@@ -469,18 +440,21 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     const {
   TfLiteDelegatePtrMap delegates;
   if (params_.Get<bool>("use_gpu")) {
-#if defined(__ANDROID__)
-    delegates.emplace("GPU", CreateGPUDelegate(model.get()));
-#else
-    TFLITE_LOG(WARN) << "GPU acceleration is unsupported on this platform.";
-#endif
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateGPUDelegate(model.get());
+    if (!delegate) {
+      TFLITE_LOG(WARN) << "GPU acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("GPU", std::move(delegate));
+    }
   }
   if (params_.Get<bool>("use_nnapi")) {
-#if defined(__ANDROID__)
-    delegates.emplace("NNAPI", CreateNNAPIDelegate());
-#else
-    TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
-#endif
+    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateNNAPIDelegate();
+    if (!delegate) {
+      TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("NNAPI", std::move(delegate));
+    }
   }
   return delegates;
 }

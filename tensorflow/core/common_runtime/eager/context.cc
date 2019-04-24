@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
@@ -166,7 +169,7 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
   return policy_;
 }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 void EagerContext::CloseRemoteContexts() {
   // Close all remote contexts.
   std::vector<eager::CloseContextRequest> requests(remote_contexts_.size());
@@ -175,8 +178,9 @@ void EagerContext::CloseRemoteContexts() {
 
   int i = 0;
   for (const auto& worker_and_context_id : remote_contexts_) {
-    auto* client =
-        remote_eager_workers_->GetClient(worker_and_context_id.first);
+    eager::EagerClient* client;
+    Status s =
+        remote_eager_workers_->GetClient(worker_and_context_id.first, &client);
 
     requests[i].set_context_id(worker_and_context_id.second);
     client->CloseContextAsync(
@@ -195,10 +199,10 @@ void EagerContext::CloseRemoteContexts() {
 
   counter.Wait();
 }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 EagerContext::~EagerContext() {
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
@@ -214,7 +218,7 @@ EagerContext::~EagerContext() {
   keep_alive_thread_.reset();
 
   CloseRemoteContexts();
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches().IgnoreError();
@@ -308,7 +312,7 @@ ScopedStepContainer* EagerContext::StepContainer() {
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   if (remote_device_manager_ == nullptr) return Status::OK();
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
 
   std::vector<eager::RegisterFunctionRequest> requests(remote_contexts_.size());
@@ -321,8 +325,9 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
     requests[i].set_context_id(target_and_context_id.second);
     *requests[i].mutable_function_def() = fdef;
 
-    auto* eager_client =
-        remote_eager_workers_->GetClient(target_and_context_id.first);
+    eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(
+        target_and_context_id.first, &eager_client));
 
     eager_client->RegisterFunctionAsync(
         &requests[i], &responses[i],
@@ -338,7 +343,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   for (int i = 0; i < remote_contexts_.size(); i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
 }
 
@@ -397,7 +402,7 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
@@ -409,7 +414,8 @@ Status EagerContext::GetClientAndContextID(Device* device,
   string device_task_name;
   TF_RETURN_IF_ERROR(GetTaskName(device, &device_task_name));
 
-  *client = remote_eager_workers_->GetClient(device_task_name);
+  TF_RETURN_IF_ERROR(
+      remote_eager_workers_->GetClient(device_task_name, client));
 
   if (*client == nullptr) {
     return errors::InvalidArgument(
@@ -520,6 +526,11 @@ Status EagerContext::InitializeRemote(
             {
               {
                 mutex_lock l(keep_alive_thread_shutdown_mu_);
+
+                if (shutting_down_) {
+                  return;
+                }
+
                 keep_alive_thread_cv_.wait_for(
                     l, std::chrono::seconds(sleep_for_secs_));
 
@@ -532,8 +543,17 @@ Status EagerContext::InitializeRemote(
                 if (keep_alive_secs_ > 0) {
                   {
                     for (const auto& worker_and_context_id : remote_contexts_) {
-                      auto* client = remote_eager_workers_->GetClient(
-                          worker_and_context_id.first);
+                      eager::EagerClient* client;
+                      Status s = remote_eager_workers_->GetClient(
+                          worker_and_context_id.first, &client);
+
+                      if (!s.ok()) {
+                        LOG(WARNING) << "Keep-alive thread was unable to find "
+                                        "a client for target "
+                                     << worker_and_context_id.first
+                                     << ". Got error: " << s;
+                        continue;
+                      }
 
                       eager::KeepAliveRequest* request =
                           new eager::KeepAliveRequest;
@@ -557,6 +577,6 @@ Status EagerContext::InitializeRemote(
   }
   return Status::OK();
 }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 }  // namespace tensorflow

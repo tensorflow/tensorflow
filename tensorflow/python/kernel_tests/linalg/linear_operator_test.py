@@ -238,7 +238,7 @@ class LinearOperatorTest(test.TestCase):
 
     self.assertTrue(operator_matmul.is_square)
     self.assertTrue(operator_matmul.is_non_singular)
-    self.assertTrue(operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
   @test_util.run_deprecated_v1

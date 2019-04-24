@@ -493,6 +493,19 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
+  def test_multi_output_layer_output_names(self):
+    inp = keras.layers.Input(name='inp', shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(keras.layers.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name='out')(inp)
+    model = keras.models.Model(inp, out)
+    self.assertEqual(['out', 'out_1'], model.output_names)
+    self.assertAllClose([2., 3.], model(1.))
+
   @test_util.run_deprecated_v1
   def test_recursion(self):
     with self.cached_session():
@@ -1376,6 +1389,68 @@ class AddLossTest(keras_parameterized.TestCase):
     model2.fit(x, y, batch_size=2, epochs=1)
 
     self.assertAllClose(model.get_weights(), model2.get_weights())
+
+
+@keras_parameterized.run_all_keras_modes
+class WeightAccessTest(keras_parameterized.TestCase):
+
+  def test_functional_model(self):
+    inputs = keras.Input((10,))
+    x1 = keras.layers.Dense(10)(inputs)
+    x2 = keras.layers.Dense(10)(x1)
+    outputs = keras.layers.Dense(1)(x2)
+    model = keras.Model(inputs, outputs)
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_with_input_shape(self):
+    x1 = keras.layers.Dense(10, input_shape=(10,))
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_without_input_shape(self):
+    x1 = keras.layers.Dense(10)
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+  def test_subclass_model_with_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=input_shape[-1], initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+    model(keras.Input((10,)))
+    self.assertEqual(len(model.weights), 1)
+
+  def test_subclass_model_without_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def __init__(self):
+        super(SubclassModel, self).__init__()
+        self.w = self.add_weight(shape=(), initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+    self.assertEqual(len(model.weights), 1)
 
 
 if __name__ == '__main__':

@@ -39,6 +39,8 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCusolverDsoHandle();
+port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
 
@@ -58,6 +60,8 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCusolverDsoHandle();
+port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
 

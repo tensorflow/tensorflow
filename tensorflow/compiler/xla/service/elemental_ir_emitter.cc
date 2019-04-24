@@ -1470,11 +1470,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
       }
     }
     case RNG_NORMAL: {
+      // Convert uniform x in (0, 1] to normal using formula:
+      //   Normal(x, mu, sigma) = mu + sqrt(2)*sigma*ErfcInv(2x)
+      //                        = mu + sqrt(2)*sigma*ErfInv(1-2x)
       TF_ASSIGN_OR_RETURN(
           llvm::Value * r,
           EmitErfcInv(elem_prim_ty, FMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
                                          elem_value)));
-      return FAdd(FMul(r, b_or_sigma), a_or_mean);
+      return FAdd(FMul(llvm::ConstantFP::get(r->getType(), std::sqrt(2.0)),
+                       FMul(r, b_or_sigma)),
+                  a_or_mean);
     }
     default:
       return InvalidArgument(

@@ -426,12 +426,18 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       //   setting them for each kernel.
       // TODO(zhengxq): pin the thread to the same socket of the target GPU.
       thread_pool_.reset(new thread::ThreadPool(
-          options.env, strings::StrCat("gpu_private_", tf_gpu_id_.value()),
-          static_cast<int32>(gpu_thread_count)));
+          options.env, ThreadOptions(),
+          strings::StrCat("gpu_private_", tf_gpu_id_.value()),
+          static_cast<int32>(gpu_thread_count),
+          !options.config.experimental().disable_thread_spinning(),
+          /*allocator=*/nullptr));
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (gpu_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
-          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+          options.env, ThreadOptions(), "gpu_shared",
+          static_cast<int32>(gpu_thread_count),
+          !options.config.experimental().disable_thread_spinning(),
+          /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
@@ -745,6 +751,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 }
 
+void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                           Tensor* output_tensor,
+                                           const DeviceContext* device_context,
+                                           StatusCallback done) {
+  GPUUtil::CopyGPUTensorToSameGPU(static_cast<Device*>(this), device_context,
+                                  input_tensor, output_tensor, std::move(done));
+}
+
 namespace {
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
@@ -975,6 +989,36 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
+Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
+  se::Platform* gpu_manager = GPUMachineManager();
+  if (gpu_manager == nullptr) {
+    return Status::OK();
+  }
+
+  int device_count = gpu_manager->VisibleDeviceCount();
+  if (device_count <= 0) {
+    return Status::OK();
+  }
+
+  std::vector<PlatformGpuId> visible_gpu_order(device_count);
+  int deviceNo = 0;
+  std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+                [&deviceNo] { return deviceNo++; });
+
+  std::vector<PlatformGpuId> valid_platform_gpu_ids;
+  TF_RETURN_IF_ERROR(
+      GetValidDeviceIds(visible_gpu_order, &valid_platform_gpu_ids));
+
+  for (PlatformGpuId platform_gpu_id : valid_platform_gpu_ids) {
+    const string device_name =
+        strings::StrCat("/physical_device:GPU:", platform_gpu_id.value());
+    devices->push_back(device_name);
+  }
+
+  return Status::OK();
+}
+
 Status BaseGPUDeviceFactory::CreateDevices(
     const SessionOptions& options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
@@ -1003,6 +1047,25 @@ Status BaseGPUDeviceFactory::CreateDevices(
   if (num_gpus_to_use > 0) {
     TF_RETURN_IF_ERROR(ParseVisibleDeviceList(gpu_options.visible_device_list(),
                                               &visible_gpu_order));
+    bool new_gpu_found = false;
+    for (int i = 0; i < visible_gpu_order.size(); ++i) {
+      int visible_gpu_id = visible_gpu_order[i].value();
+
+      // Only perform this once per visible gpu id.
+      if (visible_gpu_initialized_[visible_gpu_id]) {
+        continue;
+      }
+
+      visible_gpu_initialized_[visible_gpu_id] = true;
+      new_gpu_found = true;
+    }
+
+    // Checking peering and shows matrix if more than one gpu found.
+    if (new_gpu_found && visible_gpu_order.size() > 1) {
+      // Enable peer access
+      TF_RETURN_IF_ERROR(EnablePeerAccess(visible_gpu_order));
+    }
+
     TF_RETURN_IF_ERROR(
         GetValidDeviceIds(visible_gpu_order, &valid_platform_gpu_ids));
   }
@@ -1464,8 +1527,11 @@ std::vector<int> GetSupportedAMDGPUISAVersions() {
 }
 #endif  // TENSORFLOW_USE_ROCM
 
-Status EnablePeerAccess(se::Platform* platform,
-                        const std::vector<PlatformGpuId>& visible_gpu_order) {
+}  // namespace
+
+Status BaseGPUDeviceFactory::EnablePeerAccess(
+    const std::vector<PlatformGpuId>& visible_gpu_order) {
+  se::Platform* gpu_manager = GPUMachineManager();
   int possible_peer_count = 0;
   int enabled_peer_count = 0;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
@@ -1474,10 +1540,10 @@ Status EnablePeerAccess(se::Platform* platform,
       const PlatformGpuId platform_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
       se::StreamExecutor* from =
-          GpuIdUtil::ExecutorForPlatformGpuId(platform, platform_gpu_i)
+          GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, platform_gpu_i)
               .ValueOrDie();
       se::StreamExecutor* to =
-          GpuIdUtil::ExecutorForPlatformGpuId(platform, platform_gpu_j)
+          GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, platform_gpu_j)
               .ValueOrDie();
 
       if (from->CanEnablePeerAccessTo(to)) {
@@ -1507,24 +1573,12 @@ Status EnablePeerAccess(se::Platform* platform,
   return Status::OK();
 }
 
-}  // namespace
-
 Status BaseGPUDeviceFactory::GetValidDeviceIds(
     const std::vector<PlatformGpuId>& visible_gpu_order,
     std::vector<PlatformGpuId>* ids) {
   se::Platform* gpu_manager = GPUMachineManager();
-  bool new_gpu_found = false;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     const PlatformGpuId visible_gpu_id = visible_gpu_order[i];
-
-    // Only perform this once per visible platform gpu id.
-    if (visible_gpu_initialized_[visible_gpu_id.value()]) {
-      continue;
-    }
-
-    visible_gpu_initialized_[visible_gpu_id.value()] = true;
-    new_gpu_found = true;
-
     auto executor =
         GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_id);
     if (!executor.ok()) {
@@ -1532,13 +1586,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 
     auto stream_exec = executor.ValueOrDie();
-    int64 free_bytes;
-    int64 total_bytes;
-    if (!stream_exec->DeviceMemoryUsage(&free_bytes, &total_bytes)) {
-      // Logs internally on failure.
-      free_bytes = 0;
-      total_bytes = 0;
-    }
     const auto& description = stream_exec->GetDeviceDescription();
 #if GOOGLE_CUDA
     int cc_major;
@@ -1552,9 +1599,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << " major: " << cc_major
               << " minor: " << cc_minor
               << " memoryClockRate(GHz): " << description.clock_rate_ghz()
-              << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << " freeMemory: " << strings::HumanReadableNumBytes(free_bytes);
+              << "\npciBusID: " << description.pci_bus_id();
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description.rocm_amdgpu_isa_version(&isa_version)) {
@@ -1565,16 +1610,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
               << isa_version << "\nmemoryClockRate (GHz) "
               << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id() << "\nTotal memory: "
-              << strings::HumanReadableNumBytes(total_bytes)
-              << "\nFree memory: "
-              << strings::HumanReadableNumBytes(free_bytes);
+              << description.pci_bus_id();
 #endif
-  }
-  // Checking peering and shows matrix if more than one gpu found.
-  if (new_gpu_found && visible_gpu_order.size() > 1) {
-    // Enable peer access
-    TF_RETURN_IF_ERROR(EnablePeerAccess(gpu_manager, visible_gpu_order));
   }
 
 #if GOOGLE_CUDA

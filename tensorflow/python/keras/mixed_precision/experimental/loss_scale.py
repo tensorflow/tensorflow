@@ -79,7 +79,8 @@ class LossScale(trackable.Trackable):
     Args:
       grads: A list of unscaled gradients, each which is the gradient of the
         loss with respect to a weight. The gradients should have already been
-        divided by the loss scale being before passed to this function.
+        divided by the loss scale being before passed to this function. 'None'
+        gradients are accepted, and are ignored.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
@@ -182,8 +183,9 @@ class FixedLossScale(LossScale):
 
 def _is_all_finite(grads):
   """Returns a scalar boolean tensor indicating if all gradients are finite."""
-  is_finite_per_grad = [math_ops.reduce_all(math_ops.is_finite(g))
-                        for g in grads]
+  is_finite_per_grad = [
+      math_ops.reduce_all(math_ops.is_finite(g)) for g in grads if g is not None
+  ]
   return math_ops.reduce_all(is_finite_per_grad)
 
 
@@ -289,7 +291,7 @@ class DynamicLossScale(LossScale):
       is_finite_float = distribution.extended.call_for_each_replica(
           get_is_finite, args=(grads,))
       reduced_is_finite_float = distribution.reduce(reduce_util.ReduceOp.SUM,
-                                                    is_finite_float)
+                                                    is_finite_float, axis=None)
       is_finite = math_ops.equal(reduced_is_finite_float,
                                  distribution.num_replicas_in_sync)
     else:

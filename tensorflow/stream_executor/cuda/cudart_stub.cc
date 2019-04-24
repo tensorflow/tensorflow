@@ -41,81 +41,75 @@ T LoadSymbol(const char* symbol_name) {
 cudaError_t GetSymbolNotFoundError() {
   return cudaErrorSharedObjectSymbolNotFound;
 }
-const char* GetSymbolNotFoundStrError() {
-  return "cudaErrorSharedObjectSymbolNotFound";
-}
 }  // namespace
 
-// Code below is auto-generated.
+#define __dv(v)
+#define __CUDA_DEPRECATED
+#include "tensorflow/stream_executor/cuda/cuda_runtime_10_0.inc"
+#undef __dv
+#undef __CUDA_DEPRECATED
+
 extern "C" {
-cudaError_t CUDART_CB cudaFree(void* devPtr) {
-  using FuncPtr = cudaError_t (*)(void* devPtr);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaFree");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(devPtr);
+
+// Following are private symbols in libcudart that got inserted by nvcc.
+extern void CUDARTAPI __cudaRegisterFunction(
+    void **fatCubinHandle, const char *hostFun, char *deviceFun,
+    const char *deviceName, int thread_limit, uint3 *tid, uint3 *bid,
+    dim3 *bDim, dim3 *gDim, int *wSize) {
+  using FuncPtr = void(CUDARTAPI *)(void **fatCubinHandle, const char *hostFun,
+                                    char *deviceFun, const char *deviceName,
+                                    int thread_limit, uint3 *tid, uint3 *bid,
+                                    dim3 *bDim, dim3 *gDim, int *wSize);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaRegisterFunction");
+  if (!func_ptr) return;
+  func_ptr(fatCubinHandle, hostFun, deviceFun, deviceName, thread_limit, tid,
+           bid, bDim, gDim, wSize);
 }
 
-cudaError_t CUDART_CB cudaGetDevice(int* device) {
-  using FuncPtr = cudaError_t (*)(int* device);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDevice");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(device);
+extern void CUDARTAPI __cudaUnregisterFatBinary(void **fatCubinHandle) {
+  using FuncPtr = void(CUDARTAPI *)(void **fatCubinHandle);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaUnregisterFatBinary");
+  if (!func_ptr) return;
+  func_ptr(fatCubinHandle);
 }
 
-cudaError_t CUDART_CB cudaGetDeviceProperties(cudaDeviceProp* prop,
-                                              int device) {
-  using FuncPtr = cudaError_t (*)(cudaDeviceProp * prop, int device);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDeviceProperties");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(prop, device);
+extern void CUDARTAPI __cudaRegisterVar(void **fatCubinHandle, char *hostVar,
+                                        char *deviceAddress,
+                                        const char *deviceName, int ext,
+                                        size_t size, int constant, int global) {
+  using FuncPtr = void(CUDARTAPI *)(
+      void **fatCubinHandle, char *hostVar, char *deviceAddress,
+      const char *deviceName, int ext, size_t size, int constant, int global);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaRegisterVar");
+  if (!func_ptr) return;
+  func_ptr(fatCubinHandle, hostVar, deviceAddress, deviceName, ext, size,
+           constant, global);
 }
 
-const char* CUDART_CB cudaGetErrorString(cudaError_t error) {
-  using FuncPtr = const char* (*)(cudaError_t error);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetErrorString");
-  if (!func_ptr) return GetSymbolNotFoundStrError();
-  return func_ptr(error);
+extern void **CUDARTAPI __cudaRegisterFatBinary(void *fatCubin) {
+  using FuncPtr = void **(CUDARTAPI *)(void *fatCubin);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaRegisterFatBinary");
+  if (!func_ptr) return nullptr;
+  return (void **)func_ptr(fatCubin);
 }
 
-cudaError_t CUDART_CB cudaSetDevice(int device) {
-  using FuncPtr = cudaError_t (*)(int device);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaSetDevice");
+extern cudaError_t CUDARTAPI __cudaPopCallConfiguration(dim3 *gridDim,
+                                                        dim3 *blockDim,
+                                                        size_t *sharedMem,
+                                                        void *stream) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(dim3 * gridDim, dim3 * blockDim,
+                                           size_t * sharedMem, void *stream);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaPopCallConfiguration");
   if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(device);
+  return func_ptr(gridDim, blockDim, sharedMem, stream);
 }
 
-cudaError_t CUDART_CB cudaStreamAddCallback(cudaStream_t stream,
-                                            cudaStreamCallback_t callback,
-                                            void* userData,
-                                            unsigned int flags) {
-  using FuncPtr =
-      cudaError_t (*)(cudaStream_t stream, cudaStreamCallback_t callback,
-                      void* userData, unsigned int flags);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaStreamAddCallback");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(stream, callback, userData, flags);
-}
-
-cudaError_t CUDART_CB cudaGetDeviceCount(int* count) {
-  using FuncPtr = cudaError_t (*)(int* count);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDeviceCount");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(count);
-}
-
-cudaError_t CUDART_CB cudaPointerGetAttributes(
-    struct cudaPointerAttributes* attributes, const void* ptr) {
-  using FuncPtr = cudaError_t (*)(struct cudaPointerAttributes * attributes,
-                                  const void* ptr);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaPointerGetAttributes");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(attributes, ptr);
-}
-
-cudaError_t CUDART_CB cudaGetLastError() {
-  using FuncPtr = cudaError_t (*)();
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetLastError");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr();
+extern __host__ __device__ unsigned CUDARTAPI __cudaPushCallConfiguration(
+    dim3 gridDim, dim3 blockDim, size_t sharedMem = 0, void *stream = 0) {
+  using FuncPtr = unsigned(CUDARTAPI *)(dim3 gridDim, dim3 blockDim,
+                                        size_t sharedMem, void *stream);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaPushCallConfiguration");
+  if (!func_ptr) return 0;
+  return func_ptr(gridDim, blockDim, sharedMem, stream);
 }
 }  // extern "C"

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import enum
 import os
 import signal
 import sys
@@ -38,6 +39,7 @@ from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilati
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output as export_output_lib
@@ -47,6 +49,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -62,7 +65,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.tpu import _tpu_estimator_embedding
 from tensorflow.python.tpu import error_handling
 from tensorflow.python.tpu import functional as tpu_functional
-from tensorflow.python.tpu import profile_logger
+from tensorflow.python.tpu import preempted_hook
 from tensorflow.python.tpu import session_support
 from tensorflow.python.tpu import tensor_tracer
 from tensorflow.python.tpu import tpu
@@ -98,7 +101,7 @@ _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
-_REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
+_INFERENCE_ON_TPU_MODE = '_inference_on_tpu'
 _KEY_WHEN_PREDICTIONS_IS_A_TENSOR = '_key_when_predictions_is_a_tensor'
 
 # Ideally _USE_TPU_KEY should be reserved as well. However there are already
@@ -114,11 +117,13 @@ _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 # explicitly).
 _WRAP_INPUT_FN_INTO_WHILE_LOOP = False
 
-ops.register_proto_function(
-    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
-    proto_type=variable_pb2.VariableDef,
-    to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
-    from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
+if ops.get_to_proto_function(
+    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)) is None:
+  ops.register_proto_function(
+      '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
+      proto_type=variable_pb2.VariableDef,
+      to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
+      from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
 def _is_iterable(obj):
@@ -452,7 +457,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                enqueue_ops,
                dequeue_ops,
                tpu_compile_op,
-               prof_logger,
                run_infeed_loop_on_coordinator=True,
                rendezvous=None,
                master=None,
@@ -475,12 +479,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         ctx.config.tpu_config.initial_infeed_sleep_secs)
 
     # When using model parallelism, the TPU is pre-initialized at startup to
-    # fetch mesh information.  We skip re-initializing it here to avoid
-    # suspected issues due to the mesh layout changing on the second
-    # initialization.
-    self._should_initialize_tpu = not ctx.model_parallelism_enabled
+    # fetch mesh information. We skip re-initializing it here for
+    # MeshTensorFlow since it places variables on TPU directly. Reinitialize tpu
+    # is causing the variable corruption since the previous allocated memory
+    # might be overwritten for other purpose.
+    if (ctx.model_parallelism_enabled and
+        ctx.is_input_broadcast_with_iterators()):
+      self._should_initialize_tpu = False
+    else:
+      self._should_initialize_tpu = True
+
     self._tpu_compile_op = tpu_compile_op
-    self._profile_logger = prof_logger
 
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
@@ -543,7 +552,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     if self._should_initialize_tpu:
       logging.info('Init TPU system')
       start = time.time()
-      self._profile_logger.log_event('init_system', 'begin')
       with ops.Graph().as_default():
         with tf_session.Session(
             self._master, config=self._session_config) as sess:
@@ -551,7 +559,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
               tpu.initialize_system(
                   job=self._master_job,
                   embedding_config=self._embedding_layer_config))
-      self._profile_logger.log_event('init_system', 'end')
       logging.info('Initialized TPU in %d seconds', time.time() - start)
 
     session.run(self._init_ops,
@@ -598,14 +605,13 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops, tpu_compile_op, prof_logger,
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, tpu_compile_op,
                rendezvous=None, master=None, session_config=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
         ctx,
         enqueue_ops,
         dequeue_ops,
         tpu_compile_op=tpu_compile_op,
-        prof_logger=prof_logger,
         run_infeed_loop_on_coordinator=False,
         rendezvous=rendezvous,
         master=master,
@@ -1369,37 +1375,74 @@ class _InputPipeline(object):
         logging.warn(err_msg)
 
 
-def call_computation(computation,
-                     experimental_export_device_assignment):
+def call_computation(computation_inputs,
+                     computation,
+                     experimental_export_device_assignment,
+                     batch_config=None):
   """Call computation.
 
   Args:
+    computation_inputs: A tensor or dict of tensors, the inputs to the
+      computation.
     computation: A Python function that takes no inputs and builds computation
       graph. If `computation` returns m outputs, this function will return a
       list of m Tensors.
     experimental_export_device_assignment: If `True`, use user-provided device
       assignment. If `False`, round-robin computation among all TPU cores
       visible to the host.
+    batch_config: A BatchConfig named tuple specifying the batching
+      configuration to use for inference batching.
 
   Returns:
     A list of output tensors.
   """
   if experimental_export_device_assignment:
-    return computation()
-  else:
-    # Using `TPUPartitionedCall` makes it possible to target a different
-    # TPU core with every `Session.run()` call. Note that the entire inference
-    # graph executes on a single core, and that invocations of this graph
-    # will round-robin among the cores attached to a host.
+    return computation(computation_inputs)
+
+  # Using `TPUPartitionedCall` makes it possible to target a different
+  # TPU core with every `Session.run()` call. Note that the entire inference
+  # graph executes on a single core, and that invocations of this graph
+  # will round-robin among the cores attached to a host.
+  def tpu_partitioned_call(partition_inputs):
+
+    # capture_resource_var_by_value enables variables to be mirrored on TPU
+    # to avoid fetching from CPU, since variables do not change during
+    # inference.
     @function.Defun(capture_resource_var_by_value=False)
     def tpu_subgraph():
-      return computation()
+      return computation(partition_inputs)
 
     return tpu_functional.TPUPartitionedCall(
         args=tpu_subgraph.captured_inputs,
         device_ordinal=tpu_ops.tpu_ordinal_selector(),
         Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
         f=tpu_subgraph)
+
+  # Not using Batching Function but use TPUPartitionedCall/all cores.
+  if not batch_config:
+    return tpu_partitioned_call(computation_inputs)
+
+  # Use Batching Function and TPUPartitionedCall/all cores.
+  # Note that BatchingFunction requires a list of tensors and doesn't support
+  # a dict of tensors. So we preserve the structure by deterministically
+  # flattening the dict before batching and then recomposing it after batching
+  # to feed into the computation.
+  ordered_inputs_list = nest.flatten(computation_inputs)
+
+  @batch_ops.batch_function(
+      num_batch_threads=batch_config.num_batch_threads,
+      max_batch_size=batch_config.max_batch_size,
+      batch_timeout_micros=batch_config.batch_timeout_micros,
+      allowed_batch_sizes=batch_config.allowed_batch_sizes,
+      max_enqueued_batches=batch_config.max_enqueued_batches,
+      autograph=False)
+  def batched_tpu_computation(*tensor_args):
+    """Recompose the input feature dict and calls the TPU computation."""
+    computation_feature_input = nest.pack_sequence_as(computation_inputs,
+                                                      tensor_args)
+    return tpu_partitioned_call(computation_feature_input)
+
+  return batched_tpu_computation(*ordered_inputs_list)
 
 
 class _ModelFnWrapper(object):
@@ -2050,6 +2093,51 @@ class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
     signal.signal(signal.SIGINT, self._signal_fn)
 
 
+class ExportSavedModelApiVersion(enum.Enum):
+  V1 = 1
+  V2 = 2
+
+
+class BatchConfig(
+    collections.namedtuple('BatchConfig', [
+        'num_batch_threads', 'max_batch_size', 'batch_timeout_micros',
+        'allowed_batch_sizes', 'max_enqueued_batches'
+    ])):
+  """Class to handle config inputs into the batching function."""
+
+  def __new__(cls,
+              num_batch_threads,
+              max_batch_size,
+              batch_timeout_micros,
+              allowed_batch_sizes,
+              max_enqueued_batches=10):
+    """Creates an EmbeddingConfigSpec instance.
+
+    Args:
+     num_batch_threads: Number of scheduling threads for processing batches of
+       work. Determines the number of batches processed in parallel.
+      max_batch_size: Batch sizes will never be bigger than this.
+      batch_timeout_micros: Maximum number of microseconds to wait before
+        outputting an incomplete batch.
+      allowed_batch_sizes: Optional list of allowed batch sizes. If left empty,
+        does nothing. Otherwise, supplies a list of batch sizes, causing the op
+        to pad batches up to one of those sizes. The entries must increase
+        monotonically, and the final entry must equal max_batch_size.
+      max_enqueued_batches: The maximum depth of the batch queue. Defaults to
+        10.
+
+    Returns:
+      An BatchConfig instance.
+    """
+    return super(BatchConfig, cls).__new__(
+        cls,
+        num_batch_threads=num_batch_threads,
+        max_batch_size=max_batch_size,
+        batch_timeout_micros=batch_timeout_micros,
+        allowed_batch_sizes=allowed_batch_sizes,
+        max_enqueued_batches=max_enqueued_batches)
+
+
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
@@ -2108,7 +2196,7 @@ class TPUEstimator(estimator_lib.Estimator):
   def metric_fn(labels, logits):
     predictions = tf.argmax(logits, 1)
     return {
-      'accuracy': tf.metrics.precision(
+      'accuracy': tf.compat.v1.metrics.precision(
           labels=labels, predictions=predictions),
     }
 
@@ -2178,7 +2266,7 @@ class TPUEstimator(estimator_lib.Estimator):
   def predict_input_fn(params):
     batch_size = params['batch_size']
 
-    images = tf.random_uniform(
+    images = tf.random.uniform(
         [total_examples, height, width, 3], minval=-1, maxval=1)
 
     dataset = tf.data.Dataset.from_tensor_slices(images)
@@ -2213,39 +2301,75 @@ class TPUEstimator(estimator_lib.Estimator):
   Exporting
   =========
 
-  `export_savedmodel` exports 2 metagraphs, one with `tag_constants.SERVING`,
-  and another with `tag_constants.SERVING` and `tag_constants.TPU`.
-  At serving time, these tags are used to select metagraph to load.
+  `export_savedmodel` exports 2 metagraphs, one with `saved_model.SERVING`, and
+  another with `saved_model.SERVING` and `saved_model.TPU` tags. At serving
+  time, these tags are used to select the appropriate metagraph to load.
 
-  Before running the graph on TPU, TPU system needs to be initialized. If
-  TensorFlow Serving model-server is used, this is done automatically. If
-  not, please call `session.run(tpu.initialize_system())`.
+  Before running the graph on TPU, the TPU system needs to be initialized. If
+  TensorFlow Serving model-server is used, this is done automatically. If not,
+  please use `session.run(tpu.initialize_system())`.
 
-  `tpu.outside_compilation` can be used to wrap TPU incompatible ops in
-  `model_fn`.
+  There are two versions of the API: ExportSavedModelApiVersion.V1 and V2.
 
-  Example:
-  ----------------
+  In V1, the exported CPU graph is `model_fn` as it is. The exported TPU graph
+  wraps `tpu.rewrite()` and `TPUPartitionedCallOp` around `model_fn` so
+  `model_fn` is on TPU by default. To place ops on CPU,
+  `tpu.outside_compilation(host_call, logits)` can be used.
 
   ```
-  def model_fn(features, labels, mode, config, params):
-    ...
-    logits = ...
-    export_outputs = {
-      'logits': export_output_lib.PredictOutput(
-        {'logits': logits})
-    }
+    def model_fn(features, labels, mode, config, params):
+      ...
+      logits = ...
+      export_outputs = {
+        'logits': export_output_lib.PredictOutput(
+          {'logits': logits})
+      }
 
-    def host_call(logits):
-      class_ids = math_ops.argmax(logits)
-      classes = string_ops.as_string(class_ids)
-      export_outputs['classes'] =
-        export_output_lib.ClassificationOutput(classes=classes)
+      def host_call(logits):
+        class_ids = math_ops.argmax(logits)
+        classes = string_ops.as_string(class_ids)
+        export_outputs['classes'] =
+          export_output_lib.ClassificationOutput(classes=classes)
 
-    tpu.outside_compilation(host_call, logits)
+      tpu.outside_compilation(host_call, logits)
 
-    ...
+      ...
   ```
+
+  In V2, `export_savedmodel()` sets up `params['use_tpu']` flag to let the user
+  know if the code is exporting to TPU (or not). When `params['use_tpu']` is
+  `True`, users need to call `tpu.rewrite()`, `TPUPartitionedCallOp` and/or
+  `batch_function()`. Alternatively use `inference_on_tpu()` which is a
+  convenience wrapper of the three.
+
+  ```
+    def model_fn(features, labels, mode, config, params):
+      ...
+      # This could be some pre-processing on CPU like calls to input layer with
+      # embedding columns.
+      x2 = features['x'] * 2
+
+      def computation(input_tensor):
+        return layers.dense(
+            input_tensor, 1, kernel_initializer=init_ops.zeros_initializer())
+
+      inputs = [x2]
+      if params['use_tpu']:
+        predictions = array_ops.identity(
+            tpu_estimator.inference_on_tpu(computation, inputs,
+            num_batch_threads=1, max_batch_size=2, batch_timeout_micros=100),
+            name='predictions')
+      else:
+        predictions = array_ops.identity(
+            computation(*inputs), name='predictions')
+      key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+      export_outputs = {
+          key: export_lib.PredictOutput({'prediction': predictions})
+      }
+      ...
+  ```
+
+  TIP: V2 is recommended as it is more flexible (eg: batching, etc).
 
   """
 
@@ -2264,7 +2388,8 @@ class TPUEstimator(estimator_lib.Estimator):
                export_to_cpu=True,
                warm_start_from=None,
                experimental_export_device_assignment=False,
-               experimental_embedding_config_spec=None):
+               embedding_config_spec=None,
+               export_saved_model_api_version=ExportSavedModelApiVersion.V1):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -2321,9 +2446,15 @@ class TPUEstimator(estimator_lib.Estimator):
         assignment in the exported model. Doing so is useful in case of model
         parallel inference but will tie the exported model to the TPU topology
         used to export the model.
-      experimental_embedding_config_spec: Optional EmbeddingConfigSpec instance
-        to support using TPU embedding. IT IS STILL WORK IN PROGRESS, SO PLEASE
-        DO NOT USE.
+      embedding_config_spec: Optional EmbeddingConfigSpec instance
+        to support using TPU embedding.
+      export_saved_model_api_version: ExportSavedModelApiVersion, V1 or V2.
+        With V1, `export_savedmodel()` adds rewrite() and TPUPartitionedCallOp()
+        for user; while in v2, user is expected to add rewrite(),
+        TPUPartitionedCallOp() etc in their model_fn.
+        A helper function `inference_on_tpu` is provided for V2.
+        brn_tpu_estimator.py includes examples for both versions
+        i.e. TPUEstimatorExportTest and TPUEstimatorExportV2Test.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -2357,6 +2488,13 @@ class TPUEstimator(estimator_lib.Estimator):
         util_lib.check_positive_integer(predict_batch_size,
                                         'predict_batch_size')
 
+      if embedding_config_spec:
+        if (config.tpu_config.per_host_input_for_training !=
+            tpu_config.InputPipelineConfig.PER_HOST_V2):
+          raise ValueError('Only PER_HOST_V2 is supported when using TPU '
+                           'Embedding; got {}.'.format(
+                               config.tpu_config.per_host_input_for_training))
+
     # Verifies the model_fn signature according to Estimator framework.
     estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
     # We cannot store config and params in this constructor as parent
@@ -2385,16 +2523,22 @@ class TPUEstimator(estimator_lib.Estimator):
     # pylint: disable=protected-access
     self._ctx = tpu_context._get_tpu_context(
         self._config, train_batch_size, eval_batch_size, predict_batch_size,
-        use_tpu, eval_on_tpu, experimental_embedding_config_spec)
+        use_tpu, eval_on_tpu, embedding_config_spec)
 
     self._export_to_cpu = export_to_cpu
     self._export_to_tpu = export_to_tpu
     self._experimental_export_device_assignment = (
         experimental_export_device_assignment)
 
+    if not isinstance(export_saved_model_api_version,
+                      ExportSavedModelApiVersion):
+      raise ValueError('export_saved_model_api_version should be of type '
+                       'ExportSavedModelApiVersion; got {}.'.format(
+                           export_saved_model_api_version))
+    self._export_saved_model_api_version = export_saved_model_api_version
     self._is_input_fn_invoked = None
+
     self._rendezvous = {}
-    self._profile_logger = profile_logger.ProfileLogger(self.model_dir)
 
   def _add_meta_graph_for_mode(self,
                                builder,
@@ -2426,10 +2570,10 @@ class TPUEstimator(estimator_lib.Estimator):
 
     if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
-          _REWRITE_FOR_INFERENCE_MODE: input_receiver_fn_map[mode]
+          _INFERENCE_ON_TPU_MODE: input_receiver_fn_map[mode]
       }
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
-      mode = _REWRITE_FOR_INFERENCE_MODE
+      mode = _INFERENCE_ON_TPU_MODE
 
       # See b/110052256 for why `check_variables` is `False`.
       if not self._export_to_cpu:
@@ -2447,150 +2591,31 @@ class TPUEstimator(estimator_lib.Estimator):
           strip_default_attrs=strip_default_attrs))
 
   def _call_model_fn(self, features, labels, mode, config):
-    if mode == _REWRITE_FOR_INFERENCE_MODE:
-      return self._call_model_fn_for_inference(features, labels, mode, config)
+    if self._export_saved_model_api_version == ExportSavedModelApiVersion.V1:
+      if mode == _INFERENCE_ON_TPU_MODE:
+        return self._call_model_fn_for_inference(features, labels, mode, config)
+      else:
+        return super(TPUEstimator, self)._call_model_fn(features, labels, mode,
+                                                        config)
     else:
       return super(TPUEstimator, self)._call_model_fn(features, labels, mode,
                                                       config)
 
   def _call_model_fn_for_inference(self, features, labels, mode, config):
     """Wraps `_call_model_fn` for `export_savedmodel`."""
-    if mode != _REWRITE_FOR_INFERENCE_MODE:
+    if mode != _INFERENCE_ON_TPU_MODE:
       raise ValueError('mode must be {}; '
-                       'got {}.'.format(_REWRITE_FOR_INFERENCE_MODE, mode))
-
-    computation, capture = self._build_computation_for_inference(
-        features, labels, mode, config)
-    tensors = call_computation(
-        computation,
-        self._experimental_export_device_assignment)
-    estimator_spec, export_outputs_dict, predictions_dict, none_indices = (
-        capture.get())
-    predictions_list = tensors[:len(predictions_dict)]
-    export_outputs_list_without_none = tensors[len(predictions_dict):]
-
-    # Reinsert `None`s which we've taken out in
-    # `_build_computation_for_inference()`.
-    export_outputs_list = []
-    while none_indices or export_outputs_list_without_none:
-      if none_indices and none_indices[0] == len(export_outputs_list):
-        export_outputs_list.append(None)
-        none_indices.pop(0)
-      else:
-        export_outputs_list.append(export_outputs_list_without_none.pop(0))
-
-    # Reconstruct `export_outputs` with updated tensors.
-    new_export_outputs_dict = nest.pack_sequence_as(export_outputs_dict,
-                                                    export_outputs_list)
-    export_outputs = estimator_spec.export_outputs
-    new_export_outputs = collections.OrderedDict(
-        (k, _clone_export_output_with_tensors(export_outputs[k], v))
-        for k, v in six.iteritems(new_export_outputs_dict))
-    # Reconstruct `predictions` with updated tensors.
-    new_predictions = nest.pack_sequence_as(predictions_dict, predictions_list)
-    if (len(new_predictions) == 1 and
-        _KEY_WHEN_PREDICTIONS_IS_A_TENSOR in new_predictions):
-      new_predictions = new_predictions[_KEY_WHEN_PREDICTIONS_IS_A_TENSOR]
-
-    return estimator_spec._replace(
-        export_outputs=new_export_outputs, predictions=new_predictions)
-
-  def _build_computation_for_inference(self, features, labels, mode, config):
-    capture = _CapturedObject()
-
-    def computation():
-      """Computation to be passed to `TPUPartitionedCall()`."""
-      tpu_computation, tpu_capture = self._build_tpu_computation_for_inference(
-          features, labels, mode, config)
-
-      if self._experimental_export_device_assignment:
-        # Export the device assignment as part of the model. This is useful for
-        # model parallel usecases where the model relies on the mapping between
-        # logical and physical devices.
-        with self._ctx.with_mode(mode) as ctx:
-          device_assignment = ctx.device_assignment
-      else:
-        device_assignment = None
-
-      if self._experimental_export_device_assignment:
-        tensors_on_cpu = tpu.rewrite_for_inference(
-            tpu_computation, device_assignment=device_assignment)
-      else:
-        tensors_on_cpu = tpu.rewrite(
-            tpu_computation, device_assignment=device_assignment)
-        tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
-
-      (estimator_spec, export_outputs_dict, export_outputs_list,
-       predictions_dict) = (
-           tpu_capture.get())
-      predictions_list = tensors_on_cpu[:len(predictions_dict)]
-      export_outputs_tpu_on_cpu_list = tensors_on_cpu[len(predictions_dict):]
-
-      # Reconstruct tensors used in export_outputs, with TPU tensors replaced
-      # with their CPU counterpart returned from `rewrite_for_inference()`.
-      # `function.Defun()` does not like `None`s in return values, so we leave
-      # `None`s out but record their positions for later reconstruction.
-      export_outputs_list_without_none = []
-      none_indices = []
-      for i, t in enumerate(export_outputs_list):
-        if t is None:
-          none_indices.append(i)
-        else:
-          export_outputs_list_without_none.append(
-              export_outputs_tpu_on_cpu_list.pop(0))
-
-      capture.capture((estimator_spec, export_outputs_dict, predictions_dict,
-                       none_indices))
-      return predictions_list + export_outputs_list_without_none
-
-    return computation, capture
-
-  def _build_tpu_computation_for_inference(self, features, labels, mode,
-                                           config):
-    capture = _CapturedObject()
-
-    def computation():
-      """Compute tpu tensors used in export_outputs.
-
-      Passed to rewrite_for_inference so that model_fn will be called under
-      the rewriting contexts. Only tpu tensors are returned, but export_outputs
-      and scaffold are captured.
-
-      Returns:
-         A list of Tensors used in export_outputs and not marked for
-         outside_compilation.
-      """
-      # We should only call model fn once and it should be inside `computation`
-      # so that building the graph will happen under `rewrite_for_inference`.
-      estimator_spec = super(TPUEstimator, self)._call_model_fn(
-          features, labels, mode, config)
-
-      # We pick the TPU tensors out from `export_output` and later return them
-      # from `computation` for rewriting.
-      export_outputs_dict = collections.OrderedDict(
-          (k, _export_output_to_tensors(v))
-          for k, v in six.iteritems(estimator_spec.export_outputs))
-      export_outputs_list = nest.flatten(export_outputs_dict)
-      export_outputs_tpu_list = [
-          t for t in export_outputs_list if t is not None
-      ]
-
-      if isinstance(estimator_spec.predictions, dict):
-        predictions_dict = collections.OrderedDict(
-            (k, v) for k, v in six.iteritems(estimator_spec.predictions))
-      else:
-        predictions_dict = {
-            _KEY_WHEN_PREDICTIONS_IS_A_TENSOR: estimator_spec.predictions
-        }
-      predictions_list = nest.flatten(predictions_dict)
-
-      # We cannot return everything we want through the return values, so
-      # capture the rest here for later use.
-      capture.capture((estimator_spec, export_outputs_dict, export_outputs_list,
-                       predictions_dict))
-      return predictions_list + export_outputs_tpu_list
-
-    return computation, capture
+                       'got {}.'.format(_INFERENCE_ON_TPU_MODE, mode))
+    return model_fn_inference_on_tpu(
+        self._model_fn,
+        features,
+        labels,
+        config,
+        self._params,
+        batch_config=None,
+        experimental_export_device_assignment=self
+        ._experimental_export_device_assignment,
+        call_context=self._ctx)
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
@@ -2727,7 +2752,6 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.TRAIN] = rendezvous
     try:
-      self._profile_logger.log_event('train', 'begin')
       return super(TPUEstimator, self).train(
           input_fn=input_fn,
           hooks=hooks,
@@ -2737,7 +2761,6 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('training_loop', sys.exc_info())
     finally:
-      self._profile_logger.log_event('train', 'end')
       rendezvous.record_done('training_loop')
       rendezvous.raise_errors()
 
@@ -2750,7 +2773,6 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.EVAL] = rendezvous
     try:
-      self._profile_logger.log_event('eval', 'begin')
       return super(TPUEstimator, self).evaluate(
           input_fn,
           steps=steps,
@@ -2760,7 +2782,6 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('evaluation_loop', sys.exc_info())
     finally:
-      self._profile_logger.log_event('eval', 'end')
       rendezvous.record_done('evaluation_loop')
       rendezvous.raise_errors()
 
@@ -2773,7 +2794,6 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.PREDICT] = rendezvous
     try:
-      self._profile_logger.log_event('predict', 'begin')
       for result in super(TPUEstimator, self).predict(
           input_fn=input_fn,
           predict_keys=predict_keys,
@@ -2784,7 +2804,6 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('prediction_loop', sys.exc_info())
     finally:
-      self._profile_logger.log_event('predict', 'end')
       rendezvous.record_done('prediction_loop')
       rendezvous.raise_errors()
 
@@ -2797,7 +2816,6 @@ class TPUEstimator(estimator_lib.Estimator):
     def _model_fn(features, labels, mode, config, params):
       """A Estimator `model_fn` for TPUEstimator."""
 
-      self._profile_logger.log_event('model_fn', 'begin')
       # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
       # but not in `export_savedmodel()`.
       if self._is_input_fn_invoked:
@@ -2809,7 +2827,7 @@ class TPUEstimator(estimator_lib.Estimator):
       self._is_input_fn_invoked = None
 
       if is_export_mode:
-        if mode == _REWRITE_FOR_INFERENCE_MODE:
+        if mode == _INFERENCE_ON_TPU_MODE:
           _add_item_to_params(params, _USE_TPU_KEY, True)
           mode = model_fn_lib.ModeKeys.PREDICT
         else:
@@ -2837,7 +2855,6 @@ class TPUEstimator(estimator_lib.Estimator):
           if self._log_every_n_steps is not None:
             estimator_spec = estimator_spec._replace(
                 training_hooks=estimator_spec.training_hooks + (examples_hook,))
-          self._profile_logger.log_event('model_fn', 'end')
           return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
@@ -2854,12 +2871,10 @@ class TPUEstimator(estimator_lib.Estimator):
           tpu_init_ops.append(dummy_table_variables_init)
 
         input_holders = _InputPipeline(input_fn, batch_axis, ctx)
-        self._profile_logger.log_event('setup_infeed', 'begin')
         enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
             input_holders.generate_infeed_enqueue_ops_and_dequeue_fn())
 
         graph = ops.get_default_graph()
-        self._profile_logger.log_event('setup_infeed', 'end')
         for enqueue_op in enqueue_ops:
           if isinstance(enqueue_op, list):
             graph.get_collection_ref(_TPU_ENQUEUE_OPS).extend(enqueue_op)
@@ -2930,7 +2945,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   host_ops,
                   tpu_compile_op=compile_op,
-                  prof_logger=self._profile_logger,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
@@ -2939,6 +2953,9 @@ class TPUEstimator(estimator_lib.Estimator):
                   tpu_init_ops=tpu_init_ops),
               InstallSignalHandlerHook()
           ])
+          if tpu_cluster_resolver.is_running_in_gce():
+            hooks.extend(
+                [preempted_hook.CloudTPUPreemptedHook(self._config.cluster)])
           if self._log_every_n_steps is not None:
             logging_hook_frequency = (  # Divide and round up
                 (self._log_every_n_steps +
@@ -2981,7 +2998,6 @@ class TPUEstimator(estimator_lib.Estimator):
           train_op = control_flow_ops.group(*update_ops)
           graph.add_to_collection(_TPU_TRAIN_OP, train_op)
 
-          self._profile_logger.log_event('model_fn', 'end')
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
@@ -3057,7 +3073,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   eval_update_ops + host_ops,
                   tpu_compile_op=compile_op,
-                  prof_logger=self._profile_logger,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
@@ -3066,10 +3081,13 @@ class TPUEstimator(estimator_lib.Estimator):
                   tpu_init_ops=tpu_init_ops)
           ] + input_hooks
 
+          if tpu_cluster_resolver.is_running_in_gce():
+            hooks.extend(
+                [preempted_hook.CloudTPUPreemptedHook(self._config.cluster)])
+
           if eval_hooks:
             hooks.extend(eval_hooks)
 
-          self._profile_logger.log_event('model_fn', 'end')
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=mean_loss,
@@ -3139,7 +3157,6 @@ class TPUEstimator(estimator_lib.Estimator):
             TPUInfeedOutfeedSessionHookForPrediction(
                 ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode],
                 tpu_compile_op=compile_op,
-                prof_logger=self._profile_logger,
                 master=self._config.master,
                 session_config=self._session_config),
         ] + input_hooks
@@ -3147,7 +3164,6 @@ class TPUEstimator(estimator_lib.Estimator):
         if prediction_hooks:
           hooks.extend(prediction_hooks)
 
-        self._profile_logger.log_event('model_fn', 'end')
         return model_fn_lib.EstimatorSpec(
             mode,
             prediction_hooks=hooks,
@@ -3850,3 +3866,245 @@ def export_estimator_savedmodel(estimator,
   return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
                                assets_extra, as_text, checkpoint_path,
                                strip_default_attrs)
+
+
+def model_fn_inference_on_tpu(model_fn,
+                              features,
+                              labels=None,
+                              config=None,
+                              params=None,
+                              batch_config=None,
+                              experimental_export_device_assignment=False,
+                              call_context=None):
+  """Convenience wrapper for export_saved_model API v2 for a model_fn.
+
+  It attempts to execute the entire model function on the TPU for prediction.
+  Note that this does not support features which are SparseTensors. If you have
+  SparseTensor features, consider partitioning your model function further and
+  use inference_on_tpu.
+
+  Args:
+    model_fn: the model_fn for which we want to inference on TPU.
+    features: a tensor or dict of tensors, serves as the feature inputs to the
+      model.
+    labels: a tensor or dict of tensors, serves as the labels inputs to the
+      model.
+    config: auxiliary config to the Estimator.
+    params: hparams that we want to pass to the model_fn.
+    batch_config: a named tuple to wrap the inference batching configuration
+      inputs.
+    experimental_export_device_assignment: Whether to include the device
+      assignment in the exported model. Doing so is useful in case of model
+      parallel inference but will tie the exported model to the TPU topology
+      used to export the model.
+    call_context: an optional TPUContext under which the TPU run configuartion
+      is stored.
+
+  Returns:
+    An EstimatorSpec containing the outputs in export_outputs and predictions.
+  """
+  computation, capture = _build_computation_for_inference(
+      model_fn, labels, config, params, experimental_export_device_assignment,
+      call_context)
+  tensors = call_computation(
+      features,
+      computation,
+      experimental_export_device_assignment=
+      experimental_export_device_assignment,
+      batch_config=batch_config)
+  estimator_spec, export_outputs_dict, predictions_dict, none_indices = (
+      capture.get())
+  predictions_list = tensors[:len(predictions_dict)]
+  export_outputs_list_without_none = tensors[len(predictions_dict):]
+
+  # Reinsert `None`s which we've taken out in
+  # `_build_computation_for_inference()`.
+  export_outputs_list = []
+  while none_indices or export_outputs_list_without_none:
+    if none_indices and none_indices[0] == len(export_outputs_list):
+      export_outputs_list.append(None)
+      none_indices.pop(0)
+    else:
+      export_outputs_list.append(export_outputs_list_without_none.pop(0))
+
+  # Reconstruct `export_outputs` with updated tensors.
+  new_export_outputs_dict = nest.pack_sequence_as(export_outputs_dict,
+                                                  export_outputs_list)
+  export_outputs = estimator_spec.export_outputs
+  new_export_outputs = collections.OrderedDict(
+      (k, _clone_export_output_with_tensors(export_outputs[k], v))
+      for k, v in six.iteritems(new_export_outputs_dict))
+  # Reconstruct `predictions` with updated tensors.
+  new_predictions = nest.pack_sequence_as(predictions_dict, predictions_list)
+  if (len(new_predictions) == 1 and
+      _KEY_WHEN_PREDICTIONS_IS_A_TENSOR in new_predictions):
+    new_predictions = new_predictions[_KEY_WHEN_PREDICTIONS_IS_A_TENSOR]
+
+  return estimator_spec._replace(
+      export_outputs=new_export_outputs, predictions=new_predictions)
+
+
+def _build_computation_for_inference(model_fn,
+                                     labels,
+                                     config,
+                                     params,
+                                     experimental_export_device_assignment,
+                                     call_context=None):
+  """Builds the computation with calls the model_fn for inference."""
+  capture = _CapturedObject()
+
+  def computation(computation_input):
+    """Computation to be passed to `TPUPartitionedCall()`."""
+    tpu_computation, tpu_capture = _build_tpu_computation_for_inference(
+        model_fn, computation_input, labels, config, params)
+
+    if experimental_export_device_assignment and call_context:
+      # Export the device assignment as part of the model. This is useful for
+      # model parallel usecases where the model relies on the mapping between
+      # logical and physical devices.
+      with call_context.with_mode(_INFERENCE_ON_TPU_MODE) as ctx:
+        device_assignment = ctx.device_assignment
+    else:
+      device_assignment = None
+
+    if experimental_export_device_assignment:
+      tensors_on_cpu = tpu.rewrite_for_inference(
+          tpu_computation, device_assignment=device_assignment)
+    else:
+      tensors_on_cpu = tpu.rewrite(
+          tpu_computation, device_assignment=device_assignment)
+      tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
+
+    (estimator_spec, export_outputs_dict, export_outputs_list,
+     predictions_dict) = (
+         tpu_capture.get())
+    predictions_list = tensors_on_cpu[:len(predictions_dict)]
+    export_outputs_tpu_on_cpu_list = tensors_on_cpu[len(predictions_dict):]
+
+    # Reconstruct tensors used in export_outputs, with TPU tensors replaced
+    # with their CPU counterpart returned from `rewrite_for_inference()`.
+    # `function.Defun()` does not like `None`s in return values, so we leave
+    # `None`s out but record their positions for later reconstruction.
+    export_outputs_list_without_none = []
+    none_indices = []
+    for i, t in enumerate(export_outputs_list):
+      if t is None:
+        none_indices.append(i)
+      else:
+        export_outputs_list_without_none.append(
+            export_outputs_tpu_on_cpu_list.pop(0))
+
+    capture.capture(
+        (estimator_spec, export_outputs_dict, predictions_dict, none_indices))
+    return predictions_list + export_outputs_list_without_none
+
+  return computation, capture
+
+
+def _build_tpu_computation_for_inference(model_fn, features, labels, config,
+                                         params):
+  """Builds the TPU computation for inference on TPU."""
+  capture = _CapturedObject()
+
+  def computation():
+    """Compute tpu tensors used in export_outputs.
+
+    Passed to rewrite_for_inference so that model_fn will be called under
+    the rewriting contexts. Only tpu tensors are returned, but export_outputs
+    and scaffold are captured.
+
+    Returns:
+       A list of Tensors used in export_outputs and not marked for
+       outside_compilation.
+    """
+    # We should only call model fn once and it should be inside `computation`
+    # so that building the graph will happen under `rewrite_for_inference`.
+
+    model_fn_args = function_utils.fn_args(model_fn)
+    kwargs = {}
+    # Makes deep copy with `config` and params` in case user mutates them.
+    if 'labels' in model_fn_args:
+      kwargs['labels'] = labels
+    if 'mode' in model_fn_args:
+      kwargs['mode'] = model_fn_lib.ModeKeys.PREDICT
+    if 'config' in model_fn_args:
+      kwargs['config'] = config
+    if 'params' in model_fn_args:
+      kwargs['params'] = params
+    estimator_spec = model_fn(features, **kwargs)
+
+    # We pick the TPU tensors out from `export_output` and later return them
+    # from `computation` for rewriting.
+    export_outputs_dict = collections.OrderedDict(
+        (k, _export_output_to_tensors(v))
+        for k, v in six.iteritems(estimator_spec.export_outputs))
+    export_outputs_list = nest.flatten(export_outputs_dict)
+    export_outputs_tpu_list = [t for t in export_outputs_list if t is not None]
+
+    if isinstance(estimator_spec.predictions, dict):
+      predictions_dict = collections.OrderedDict(
+          (k, v) for k, v in six.iteritems(estimator_spec.predictions))
+    else:
+      predictions_dict = {
+          _KEY_WHEN_PREDICTIONS_IS_A_TENSOR: estimator_spec.predictions
+      }
+    predictions_list = nest.flatten(predictions_dict)
+
+    # We cannot return everything we want through the return values, so
+    # capture the rest here for later use.
+    capture.capture((estimator_spec, export_outputs_dict, export_outputs_list,
+                     predictions_dict))
+    return predictions_list + export_outputs_tpu_list
+
+  return computation, capture
+
+
+def inference_on_tpu(computation,
+                     inputs_to_tpu,
+                     num_batch_threads,
+                     max_batch_size,
+                     batch_timeout_micros,
+                     allowed_batch_sizes=None,
+                     max_enqueued_batches=10):
+  """Convenient wrapper for export_saved_model API v2 to wrap TPU computation.
+
+  It puts computation on TPU, add batching around it and round robin computation
+  between TPU cores.
+
+  See tpu_estimator_test.py for an example.
+
+  Args:
+    computation: computation to be put on TPU, which takes inputs_to_tpu as
+      arguments.
+    inputs_to_tpu: a list of tensors as input to computation.
+    num_batch_threads: Number of scheduling threads for processing batches of
+      work. Determines the number of batches processed in parallel.
+    max_batch_size: Batch sizes will never be bigger than this.
+    batch_timeout_micros: Maximum number of microseconds to wait before
+      outputting an incomplete batch.
+    allowed_batch_sizes: Optional list of allowed batch sizes. If left empty,
+      does nothing. Otherwise, supplies a list of batch sizes, causing the op to
+      pad batches up to one of those sizes. The entries must increase
+      monotonically, and the final entry must equal max_batch_size.
+    max_enqueued_batches: The maximum depth of the batch queue. Defaults to 10.
+
+  Returns:
+    The unbatched computation output Tensors.
+  """
+
+  @batch_ops.batch_function(num_batch_threads, max_batch_size,
+                            batch_timeout_micros, allowed_batch_sizes,
+                            max_enqueued_batches)
+  def batched_tpu_computation(*args):
+
+    @function.Defun(capture_resource_var_by_value=False)
+    def tpu_computation():
+      return tpu.rewrite(computation, args)
+
+    return tpu_functional.TPUPartitionedCall(
+        args=tpu_computation.captured_inputs,
+        device_ordinal=tpu_ops.tpu_ordinal_selector(),
+        Tout=[o.type for o in tpu_computation.definition.signature.output_arg],
+        f=tpu_computation)
+
+  return batched_tpu_computation(*inputs_to_tpu)

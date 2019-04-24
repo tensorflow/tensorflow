@@ -295,6 +295,47 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      multiply0 = f32[] multiply(p0, c0)
+      ROOT multiply1 = f32[] multiply(multiply0, c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0),
+                                     m::Multiply(m::ConstantScalar(2.0),
+                                                 m::ConstantScalar(3.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      multiply0 = f32[4] multiply(p0, b0)
+      ROOT multiply1 = f32[4] multiply(multiply0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Parameter(0), m::Broadcast(m::Multiply(m::ConstantScalar(2.0),
+                                                    m::ConstantScalar(3.0))))));
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -444,6 +485,27 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   EXPECT_THAT(root, GmockMatch(m::Add(
                         m::Op().Is(param0),
                         m::Add(m::Op().Is(constant1), m::Op().Is(constant2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(1.0)
+      c1 = f32[] constant(2.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      add0 = f32[4] add(p0, b0)
+      ROOT add1 = f32[4] add(add0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0),
+                                m::Broadcast(m::Add(m::ConstantScalar(1.0),
+                                                    m::ConstantScalar(2.0))))));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
@@ -638,6 +700,25 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
                                       m::Negate(m::Op().Is(constant)))));
+}
+
+// Test that A - Broadcast(Const) is canonicalized to A + Broadcast(-Const).
+TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c = f32[] constant(0.125)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT sub = f32[4] subtract(p0, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(m::Parameter(0),
+                        m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).
@@ -4337,7 +4418,7 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   int m, k, n;
   PrimitiveType element_type;
   std::tie(m, k, n, element_type) = GetParam();
-  std::vector<int64> lhs_dims = {1, 3, 5};
+  std::vector<int64> lhs_dims = {2, 3, 5};
   std::vector<int64> rhs_dims = lhs_dims;
   std::vector<int64> output_dims = lhs_dims;
   if (m > 0) {
@@ -4379,6 +4460,8 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
   const bool dot_should_be_transformed =
       m == 1 || k == 1 || n == 1 || m == -1 || k == -1 || n == -1;
+  EXPECT_EQ(changed, dot_should_be_transformed);
+  TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
   EXPECT_EQ(changed, dot_should_be_transformed);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
@@ -4434,11 +4517,17 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
+  // First pass of algebraic simplifier will remove degenerate dimensions
+  // and optimize dot(transpose(x),transpose(y))
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
   const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
   const bool computation_should_be_modified =
       dot_should_be_transformed || (transpose_lhs && transpose_rhs);
   EXPECT_EQ(changed, computation_should_be_modified);
+  // The second pass of algebriac simplifer will remove dots without
+  // non-contracting dimensions or contracting dimensions.
+  TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
+  EXPECT_EQ(changed, dot_should_be_transformed);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kDot) {

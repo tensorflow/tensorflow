@@ -972,58 +972,81 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinLstm:
-        // Only delegate to NNAPI 1.1+, as 1.0 has a bug for optional tensors
-        // which would affect LSTM.
         // TODO(miaowang): add loggings to indicate why the op is rejected.
         if (version == 1) {
+          if (android_sdk_version < kMinSdkVersionForNNAPI11) {
+            // Only delegate to NNAPI 1.1+, as 1.0 has a bug for optional
+            // tensors which would affect LSTM.
+            return nullptr;
+          }
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
               IsHybridOperator(context, builtin_code, node)) {
             // Hybrid operators not supported before NNAPI 1.2.
             return nullptr;
           }
-
+          // TODO(levp): name the constants for number of inputs in LSTM kernel.
+          if (node->inputs->size != 20 && node->inputs->size != 24) {
+            return nullptr;
+          }
+          if (node->inputs->size == 24 &&
+              android_sdk_version < kMinSdkVersionForNNAPI12) {
+            // LSTM with layer norm introduced in API level 29
+            return nullptr;
+          }
           const TfLiteType weight_type =
               context
                   ->tensors[node->inputs
                                 ->data[/*kInputToOutputWeightsTensor*/ 4]]
                   .type;
-          if (node->inputs->size == 20 &&
-              android_sdk_version >= kMinSdkVersionForNNAPI11 &&
-              (weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8)) {
-            return [](const NNAPIOpMappingArgs& mapping_args)
-                       -> ANeuralNetworksOperationType {
-              auto builtin = reinterpret_cast<TfLiteLSTMParams*>(
-                  mapping_args.node->builtin_data);
-              mapping_args.builder->AddScalarInt32Operand(builtin->activation);
-              mapping_args.builder->AddScalarFloat32Operand(builtin->cell_clip);
-              mapping_args.builder->AddScalarFloat32Operand(builtin->proj_clip);
-
-              // Current NNAPI implementation requires the scratch_buffer as
-              // output.
-              mapping_args.builder->AddAdditionalFloat32OutputTensor(2);
-
-              // NNAPI need both state_in and state_out for cell_state and
-              // output_state.
-              int ann_index;
-              mapping_args.builder->AddStateFloat32Tensor(
-                  mapping_args.node->inputs
-                      ->data[/*kInputActivationStateTensor*/ 18],
-                  &ann_index);
-              mapping_args.model_state_outputs->push_back(ann_index);
-              mapping_args.model_state_tfl_inputs->push_back(
-                  mapping_args.node->inputs
-                      ->data[/*kInputActivationStateTensor*/ 18]);
-              mapping_args.builder->AddStateFloat32Tensor(
-                  mapping_args.node->inputs->data[/*kInputCellStateTensor*/ 19],
-                  &ann_index);
-              mapping_args.model_state_outputs->push_back(ann_index);
-              mapping_args.model_state_tfl_inputs->push_back(
-                  mapping_args.node->inputs
-                      ->data[/*kInputCellStateTensor*/ 19]);
-
-              return ANEURALNETWORKS_LSTM;
-            };
+          if (weight_type != kTfLiteFloat32 && weight_type != kTfLiteUInt8) {
+            return nullptr;
           }
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            auto builtin = reinterpret_cast<TfLiteLSTMParams*>(
+                mapping_args.node->builtin_data);
+            mapping_args.builder->AddScalarInt32Operand(builtin->activation);
+            mapping_args.builder->AddScalarFloat32Operand(builtin->cell_clip);
+            mapping_args.builder->AddScalarFloat32Operand(builtin->proj_clip);
+
+            // Current NNAPI implementation requires the scratch_buffer as
+            // output.
+            mapping_args.builder->AddAdditionalFloat32OutputTensor(2);
+
+            // NNAPI need both state_in and state_out for cell_state and
+            // output_state.
+            int ann_index;
+            mapping_args.builder->AddStateFloat32Tensor(
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 18],
+                &ann_index);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 18]);
+            mapping_args.builder->AddStateFloat32Tensor(
+                mapping_args.node->inputs->data[/*kInputCellStateTensor*/ 19],
+                &ann_index);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs->data[/*kInputCellStateTensor*/ 19]);
+
+            const bool hybrid_op = IsHybridOperator(
+                mapping_args.context, kTfLiteBuiltinLstm, mapping_args.node);
+
+            if (mapping_args.node->inputs->size == 24) {
+              for (int i = 20; i < 24; ++i) {
+                const auto input_index = mapping_args.node->inputs->data[i];
+                if (input_index != kOptionalTensor) {
+                  mapping_args.builder->AddTensorInput(input_index, hybrid_op);
+                } else {
+                  mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
+                }
+              }
+            }
+
+            return ANEURALNETWORKS_LSTM;
+          };
         }
         break;
       case kTfLiteBuiltinMean:
@@ -1054,6 +1077,11 @@ class NNAPIDelegateKernel {
         if (version == 1 &&
             context->tensors[node->outputs->data[0]].type == kTfLiteFloat32) {
           return BasicMappingFn<ANEURALNETWORKS_HASHTABLE_LOOKUP>;
+        }
+        break;
+      case kTfLiteBuiltinPrelu:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_PRELU>;
         }
         break;
       default:
@@ -1279,6 +1307,13 @@ class NNAPIDelegateKernel {
       // Map inputs to NN API tensor indices.
       int num_added_inputs = 0;
       for (auto input_index : TfLiteIntArrayView(node->inputs)) {
+        if (reg->builtin_code == kTfLiteBuiltinLstm && num_added_inputs >= 20) {
+          // Skip layer normalization weights. They are added in the Map
+          // function (after all the other inputs added there) since layer
+          // normalization weights are the last four inputs of the LSTM op in
+          // NNAPI.
+          continue;
+        }
         if (input_index == kOptionalTensor &&
             (reg->builtin_code == kTfLiteBuiltinLstm ||
              reg->builtin_code == kTfLiteBuiltinSvdf)) {

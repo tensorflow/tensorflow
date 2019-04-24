@@ -54,4 +54,25 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
     last_cumulative_weight = cumulative_weight;
   }
 }
+
+void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
+                                  std::vector<std::uint_fast32_t>* start_vec,
+                                  std::vector<std::uint_fast32_t>* end_vec) {
+  int steal_domain_size = std::min(min_threads_per_domain, num_threads);
+  unsigned steal_start = 0, steal_end = steal_domain_size;
+  for (int i = 0; i < num_threads; ++i) {
+    if (i >= steal_end) {
+      if (steal_end + steal_domain_size < num_threads) {
+        steal_start = steal_end;
+        steal_end += steal_domain_size;
+      } else {
+        steal_end = num_threads;
+        steal_start = steal_end - steal_domain_size;
+      }
+    }
+    start_vec->at(i) = steal_start;
+    end_vec->at(i) = steal_end;
+  }
+}
+
 }  // namespace tensorflow

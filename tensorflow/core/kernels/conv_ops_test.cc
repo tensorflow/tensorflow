@@ -794,7 +794,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
@@ -844,7 +844,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
@@ -996,8 +996,6 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolution) {
   const int filter_count = 12;
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
-
-// Relu --------------------------------------------------------------------- //
 
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;

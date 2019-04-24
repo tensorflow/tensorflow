@@ -198,7 +198,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -847,7 +848,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   # TODO(priyag): Enable this test for TPU. Currently tuples/dict don't work
   # as clone_model's input_tensors argument only seems to accept list and not
   # tuples or dict.
-
   @combinations.generate(
       combinations.combine(
           distribution=[
@@ -1257,6 +1257,59 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           cpu_model.predict(dataset_with_partial_batch, steps=12),
           atol=1e-4, rtol=1e-4)
 
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_match_model_input_matches_with_dataset_tensors(self, distribution):
+
+    def _create_model_input_output_tensors():
+      input_a = keras.layers.Input(shape=(16,), name='z_input_sorted_last')
+      input_b = keras.layers.Input(shape=(32,), name='a_input_sorted_first')
+      intermediate_a = keras.layers.Dense(10)(input_a)
+      intermediate_b = keras.layers.Dense(10)(input_b)
+      merged = keras.layers.Add()([intermediate_a, intermediate_b])
+      output = keras.layers.Dense(2)(merged)
+      return input_a, input_b, output
+
+    input_dict = {
+        'z_input_sorted_last': np.random.rand(32, 16).astype(np.float32),
+        'a_input_sorted_first': np.random.rand(32, 32).astype(np.float32)
+    }
+    target = np.ones((32, 2), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((input_dict, target))
+    dataset = dataset.batch(4, drop_remainder=True)
+
+    with self.cached_session():
+      with distribution.scope():
+        input_a, input_b, output = _create_model_input_output_tensors()
+        # `input_a`, which has input name that comes last in alphanumeric
+        # order, is the first input of the model input layers. If tensors
+        # from `input_dict` is blindly flattened and passed to model
+        # inputs incorrectly, this would result in `input_a` input layer
+        # matching with tensor `a_input_sorted_first` and would result in
+        # shape mismatch.
+        model_with_array_input = keras.models.Model(
+            inputs=[input_a, input_b], outputs=output)
+        model_with_array_input.compile('sgd', 'mse')
+        model_weights = model_with_array_input.get_weights()
+        model_with_array_input_fit = model_with_array_input.fit(
+            dataset, steps_per_epoch=1, epochs=1).history
+
+        input_a, input_b, output = _create_model_input_output_tensors()
+        model_with_dict_input = keras.models.Model(
+            inputs={
+                'z_input_sorted_last': input_a,
+                'a_input_sorted_first': input_b,
+            },
+            outputs=output)
+        model_with_dict_input.compile('sgd', 'mse')
+        model_with_dict_input.set_weights(model_weights)
+        model_with_dict_input_fit = model_with_dict_input.fit(
+            dataset, steps_per_epoch=1, epochs=1).history
+        self.assertAllClose(
+            model_with_dict_input_fit,
+            model_with_array_input_fit,
+            atol=1e-4,
+            rtol=1e-4)
+
 
 class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
   class IdentityRegularizer(keras.regularizers.Regularizer):
@@ -1464,6 +1517,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
+      self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1506,6 +1560,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
+      self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
 

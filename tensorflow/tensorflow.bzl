@@ -55,6 +55,7 @@ def register_extension_info(**kwargs):
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "1.13.1"
+VERSION_MAJOR = VERSION.split(".")[0]
 
 def if_v2(a):
     return select({
@@ -395,7 +396,7 @@ def tf_binary_additional_srcs(fullversion = False):
     if fullversion:
         suffix = "." + VERSION
     else:
-        suffix = "." + VERSION.split(".")[0]
+        suffix = "." + VERSION_MAJOR
 
     return if_static(
         extra_deps = [],
@@ -408,33 +409,27 @@ def tf_binary_additional_srcs(fullversion = False):
     )
 
 def tf_binary_additional_data_deps():
-    longsuffix = "." + VERSION
-    suffix = "." + VERSION.split(".")[0]
-
     return if_static(
         extra_deps = [],
         macos = [
             clean_dep("//tensorflow:libtensorflow_framework.dylib"),
-            clean_dep("//tensorflow:libtensorflow_framework%s.dylib" % suffix),
-            clean_dep("//tensorflow:libtensorflow_framework%s.dylib" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION),
         ],
         otherwise = [
             clean_dep("//tensorflow:libtensorflow_framework.so"),
-            clean_dep("//tensorflow:libtensorflow_framework.so%s" % suffix),
-            clean_dep("//tensorflow:libtensorflow_framework.so%s" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
         ],
     )
 
 # Helper function for the per-OS tensorflow libraries and their version symlinks
 def tf_shared_library_deps():
-    longsuffix = "." + VERSION
-    suffix = "." + VERSION.split(".")[0]
-
     return select({
         clean_dep("//tensorflow:macos_with_framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.dylib"),
-            clean_dep("//tensorflow:libtensorflow%s.dylib" % suffix),
-            clean_dep("//tensorflow:libtensorflow%s.dylib" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION),
         ],
         clean_dep("//tensorflow:macos"): [],
         clean_dep("//tensorflow:windows"): [
@@ -443,8 +438,8 @@ def tf_shared_library_deps():
         ],
         clean_dep("//tensorflow:framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.so"),
-            clean_dep("//tensorflow:libtensorflow.so%s" % suffix),
-            clean_dep("//tensorflow:libtensorflow.so%s" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION),
         ],
         "//conditions:default": [],
     }) + tf_binary_additional_srcs()
@@ -1304,7 +1299,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda_is_configured_compat([
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_lib"),

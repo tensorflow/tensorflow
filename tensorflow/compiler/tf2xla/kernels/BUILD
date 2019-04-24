@@ -122,7 +122,7 @@ tf_kernel_library(
     tags = ["optonly"],
     deps = [
         ":case_op",
-        ":conv_op_helpers",
+        ":conv_op_attrs",
         ":if_op",
         ":tensor_list_utils",
         ":while_op",
@@ -146,6 +146,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:conv_op_helpers",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -221,25 +222,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "conv_op_helpers",
-    srcs = ["conv_op_helpers.cc"],
-    hdrs = ["conv_op_helpers.h"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_bounds_check",
-        "//tensorflow/core/kernels:conv_ops",
-        "@com_google_absl//absl/types:span",
-    ],
 )
 
 cc_library(
@@ -383,4 +365,15 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "conv_op_attrs",
+    srcs = ["conv_op_attrs.cc"],
+    hdrs = ["conv_op_attrs.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client/lib:conv_op_helpers",
+        "//tensorflow/core:framework",
+    ],
 )

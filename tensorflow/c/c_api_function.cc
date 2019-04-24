@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/c_api_internal.h"
-
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/strings/match.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -352,6 +352,16 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     argdef->set_type(node->output_type(idx));
     const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
+    auto& arg_attrs = (*fdef->mutable_arg_attr())[i];
+    for (const auto& attr : node->attrs()) {
+      // Only copy internal attributes. These attributes will be applied to
+      // _Arg/Placeholder nodes when this FunctionDef is converted to graph, and
+      // normal attributes for nodes cannot be applied to those _Arg/Placeholder
+      // nodes.
+      if (absl::StartsWith(attr.first, "_")) {
+        arg_attrs.mutable_attr()->insert(attr);
+      }
+    }
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
   }
 

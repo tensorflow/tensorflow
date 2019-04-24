@@ -28,7 +28,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -37,25 +36,39 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class DynamicLayer(base_layer.Layer):
+class DynamicLayer1(base_layer.Layer):
 
   def __init__(self, dynamic=False, **kwargs):
-    super(DynamicLayer, self).__init__(dynamic=dynamic, **kwargs)
+    super(DynamicLayer1, self).__init__(dynamic=dynamic, **kwargs)
 
   def call(self, inputs):
-    samples = tensor_array_ops.TensorArray(
-        dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
-    for idx, sample in enumerate(inputs):
-      samples = samples.write(idx, math_ops.square(sample))
-    return samples.stack()
+    if math_ops.reduce_sum(inputs) > 0:
+      return math_ops.sqrt(inputs)
+    else:
+      return math_ops.square(inputs)
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+
+class DynamicLayer2(base_layer.Layer):
+
+  def __init__(self, dynamic=False, **kwargs):
+    super(DynamicLayer2, self).__init__(dynamic=dynamic, **kwargs)
+
+  def call(self, inputs):
+    samples = []
+    for sample in inputs:
+      samples.append(math_ops.square(sample))
+    return array_ops.stack(samples, axis=0)
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -69,39 +82,34 @@ class InvalidLayer(base_layer.Layer):
 
 class BaseLayerTest(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_with_all_model_types
-  def test_dynamic_layer(self):
-    model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
-                                                input_shape=(3,))
-    self.assertEqual(model.dynamic, True)
-    model.compile(rmsprop.RMSprop(0.001), loss='mse')
-    self.assertEqual(model.run_eagerly, True)
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-
-  @keras_parameterized.run_with_all_model_types
-  def test_dynamic_layer_error(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 'attempting to use Python control flow'):
-      model = testing_utils.get_model_from_layers([DynamicLayer()],
-                                                  input_shape=(3,))
-      model.compile(rmsprop.RMSprop(0.001), loss='mse')
-      model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-
-  @keras_parameterized.run_with_all_model_types
-  def test_dynamic_layer_error_running_in_graph_mode(self):
+  @parameterized.parameters(DynamicLayer1, DynamicLayer2)
+  def test_dynamic_layer_in_functional_model_in_graph_mode(self, layer_class):
     with context.graph_mode():
-      model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
-                                                  input_shape=(3,))
+      inputs = keras.Input((3,))
+      # Works when `dynamic=True` is declared.
+      outputs = layer_class(dynamic=True)(inputs)
+      model = keras.Model(inputs, outputs)
       self.assertEqual(model.dynamic, True)
       # But then you cannot run the model since you're in a graph scope.
       with self.assertRaisesRegexp(
           ValueError, 'You must enable eager execution'):
         model.compile(rmsprop.RMSprop(0.001), loss='mse')
 
-  def test_dynamic_layer_with_deferred_sequential_model(self):
-    model = keras.Sequential(
-        [DynamicLayer(dynamic=True),
-         keras.layers.Dense(3)])
+      # Fails when `dynamic=True` not declared.
+      with self.assertRaisesRegexp(
+          TypeError, 'attempting to use Python control flow'):
+        _ = layer_class()(inputs)
+
+  @parameterized.parameters(DynamicLayer1, DynamicLayer2)
+  def test_dynamic_layer_in_functional_model_in_eager_mode(self, layer_class):
+    inputs = keras.Input((3,))
+    # Fails when `dynamic=True` not declared.
+    with self.assertRaisesRegexp(
+        TypeError, 'attempting to use Python control flow'):
+      _ = layer_class()(inputs)
+    # Works when `dynamic=True` is declared.
+    outputs = layer_class(dynamic=True)(inputs)
+    model = keras.Model(inputs, outputs)
     self.assertEqual(model.dynamic, True)
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     self.assertEqual(model.run_eagerly, True)
@@ -109,15 +117,50 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   def test_nested_dynamic_layers_in_eager_mode(self):
     inputs = keras.Input((3,))
-    outputs = DynamicLayer(dynamic=True)(inputs)
+    outputs = DynamicLayer1(dynamic=True)(inputs)
     inner_model = keras.Model(inputs, outputs)
     self.assertEqual(inner_model.dynamic, True)
 
     inputs = keras.Input((3,))
-    x = DynamicLayer(dynamic=True)(inputs)
+    x = DynamicLayer2(dynamic=True)(inputs)
     outputs = inner_model(x)
 
     model = keras.Model(inputs, outputs)
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+  def test_dynamic_layers_in_sequential_model(self):
+    # Without input_shape argument
+    model = keras.Sequential([DynamicLayer1(dynamic=True),
+                              keras.layers.Dense(3),
+                              DynamicLayer2(dynamic=True)])
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+    # With input_shape argument
+    model = keras.Sequential([DynamicLayer1(dynamic=True, input_shape=(3,)),
+                              DynamicLayer2(dynamic=True)])
+    self.assertEqual(model.dynamic, True)
+    model.compile(rmsprop.RMSprop(0.001), loss='mse')
+    self.assertEqual(model.run_eagerly, True)
+    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+  def test_dynamic_layers_in_subclassed_model(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer1 = DynamicLayer1(dynamic=True)
+
+      def call(self, inputs):
+        return self.layer1(inputs)
+
+    model = MyModel()
     self.assertEqual(model.dynamic, True)
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     self.assertEqual(model.run_eagerly, True)
@@ -175,6 +218,43 @@ class BaseLayerTest(keras_parameterized.TestCase):
     inputs = keras.Input((3,))
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
       _ = InvalidLayer()(inputs)
+
+  def test_no_legacy_model(self):
+    inputs = keras.Input((1,))
+    legacy_dense_0 = legacy_core.Dense(1, name='legacy_dense_0')
+    legacy_dense_1 = legacy_core.Dense(1, name='legacy_dense_1')
+
+    layer = legacy_dense_0(inputs)
+    layer = keras.layers.Dense(1)(layer)
+    layer = legacy_dense_1(layer)
+
+    expected_regex = (r'The following are legacy tf\.layers\.Layers:\n  '
+                      '{}\n  {}'.format(legacy_dense_0, legacy_dense_1))
+
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Model(inputs=[inputs], outputs=[layer])
+
+    model = keras.models.Model(inputs=[inputs], outputs=[inputs])
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      model._insert_layers([legacy_dense_0, legacy_dense_1])
+
+  def test_no_legacy_sequential(self):
+    layers = [
+        keras.layers.Dense(1),
+        legacy_core.Dense(1, name='legacy_dense_0')
+    ]
+
+    expected_regex = r'legacy tf\.layers\.Layers:\n  {}'.format(layers[1])
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Sequential(layers)
+
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      _ = keras.models.Sequential([keras.layers.Input(shape=(4,))] + layers)
+
+    model = keras.models.Sequential()
+    with self.assertRaisesRegexp(TypeError, expected_regex):
+      for l in layers:
+        model.add(l)
 
   @keras_parameterized.run_with_all_model_types
   @test_util.run_in_graph_and_eager_modes
@@ -322,6 +402,19 @@ class BaseLayerTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_layer_names(self):
+    inputs = keras.layers.Input(shape=[2])
+    add1 = inputs + inputs
+    add2 = keras.layers.Add()([inputs, inputs])
+    add3 = inputs + inputs
+    add4 = keras.layers.Add()([inputs, inputs])
+    model = keras.models.Model(
+        inputs=[inputs], outputs=[add1, add2, add3, add4])
+    self.assertEqual(
+        [l.name for l in model.layers],
+        ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
 
 
 class SymbolicSupportTest(test.TestCase):
@@ -540,6 +633,19 @@ class NestedTrackingTest(test.TestCase):
     layer.build((10, 10))
 
     self.assertEqual([layer.v], layer.variables)
+
+  def test_layer_class_not_tracked_as_sublayer(self):
+    # See https://github.com/tensorflow/tensorflow/issues/27431 for details.
+
+    class LayerWithClassAttribute(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithClassAttribute, self).__init__()
+        self.layer_fn = keras.layers.Dense
+
+    layer = LayerWithClassAttribute()
+    self.assertEmpty(layer.variables)
+    self.assertEmpty(layer.submodules)
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -75,6 +75,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
+        # out may be a ref tensor, wrap it in identity to get a non-ref tensor.
         ta = ta.write(i, array_ops.expand_dims(out, 0))
       outputs.append(ta)
     return tuple([i + 1] + outputs)
@@ -86,7 +87,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
   ta_list = control_flow_ops.while_loop(
       lambda i, *ta: i < iters,
       while_body,
-      [0] + [tensor_array_ops.TensorArray(dtype, iters)
+      [0] + [tensor_array_ops.TensorArray(dtype.base_dtype, iters)
              for dtype in flat_loop_fn_dtypes],
       **extra_args)[1:]
 

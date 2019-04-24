@@ -70,9 +70,6 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  explicit StreamExecutor(PlatformKind kind,
-                          const PluginConfig &plugin_config = PluginConfig());
-
   StreamExecutor(
       const Platform *platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation);
@@ -161,18 +158,8 @@ class StreamExecutor {
   //    sub-buffer after parent deallocation is expected to be safe. This will
   //    render your code non-platform-portable, however.
   template <typename T>
-  DeviceMemory<T> AllocateSubBuffer(DeviceMemory<T> *parent,
-                                    uint64 element_offset,
-                                    uint64 element_count);
-
-  // As AllocateSubBuffer(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedSubBuffer(DeviceMemory<T> *parent,
-                                               uint64 element_offset,
-                                               uint64 element_count) {
-    return ScopedDeviceMemory<T>(
-        this, AllocateSubBuffer<T>(parent, element_offset, element_count));
-  }
+  DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64 element_offset,
+                               uint64 element_count);
 
   // Finds a symbol and returns device memory allocated to the symbol. The
   // symbol is searched in any kernels that were previously loaded through
@@ -223,7 +210,7 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void *HostMemoryAllocate(uint64 bytes);
+  void *HostMemoryAllocate(uint64 size);
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void *location);
@@ -582,23 +569,23 @@ class StreamExecutor {
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event *event);
 
-  // Allocates stream resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateStream(Stream *subject);
+  // Allocates stream resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateStream(Stream *stream);
 
   // Deallocates stream resources on the underlying platform.
-  void DeallocateStream(Stream *subject);
+  void DeallocateStream(Stream *stream);
 
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream *dependent, Stream *other);
 
-  // Allocates timer resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateTimer(Timer *subject);
+  // Allocates timer resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateTimer(Timer *timer);
 
   // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer *subject);
+  void DeallocateTimer(Timer *timer);
 
   // Records a start event for an interval timer.
   bool StartTimer(Stream *stream, Timer *timer);
@@ -620,7 +607,7 @@ class StreamExecutor {
   // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
   // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
   // tracked.
-  void CreateAllocRecord(void *opaque, uint64 size);
+  void CreateAllocRecord(void *opaque, uint64 bytes);
 
   // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
   // pointers will not be erased (as they're not tracked, per above).
@@ -843,9 +830,9 @@ DeviceMemory<T> StreamExecutor::AllocateZeroed() {
 }
 
 template <typename T>
-DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
-                                                  uint64 element_offset,
-                                                  uint64 element_count) {
+DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
+                                             uint64 element_offset,
+                                             uint64 element_count) {
   if (element_offset + element_count > parent->ElementCount()) {
     LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
                << "than parent allocation size: (" << element_offset << " + "
@@ -853,14 +840,12 @@ DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
     return DeviceMemory<T>{};
   }
 
-  void *opaque = implementation_->AllocateSubBuffer(
+  void *opaque = implementation_->GetSubBuffer(
       parent, sizeof(T) * element_offset, sizeof(T) * element_count);
   if (opaque == nullptr) {
     return DeviceMemory<T>{};
   }
-  CreateAllocRecord(opaque, sizeof(T) * element_count);
-  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count,
-                                          true /* = is_sub_buffer */));
+  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
 }
 
 template <typename... Params, typename... Args>

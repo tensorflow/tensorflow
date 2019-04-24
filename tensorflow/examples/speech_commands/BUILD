@@ -128,7 +128,7 @@ tf_py_test(
     size = "small",
     srcs = ["freeze_test.py"],
     additional_deps = [
-        ":freeze",
+        ":freeze_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -167,7 +167,7 @@ tf_py_test(
     size = "small",
     srcs = ["wav_to_features_test.py"],
     additional_deps = [
-        ":wav_to_features",
+        ":wav_to_features_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -206,7 +206,7 @@ tf_py_test(
     size = "small",
     srcs = ["generate_streaming_test_wav_test.py"],
     additional_deps = [
-        ":generate_streaming_test_wav",
+        ":generate_streaming_test_wav_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -256,7 +256,7 @@ tf_py_test(
     size = "medium",
     srcs = ["label_wav_test.py"],
     additional_deps = [
-        ":label_wav",
+        ":label_wav_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )

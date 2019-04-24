@@ -339,6 +339,17 @@ def is_in_call_context():
   return getattr(_call_context, 'in_call', False)
 
 
+def is_in_frozen_context():
+  """Returns if currently executing inside a `call` of a frozen Layer.
+
+  A Layer is considered frozen if `layer.trainable=False`.
+
+  Returns:
+    Whether currently inside the `call` of a frozen Layer.
+  """
+  return getattr(_call_context, 'frozen', False)
+
+
 def uses_keras_history(tensors):
   """Check if at least one Tensor originates from a `keras.Input`.
 
@@ -397,14 +408,18 @@ def mark_checked(tensors):
 
 
 @tf_contextlib.contextmanager
-def call_context():
+def call_context(layer):
   """Scope that marks when we are currently inside a Layer/Model's `call`."""
   was_in_call = is_in_call_context()
+  was_frozen = is_in_frozen_context()
   _call_context.in_call = True
+  if not layer.trainable:
+    _call_context.frozen = True
   try:
     yield
   finally:
     _call_context.in_call = was_in_call
+    _call_context.frozen = was_frozen
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
@@ -558,8 +573,3 @@ def autocast_context_manager(input_list, should_cast):
   var_read_dtype = _get_var_read_dtype(input_list, should_cast)
   return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
       var_read_dtype)
-
-
-def is_subclassed(layer):
-  return (layer.__module__.find('keras.engine') == -1 and
-          layer.__module__.find('keras.layers') == -1)

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import itertools
 
 from absl.testing import parameterized
 import six
@@ -28,6 +29,8 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import models
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -440,6 +443,22 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
         mod.variables,
         mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
 
+  def test_attributes_to_ignore(self):
+    class DangerousModule(module.Module):
+      _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+          ("dangerous_submodule", "dangerous_variable"),
+          module.Module._TF_MODULE_IGNORED_PROPERTIES
+      ))
+
+    mod = DangerousModule()
+    mod.dangerous_submodule = module.Module()
+    mod.dangerous_variable = variables.Variable(1.)
+    mod.normal_variable = variables.Variable(2.)
+
+    self.assertEmpty(mod.submodules)
+    self.assertLen(mod.variables, 1)
+    self.assertEqual(mod.variables[0], mod.normal_variable)
+
   def test_with_path(self):
     mod = module.Module()
     mod.w = variables.Variable(1.)
@@ -456,6 +475,34 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
                       ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
                       ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
+
+  def test_module_discover_layer_variable(self):
+    m = module.Module()
+    m.a = layers.Dense(1)
+    m.b = layers.Dense(2)
+
+    # The weights of the layer has not been created yet.
+    self.assertEmpty(m.variables)
+    self.assertLen(m.submodules, 2)
+
+    inputs = layers.Input((1,))
+    m.a(inputs)
+    m.b(inputs)
+
+    variable_list = m.variables
+    self.assertLen(variable_list, 4)
+    self.assertEqual(variable_list[0], m.a.kernel)
+    self.assertEqual(variable_list[1], m.a.bias)
+    self.assertEqual(variable_list[2], m.b.kernel)
+    self.assertEqual(variable_list[3], m.b.bias)
+
+  def test_model_discover_submodule(self):
+    m = models.Sequential(layers=[layers.Dense(1),
+                                  layers.Dense(2)])
+
+    self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
+    m(layers.Input((1,)))
+    self.assertLen(m.variables, 4)
 
 
 class LayerModule(module.Module):

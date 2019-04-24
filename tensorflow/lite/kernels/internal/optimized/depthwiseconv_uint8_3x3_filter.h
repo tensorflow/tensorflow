@@ -20,19 +20,13 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
 namespace depthwise_conv {
-
-constexpr int kDepthwiseConvScratchWorkspaceSize = 10 * 10 * 64;
-constexpr int kDepthwiseConvAdjustedBiasLimit = 64;
-// In cases such as depth multiplication, we want to be able to load data from
-// the workspace that is beyond the valid range. Macro-block sizes are adjusted
-// to allow for this.
-constexpr int kWorkspaceExtension = 16;
 
 #ifdef USE_NEON
 // Lane operations are for clarity and convenience. We want to load and store
@@ -46,6 +40,9 @@ constexpr int kWorkspaceExtension = 16;
   TFLITE_DCHECK_EQ(reinterpret_cast<std::uintptr_t>(dst) % 4, 0); \
   vst1q_lane_u32(reinterpret_cast<uint32_t*>(dst), reg, lane_num)
 
+// Important! Most compilation configurations will compile and run without
+// reinterpret_cast. Sanitizers may fail silently on lane-loading, with an
+// obscure bug or mis-feature probably in unhygienic macro expansion.
 #define vld1q_lane_s8x8(src, reg, lane_num) \
   vld1q_lane_u64(reinterpret_cast<const uint64_t*>(src), reg, lane_num)
 #define vld1_lane_8x4(src, reg, lane_num) \
@@ -54,224 +51,6 @@ constexpr int kWorkspaceExtension = 16;
   vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
 
-#ifndef __aarch64__
-inline int8x16_t vqtbl4q_s8(int8x16x4_t a, int8x16_t b) {
-  const uint8x16_t mask = vtstq_s8(b, vdupq_n_s8(8));
-
-  // Delete bit 3 from the indices.
-  const int8x16_t high_bits = vshrq_n_s8(b, 4);
-  int8x16_t deleted_bit_3 = b;
-  deleted_bit_3 = vsliq_n_s8(deleted_bit_3, high_bits, 3);
-
-  int8x8x4_t repacked_data;
-
-  // Calculate for lower indices.
-  repacked_data.val[0] = vget_low_s8(a.val[0]);
-  repacked_data.val[1] = vget_low_s8(a.val[1]);
-  repacked_data.val[2] = vget_low_s8(a.val[2]);
-  repacked_data.val[3] = vget_low_s8(a.val[3]);
-  const int8x16_t output_for_lower =
-      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
-
-  // Calculate for high indices.
-  repacked_data.val[0] = vget_high_s8(a.val[0]);
-  repacked_data.val[1] = vget_high_s8(a.val[1]);
-  repacked_data.val[2] = vget_high_s8(a.val[2]);
-  repacked_data.val[3] = vget_high_s8(a.val[3]);
-  const int8x16_t output_for_higher =
-      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
-
-  // Merge.
-  int8x16_t output = vbslq_s8(mask, output_for_higher, output_for_lower);
-  return output;
-}
-#endif  // !__aarch64__
-
-// Convenience-compatibility functions.
-// Compatibility: Intrinsics reflect a mixture of older and newer ARM
-//     instructions. This actually results in ZIP1 / ZIP2 asm instructions, but
-//     one intrinsic is provided. Also older instructions operated in place,
-//     and it seems more defensive to assume that some versions of intrinsics
-//     might reflect this
-// Convenience: Callers in these kernels want both ZIP1 and ZIP2, and we do not
-//     want the calling code to get cluttered with unpacking int8x16x2_t.
-inline void vzipq_s8_in_place(int8x16_t* a, int8x16_t* b) {
-  int8x16x2_t r8x16;
-  r8x16 = vzipq_s8(*a, *b);
-  *a = r8x16.val[0];
-  *b = r8x16.val[1];
-}
-
-inline void vzipq_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vzipq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-  *b = vreinterpretq_s8_s16(r16x8.val[1]);
-}
-
-// Similar rationale to the zip-in_place functions, but callers only actually
-// need the TRN1 asm instruction result.
-inline void vtrn1_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vtrnq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-}
-
-// Similar rationale to the zip-in_place functions, but callers only actually
-// need the ZIP1 or ZIP2 asm instruction results.
-inline int8x16_t vzip1q_s8(int8x16_t a, int8x16_t b) {
-  return vzipq_s8(a, b).val[0];
-}
-inline int8x16_t vzip2q_s8(int8x16_t a, int8x16_t b) {
-  return vzipq_s8(a, b).val[1];
-}
-
-inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
-  *left = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*left), 8));
-  *left = vreinterpretq_s8_u32(vsliq_n_u32(vreinterpretq_u32_s8(*left),
-                                           vreinterpretq_u32_s8(*right), 24));
-  *right = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*right), 8));
-}
-
-#ifndef __aarch64__
-inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
-}
-#endif  // !__aarch64__
-
-#ifdef __ARM_FEATURE_DOTPROD
-// The vdotq_lane_s32 takes int8x8t for the rhs parameter, whereas the actual
-// instruction selects from between 4 32-bit (4x8-bit packed) sub-registers, an
-// unusual interpretation of "lane".
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, const int lane) {
-  switch (lane) {
-    case 0:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 0);
-    case 1:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 1);
-    case 2:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            0);
-    case 3:
-    default:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            1);
-  }
-}
-
-#else
-
-inline int32x4_t vdotq_s32(int32x4_t acc, int8x16_t lhs, int8x16_t rhs) {
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), vget_low_s8(rhs)));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), vget_high_s8(rhs)));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, int lane) {
-  int8x8_t lane_rhs;
-  if (lane == 0) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 0));
-  } else if (lane == 1) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 1));
-  } else if (lane == 2) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 0));
-  } else {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 1));
-  }
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), lane_rhs));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), lane_rhs));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-#endif  // !__ARM_FEATURE_DOTPROD
-#endif  // ARM NEON
-
-template <DepthwiseConvOutputRounding output_rounding>
-struct DivideByPOT {};
-
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kAwayFromZero> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return RoundingDivideByPOT(x, exponent);
-  }
-};
-
-#ifdef USE_NEON
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
-  }
-};
-#endif  // ARM NEON
-
-// See CategorizeDotProductKernel for definitive taxonomy.
-enum class DotProduct3x3KernelType {
-  kNone = 0,  // Parameter combination is not supported for dot product kernels.
-  kPlain,
-  kWithDepthMultiplicationStride1,
-  kWithDepthMultiplicationStride2,
-  kStride2,
-};
-
-inline DotProduct3x3KernelType CategorizeDotProductKernel(
-    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    const DepthwiseParams& params) {
-  constexpr int kSymmetricZeroPoint = 128;
-  const int padding =
-      std::max(params.padding_values.width, params.padding_values.height);
-  const int stride = params.stride_width;
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 depth_multiplier = params.depth_multiplier;
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
-
-  bool supported =
-      params.weights_offset == -kSymmetricZeroPoint &&
-      stride == params.stride_height && stride <= 2 && padding <= 1 &&
-      filter_width == 3 && filter_height == 3 && params.output_shift <= 0 &&
-      params.dilation_width_factor == 1 && params.dilation_height_factor == 1 &&
-      (((input_depth % 8) == 0 && depth_multiplier == 1) ||
-       (input_depth == 1 && depth_multiplier > 1));
-
-  if (!supported) {
-    return DotProduct3x3KernelType::kNone;
-  }
-
-  if (params.depth_multiplier == 1) {
-    if (stride == 1) {
-      return DotProduct3x3KernelType::kPlain;
-    } else if (stride == 2) {
-      return DotProduct3x3KernelType::kStride2;
-    } else {
-      return DotProduct3x3KernelType::kNone;
-    }
-  } else {
-    if (stride == 1) {
-      return DotProduct3x3KernelType::kWithDepthMultiplicationStride1;
-    } else if (stride == 2) {
-      return DotProduct3x3KernelType::kWithDepthMultiplicationStride2;
-    } else {
-      return DotProduct3x3KernelType::kNone;
-    }
-  }
-}
-
-#ifdef USE_NEON
-
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
 
@@ -279,29 +58,6 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #include <stddef.h>
-
-// Encapsulates constant parameters used in DepthwiseConv.
-// 64-bit is used for types that will be added to 64-bit addresses in asm.
-struct DepthwiseConvParams {
-  int64_t input_depth;
-  int64_t input_row_size;
-  int64_t output_depth;
-  int64_t output_row_size;
-  int64_t filter_row_size;
-  int32 input_offset;
-  int32 output_offset;
-  int32 filter_offset;
-  int32 output_multiplier;
-  int32 output_activation_min;
-  int32 output_activation_max;
-  int32 output_right_shift;
-  int32 input_width;
-  int32 input_height;
-  int32 stride_width;
-  int32 stride_height;
-  int32 output_width;
-  int32 output_height;
-};
 
 // Represents the number of bytes offset from the start of the
 // DepthwiseConvParams struct. This is used in the asm to load parameters.
@@ -379,49 +135,6 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
               "");
 #endif  // __aarch64__
 #endif  // ARM NEON
-
-// Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
-// 64-bit is used for types that will be added to 64-bit addresses in asm.
-//
-// This structure is specifically designed for use in asm.
-struct DepthwiseConvDotProdParams {
-  int64_t input_depth;
-  int64_t output_depth;
-  int32 stride;
-  int32 bias_increment;
-  //
-  int32 input_offset;
-  int32 output_offset;
-  int32 output_multiplier;
-  int32 output_shift;
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
-  //
-  int32 padding_left;
-  int32 padding_right;
-  int32 padding_top;
-  int32 padding_bottom;
-  //
-  int32 depth_micro_repeats;
-  //
-  int32 width_macro_count;
-  int32 input_width_overall_micro_repeats;
-  int32 input_width_micro_repeats;
-  int32 residual_width;
-  int32 output_width_overall_micro_repeats;
-  int32 output_width_micro_repeats;
-  int32 output_residual_width;
-  int32 workspace_width_micro_repeats;
-  //
-  int32 height_macro_count;
-  int32 inbound_block_height;
-  int32 outbound_block_height;
-  int32 input_height_stride;
-  int32 output_height_stride;
-  int32 workspace_height_stride;
-  //
-  int32 four_over_stride;
-};
 
 #ifdef USE_NEON
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
@@ -574,11 +287,10 @@ static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
 #endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
-template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
-struct DepthwiseConvWindow {};
 
 template <>
-struct DepthwiseConvWindow<8, 1, 1> {
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 1,
+                           1> {
  public:
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
@@ -645,11 +357,11 @@ struct DepthwiseConvWindow<8, 1, 1> {
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
-        "dup v29.4s, w2\n"
+        "dup v29.8h, w2\n"
         "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "dup v30.4s, w4\n"
+        "dup v30.16b, w4\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v31.4s, w0\n"
+        "dup v31.16b, w0\n"
         "neg w9, w9\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
@@ -791,38 +503,31 @@ struct DepthwiseConvWindow<8, 1, 1> {
             "sshr v31.4s, v31.4s, #31\n"
             "sqadd v21.4s, v21.4s, v25.4s\n"
             "sqadd v22.4s, v22.4s, v29.4s\n"
-            "dup v29.4s, w2\n"
+            "dup v29.8h, w2\n"
             "sqadd v23.4s, v23.4s, v30.4s\n"
-            "dup v30.4s, w4\n"
+            "dup v30.16b, w4\n"
             "sqadd v24.4s, v24.4s, v31.4s\n"
-            "dup v31.4s, w0\n"
+            "dup v31.16b, w0\n"
             "srshl v21.4s, v21.4s, v28.4s\n"
             "srshl v22.4s, v22.4s, v28.4s\n"
             "srshl v23.4s, v23.4s, v28.4s\n"
             "srshl v24.4s, v24.4s, v28.4s\n"
-            "add v21.4s, v21.4s, v29.4s\n"
-            "add v22.4s, v22.4s, v29.4s\n"
-            "add v23.4s, v23.4s, v29.4s\n"
-            "add v24.4s, v24.4s, v29.4s\n"
-            "smax v21.4s, v21.4s, v30.4s\n"
-            "smax v22.4s, v22.4s, v30.4s\n"
-            "smax v23.4s, v23.4s, v30.4s\n"
-            "smax v24.4s, v24.4s, v30.4s\n"
-            "smin v21.4s, v21.4s, v31.4s\n"
-            "smin v22.4s, v22.4s, v31.4s\n"
-            "smin v23.4s, v23.4s, v31.4s\n"
-            "smin v24.4s, v24.4s, v31.4s\n"
             "sqxtn v21.4h, v21.4s\n"
-            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v21.8h, v22.4s\n"
-            "ld1 {v22.4s}, [x10]\n"
+            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v23.8h, v24.4s\n"
-            "ld1 {v24.4s}, [x10]\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
             "sqxtun v21.8b, v21.8h\n"
-            "sqxtun v23.8b, v23.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
             "uaddw v9.8h, v26.8h, v9.8b\n"
             "st1 {v21.8b}, [x6], x3\n"
             "uaddw v12.8h, v26.8h, v12.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
             "st1 {v23.8b}, [x7], x3\n"
             "uaddw v15.8h, v26.8h, v15.8b\n"
             "ld1 {v21.4s}, [%[bias_ptr]]\n"
@@ -898,38 +603,31 @@ struct DepthwiseConvWindow<8, 1, 1> {
             "sshr v31.4s, v31.4s, #31\n"
             "sqadd v21.4s, v21.4s, v25.4s\n"
             "sqadd v22.4s, v22.4s, v29.4s\n"
-            "dup v29.4s, w2\n"
+            "dup v29.8h, w2\n"
             "sqadd v23.4s, v23.4s, v30.4s\n"
-            "dup v30.4s, w4\n"
+            "dup v30.16b, w4\n"
             "sqadd v24.4s, v24.4s, v31.4s\n"
-            "dup v31.4s, w0\n"
+            "dup v31.16b, w0\n"
             "srshl v21.4s, v21.4s, v28.4s\n"
             "srshl v22.4s, v22.4s, v28.4s\n"
             "srshl v23.4s, v23.4s, v28.4s\n"
             "srshl v24.4s, v24.4s, v28.4s\n"
-            "add v21.4s, v21.4s, v29.4s\n"
-            "add v22.4s, v22.4s, v29.4s\n"
-            "add v23.4s, v23.4s, v29.4s\n"
-            "add v24.4s, v24.4s, v29.4s\n"
-            "smax v21.4s, v21.4s, v30.4s\n"
-            "smax v22.4s, v22.4s, v30.4s\n"
-            "smax v23.4s, v23.4s, v30.4s\n"
-            "smax v24.4s, v24.4s, v30.4s\n"
-            "smin v21.4s, v21.4s, v31.4s\n"
-            "smin v22.4s, v22.4s, v31.4s\n"
-            "smin v23.4s, v23.4s, v31.4s\n"
-            "smin v24.4s, v24.4s, v31.4s\n"
             "sqxtn v21.4h, v21.4s\n"
-            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v21.8h, v22.4s\n"
-            "ld1 {v22.4s}, [x10]\n"
+            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v23.8h, v24.4s\n"
-            "ld1 {v24.4s}, [x10]\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
             "sqxtun v21.8b, v21.8h\n"
-            "sqxtun v23.8b, v23.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
             "uaddw v9.8h, v26.8h, v9.8b\n"
             "st1 {v21.8b}, [x6], x3\n"
             "uaddw v10.8h, v26.8h, v10.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
             "st1 {v23.8b}, [x7], x3\n"
             "uaddw v11.8h, v26.8h, v11.8b\n"
             "uaddw v12.8h, v26.8h, v12.8b\n"
@@ -1009,37 +707,30 @@ struct DepthwiseConvWindow<8, 1, 1> {
           "sshr v31.4s, v31.4s, #31\n"
           "sqadd v21.4s, v21.4s, v25.4s\n"
           "sqadd v22.4s, v22.4s, v29.4s\n"
-          "dup v29.4s, w2\n"
+          "dup v29.8h, w2\n"
           "sqadd v23.4s, v23.4s, v30.4s\n"
-          "dup v30.4s, w4\n"
+          "dup v30.16b, w4\n"
           "sqadd v24.4s, v24.4s, v31.4s\n"
-          "dup v31.4s, w0\n"
+          "dup v31.16b, w0\n"
           "srshl v21.4s, v21.4s, v28.4s\n"
           "srshl v22.4s, v22.4s, v28.4s\n"
           "srshl v23.4s, v23.4s, v28.4s\n"
           "srshl v24.4s, v24.4s, v28.4s\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
           "sqxtn v21.4h, v21.4s\n"
-          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
-          "ld1 {v22.4s}, [x10]\n"
+          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
-          "ld1 {v24.4s}, [x10]\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
-          "sqxtun v23.8b, v23.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
           "uaddw v9.8h, v26.8h, v9.8b\n"
           "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
           "uaddw v12.8h, v26.8h, v12.8b\n"
           "st1 {v23.8b}, [x7], x3\n"
           "uaddw v15.8h, v26.8h, v15.8b\n"
@@ -1099,34 +790,28 @@ struct DepthwiseConvWindow<8, 1, 1> {
           "sshr v31.4s, v31.4s, #31\n"
           "sqadd v21.4s, v21.4s, v25.4s\n"
           "sqadd v22.4s, v22.4s, v29.4s\n"
-          "dup v29.4s, w2\n"
+          "dup v29.8h, w2\n"
           "sqadd v23.4s, v23.4s, v30.4s\n"
-          "dup v30.4s, w4\n"
+          "dup v30.16b, w4\n"
           "sqadd v24.4s, v24.4s, v31.4s\n"
-          "dup v31.4s, w0\n"
+          "dup v31.16b, w0\n"
           "srshl v21.4s, v21.4s, v28.4s\n"
           "srshl v22.4s, v22.4s, v28.4s\n"
           "srshl v23.4s, v23.4s, v28.4s\n"
           "srshl v24.4s, v24.4s, v28.4s\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
+
           "sqxtn v21.4h, v21.4s\n"
-          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
-          "sqxtun v23.8b, v23.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
           "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
           "st1 {v23.8b}, [x7], x3\n"
           "b " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "f\n"
 
@@ -1188,25 +873,18 @@ struct DepthwiseConvWindow<8, 1, 1> {
           "srshl v22.4s, v22.4s, v28.4s\n"
           "srshl v23.4s, v23.4s, v28.4s\n"
           "srshl v24.4s, v24.4s, v28.4s\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
           "sqxtn v21.4h, v21.4s\n"
-          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
-          "sqxtun v23.8b, v23.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
           "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
           "st1 {v23.8b}, [x7], x3\n"
 
           DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP ":\n"
@@ -1338,38 +1016,31 @@ struct DepthwiseConvWindow<8, 1, 1> {
           "sshr v31.4s, v31.4s, #31\n"
           "sqadd v21.4s, v21.4s, v25.4s\n"
           "sqadd v22.4s, v22.4s, v29.4s\n"
-          "dup v29.4s, w2\n"
+          "dup v29.8h, w2\n"
           "sqadd v23.4s, v23.4s, v30.4s\n"
-          "dup v30.4s, w4\n"
+          "dup v30.16b, w4\n"
           "sqadd v24.4s, v24.4s, v31.4s\n"
-          "dup v31.4s, w0\n"
+          "dup v31.16b, w0\n"
           "srshl v21.4s, v21.4s, v28.4s\n"
           "srshl v22.4s, v22.4s, v28.4s\n"
           "srshl v23.4s, v23.4s, v28.4s\n"
           "srshl v24.4s, v24.4s, v28.4s\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
           "sqxtn v21.4h, v21.4s\n"
-          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
-          "ld1 {v22.4s}, [x10]\n"
+          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
-          "ld1 {v24.4s}, [x10]\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
-          "sqxtun v23.8b, v23.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
           "uaddw v9.8h, v26.8h, v9.8b\n"
           "st1 {v21.8b}, [%[output_ptr]], x3\n"
           "uaddw v10.8h, v26.8h, v10.8b\n"
+          "mov v23.d[0], v21.d[1]\n"
           "st1 {v23.8b}, [%[output_ptr]], x3\n"
           "uaddw v11.8h, v26.8h, v11.8b\n"
           "uaddw v12.8h, v26.8h, v12.8b\n"
@@ -1450,34 +1121,27 @@ struct DepthwiseConvWindow<8, 1, 1> {
         "sshr v31.4s, v31.4s, #31\n"
         "sqadd v21.4s, v21.4s, v25.4s\n"
         "sqadd v22.4s, v22.4s, v29.4s\n"
-        "dup v29.4s, w2\n"
+        "dup v29.8h, w2\n"
         "sqadd v23.4s, v23.4s, v30.4s\n"
-        "dup v30.4s, w4\n"
+        "dup v30.16b, w4\n"
         "sqadd v24.4s, v24.4s, v31.4s\n"
-        "dup v31.4s, w0\n"
+        "dup v31.16b, w0\n"
         "srshl v21.4s, v21.4s, v28.4s\n"
         "srshl v22.4s, v22.4s, v28.4s\n"
         "srshl v23.4s, v23.4s, v28.4s\n"
         "srshl v24.4s, v24.4s, v28.4s\n"
-        "add v21.4s, v21.4s, v29.4s\n"
-        "add v22.4s, v22.4s, v29.4s\n"
-        "add v23.4s, v23.4s, v29.4s\n"
-        "add v24.4s, v24.4s, v29.4s\n"
-        "smax v21.4s, v21.4s, v30.4s\n"
-        "smax v22.4s, v22.4s, v30.4s\n"
-        "smax v23.4s, v23.4s, v30.4s\n"
-        "smax v24.4s, v24.4s, v30.4s\n"
-        "smin v21.4s, v21.4s, v31.4s\n"
-        "smin v22.4s, v22.4s, v31.4s\n"
-        "smin v23.4s, v23.4s, v31.4s\n"
-        "smin v24.4s, v24.4s, v31.4s\n"
         "sqxtn v21.4h, v21.4s\n"
-        "sqxtn v23.4h, v23.4s\n"
         "sqxtn2 v21.8h, v22.4s\n"
+        "sqxtn v23.4h, v23.4s\n"
         "sqxtn2 v23.8h, v24.4s\n"
+        "sqadd v21.8h, v21.8h, v29.8h\n"
+        "sqadd v23.8h, v23.8h, v29.8h\n"
         "sqxtun v21.8b, v21.8h\n"
-        "sqxtun v23.8b, v23.8h\n"
+        "sqxtun2 v21.16b, v23.8h\n"
+        "umax v21.16b, v21.16b, v30.16b\n"
+        "umin v21.16b, v21.16b, v31.16b\n"
         "st1 {v21.8b}, [%[output_ptr]], x3\n"
+        "mov v23.d[0], v21.d[1]\n"
         "st1 {v23.8b}, [%[output_ptr]], x3\n"
         "b " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
 
@@ -1512,15 +1176,12 @@ struct DepthwiseConvWindow<8, 1, 1> {
         "sqadd v22.4s, v22.4s, v12.4s\n"
         "srshl v21.4s, v21.4s, v28.4s\n"
         "srshl v22.4s, v22.4s, v28.4s\n"
-        "add v21.4s, v21.4s, v29.4s\n"
-        "add v22.4s, v22.4s, v29.4s\n"
-        "smax v21.4s, v21.4s, v30.4s\n"
-        "smax v22.4s, v22.4s, v30.4s\n"
-        "smin v21.4s, v21.4s, v31.4s\n"
-        "smin v22.4s, v22.4s, v31.4s\n"
         "sqxtn v21.4h, v21.4s\n"
         "sqxtn2 v21.8h, v22.4s\n"
+        "sqadd v21.8h, v21.8h, v29.8h\n"
         "sqxtun v21.8b, v21.8h\n"
+        "umax v21.8b, v21.8b, v30.8b\n"
+        "umin v21.8b, v21.8b, v31.8b\n"
         "st1 {v21.8b}, [%[output_ptr]]\n"
         DEPTHWISECONV_LABEL_HEIGHT_1_END ":\n"
     :
@@ -1563,7 +1224,834 @@ struct DepthwiseConvWindow<8, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvWindow<8, 2, 2> {
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 1, 1> {
+ public:
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         int64_t input_depth, int64_t input_row_size,
+                         int32 output_window_height, int32 output_window_width,
+                         const DepthwiseConvParams* params_ptr) {
+    const int64_t input_width_increment = 2 * input_depth;
+    const int64_t input_height_increment = 2 * input_row_size;
+    const int64_t output_height_increment = 2 * params_ptr->output_row_size;
+
+#define DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "1"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "2"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "3"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER "4"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "5"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "6"
+#define DEPTHWISECONV_LABEL_HEIGHT_1 "7"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP "8"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "9"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER "10"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_END "11"
+
+    asm volatile(
+        // Performs depthwise convolutions for a window specified by
+        // |output_window_height| and |output_window_width|. The inner-most loop
+        // processes 2x2 outputs, and any leftovers at the end.
+        //
+        // Algorithm works as follows:
+        //
+        //   1. Load filters of 8 depth (8x3x3). Registers v0--v8 hold filter
+        //      values.
+        //   2. For 2 output heights at a time:
+        //        i.  For 2 output widths at a time, load inputs for a 2x1 (2
+        //            height, 1 width) output window (4x3 input window).
+        //            Registers v9--v20 hold input values. Mul-add with
+        //            accumulators v21--v24. Then run activation, downquantize
+        //            and store. Repeat for the next 2x1 output window,
+        //            leveraging overlapping inputs.
+        //        ii. Handle single leftover width if exists.
+        //   3. Handle single leftover height if exists.
+        //        i.  For 2 output widths at a time, load inputs for a 1x2 (1
+        //            height, 2 width) output window (3x4 input window).
+        //            Registers v9--v20 hold input values. Mul-add with
+        //            accumulators v21--v24. Then run activation, downquantize
+        //            and store. Repeat for the next 1x2 output window,
+        //            leveraging overlapping inputs.
+        //        ii. Handle single leftover width if exists.
+        //
+        // Loads are placed as soon as the register is no longer needed and
+        // interleaved with arithmetic operations to take advantage of
+        // dual-issue pipelines. We also add input offsets as far from the loads
+        // as possible to give loads enough cycles to fetch data from memory.
+
+        // Set "constant" registers. These registers may be replaced with temp
+        // values from time to time when there are not enough NEON registers.
+        // We use x9--x15 general purpose registers as they are caller-saved
+        // temporary registers (see
+        // http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055b/IHI0055B_aapcs64.pdf).  // NOLINT
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "ldr x3, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+        "cmp %w[output_window_height], #2\n"
+        "dup v26.8h, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "dup v29.8h, w2\n"
+        "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "dup v30.16b, w4\n"
+        "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v31.16b, w0\n"
+        "neg w9, w9\n"
+        "dup v28.4s, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+        "add x10, %[bias_ptr], #16\n"
+        "ldr x1, [%[params_ptr], #" STR(OFFSET_OUTPUT_ROW_SIZE) "]\n"
+        "dup v9.8h, w9\n"
+
+        // Load filters and add offsets.
+        "ld1 {v0.8b}, [%[filter_ptr]], x3\n"
+        "ld1 {v1.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v0.8h, v9.8h, v0.8b\n"
+        "ld1 {v2.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v1.8h, v9.8h, v1.8b\n"
+        "ld1 {v3.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v2.8h, v9.8h, v2.8b\n"
+        "ld1 {v4.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v3.8h, v9.8h, v3.8b\n"
+        "ld1 {v5.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v4.8h, v9.8h, v4.8b\n"
+        "ld1 {v6.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v5.8h, v9.8h, v5.8b\n"
+        "ld1 {v7.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v6.8h, v9.8h, v6.8b\n"
+        "ld1 {v8.8b}, [%[filter_ptr]], x3\n"
+        "uaddw v7.8h, v9.8h, v7.8b\n"
+        "uaddw v8.8h, v9.8h, v8.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_HEIGHT_2_LOOP ":\n"
+          // This loop processes 2x2 outputs. To avoid register exhaustion,
+          // inputs for the left 2 outputs are loaded first, then the right
+          // two outputs.
+          "mov x11, %[input_ptr]\n"
+          "mov x12, x11\n"
+          "ld1 {v9.8b}, [x12], %[input_depth]\n"
+          "add x13, x11, %[input_row_size]\n"
+          "ld1 {v10.8b}, [x12], %[input_depth]\n"
+          "add x14, x13, %[input_row_size]\n"
+          "ld1 {v11.8b}, [x12], %[input_depth]\n"
+          "add x15, x14, %[input_row_size]\n"
+          "ld1 {v12.8b}, [x13], %[input_depth]\n"
+          "mov w5, %w[output_window_width]\n"
+          "ld1 {v13.8b}, [x13], %[input_depth]\n"
+          "mov x6, %[output_ptr]\n"
+          "ld1 {v14.8b}, [x13], %[input_depth]\n"
+          "add x7, %[output_ptr], x1\n"
+          "ld1 {v15.8b}, [x14], %[input_depth]\n"
+          // The height 2 / width 2 loop loads an extra 2x1 outputs (2 height,
+          // 1 width) in anticipation for the next iteration. Make sure
+          // |output_window_width| is large enough to handle the additional
+          // loads, otherwise jump to specific the appropriate label to handle
+          // smaller widths.
+          "cmp w5, #2\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "ld1 {v16.8b}, [x14], %[input_depth]\n"
+          "uaddw v10.8h, v26.8h, v10.8b\n"
+          "ld1 {v17.8b}, [x14], %[input_depth]\n"
+          "uaddw v11.8h, v26.8h, v11.8b\n"
+          "ld1 {v18.8b}, [x15], %[input_depth]\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "ld1 {v19.8b}, [x15], %[input_depth]\n"
+          "uaddw v13.8h, v26.8h, v13.8b\n"
+          "ld1 {v20.8b}, [x15], %[input_depth]\n"
+          "uaddw v14.8h, v26.8h, v14.8b\n"
+          "ld1 {v21.4s}, [%[bias_ptr]]\n"
+          "uaddw v15.8h, v26.8h, v15.8b\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "uaddw v16.8h, v26.8h, v16.8b\n"
+          "ld1 {v23.4s}, [%[bias_ptr]]\n"
+          "uaddw v17.8h, v26.8h, v17.8b\n"
+          "ld1 {v24.4s}, [x10]\n"
+          "uaddw v18.8h, v26.8h, v18.8b\n"
+          "uaddw v19.8h, v26.8h, v19.8b\n"
+          "uaddw v20.8h, v26.8h, v20.8b\n"
+
+          "beq " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER "f\n"
+          "cmp w5, #1\n"
+          "beq " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "f\n"
+
+          //"loop_%=:\n"
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP ":\n"
+            // Mul-add left outputs.
+            "smlal v21.4s, v0.4h, v9.4h\n"
+            "subs w5, w5, #2\n"
+            "smlal2 v22.4s, v0.8h, v9.8h\n"
+            "cmp w5, #3\n"
+            "smlal v23.4s, v0.4h, v12.4h\n"
+            "ld1 {v9.8b}, [x12]\n"
+            "smlal2 v24.4s, v0.8h, v12.8h\n"
+            "smlal v21.4s, v1.4h, v10.4h\n"
+            "smlal2 v22.4s, v1.8h, v10.8h\n"
+            "smlal v23.4s, v1.4h, v13.4h\n"
+            "smlal2 v24.4s, v1.8h, v13.8h\n"
+            "smlal v21.4s, v2.4h, v11.4h\n"
+            "smlal2 v22.4s, v2.8h, v11.8h\n"
+            "smlal v23.4s, v2.4h, v14.4h\n"
+            "smlal2 v24.4s, v2.8h, v14.8h\n"
+            "smlal v21.4s, v3.4h, v12.4h\n"
+            "smlal2 v22.4s, v3.8h, v12.8h\n"
+            "ld1 {v12.8b}, [x13]\n"
+            "smlal v23.4s, v3.4h, v15.4h\n"
+            "smlal2 v24.4s, v3.8h, v15.8h\n"
+            "smlal v21.4s, v4.4h, v13.4h\n"
+            "smlal2 v22.4s, v4.8h, v13.8h\n"
+            "smlal v23.4s, v4.4h, v16.4h\n"
+            "smlal2 v24.4s, v4.8h, v16.8h\n"
+            "smlal v21.4s, v5.4h, v14.4h\n"
+            "smlal2 v22.4s, v5.8h, v14.8h\n"
+            "smlal v23.4s, v5.4h, v17.4h\n"
+            "smlal2 v24.4s, v5.8h, v17.8h\n"
+            "smlal v21.4s, v6.4h, v15.4h\n"
+            "smlal2 v22.4s, v6.8h, v15.8h\n"
+            "ld1 {v15.8b}, [x14]\n"
+            "smlal v23.4s, v6.4h, v18.4h\n"
+            "smlal2 v24.4s, v6.8h, v18.8h\n"
+            "ld1 {v18.8b}, [x15]\n"
+            "smlal v21.4s, v7.4h, v16.4h\n"
+            "smlal2 v22.4s, v7.8h, v16.8h\n"
+            "smlal v23.4s, v7.4h, v19.4h\n"
+            "smlal2 v24.4s, v7.8h, v19.8h\n"
+            "smlal v21.4s, v8.4h, v17.4h\n"
+            "smlal2 v22.4s, v8.8h, v17.8h\n"
+            "smlal v23.4s, v8.4h, v20.4h\n"
+            "smlal2 v24.4s, v8.8h, v20.8h\n"
+
+            "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+            "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+            "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+            "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+            "sqrshl v21.4s, v21.4s, v28.4s\n"
+            "sqrshl v22.4s, v22.4s, v28.4s\n"
+            "sqrshl v23.4s, v23.4s, v28.4s\n"
+            "sqrshl v24.4s, v24.4s, v28.4s\n"
+            "sqxtn v21.4h, v21.4s\n"
+            "sqxtn2 v21.8h, v22.4s\n"
+            "sqxtn v23.4h, v23.4s\n"
+            "sqxtn2 v23.8h, v24.4s\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
+            "sqxtun v21.8b, v21.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
+            "uaddw v9.8h, v26.8h, v9.8b\n"
+            "st1 {v21.8b}, [x6], x3\n"
+            "uaddw v12.8h, v26.8h, v12.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
+            "st1 {v23.8b}, [x7], x3\n"
+            "uaddw v15.8h, v26.8h, v15.8b\n"
+            "ld1 {v21.4s}, [%[bias_ptr]]\n"
+            "uaddw v18.8h, v26.8h, v18.8b\n"
+            "ld1 {v23.4s}, [%[bias_ptr]]\n"
+
+            // Mul-add right outputs.
+            "smlal v21.4s, v0.4h, v10.4h\n"
+            "add x11, x11, %[input_width_increment]\n"
+            "smlal2 v22.4s, v0.8h, v10.8h\n"
+            "mov x12, x11\n"
+            "smlal v23.4s, v0.4h, v13.4h\n"
+            "add x13, x11, %[input_row_size]\n"
+            "smlal2 v24.4s, v0.8h, v13.8h\n"
+            "add x14, x13, %[input_row_size]\n"
+            "smlal v21.4s, v1.4h, v11.4h\n"
+            "add x15, x14, %[input_row_size]\n"
+            "smlal2 v22.4s, v1.8h, v11.8h\n"
+            "smlal v23.4s, v1.4h, v14.4h\n"
+            "smlal2 v24.4s, v1.8h, v14.8h\n"
+            "smlal v21.4s, v2.4h, v9.4h\n"
+            "smlal2 v22.4s, v2.8h, v9.8h\n"
+            "ld1 {v9.8b}, [x12], %[input_depth]\n"
+            "smlal v23.4s, v2.4h, v12.4h\n"
+            "ld1 {v10.8b}, [x12], %[input_depth]\n"
+            "smlal2 v24.4s, v2.8h, v12.8h\n"
+            "ld1 {v11.8b}, [x12], %[input_depth]\n"
+            "smlal v21.4s, v3.4h, v13.4h\n"
+            "smlal2 v22.4s, v3.8h, v13.8h\n"
+            "smlal v23.4s, v3.4h, v16.4h\n"
+            "smlal2 v24.4s, v3.8h, v16.8h\n"
+            "smlal v21.4s, v4.4h, v14.4h\n"
+            "smlal2 v22.4s, v4.8h, v14.8h\n"
+            "smlal v23.4s, v4.4h, v17.4h\n"
+            "smlal2 v24.4s, v4.8h, v17.8h\n"
+            "smlal v21.4s, v5.4h, v12.4h\n"
+            "smlal2 v22.4s, v5.8h, v12.8h\n"
+            "ld1 {v12.8b}, [x13], %[input_depth]\n"
+            "smlal v23.4s, v5.4h, v15.4h\n"
+            "ld1 {v13.8b}, [x13], %[input_depth]\n"
+            "smlal2 v24.4s, v5.8h, v15.8h\n"
+            "ld1 {v14.8b}, [x13], %[input_depth]\n"
+            "smlal v21.4s, v6.4h, v16.4h\n"
+            "smlal2 v22.4s, v6.8h, v16.8h\n"
+            "smlal v23.4s, v6.4h, v19.4h\n"
+            "smlal2 v24.4s, v6.8h, v19.8h\n"
+            "smlal v21.4s, v7.4h, v17.4h\n"
+            "smlal2 v22.4s, v7.8h, v17.8h\n"
+            "smlal v23.4s, v7.4h, v20.4h\n"
+            "smlal2 v24.4s, v7.8h, v20.8h\n"
+            "smlal v21.4s, v8.4h, v15.4h\n"
+            "smlal2 v22.4s, v8.8h, v15.8h\n"
+            "ld1 {v15.8b}, [x14], %[input_depth]\n"
+            "smlal v23.4s, v8.4h, v18.4h\n"
+            "ld1 {v16.8b}, [x14], %[input_depth]\n"
+            "smlal2 v24.4s, v8.8h, v18.8h\n"
+            "ld1 {v17.8b}, [x14], %[input_depth]\n"
+
+            "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+            "ld1 {v18.8b}, [x15], %[input_depth]\n"
+            "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+            "ld1 {v19.8b}, [x15], %[input_depth]\n"
+            "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+            "ld1 {v20.8b}, [x15], %[input_depth]\n"
+            "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+            "sqrshl v21.4s, v21.4s, v28.4s\n"
+            "sqrshl v22.4s, v22.4s, v28.4s\n"
+            "sqrshl v23.4s, v23.4s, v28.4s\n"
+            "sqrshl v24.4s, v24.4s, v28.4s\n"
+            "sqxtn v21.4h, v21.4s\n"
+            "sqxtn2 v21.8h, v22.4s\n"
+            "sqxtn v23.4h, v23.4s\n"
+            "sqxtn2 v23.8h, v24.4s\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
+            "sqxtun v21.8b, v21.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
+            "uaddw v9.8h, v26.8h, v9.8b\n"
+            "st1 {v21.8b}, [x6], x3\n"
+            "uaddw v10.8h, v26.8h, v10.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
+            "st1 {v23.8b}, [x7], x3\n"
+            "uaddw v11.8h, v26.8h, v11.8b\n"
+            "uaddw v12.8h, v26.8h, v12.8b\n"
+            "uaddw v13.8h, v26.8h, v13.8b\n"
+            "uaddw v14.8h, v26.8h, v14.8b\n"
+            "uaddw v15.8h, v26.8h, v15.8b\n"
+            "ld1 {v21.4s}, [%[bias_ptr]]\n"
+            "uaddw v16.8h, v26.8h, v16.8b\n"
+            "ld1 {v23.4s}, [%[bias_ptr]]\n"
+            "uaddw v17.8h, v26.8h, v17.8b\n"
+            "uaddw v18.8h, v26.8h, v18.8b\n"
+            "uaddw v19.8h, v26.8h, v19.8b\n"
+            "uaddw v20.8h, v26.8h, v20.8b\n"
+
+            "bge " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "b\n"
+
+          // At this point, there will be one of 2 width or 1 width leftover,
+          // not both.
+          "cmp w5, #2\n"
+          "blt " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "f\n"
+
+          // Handle last 2 columns if exists.
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER ":\n"
+          // Mul-add left outputs.
+          "smlal v21.4s, v0.4h, v9.4h\n"
+          "smlal2 v22.4s, v0.8h, v9.8h\n"
+          "smlal v23.4s, v0.4h, v12.4h\n"
+          "ld1 {v9.8b}, [x12]\n"
+          "smlal2 v24.4s, v0.8h, v12.8h\n"
+          "smlal v21.4s, v1.4h, v10.4h\n"
+          "smlal2 v22.4s, v1.8h, v10.8h\n"
+          "smlal v23.4s, v1.4h, v13.4h\n"
+          "smlal2 v24.4s, v1.8h, v13.8h\n"
+          "smlal v21.4s, v2.4h, v11.4h\n"
+          "smlal2 v22.4s, v2.8h, v11.8h\n"
+          "smlal v23.4s, v2.4h, v14.4h\n"
+          "smlal2 v24.4s, v2.8h, v14.8h\n"
+          "smlal v21.4s, v3.4h, v12.4h\n"
+          "smlal2 v22.4s, v3.8h, v12.8h\n"
+          "ld1 {v12.8b}, [x13]\n"
+          "smlal v23.4s, v3.4h, v15.4h\n"
+          "smlal2 v24.4s, v3.8h, v15.8h\n"
+          "smlal v21.4s, v4.4h, v13.4h\n"
+          "smlal2 v22.4s, v4.8h, v13.8h\n"
+          "smlal v23.4s, v4.4h, v16.4h\n"
+          "smlal2 v24.4s, v4.8h, v16.8h\n"
+          "smlal v21.4s, v5.4h, v14.4h\n"
+          "smlal2 v22.4s, v5.8h, v14.8h\n"
+          "smlal v23.4s, v5.4h, v17.4h\n"
+          "smlal2 v24.4s, v5.8h, v17.8h\n"
+          "smlal v21.4s, v6.4h, v15.4h\n"
+          "smlal2 v22.4s, v6.8h, v15.8h\n"
+          "ld1 {v15.8b}, [x14]\n"
+          "smlal v23.4s, v6.4h, v18.4h\n"
+          "smlal2 v24.4s, v6.8h, v18.8h\n"
+          "ld1 {v18.8b}, [x15]\n"
+          "smlal v21.4s, v7.4h, v16.4h\n"
+          "smlal2 v22.4s, v7.8h, v16.8h\n"
+          "smlal v23.4s, v7.4h, v19.4h\n"
+          "smlal2 v24.4s, v7.8h, v19.8h\n"
+          "smlal v21.4s, v8.4h, v17.4h\n"
+          "smlal2 v22.4s, v8.8h, v17.8h\n"
+          "smlal v23.4s, v8.4h, v20.4h\n"
+          "smlal2 v24.4s, v8.8h, v20.8h\n"
+
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v28.4s\n"
+          "sqrshl v22.4s, v22.4s, v28.4s\n"
+          "sqrshl v23.4s, v23.4s, v28.4s\n"
+          "sqrshl v24.4s, v24.4s, v28.4s\n"
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "st1 {v23.8b}, [x7], x3\n"
+          "uaddw v15.8h, v26.8h, v15.8b\n"
+          "ld1 {v21.4s}, [%[bias_ptr]]\n"
+          "uaddw v18.8h, v26.8h, v18.8b\n"
+          "ld1 {v23.4s}, [%[bias_ptr]]\n"
+
+          // Mul-add right outputs.
+          "smlal v21.4s, v0.4h, v10.4h\n"
+          "smlal2 v22.4s, v0.8h, v10.8h\n"
+          "smlal v23.4s, v0.4h, v13.4h\n"
+          "smlal2 v24.4s, v0.8h, v13.8h\n"
+          "smlal v21.4s, v1.4h, v11.4h\n"
+          "smlal2 v22.4s, v1.8h, v11.8h\n"
+          "smlal v23.4s, v1.4h, v14.4h\n"
+          "smlal2 v24.4s, v1.8h, v14.8h\n"
+          "smlal v21.4s, v2.4h, v9.4h\n"
+          "smlal2 v22.4s, v2.8h, v9.8h\n"
+          "smlal v23.4s, v2.4h, v12.4h\n"
+          "smlal2 v24.4s, v2.8h, v12.8h\n"
+          "smlal v21.4s, v3.4h, v13.4h\n"
+          "smlal2 v22.4s, v3.8h, v13.8h\n"
+          "smlal v23.4s, v3.4h, v16.4h\n"
+          "smlal2 v24.4s, v3.8h, v16.8h\n"
+          "smlal v21.4s, v4.4h, v14.4h\n"
+          "smlal2 v22.4s, v4.8h, v14.8h\n"
+          "smlal v23.4s, v4.4h, v17.4h\n"
+          "smlal2 v24.4s, v4.8h, v17.8h\n"
+          "smlal v21.4s, v5.4h, v12.4h\n"
+          "smlal2 v22.4s, v5.8h, v12.8h\n"
+          "smlal v23.4s, v5.4h, v15.4h\n"
+          "smlal2 v24.4s, v5.8h, v15.8h\n"
+          "smlal v21.4s, v6.4h, v16.4h\n"
+          "smlal2 v22.4s, v6.8h, v16.8h\n"
+          "smlal v23.4s, v6.4h, v19.4h\n"
+          "smlal2 v24.4s, v6.8h, v19.8h\n"
+          "smlal v21.4s, v7.4h, v17.4h\n"
+          "smlal2 v22.4s, v7.8h, v17.8h\n"
+          "smlal v23.4s, v7.4h, v20.4h\n"
+          "smlal2 v24.4s, v7.8h, v20.8h\n"
+          "smlal v21.4s, v8.4h, v15.4h\n"
+          "smlal2 v22.4s, v8.8h, v15.8h\n"
+          "smlal v23.4s, v8.4h, v18.4h\n"
+          "smlal2 v24.4s, v8.8h, v18.8h\n"
+
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v28.4s\n"
+          "sqrshl v22.4s, v22.4s, v28.4s\n"
+          "sqrshl v23.4s, v23.4s, v28.4s\n"
+          "sqrshl v24.4s, v24.4s, v28.4s\n"
+
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
+          "st1 {v23.8b}, [x7], x3\n"
+          "b " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "f\n"
+
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER ":\n"
+          "smlal v21.4s, v0.4h, v9.4h\n"
+          "smlal2 v22.4s, v0.8h, v9.8h\n"
+          "smlal v23.4s, v0.4h, v12.4h\n"
+          "smlal2 v24.4s, v0.8h, v12.8h\n"
+          "smlal v21.4s, v1.4h, v10.4h\n"
+          "smlal2 v22.4s, v1.8h, v10.8h\n"
+          "smlal v23.4s, v1.4h, v13.4h\n"
+          "smlal2 v24.4s, v1.8h, v13.8h\n"
+          "smlal v21.4s, v2.4h, v11.4h\n"
+          "smlal2 v22.4s, v2.8h, v11.8h\n"
+          "smlal v23.4s, v2.4h, v14.4h\n"
+          "smlal2 v24.4s, v2.8h, v14.8h\n"
+          "smlal v21.4s, v3.4h, v12.4h\n"
+          "smlal2 v22.4s, v3.8h, v12.8h\n"
+          "smlal v23.4s, v3.4h, v15.4h\n"
+          "smlal2 v24.4s, v3.8h, v15.8h\n"
+          "smlal v21.4s, v4.4h, v13.4h\n"
+          "smlal2 v22.4s, v4.8h, v13.8h\n"
+          "smlal v23.4s, v4.4h, v16.4h\n"
+          "smlal2 v24.4s, v4.8h, v16.8h\n"
+          "smlal v21.4s, v5.4h, v14.4h\n"
+          "smlal2 v22.4s, v5.8h, v14.8h\n"
+          "smlal v23.4s, v5.4h, v17.4h\n"
+          "smlal2 v24.4s, v5.8h, v17.8h\n"
+          "smlal v21.4s, v6.4h, v15.4h\n"
+          "smlal2 v22.4s, v6.8h, v15.8h\n"
+          "smlal v23.4s, v6.4h, v18.4h\n"
+          "smlal2 v24.4s, v6.8h, v18.8h\n"
+          "smlal v21.4s, v7.4h, v16.4h\n"
+          "smlal2 v22.4s, v7.8h, v16.8h\n"
+          "smlal v23.4s, v7.4h, v19.4h\n"
+          "smlal2 v24.4s, v7.8h, v19.8h\n"
+          "smlal v21.4s, v8.4h, v17.4h\n"
+          "smlal2 v22.4s, v8.8h, v17.8h\n"
+          "smlal v23.4s, v8.4h, v20.4h\n"
+          "smlal2 v24.4s, v8.8h, v20.8h\n"
+
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v28.4s\n"
+          "sqrshl v22.4s, v22.4s, v28.4s\n"
+          "sqrshl v23.4s, v23.4s, v28.4s\n"
+          "sqrshl v24.4s, v24.4s, v28.4s\n"
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "st1 {v21.8b}, [x6], x3\n"
+          "mov v23.d[0], v21.d[1]\n"
+          "st1 {v23.8b}, [x7], x3\n"
+
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP ":\n"
+          "subs %w[output_window_height], %w[output_window_height], #2\n"
+          "add %[input_ptr], %[input_ptr], %[input_height_increment]\n"
+          "cmp %w[output_window_height], #2\n"
+          "add %[output_ptr], %[output_ptr], %[output_height_increment]\n"
+          "bge " DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP ":\n"
+        "cmp %w[output_window_height], #1\n"
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
+
+        DEPTHWISECONV_LABEL_HEIGHT_1 ":\n"
+        "mov x12, %[input_ptr]\n"
+        "ld1 {v9.8b}, [x12], %[input_depth]\n"
+        "add x13, %[input_ptr], %[input_row_size]\n"
+        "ld1 {v10.8b}, [x12], %[input_depth]\n"
+        "add x14, x13, %[input_row_size]\n"
+        "ld1 {v11.8b}, [x12], %[input_depth]\n"
+        "add x15, x14, %[input_row_size]\n"
+        "mov w5, %w[output_window_width]\n"
+        "ld1 {v13.8b}, [x13], %[input_depth]\n"
+        "mov x6, %[output_ptr]\n"
+        "ld1 {v14.8b}, [x13], %[input_depth]\n"
+        "add x7, %[output_ptr], x1\n"
+        "ld1 {v15.8b}, [x13], %[input_depth]\n"
+        // The height 1 / width 2 loop loads an extra 1x1 output in anticipation
+        // for the next iteration. Make sure |output_window_width| is large
+        // enough to handle the additional load, otherwise jump to the
+        // appropriate label to handle smaller widths.
+        "cmp w5, #2\n"
+        "ld1 {v17.8b}, [x14], %[input_depth]\n"
+        "ld1 {v18.8b}, [x14], %[input_depth]\n"
+        "ld1 {v19.8b}, [x14], %[input_depth]\n"
+        "ld1 {v21.4s}, [%[bias_ptr]]\n"
+        "ld1 {v22.4s}, [x10]\n"
+        "ld1 {v23.4s}, [%[bias_ptr]]\n"
+        "ld1 {v24.4s}, [x10]\n"
+
+        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "uaddw v10.8h, v26.8h, v10.8b\n"
+        "uaddw v11.8h, v26.8h, v11.8b\n"
+        "uaddw v13.8h, v26.8h, v13.8b\n"
+        "uaddw v14.8h, v26.8h, v14.8b\n"
+        "uaddw v15.8h, v26.8h, v15.8b\n"
+        "uaddw v17.8h, v26.8h, v17.8b\n"
+        "uaddw v18.8h, v26.8h, v18.8b\n"
+        "uaddw v19.8h, v26.8h, v19.8b\n"
+
+        "beq " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER "f\n"
+        "cmp w5, #1\n"
+        "beq " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP ":\n"
+          // Load inputs for 3x4 input window which corresponds to a 1x2 output
+          // window.
+          "smlal v21.4s, v0.4h, v9.4h\n"
+          "ld1 {v12.8b}, [x12]\n"
+          "smlal2 v22.4s, v0.8h, v9.8h\n"
+          "ld1 {v16.8b}, [x13]\n"
+          "smlal v23.4s, v0.4h, v10.4h\n"
+          "ld1 {v20.8b}, [x14]\n"
+          "smlal2 v24.4s, v0.8h, v10.8h\n"
+          "subs w5, w5, #2\n"
+          "smlal v21.4s, v1.4h, v10.4h\n"
+          "cmp w5, #3\n"
+          "smlal2 v22.4s, v1.8h, v10.8h\n"
+          "add %[input_ptr], %[input_ptr], %[input_width_increment]\n"
+          "smlal v23.4s, v1.4h, v11.4h\n"
+          "mov x12, %[input_ptr]\n"
+          "smlal2 v24.4s, v1.8h, v11.8h\n"
+          "ld1 {v9.8b}, [x12], %[input_depth]\n"
+          "smlal v21.4s, v2.4h, v11.4h\n"
+          "ld1 {v10.8b}, [x12], %[input_depth]\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "smlal2 v22.4s, v2.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x12], %[input_depth]\n"
+          "add x13, %[input_ptr], %[input_row_size]\n"
+          "smlal v23.4s, v2.4h, v12.4h\n"
+          "add x14, x13, %[input_row_size]\n"
+          "smlal2 v24.4s, v2.8h, v12.8h\n"
+          "smlal v21.4s, v3.4h, v13.4h\n"
+          "add x15, x14, %[input_row_size]\n"
+          "smlal2 v22.4s, v3.8h, v13.8h\n"
+          "ld1 {v13.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v3.4h, v14.4h\n"
+          "smlal2 v24.4s, v3.8h, v14.8h\n"
+          "smlal v21.4s, v4.4h, v14.4h\n"
+          "smlal2 v22.4s, v4.8h, v14.8h\n"
+          "ld1 {v14.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v4.4h, v15.4h\n"
+          "smlal2 v24.4s, v4.8h, v15.8h\n"
+          "smlal v21.4s, v5.4h, v15.4h\n"
+          "uaddw v16.8h, v26.8h, v16.8b\n"
+          "smlal2 v22.4s, v5.8h, v15.8h\n"
+          "ld1 {v15.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v5.4h, v16.4h\n"
+          "smlal2 v24.4s, v5.8h, v16.8h\n"
+          "smlal v21.4s, v6.4h, v17.4h\n"
+          "smlal2 v22.4s, v6.8h, v17.8h\n"
+          "ld1 {v17.8b}, [x14], %[input_depth]\n"
+          "smlal v23.4s, v6.4h, v18.4h\n"
+          "smlal2 v24.4s, v6.8h, v18.8h\n"
+          "smlal v21.4s, v7.4h, v18.4h\n"
+          "smlal2 v22.4s, v7.8h, v18.8h\n"
+          "ld1 {v18.8b}, [x14], %[input_depth]\n"
+          "smlal v23.4s, v7.4h, v19.4h\n"
+          "smlal2 v24.4s, v7.8h, v19.8h\n"
+          "smlal v21.4s, v8.4h, v19.4h\n"
+          "uaddw v20.8h, v26.8h, v20.8b\n"
+          "smlal2 v22.4s, v8.8h, v19.8h\n"
+          "ld1 {v19.8b}, [x14], %[input_depth]\n"
+          "smlal v23.4s, v8.4h, v20.4h\n"
+          "smlal2 v24.4s, v8.8h, v20.8h\n"
+
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v28.4s\n"
+          "sqrshl v22.4s, v22.4s, v28.4s\n"
+          "sqrshl v23.4s, v23.4s, v28.4s\n"
+          "sqrshl v24.4s, v24.4s, v28.4s\n"
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "st1 {v21.8b}, [%[output_ptr]], x3\n"
+          "uaddw v10.8h, v26.8h, v10.8b\n"
+          "mov v23.d[0], v21.d[1]\n"
+          "st1 {v23.8b}, [%[output_ptr]], x3\n"
+          "uaddw v11.8h, v26.8h, v11.8b\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "uaddw v13.8h, v26.8h, v13.8b\n"
+          "uaddw v14.8h, v26.8h, v14.8b\n"
+          "uaddw v15.8h, v26.8h, v15.8b\n"
+          "ld1 {v21.4s}, [%[bias_ptr]]\n"
+          "uaddw v16.8h, v26.8h, v16.8b\n"
+          "ld1 {v23.4s}, [%[bias_ptr]]\n"
+          "uaddw v17.8h, v26.8h, v17.8b\n"
+          "uaddw v18.8h, v26.8h, v18.8b\n"
+          "uaddw v19.8h, v26.8h, v19.8b\n"
+          "uaddw v20.8h, v26.8h, v20.8b\n"
+
+          "bge " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP "b\n"
+
+        // At this point, there will be one of 2 width or 1 width leftover,
+        // not both.
+        "cmp w5, #2\n"
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "f\n"
+
+        // Handle last two horizontal outputs if exists.
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER ":\n"
+        "smlal v21.4s, v0.4h, v9.4h\n"
+        "ld1 {v12.8b}, [x12], %[input_depth]\n"
+        "smlal2 v22.4s, v0.8h, v9.8h\n"
+        "ld1 {v16.8b}, [x13], %[input_depth]\n"
+        "smlal v23.4s, v0.4h, v10.4h\n"
+        "ld1 {v20.8b}, [x14], %[input_depth]\n"
+        "smlal2 v24.4s, v0.8h, v10.8h\n"
+        "smlal v21.4s, v1.4h, v10.4h\n"
+        "smlal2 v22.4s, v1.8h, v10.8h\n"
+        "smlal v23.4s, v1.4h, v11.4h\n"
+        "smlal2 v24.4s, v1.8h, v11.8h\n"
+        "smlal v21.4s, v2.4h, v11.4h\n"
+        "uaddw v12.8h, v26.8h, v12.8b\n"
+        "smlal2 v22.4s, v2.8h, v11.8h\n"
+        "smlal v23.4s, v2.4h, v12.4h\n"
+        "smlal2 v24.4s, v2.8h, v12.8h\n"
+        "smlal v21.4s, v3.4h, v13.4h\n"
+        "smlal2 v22.4s, v3.8h, v13.8h\n"
+        "smlal v23.4s, v3.4h, v14.4h\n"
+        "smlal2 v24.4s, v3.8h, v14.8h\n"
+        "smlal v21.4s, v4.4h, v14.4h\n"
+        "smlal2 v22.4s, v4.8h, v14.8h\n"
+        "smlal v23.4s, v4.4h, v15.4h\n"
+        "smlal2 v24.4s, v4.8h, v15.8h\n"
+        "smlal v21.4s, v5.4h, v15.4h\n"
+        "uaddw v16.8h, v26.8h, v16.8b\n"
+        "smlal2 v22.4s, v5.8h, v15.8h\n"
+        "smlal v23.4s, v5.4h, v16.4h\n"
+        "smlal2 v24.4s, v5.8h, v16.8h\n"
+        "smlal v21.4s, v6.4h, v17.4h\n"
+        "smlal2 v22.4s, v6.8h, v17.8h\n"
+        "smlal v23.4s, v6.4h, v18.4h\n"
+        "smlal2 v24.4s, v6.8h, v18.8h\n"
+        "smlal v21.4s, v7.4h, v18.4h\n"
+        "smlal2 v22.4s, v7.8h, v18.8h\n"
+        "smlal v23.4s, v7.4h, v19.4h\n"
+        "smlal2 v24.4s, v7.8h, v19.8h\n"
+        "smlal v21.4s, v8.4h, v19.4h\n"
+        "uaddw v20.8h, v26.8h, v20.8b\n"
+        "smlal2 v22.4s, v8.8h, v19.8h\n"
+        "smlal v23.4s, v8.4h, v20.4h\n"
+        "smlal2 v24.4s, v8.8h, v20.8h\n"
+
+        "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+        "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+        "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+        "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+        "sqrshl v21.4s, v21.4s, v28.4s\n"
+        "sqrshl v22.4s, v22.4s, v28.4s\n"
+        "sqrshl v23.4s, v23.4s, v28.4s\n"
+        "sqrshl v24.4s, v24.4s, v28.4s\n"
+        "sqxtn v21.4h, v21.4s\n"
+        "sqxtn2 v21.8h, v22.4s\n"
+        "sqxtn v23.4h, v23.4s\n"
+        "sqxtn2 v23.8h, v24.4s\n"
+        "sqadd v21.8h, v21.8h, v29.8h\n"
+        "sqadd v23.8h, v23.8h, v29.8h\n"
+        "sqxtun v21.8b, v21.8h\n"
+        "sqxtun2 v21.16b, v23.8h\n"
+        "umax v21.16b, v21.16b, v30.16b\n"
+        "umin v21.16b, v21.16b, v31.16b\n"
+        "st1 {v21.8b}, [%[output_ptr]], x3\n"
+        "mov v23.d[0], v21.d[1]\n"
+        "st1 {v23.8b}, [%[output_ptr]], x3\n"
+        "b " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
+
+        // Handle bottom right output if exists.
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER ":\n"
+        "smlal v21.4s, v0.4h, v9.4h\n"
+        "smlal2 v22.4s, v0.8h, v9.8h\n"
+        "smlal v21.4s, v1.4h, v10.4h\n"
+        "smlal2 v22.4s, v1.8h, v10.8h\n"
+        "smlal v21.4s, v2.4h, v11.4h\n"
+        "smlal2 v22.4s, v2.8h, v11.8h\n"
+        "smlal v21.4s, v3.4h, v13.4h\n"
+        "smlal2 v22.4s, v3.8h, v13.8h\n"
+        "smlal v21.4s, v4.4h, v14.4h\n"
+        "smlal2 v22.4s, v4.8h, v14.8h\n"
+        "smlal v21.4s, v5.4h, v15.4h\n"
+        "smlal2 v22.4s, v5.8h, v15.8h\n"
+        "smlal v21.4s, v6.4h, v17.4h\n"
+        "smlal2 v22.4s, v6.8h, v17.8h\n"
+        "smlal v21.4s, v7.4h, v18.4h\n"
+        "smlal2 v22.4s, v7.8h, v18.8h\n"
+        "smlal v21.4s, v8.4h, v19.4h\n"
+        "smlal2 v22.4s, v8.8h, v19.8h\n"
+
+        "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+        "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+        "sqrshl v21.4s, v21.4s, v28.4s\n"
+        "sqrshl v22.4s, v22.4s, v28.4s\n"
+        "sqxtn v21.4h, v21.4s\n"
+        "sqxtn2 v21.8h, v22.4s\n"
+        "sqadd v21.8h, v21.8h, v29.8h\n"
+        "sqxtun v21.8b, v21.8h\n"
+        "umax v21.8b, v21.8b, v30.8b\n"
+        "umin v21.8b, v21.8b, v31.8b\n"
+        "st1 {v21.8b}, [%[output_ptr]]\n"
+        DEPTHWISECONV_LABEL_HEIGHT_1_END ":\n"
+    :
+    // Outputs.
+    [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+    [output_ptr] "+r"(output_ptr),
+    [output_window_height] "+r"(output_window_height)
+    :
+    // Inputs.
+    [bias_ptr] "r"(bias_ptr), [input_row_size] "r"(input_row_size),
+    [input_depth] "r"(input_depth),
+    [output_window_width] "r"(output_window_width),
+    [input_width_increment] "r"(input_width_increment),
+    [input_height_increment] "r"(input_height_increment),
+    [output_height_increment] "r"(output_height_increment),
+    [params_ptr] "r"(params_ptr)
+    :
+    // Clobbers.
+    "cc", "memory",
+    // We use these NEON registers.
+    "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
+    "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
+    "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29",
+    "v30", "v31",
+    // We use these general-purpose registers.
+    "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+    "x9", "x10", "x11", "x12", "x13", "x14", "x15");
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_1
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_END
+  }
+};
+
+template <>
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 2,
+                           2> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          int64_t input_depth, int64_t input_row_size,
@@ -1631,11 +2119,11 @@ struct DepthwiseConvWindow<8, 2, 2> {
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w1\n"
         "ldr w3, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "dup v29.4s, w2\n"
+        "dup v29.8h, w2\n"
         "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v30.4s, w3\n"
+        "dup v30.16b, w3\n"
         "ldr x5, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
-        "dup v31.4s, w4\n"
+        "dup v31.16b, w4\n"
         "ldr x19, [%[params_ptr], #" STR(OFFSET_OUTPUT_ROW_SIZE) "]\n"
         "ldr w20, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
 
@@ -1809,39 +2297,32 @@ struct DepthwiseConvWindow<8, 2, 2> {
             "sqadd v21.4s, v21.4s, v27.4s\n"
             "dup v27.4s, w1\n"
             "sqadd v22.4s, v22.4s, v29.4s\n"
-            "dup v29.4s, w2\n"
+            "dup v29.8h, w2\n"
             "sqadd v23.4s, v23.4s, v30.4s\n"
-            "dup v30.4s, w3\n"
+            "dup v30.16b, w3\n"
             "sqadd v24.4s, v24.4s, v31.4s\n"
-            "dup v31.4s, w4\n"
+            "dup v31.16b, w4\n"
             "srshl v21.4s, v21.4s, v28.4s\n"
             "srshl v22.4s, v22.4s, v28.4s\n"
             "srshl v23.4s, v23.4s, v28.4s\n"
             "srshl v24.4s, v24.4s, v28.4s\n"
             "dup v28.8h, w0\n"
-            "add v21.4s, v21.4s, v29.4s\n"
-            "add v22.4s, v22.4s, v29.4s\n"
-            "add v23.4s, v23.4s, v29.4s\n"
-            "add v24.4s, v24.4s, v29.4s\n"
-            "smax v21.4s, v21.4s, v30.4s\n"
-            "smax v22.4s, v22.4s, v30.4s\n"
-            "smax v23.4s, v23.4s, v30.4s\n"
-            "smax v24.4s, v24.4s, v30.4s\n"
-            "smin v21.4s, v21.4s, v31.4s\n"
-            "smin v22.4s, v22.4s, v31.4s\n"
-            "smin v23.4s, v23.4s, v31.4s\n"
-            "smin v24.4s, v24.4s, v31.4s\n"
             "sqxtn v21.4h, v21.4s\n"
-            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v21.8h, v22.4s\n"
-            "ld1 {v22.4s}, [x10]\n"
+            "sqxtn v23.4h, v23.4s\n"
             "sqxtn2 v23.8h, v24.4s\n"
-            "ld1 {v24.4s}, [x10]\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
             "sqxtun v21.8b, v21.8h\n"
-            "sqxtun v23.8b, v23.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
             "uaddw v9.8h, v28.8h, v9.8b\n"
             "st1 {v21.8b}, [x6], x5\n"
             "uaddw v10.8h, v28.8h, v10.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
             "st1 {v23.8b}, [x6], x5\n"
             "uaddw v11.8h, v28.8h, v11.8b\n"
 
@@ -1901,39 +2382,32 @@ struct DepthwiseConvWindow<8, 2, 2> {
             "sqadd v19.4s, v19.4s, v27.4s\n"
             "dup v27.4s, w1\n"
             "sqadd v20.4s, v20.4s, v29.4s\n"
-            "dup v29.4s, w2\n"
+            "dup v29.8h, w2\n"
             "sqadd v25.4s, v25.4s, v30.4s\n"
-            "dup v30.4s, w3\n"
+            "dup v30.16b, w3\n"
             "sqadd v26.4s, v26.4s, v31.4s\n"
-            "dup v31.4s, w4\n"
+            "dup v31.16b, w4\n"
             "srshl v19.4s, v19.4s, v28.4s\n"
             "srshl v20.4s, v20.4s, v28.4s\n"
             "srshl v25.4s, v25.4s, v28.4s\n"
             "srshl v26.4s, v26.4s, v28.4s\n"
             "dup v28.8h, w0\n"
-            "add v19.4s, v19.4s, v29.4s\n"
-            "add v20.4s, v20.4s, v29.4s\n"
-            "add v25.4s, v25.4s, v29.4s\n"
-            "add v26.4s, v26.4s, v29.4s\n"
-            "smax v19.4s, v19.4s, v30.4s\n"
-            "smax v20.4s, v20.4s, v30.4s\n"
-            "smax v25.4s, v25.4s, v30.4s\n"
-            "smax v26.4s, v26.4s, v30.4s\n"
-            "smin v19.4s, v19.4s, v31.4s\n"
-            "smin v20.4s, v20.4s, v31.4s\n"
-            "smin v25.4s, v25.4s, v31.4s\n"
-            "smin v26.4s, v26.4s, v31.4s\n"
             "sqxtn v19.4h, v19.4s\n"
-            "sqxtn v25.4h, v25.4s\n"
             "sqxtn2 v19.8h, v20.4s\n"
-            "ld1 {v20.4s}, [x10]\n"
+            "sqxtn v25.4h, v25.4s\n"
             "sqxtn2 v25.8h, v26.4s\n"
-            "ld1 {v26.4s}, [x10]\n"
+            "sqadd v19.8h, v19.8h, v29.8h\n"
+            "sqadd v25.8h, v25.8h, v29.8h\n"
             "sqxtun v19.8b, v19.8h\n"
-            "sqxtun v25.8b, v25.8h\n"
+            "sqxtun2 v19.16b, v25.8h\n"
+            "ld1 {v20.4s}, [x10]\n"
+            "umax v19.16b, v19.16b, v30.16b\n"
+            "umin v19.16b, v19.16b, v31.16b\n"
+            "ld1 {v26.4s}, [x10]\n"
             "uaddw v9.8h, v28.8h, v9.8b\n"
             "st1 {v19.8b}, [x7], x5\n"
             "uaddw v10.8h, v28.8h, v10.8b\n"
+            "mov v25.d[0], v19.d[1]\n"
             "st1 {v25.8b}, [x7], x5\n"
             "uaddw v11.8h, v28.8h, v11.8b\n"
             "ld1 {v19.4s}, [%[bias_ptr]]\n"
@@ -2047,39 +2521,32 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sqadd v21.4s, v21.4s, v27.4s\n"
           "dup v27.4s, w1\n"
           "sqadd v22.4s, v22.4s, v29.4s\n"
-          "dup v29.4s, w2\n"
+          "dup v29.8h, w2\n"
           "sqadd v23.4s, v23.4s, v30.4s\n"
-          "dup v30.4s, w3\n"
+          "dup v30.16b, w3\n"
           "sqadd v24.4s, v24.4s, v31.4s\n"
-          "dup v31.4s, w4\n"
+          "dup v31.16b, w4\n"
           "srshl v21.4s, v21.4s, v28.4s\n"
           "srshl v22.4s, v22.4s, v28.4s\n"
           "srshl v23.4s, v23.4s, v28.4s\n"
           "srshl v24.4s, v24.4s, v28.4s\n"
           "dup v28.8h, w0\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
           "sqxtn v21.4h, v21.4s\n"
-          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
-          "ld1 {v22.4s}, [x10]\n"
+          "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
-          "ld1 {v24.4s}, [x10]\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
-          "sqxtun v23.8b, v23.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
           "uaddw v9.8h, v28.8h, v9.8b\n"
           "st1 {v21.8b}, [x6], x5\n"
           "uaddw v10.8h, v28.8h, v10.8b\n"
+          "mov v23.d[0], v21.d[1]\n"
           "st1 {v23.8b}, [x6]\n"
           "uaddw v11.8h, v28.8h, v11.8b\n"
 
@@ -2131,35 +2598,28 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sqadd v19.4s, v19.4s, v27.4s\n"
           "dup v27.4s, w1\n"
           "sqadd v20.4s, v20.4s, v29.4s\n"
-          "dup v29.4s, w2\n"
+          "dup v29.8h, w2\n"
           "sqadd v25.4s, v25.4s, v30.4s\n"
-          "dup v30.4s, w3\n"
+          "dup v30.16b, w3\n"
           "sqadd v26.4s, v26.4s, v31.4s\n"
-          "dup v31.4s, w4\n"
+          "dup v31.16b, w4\n"
           "srshl v19.4s, v19.4s, v28.4s\n"
           "srshl v20.4s, v20.4s, v28.4s\n"
           "srshl v25.4s, v25.4s, v28.4s\n"
           "srshl v26.4s, v26.4s, v28.4s\n"
           "dup v28.8h, w0\n"
-          "add v19.4s, v19.4s, v29.4s\n"
-          "add v20.4s, v20.4s, v29.4s\n"
-          "add v25.4s, v25.4s, v29.4s\n"
-          "add v26.4s, v26.4s, v29.4s\n"
-          "smax v19.4s, v19.4s, v30.4s\n"
-          "smax v20.4s, v20.4s, v30.4s\n"
-          "smax v25.4s, v25.4s, v30.4s\n"
-          "smax v26.4s, v26.4s, v30.4s\n"
-          "smin v19.4s, v19.4s, v31.4s\n"
-          "smin v20.4s, v20.4s, v31.4s\n"
-          "smin v25.4s, v25.4s, v31.4s\n"
-          "smin v26.4s, v26.4s, v31.4s\n"
           "sqxtn v19.4h, v19.4s\n"
-          "sqxtn v25.4h, v25.4s\n"
           "sqxtn2 v19.8h, v20.4s\n"
+          "sqxtn v25.4h, v25.4s\n"
           "sqxtn2 v25.8h, v26.4s\n"
+          "sqadd v19.8h, v19.8h, v29.8h\n"
+          "sqadd v25.8h, v25.8h, v29.8h\n"
           "sqxtun v19.8b, v19.8h\n"
-          "sqxtun v25.8b, v25.8h\n"
+          "sqxtun2 v19.16b, v25.8h\n"
+          "umax v19.16b, v19.16b, v30.16b\n"
+          "umin v19.16b, v19.16b, v31.16b\n"
           "st1 {v19.8b}, [x7], x5\n"
+          "mov v25.d[0], v19.d[1]\n"
           "st1 {v25.8b}, [x7]\n"
           "b " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "f\n"
 
@@ -2222,15 +2682,12 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sqadd v22.4s, v22.4s, v19.4s\n"
           "srshl v21.4s, v21.4s, v26.4s\n"
           "srshl v22.4s, v22.4s, v26.4s\n"
-          "add v21.4s, v21.4s, v29.4s\n"
-          "add v22.4s, v22.4s, v29.4s\n"
-          "smax v21.4s, v21.4s, v30.4s\n"
-          "smax v22.4s, v22.4s, v30.4s\n"
-          "smin v21.4s, v21.4s, v31.4s\n"
-          "smin v22.4s, v22.4s, v31.4s\n"
           "sqxtn v21.4h, v21.4s\n"
           "sqxtn2 v21.8h, v22.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
           "sqxtun v21.8b, v21.8h\n"
+          "umax v21.8b, v21.8b, v30.8b\n"
+          "umin v21.8b, v21.8b, v31.8b\n"
           "uaddw v9.8h, v28.8h, v9.8b\n"
           "st1 {v21.8b}, [x6]\n"
           "uaddw v10.8h, v28.8h, v10.8b\n"
@@ -2263,15 +2720,12 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sqadd v24.4s, v24.4s, v19.4s\n"
           "srshl v23.4s, v23.4s, v26.4s\n"
           "srshl v24.4s, v24.4s, v26.4s\n"
-          "add v23.4s, v23.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v29.4s\n"
-          "smax v23.4s, v23.4s, v30.4s\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smin v23.4s, v23.4s, v31.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
           "sqxtn v23.4h, v23.4s\n"
           "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
           "sqxtun v23.8b, v23.8h\n"
+          "umax v23.8b, v23.8b, v30.8b\n"
+          "umin v23.8b, v23.8b, v31.8b\n"
           "st1 {v23.8b}, [x7]\n"
 
           DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP ":\n"
@@ -2398,7 +2852,7 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sqrdmulh v25.4s, v25.4s, v28.4s\n"
           "sqrdmulh v26.4s, v26.4s, v28.4s\n"
           "sqrdmulh v27.4s, v27.4s, v28.4s\n"
-          "dup v28.4s, w2\n"
+          "dup v28.8h, w2\n"
           "and v30.16b, v24.16b, v29.16b\n"
           "and v31.16b, v25.16b, v29.16b\n"
           "sshr v30.4s, v30.4s, #31\n"
@@ -2410,37 +2864,30 @@ struct DepthwiseConvWindow<8, 2, 2> {
           "sshr v30.4s, v30.4s, #31\n"
           "sshr v31.4s, v31.4s, #31\n"
           "sqadd v26.4s, v26.4s, v30.4s\n"
-          "dup v30.4s, w3\n"
+          "dup v30.16b, w3\n"
           "sqadd v27.4s, v27.4s, v31.4s\n"
-          "dup v31.4s, w4\n"
+          "dup v31.16b, w4\n"
           "srshl v24.4s, v24.4s, v29.4s\n"
           "srshl v25.4s, v25.4s, v29.4s\n"
           "srshl v26.4s, v26.4s, v29.4s\n"
           "srshl v27.4s, v27.4s, v29.4s\n"
-          "add v24.4s, v24.4s, v28.4s\n"
-          "add v25.4s, v25.4s, v28.4s\n"
-          "add v26.4s, v26.4s, v28.4s\n"
-          "add v27.4s, v27.4s, v28.4s\n"
-          "dup v28.8h, w0\n"
-          "smax v24.4s, v24.4s, v30.4s\n"
-          "smax v25.4s, v25.4s, v30.4s\n"
-          "smax v26.4s, v26.4s, v30.4s\n"
-          "smax v27.4s, v27.4s, v30.4s\n"
-          "smin v24.4s, v24.4s, v31.4s\n"
-          "smin v25.4s, v25.4s, v31.4s\n"
-          "smin v26.4s, v26.4s, v31.4s\n"
-          "smin v27.4s, v27.4s, v31.4s\n"
           "sqxtn v24.4h, v24.4s\n"
-          "sqxtn v26.4h, v26.4s\n"
           "sqxtn2 v24.8h, v25.4s\n"
-          "ld1 {v25.4s}, [x10]\n"
+          "sqxtn v26.4h, v26.4s\n"
           "sqxtn2 v26.8h, v27.4s\n"
-          "ld1 {v27.4s}, [x10]\n"
+          "sqadd v24.8h, v24.8h, v28.8h\n"
+          "sqadd v26.8h, v26.8h, v28.8h\n"
           "sqxtun v24.8b, v24.8h\n"
-          "sqxtun v26.8b, v26.8h\n"
+          "sqxtun2 v24.16b, v26.8h\n"
+          "dup v28.8h, w0\n"
+          "ld1 {v25.4s}, [x10]\n"
+          "umax v24.16b, v24.16b, v30.16b\n"
+          "umin v24.16b, v24.16b, v31.16b\n"
+          "ld1 {v27.4s}, [x10]\n"
           "uaddw v9.8h, v28.8h, v9.8b\n"
           "st1 {v24.8b}, [x6], x5\n"
           "uaddw v10.8h, v28.8h, v10.8b\n"
+          "mov v26.d[0], v24.d[1]\n"
           "st1 {v26.8b}, [x6], x5\n"
           "uaddw v11.8h, v28.8h, v11.8b\n"
           "uaddw v12.8h, v28.8h, v12.8b\n"
@@ -2517,7 +2964,7 @@ struct DepthwiseConvWindow<8, 2, 2> {
         "sqrdmulh v25.4s, v25.4s, v28.4s\n"
         "sqrdmulh v26.4s, v26.4s, v28.4s\n"
         "sqrdmulh v27.4s, v27.4s, v28.4s\n"
-        "dup v28.4s, w2\n"
+        "dup v28.8h, w2\n"
         "and v30.16b, v24.16b, v29.16b\n"
         "and v31.16b, v25.16b, v29.16b\n"
         "sshr v30.4s, v30.4s, #31\n"
@@ -2529,33 +2976,26 @@ struct DepthwiseConvWindow<8, 2, 2> {
         "sshr v30.4s, v30.4s, #31\n"
         "sshr v31.4s, v31.4s, #31\n"
         "sqadd v26.4s, v26.4s, v30.4s\n"
-        "dup v30.4s, w3\n"
+        "dup v30.16b, w3\n"
         "sqadd v27.4s, v27.4s, v31.4s\n"
-        "dup v31.4s, w4\n"
+        "dup v31.16b, w4\n"
         "srshl v24.4s, v24.4s, v29.4s\n"
         "srshl v25.4s, v25.4s, v29.4s\n"
         "srshl v26.4s, v26.4s, v29.4s\n"
         "srshl v27.4s, v27.4s, v29.4s\n"
-        "add v24.4s, v24.4s, v28.4s\n"
-        "add v25.4s, v25.4s, v28.4s\n"
-        "add v26.4s, v26.4s, v28.4s\n"
-        "add v27.4s, v27.4s, v28.4s\n"
-        "dup v28.8h, w0\n"
-        "smax v24.4s, v24.4s, v30.4s\n"
-        "smax v25.4s, v25.4s, v30.4s\n"
-        "smax v26.4s, v26.4s, v30.4s\n"
-        "smax v27.4s, v27.4s, v30.4s\n"
-        "smin v24.4s, v24.4s, v31.4s\n"
-        "smin v25.4s, v25.4s, v31.4s\n"
-        "smin v26.4s, v26.4s, v31.4s\n"
-        "smin v27.4s, v27.4s, v31.4s\n"
         "sqxtn v24.4h, v24.4s\n"
-        "sqxtn v26.4h, v26.4s\n"
         "sqxtn2 v24.8h, v25.4s\n"
+        "sqxtn v26.4h, v26.4s\n"
         "sqxtn2 v26.8h, v27.4s\n"
+        "sqadd v24.8h, v24.8h, v28.8h\n"
+        "sqadd v26.8h, v26.8h, v28.8h\n"
         "sqxtun v24.8b, v24.8h\n"
-        "sqxtun v26.8b, v26.8h\n"
+        "sqxtun2 v24.16b, v26.8h\n"
+        "dup v28.8h, w0\n"
+        "umax v24.16b, v24.16b, v30.16b\n"
+        "umin v24.16b, v24.16b, v31.16b\n"
         "st1 {v24.8b}, [x6], x5\n"
+        "mov v26.d[0], v24.d[1]\n"
         "st1 {v26.8b}, [x6]\n"
         "b " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
 
@@ -2563,7 +3003,7 @@ struct DepthwiseConvWindow<8, 2, 2> {
         DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER ":\n"
         "dup v26.4s, w9\n"
         "dup v27.4s, w1\n"
-        "dup v29.4s, w2\n"
+        "dup v29.8h, w2\n"
 
         "smlal v24.4s, v0.4h, v9.4h\n"
         "smlal2 v25.4s, v0.8h, v9.8h\n"
@@ -2594,15 +3034,12 @@ struct DepthwiseConvWindow<8, 2, 2> {
         "sqadd v25.4s, v25.4s, v19.4s\n"
         "srshl v24.4s, v24.4s, v26.4s\n"
         "srshl v25.4s, v25.4s, v26.4s\n"
-        "add v24.4s, v24.4s, v29.4s\n"
-        "add v25.4s, v25.4s, v29.4s\n"
-        "smax v24.4s, v24.4s, v30.4s\n"
-        "smax v25.4s, v25.4s, v30.4s\n"
-        "smin v24.4s, v24.4s, v31.4s\n"
-        "smin v25.4s, v25.4s, v31.4s\n"
         "sqxtn v24.4h, v24.4s\n"
         "sqxtn2 v24.8h, v25.4s\n"
+        "sqadd v24.8h, v24.8h, v29.8h\n"
         "sqxtun v24.8b, v24.8h\n"
+        "umax v24.8b, v24.8b, v30.8b\n"
+        "umin v24.8b, v24.8b, v31.8b\n"
         "st1 {v24.8b}, [x6]\n"
 
         DEPTHWISECONV_LABEL_HEIGHT_1_END ":\n"
@@ -2646,13 +3083,932 @@ struct DepthwiseConvWindow<8, 2, 2> {
   }
 };
 
-enum class EdgeType { kCorner, kHorizontal, kVertical, kCenter };
+template <>
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 2, 2> {
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         int64_t input_depth, int64_t input_row_size,
+                         int32 output_window_height, int32 output_window_width,
+                         const DepthwiseConvParams* params_ptr) {
+    const int64_t input_width_increment = 4 * input_depth;
+    const int64_t input_height_increment = 4 * input_row_size;
+    const int64_t output_height_increment = 2 * params_ptr->output_row_size;
 
-template <EdgeType kEdgeType, int kPadWidth, int kPadHeight>
-struct DepthwiseConvPartial {};
+#define DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "1"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "2"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "3"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER "4"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "5"
+#define DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "6"
+#define DEPTHWISECONV_LABEL_HEIGHT_1 "7"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP "8"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "9"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER "10"
+#define DEPTHWISECONV_LABEL_HEIGHT_1_END "11"
+
+    asm volatile(
+        // Performs depthwise convolutions for a window specified by
+        // |output_window_height| and |output_window_width|. The inner-most loop
+        // processes 2x2 outputs, and any leftovers at the end.
+        //
+        // Algorithm works as follows:
+        //
+        //   1. Load filters of 8 depth (8x3x3). Registers v0--v8 hold filter
+        //      values.
+        //   2. For 2 output heights at a time:
+        //        i.  For 2 output widths at a time at stride 2, a 5x5 input
+        //            window is required. To avoid register exhaustion, we load
+        //            the first 2 rows of the 5x5 input window into registers
+        //            v9--v18, and use the same registers to load the next 2
+        //            rows, and finally v9--v13 to load the last row.
+        //            Accumulators for all 2x2 outputs are reserved by registers
+        //            v21-v22 (top left output), v23-v24 (top right output),
+        //            v19-v20 (bottom left output), v25-v26 (bottom right
+        //            output).
+        //        ii. Handle single leftover width if exists.
+        //   3. Handle single leftover height if exists.
+        //        i.  For 2 output widths at a time at stride 2, load inputs for
+        //            a 1x2 (1 height, 2 width) output window (3x5 input
+        //            window). Registers v9--v24 hold input values. Mul-add with
+        //            accumulators v24--v27.
+        //        ii. Handle single leftover width if exists.
+        //
+        // Loads are placed as soon as the register is no longer needed and
+        // interleaved with arithmetic operations to take advantage of
+        // dual-issue pipelines. We also add input offsets as far from the loads
+        // as possible to give loads enough cycles to fetch data from memory.
+
+        // Set "constant" registers. These registers may be replaced with temp
+        // values from time to time when there are not enough NEON registers.
+        // We use x9--x15 general purpose registers as they are caller-saved
+        // temporary registers (see http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055b/IHI0055B_aapcs64.pdf).  // NOLINT
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "cmp %w[output_window_height], #2\n"
+        "dup v28.8h, w0\n"
+        "neg w9, w9\n"
+        "ldr w1, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "dup v26.4s, w9\n"
+        "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w1\n"
+        "ldr w3, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "dup v29.8h, w2\n"
+        "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v30.16b, w3\n"
+        "ldr x5, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+        "dup v31.16b, w4\n"
+        "ldr x19, [%[params_ptr], #" STR(OFFSET_OUTPUT_ROW_SIZE) "]\n"
+        "ldr w20, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+
+        // Load filters and add offsets.
+        "add x10, %[bias_ptr], #16\n"
+        "ld1 {v0.8b}, [%[filter_ptr]], x5\n"
+        "dup v9.8h, w20\n"
+        "ld1 {v1.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v0.8h, v9.8h, v0.8b\n"
+        "ld1 {v2.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v1.8h, v9.8h, v1.8b\n"
+        "ld1 {v3.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v2.8h, v9.8h, v2.8b\n"
+        "ld1 {v4.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v3.8h, v9.8h, v3.8b\n"
+        "ld1 {v5.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v4.8h, v9.8h, v4.8b\n"
+        "ld1 {v6.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v5.8h, v9.8h, v5.8b\n"
+        "ld1 {v7.8b}, [%[filter_ptr]], x5\n"
+        "uaddw v6.8h, v9.8h, v6.8b\n"
+        "ld1 {v8.8b}, [%[filter_ptr]]\n"
+        "uaddw v7.8h, v9.8h, v7.8b\n"
+        "uaddw v8.8h, v9.8h, v8.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_HEIGHT_2_LOOP ":\n"
+          // Load the first two rows of the 5x5 input window, then reuse the
+          // same registers to load subsequent rows as they become available.
+          "mov x11, %[input_ptr]\n"
+          "mov x12, x11\n"
+          "add x13, x12, %[input_row_size]\n"
+          "ld1 {v9.8b}, [x12], %[input_depth]\n"
+          "mov w14, %w[output_window_width]\n"
+          "ld1 {v10.8b}, [x12], %[input_depth]\n"
+          // The height 2 / width 2 loop loads an extra 1 output horizontally in
+          // anticipation for the next iteration. Make sure
+          // |output_window_width| is large enough to handle the additional
+          // load, otherwise jump to the appropriate label to handle smaller
+          // widths.
+          "cmp w14, #2\n"
+          "ld1 {v11.8b}, [x12], %[input_depth]\n"
+          "add x15, x13, %[input_row_size]\n"
+          "ld1 {v14.8b}, [x13], %[input_depth]\n"
+          "mov x6, %[output_ptr]\n"
+          "ld1 {v15.8b}, [x13], %[input_depth]\n"
+          "add x7, %[output_ptr], x19\n"
+          "ld1 {v16.8b}, [x13], %[input_depth]\n"
+          "ld1 {v21.4s}, [%[bias_ptr]]\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "ld1 {v23.4s}, [%[bias_ptr]]\n"
+          "uaddw v9.8h, v28.8h, v9.8b\n"
+          "ld1 {v24.4s}, [x10]\n"
+          "uaddw v10.8h, v28.8h, v10.8b\n"
+          "ld1 {v19.4s}, [%[bias_ptr]]\n"
+          "uaddw v11.8h, v28.8h, v11.8b\n"
+          "ld1 {v20.4s}, [x10]\n"
+          "uaddw v14.8h, v28.8h, v14.8b\n"
+          "ld1 {v25.4s}, [%[bias_ptr]]\n"
+          "uaddw v15.8h, v28.8h, v15.8b\n"
+          "ld1 {v26.4s}, [x10]\n"
+          "uaddw v16.8h, v28.8h, v16.8b\n"
+
+          "beq " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER "f\n"
+          "cmp w14, #1\n"
+          "beq " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "f\n"
+
+          //"loop_%=:\n"
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP ":\n"
+            "smlal v21.4s, v0.4h, v9.4h\n"
+            "ld1 {v12.8b}, [x12], %[input_depth]\n"
+            "smlal2 v22.4s, v0.8h, v9.8h\n"
+            "ld1 {v13.8b}, [x12]\n"
+            "add x12, x15, %[input_row_size]\n"
+            "smlal v23.4s, v0.4h, v11.4h\n"
+            "ld1 {v17.8b}, [x13], %[input_depth]\n"
+            "smlal2 v24.4s, v0.8h, v11.8h\n"
+            "ld1 {v18.8b}, [x13]\n"
+            "add x13, x12, %[input_row_size]\n"
+            "smlal v21.4s, v1.4h, v10.4h\n"
+            "ld1 {v9.8b}, [x15], %[input_depth]\n"
+            "smlal2 v22.4s, v1.8h, v10.8h\n"
+            "ld1 {v10.8b}, [x15], %[input_depth]\n"
+            "smlal v21.4s, v2.4h, v11.4h\n"
+            "smlal2 v22.4s, v2.8h, v11.8h\n"
+            "ld1 {v11.8b}, [x15], %[input_depth]\n"
+            "smlal v21.4s, v3.4h, v14.4h\n"
+            "smlal2 v22.4s, v3.8h, v14.8h\n"
+            "ld1 {v14.8b}, [x12], %[input_depth]\n"
+            "smlal v23.4s, v3.4h, v16.4h\n"
+            "subs w14, w14, #2\n"
+            "smlal2 v24.4s, v3.8h, v16.8h\n"
+            "cmp w14, #3\n"
+            "smlal v21.4s, v4.4h, v15.4h\n"
+            "uaddw v12.8h, v28.8h, v12.8b\n"
+            "smlal2 v22.4s, v4.8h, v15.8h\n"
+            "ld1 {v15.8b}, [x12], %[input_depth]\n"
+            "smlal v21.4s, v5.4h, v16.4h\n"
+            "uaddw v13.8h, v28.8h, v13.8b\n"
+            "smlal2 v22.4s, v5.8h, v16.8h\n"
+            "ld1 {v16.8b}, [x12], %[input_depth]\n"
+            "smlal v23.4s, v1.4h, v12.4h\n"
+            "uaddw v17.8h, v28.8h, v17.8b\n"
+            "smlal2 v24.4s, v1.8h, v12.8h\n"
+            "ld1 {v12.8b}, [x15], %[input_depth]\n"
+            "smlal v23.4s, v2.4h, v13.4h\n"
+            "uaddw v18.8h, v28.8h, v18.8b\n"
+            "smlal2 v24.4s, v2.8h, v13.8h\n"
+            "ld1 {v13.8b}, [x15]\n"
+            "smlal v23.4s, v4.4h, v17.4h\n"
+            "uaddw v9.8h, v28.8h, v9.8b\n"
+            "smlal2 v24.4s, v4.8h, v17.8h\n"
+            "ld1 {v17.8b}, [x12], %[input_depth]\n"
+            "smlal v23.4s, v5.4h, v18.4h\n"
+            "uaddw v10.8h, v28.8h, v10.8b\n"
+            "smlal2 v24.4s, v5.8h, v18.8h\n"
+            "ld1 {v18.8b}, [x12]\n"
+
+            "smlal v21.4s, v6.4h, v9.4h\n"
+            "smlal2 v22.4s, v6.8h, v9.8h\n"
+            "smlal v19.4s, v0.4h, v9.4h\n"
+            "uaddw v11.8h, v28.8h, v11.8b\n"
+            "smlal2 v20.4s, v0.8h, v9.8h\n"
+            "ld1 {v9.8b}, [x13], %[input_depth]\n"
+            "smlal v23.4s, v6.4h, v11.4h\n"
+            "smlal2 v24.4s, v6.8h, v11.8h\n"
+            "smlal v21.4s, v7.4h, v10.4h\n"
+            "smlal2 v22.4s, v7.8h, v10.8h\n"
+            "uaddw v12.8h, v28.8h, v12.8b\n"
+            "smlal v19.4s, v1.4h, v10.4h\n"
+            "smlal2 v20.4s, v1.8h, v10.8h\n"
+            "ld1 {v10.8b}, [x13], %[input_depth]\n"
+            "smlal v23.4s, v7.4h, v12.4h\n"
+            "smlal2 v24.4s, v7.8h, v12.8h\n"
+            "smlal v25.4s, v1.4h, v12.4h\n"
+            "smlal2 v26.4s, v1.8h, v12.8h\n"
+            "smlal v21.4s, v8.4h, v11.4h\n"
+            "smlal2 v22.4s, v8.8h, v11.8h\n"
+            "add x11, x11, %[input_width_increment]\n"
+            "smlal v19.4s, v2.4h, v11.4h\n"
+            "mov x12, x11\n"
+            "smlal2 v20.4s, v2.8h, v11.8h\n"
+            "uaddw v13.8h, v28.8h, v13.8b\n"
+            "smlal v25.4s, v0.4h, v11.4h\n"
+            "smlal2 v26.4s, v0.8h, v11.8h\n"
+            "ld1 {v11.8b}, [x13], %[input_depth]\n"
+            "smlal v23.4s, v8.4h, v13.4h\n"
+            "ld1 {v12.8b}, [x13], %[input_depth]\n"
+            "smlal2 v24.4s, v8.8h, v13.8h\n"
+            "smlal v25.4s, v2.4h, v13.4h\n"
+            "smlal2 v26.4s, v2.8h, v13.8h\n"
+            "ld1 {v13.8b}, [x13]\n"
+            "add x13, x12, %[input_row_size]\n"
+            "add x15, x13, %[input_row_size]\n"
+
+            "dup v28.4s, w9\n"
+            "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+            "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+            "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+            "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+            "sqrshl v21.4s, v21.4s, v28.4s\n"
+            "sqrshl v22.4s, v22.4s, v28.4s\n"
+            "sqrshl v23.4s, v23.4s, v28.4s\n"
+            "sqrshl v24.4s, v24.4s, v28.4s\n"
+            "dup v28.8h, w0\n"
+            "sqxtn v21.4h, v21.4s\n"
+            "sqxtn2 v21.8h, v22.4s\n"
+            "sqxtn v23.4h, v23.4s\n"
+            "sqxtn2 v23.8h, v24.4s\n"
+            "sqadd v21.8h, v21.8h, v29.8h\n"
+            "sqadd v23.8h, v23.8h, v29.8h\n"
+            "sqxtun v21.8b, v21.8h\n"
+            "sqxtun2 v21.16b, v23.8h\n"
+            "ld1 {v22.4s}, [x10]\n"
+            "umax v21.16b, v21.16b, v30.16b\n"
+            "umin v21.16b, v21.16b, v31.16b\n"
+            "ld1 {v24.4s}, [x10]\n"
+            "uaddw v9.8h, v28.8h, v9.8b\n"
+            "st1 {v21.8b}, [x6], x5\n"
+            "uaddw v10.8h, v28.8h, v10.8b\n"
+            "mov v23.d[0], v21.d[1]\n"
+            "st1 {v23.8b}, [x6], x5\n"
+            "uaddw v11.8h, v28.8h, v11.8b\n"
+
+            "smlal v19.4s, v6.4h, v9.4h\n"
+            "smlal2 v20.4s, v6.8h, v9.8h\n"
+            "ld1 {v9.8b}, [x12], %[input_depth]\n"
+            "smlal v25.4s, v6.4h, v11.4h\n"
+            "smlal2 v26.4s, v6.8h, v11.8h\n"
+            "smlal v19.4s, v7.4h, v10.4h\n"
+            "uaddw v12.8h, v28.8h, v12.8b\n"
+            "smlal2 v20.4s, v7.8h, v10.8h\n"
+            "ld1 {v10.8b}, [x12], %[input_depth]\n"
+            "smlal v25.4s, v7.4h, v12.4h\n"
+            "smlal2 v26.4s, v7.8h, v12.8h\n"
+            "smlal v19.4s, v8.4h, v11.4h\n"
+            "uaddw v13.8h, v28.8h, v13.8b\n"
+            "smlal2 v20.4s, v8.8h, v11.8h\n"
+            "ld1 {v11.8b}, [x12], %[input_depth]\n"
+            "smlal v25.4s, v8.4h, v13.4h\n"
+            "uaddw v14.8h, v28.8h, v14.8b\n"
+            "smlal2 v26.4s, v8.8h, v13.8h\n"
+            "uaddw v16.8h, v28.8h, v16.8b\n"
+            "smlal v19.4s, v3.4h, v14.4h\n"
+            "uaddw v15.8h, v28.8h, v15.8b\n"
+            "smlal2 v20.4s, v3.8h, v14.8h\n"
+            "ld1 {v14.8b}, [x13], %[input_depth]\n"
+            "smlal v25.4s, v3.4h, v16.4h\n"
+            "ld1 {v21.4s}, [%[bias_ptr]]\n"
+            "smlal2 v26.4s, v3.8h, v16.8h\n"
+            "ld1 {v23.4s}, [%[bias_ptr]]\n"
+            "smlal v19.4s, v4.4h, v15.4h\n"
+            "uaddw v17.8h, v28.8h, v17.8b\n"
+            "smlal2 v20.4s, v4.8h, v15.8h\n"
+            "ld1 {v15.8b}, [x13], %[input_depth]\n"
+            "smlal v25.4s, v4.4h, v17.4h\n"
+            "smlal2 v26.4s, v4.8h, v17.8h\n"
+            "smlal v19.4s, v5.4h, v16.4h\n"
+            "uaddw v18.8h, v28.8h, v18.8b\n"
+            "smlal2 v20.4s, v5.8h, v16.8h\n"
+            "ld1 {v16.8b}, [x13], %[input_depth]\n"
+            "smlal v25.4s, v5.4h, v18.4h\n"
+            "smlal2 v26.4s, v5.8h, v18.8h\n"
+
+            "dup v28.4s, w9\n"
+            "sqrdmulh v19.4s, v19.4s, v27.4s\n"
+            "sqrdmulh v20.4s, v20.4s, v27.4s\n"
+            "sqrdmulh v25.4s, v25.4s, v27.4s\n"
+            "sqrdmulh v26.4s, v26.4s, v27.4s\n"
+            "sqrshl v19.4s, v19.4s, v28.4s\n"
+            "sqrshl v20.4s, v20.4s, v28.4s\n"
+            "sqrshl v25.4s, v25.4s, v28.4s\n"
+            "sqrshl v26.4s, v26.4s, v28.4s\n"
+            "dup v28.8h, w0\n"
+            "sqxtn v19.4h, v19.4s\n"
+            "sqxtn2 v19.8h, v20.4s\n"
+            "sqxtn v25.4h, v25.4s\n"
+            "sqxtn2 v25.8h, v26.4s\n"
+            "sqadd v19.8h, v19.8h, v29.8h\n"
+            "sqadd v25.8h, v25.8h, v29.8h\n"
+            "sqxtun v19.8b, v19.8h\n"
+            "sqxtun2 v19.16b, v25.8h\n"
+            "ld1 {v20.4s}, [x10]\n"
+            "umax v19.16b, v19.16b, v30.16b\n"
+            "umin v19.16b, v19.16b, v31.16b\n"
+            "ld1 {v26.4s}, [x10]\n"
+            "uaddw v9.8h, v28.8h, v9.8b\n"
+            "st1 {v19.8b}, [x7], x5\n"
+            "uaddw v10.8h, v28.8h, v10.8b\n"
+            "mov v25.d[0], v19.d[1]\n"
+            "st1 {v25.8b}, [x7], x5\n"
+            "uaddw v11.8h, v28.8h, v11.8b\n"
+            "ld1 {v19.4s}, [%[bias_ptr]]\n"
+            "uaddw v14.8h, v28.8h, v14.8b\n"
+            "ld1 {v25.4s}, [%[bias_ptr]]\n"
+            "uaddw v15.8h, v28.8h, v15.8b\n"
+            "uaddw v16.8h, v28.8h, v16.8b\n"
+
+            "bge " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "b\n"
+
+          // At this point, there will be one of 2 width or 1 width leftover,
+          // not both.
+          "cmp w14, #2\n"
+          "blt " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER "f\n"
+
+          // Handle last 2 columns if exists.
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER ":\n"
+          "smlal v21.4s, v0.4h, v9.4h\n"
+          "ld1 {v12.8b}, [x12], %[input_depth]\n"
+          "smlal2 v22.4s, v0.8h, v9.8h\n"
+          "ld1 {v13.8b}, [x12]\n"
+          "add x12, x15, %[input_row_size]\n"
+          "smlal v23.4s, v0.4h, v11.4h\n"
+          "ld1 {v17.8b}, [x13], %[input_depth]\n"
+          "smlal2 v24.4s, v0.8h, v11.8h\n"
+          "ld1 {v18.8b}, [x13]\n"
+          "add x13, x12, %[input_row_size]\n"
+          "smlal v21.4s, v1.4h, v10.4h\n"
+          "ld1 {v9.8b}, [x15], %[input_depth]\n"
+          "smlal2 v22.4s, v1.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x15], %[input_depth]\n"
+          "smlal v21.4s, v2.4h, v11.4h\n"
+          "smlal2 v22.4s, v2.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x15], %[input_depth]\n"
+          "smlal v21.4s, v3.4h, v14.4h\n"
+          "smlal2 v22.4s, v3.8h, v14.8h\n"
+          "ld1 {v14.8b}, [x12], %[input_depth]\n"
+          "smlal v23.4s, v3.4h, v16.4h\n"
+          "smlal2 v24.4s, v3.8h, v16.8h\n"
+          "smlal v21.4s, v4.4h, v15.4h\n"
+          "uaddw v12.8h, v28.8h, v12.8b\n"
+          "smlal2 v22.4s, v4.8h, v15.8h\n"
+          "ld1 {v15.8b}, [x12], %[input_depth]\n"
+          "smlal v21.4s, v5.4h, v16.4h\n"
+          "uaddw v13.8h, v28.8h, v13.8b\n"
+          "smlal2 v22.4s, v5.8h, v16.8h\n"
+          "ld1 {v16.8b}, [x12], %[input_depth]\n"
+          "smlal v23.4s, v1.4h, v12.4h\n"
+          "uaddw v17.8h, v28.8h, v17.8b\n"
+          "smlal2 v24.4s, v1.8h, v12.8h\n"
+          "ld1 {v12.8b}, [x15], %[input_depth]\n"
+          "smlal v23.4s, v2.4h, v13.4h\n"
+          "uaddw v18.8h, v28.8h, v18.8b\n"
+          "smlal2 v24.4s, v2.8h, v13.8h\n"
+          "ld1 {v13.8b}, [x15]\n"
+          "smlal v23.4s, v4.4h, v17.4h\n"
+          "uaddw v9.8h, v28.8h, v9.8b\n"
+          "smlal2 v24.4s, v4.8h, v17.8h\n"
+          "ld1 {v17.8b}, [x12], %[input_depth]\n"
+          "smlal v23.4s, v5.4h, v18.4h\n"
+          "uaddw v10.8h, v28.8h, v10.8b\n"
+          "smlal2 v24.4s, v5.8h, v18.8h\n"
+          "ld1 {v18.8b}, [x12]\n"
+
+          "smlal v21.4s, v6.4h, v9.4h\n"
+          "smlal2 v22.4s, v6.8h, v9.8h\n"
+          "smlal v19.4s, v0.4h, v9.4h\n"
+          "uaddw v11.8h, v28.8h, v11.8b\n"
+          "smlal2 v20.4s, v0.8h, v9.8h\n"
+          "ld1 {v9.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v6.4h, v11.4h\n"
+          "smlal2 v24.4s, v6.8h, v11.8h\n"
+          "smlal v21.4s, v7.4h, v10.4h\n"
+          "smlal2 v22.4s, v7.8h, v10.8h\n"
+          "uaddw v12.8h, v28.8h, v12.8b\n"
+          "smlal v19.4s, v1.4h, v10.4h\n"
+          "smlal2 v20.4s, v1.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v7.4h, v12.4h\n"
+          "smlal2 v24.4s, v7.8h, v12.8h\n"
+          "smlal v25.4s, v1.4h, v12.4h\n"
+          "smlal2 v26.4s, v1.8h, v12.8h\n"
+          "smlal v21.4s, v8.4h, v11.4h\n"
+          "smlal2 v22.4s, v8.8h, v11.8h\n"
+          "smlal v19.4s, v2.4h, v11.4h\n"
+          "smlal2 v20.4s, v2.8h, v11.8h\n"
+          "uaddw v13.8h, v28.8h, v13.8b\n"
+          "smlal v25.4s, v0.4h, v11.4h\n"
+          "smlal2 v26.4s, v0.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x13], %[input_depth]\n"
+          "smlal v23.4s, v8.4h, v13.4h\n"
+          "ld1 {v12.8b}, [x13], %[input_depth]\n"
+          "smlal2 v24.4s, v8.8h, v13.8h\n"
+          "smlal v25.4s, v2.4h, v13.4h\n"
+          "smlal2 v26.4s, v2.8h, v13.8h\n"
+          "ld1 {v13.8b}, [x13]\n"
+
+          "dup v28.4s, w9\n"
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v28.4s\n"
+          "sqrshl v22.4s, v22.4s, v28.4s\n"
+          "sqrshl v23.4s, v23.4s, v28.4s\n"
+          "sqrshl v24.4s, v24.4s, v28.4s\n"
+          "dup v28.8h, w0\n"
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "sqxtun2 v21.16b, v23.8h\n"
+          "ld1 {v22.4s}, [x10]\n"
+          "umax v21.16b, v21.16b, v30.16b\n"
+          "umin v21.16b, v21.16b, v31.16b\n"
+          "ld1 {v24.4s}, [x10]\n"
+          "uaddw v9.8h, v28.8h, v9.8b\n"
+          "st1 {v21.8b}, [x6], x5\n"
+          "uaddw v10.8h, v28.8h, v10.8b\n"
+          "mov v23.d[0], v21.d[1]\n"
+          "st1 {v23.8b}, [x6]\n"
+          "uaddw v11.8h, v28.8h, v11.8b\n"
+
+          "smlal v19.4s, v6.4h, v9.4h\n"
+          "smlal2 v20.4s, v6.8h, v9.8h\n"
+          "smlal v25.4s, v6.4h, v11.4h\n"
+          "smlal2 v26.4s, v6.8h, v11.8h\n"
+          "smlal v19.4s, v7.4h, v10.4h\n"
+          "uaddw v12.8h, v28.8h, v12.8b\n"
+          "smlal2 v20.4s, v7.8h, v10.8h\n"
+          "smlal v25.4s, v7.4h, v12.4h\n"
+          "smlal2 v26.4s, v7.8h, v12.8h\n"
+          "smlal v19.4s, v8.4h, v11.4h\n"
+          "uaddw v13.8h, v28.8h, v13.8b\n"
+          "smlal2 v20.4s, v8.8h, v11.8h\n"
+          "smlal v25.4s, v8.4h, v13.4h\n"
+          "uaddw v14.8h, v28.8h, v14.8b\n"
+          "smlal2 v26.4s, v8.8h, v13.8h\n"
+          "uaddw v16.8h, v28.8h, v16.8b\n"
+          "smlal v19.4s, v3.4h, v14.4h\n"
+          "uaddw v15.8h, v28.8h, v15.8b\n"
+          "smlal2 v20.4s, v3.8h, v14.8h\n"
+          "smlal v25.4s, v3.4h, v16.4h\n"
+          "smlal2 v26.4s, v3.8h, v16.8h\n"
+          "smlal v19.4s, v4.4h, v15.4h\n"
+          "uaddw v17.8h, v28.8h, v17.8b\n"
+          "smlal2 v20.4s, v4.8h, v15.8h\n"
+          "smlal v25.4s, v4.4h, v17.4h\n"
+          "smlal2 v26.4s, v4.8h, v17.8h\n"
+          "smlal v19.4s, v5.4h, v16.4h\n"
+          "uaddw v18.8h, v28.8h, v18.8b\n"
+          "smlal2 v20.4s, v5.8h, v16.8h\n"
+          "smlal v25.4s, v5.4h, v18.4h\n"
+          "smlal2 v26.4s, v5.8h, v18.8h\n"
+
+          "dup v28.4s, w9\n"
+          "sqrdmulh v19.4s, v19.4s, v27.4s\n"
+          "sqrdmulh v20.4s, v20.4s, v27.4s\n"
+          "sqrdmulh v25.4s, v25.4s, v27.4s\n"
+          "sqrdmulh v26.4s, v26.4s, v27.4s\n"
+          "sqrshl v19.4s, v19.4s, v28.4s\n"
+          "sqrshl v20.4s, v20.4s, v28.4s\n"
+          "sqrshl v25.4s, v25.4s, v28.4s\n"
+          "sqrshl v26.4s, v26.4s, v28.4s\n"
+          "dup v28.8h, w0\n"
+          "sqxtn v19.4h, v19.4s\n"
+          "sqxtn2 v19.8h, v20.4s\n"
+          "sqxtn v25.4h, v25.4s\n"
+          "sqxtn2 v25.8h, v26.4s\n"
+          "sqadd v19.8h, v19.8h, v29.8h\n"
+          "sqadd v25.8h, v25.8h, v29.8h\n"
+          "sqxtun v19.8b, v19.8h\n"
+          "sqxtun2 v19.16b, v25.8h\n"
+          "umax v19.16b, v19.16b, v30.16b\n"
+          "umin v19.16b, v19.16b, v31.16b\n"
+          "st1 {v19.8b}, [x7], x5\n"
+          "mov v25.d[0], v19.d[1]\n"
+          "st1 {v25.8b}, [x7]\n"
+          "b " DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP "f\n"
+
+          // Handle last column if exists.
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER ":\n"
+          // Registers v9, v10, v11, v14, v15, and v16 have already been loaded
+          // with the correct values at this point. This corresponds to the
+          // first two input rows of the top left output. Now load the last
+          // input row for this output. Once these inputs are no longer needed,
+          // load the input rows for the bottom left output.
+          "add x12, x15, %[input_row_size]\n"
+          "add x13, x12, %[input_row_size]\n"
+
+          "ld1 {v12.8b}, [x15], %[input_depth]\n"
+          "smlal v21.4s, v0.4h, v9.4h\n"
+          "ld1 {v13.8b}, [x15], %[input_depth]\n"
+          "smlal2 v22.4s, v0.8h, v9.8h\n"
+          "ld1 {v17.8b}, [x15]\n"
+          "smlal v21.4s, v1.4h, v10.4h\n"
+          "ld1 {v9.8b}, [x12], %[input_depth]\n"
+          "smlal2 v22.4s, v1.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x12], %[input_depth]\n"
+          "smlal v21.4s, v2.4h, v11.4h\n"
+          "smlal2 v22.4s, v2.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x12]\n"
+          "smlal v21.4s, v3.4h, v14.4h\n"
+          "smlal2 v22.4s, v3.8h, v14.8h\n"
+          "ld1 {v14.8b}, [x13], %[input_depth]\n"
+          "smlal v21.4s, v4.4h, v15.4h\n"
+          "smlal2 v22.4s, v4.8h, v15.8h\n"
+          "ld1 {v15.8b}, [x13], %[input_depth]\n"
+          "smlal v21.4s, v5.4h, v16.4h\n"
+          "uaddw v12.8h, v28.8h, v12.8b\n"
+          "smlal2 v22.4s, v5.8h, v16.8h\n"
+          "uaddw v13.8h, v28.8h, v13.8b\n"
+          "ld1 {v16.8b}, [x13]\n"
+
+          "smlal v21.4s, v6.4h, v12.4h\n"
+          "smlal2 v22.4s, v6.8h, v12.8h\n"
+          "smlal v23.4s, v0.4h, v12.4h\n"
+          "uaddw v17.8h, v28.8h, v17.8b\n"
+          "smlal2 v24.4s, v0.8h, v12.8h\n"
+          "smlal v21.4s, v7.4h, v13.4h\n"
+          "smlal2 v22.4s, v7.8h, v13.8h\n"
+          "smlal v23.4s, v1.4h, v13.4h\n"
+          "smlal2 v24.4s, v1.8h, v13.8h\n"
+          "smlal v21.4s, v8.4h, v17.4h\n"
+          "smlal2 v22.4s, v8.8h, v17.8h\n"
+          "smlal v23.4s, v2.4h, v17.4h\n"
+          "smlal2 v24.4s, v2.8h, v17.8h\n"
+
+          "dup v26.4s, w9\n"
+          "sqrdmulh v21.4s, v21.4s, v27.4s\n"
+          "sqrdmulh v22.4s, v22.4s, v27.4s\n"
+          "sqrshl v21.4s, v21.4s, v26.4s\n"
+          "sqrshl v22.4s, v22.4s, v26.4s\n"
+          "sqxtn v21.4h, v21.4s\n"
+          "sqxtn2 v21.8h, v22.4s\n"
+          "sqadd v21.8h, v21.8h, v29.8h\n"
+          "sqxtun v21.8b, v21.8h\n"
+          "umax v21.8b, v21.8b, v30.8b\n"
+          "umin v21.8b, v21.8b, v31.8b\n"
+          "uaddw v9.8h, v28.8h, v9.8b\n"
+          "st1 {v21.8b}, [x6]\n"
+          "uaddw v10.8h, v28.8h, v10.8b\n"
+
+          "smlal v23.4s, v3.4h, v9.4h\n"
+          "uaddw v11.8h, v28.8h, v11.8b\n"
+          "smlal2 v24.4s, v3.8h, v9.8h\n"
+          "uaddw v14.8h, v28.8h, v14.8b\n"
+          "smlal v23.4s, v4.4h, v10.4h\n"
+          "uaddw v15.8h, v28.8h, v15.8b\n"
+          "smlal2 v24.4s, v4.8h, v10.8h\n"
+          "uaddw v16.8h, v28.8h, v16.8b\n"
+          "smlal v23.4s, v5.4h, v11.4h\n"
+          "smlal2 v24.4s, v5.8h, v11.8h\n"
+
+          "smlal v23.4s, v6.4h, v14.4h\n"
+          "smlal2 v24.4s, v6.8h, v14.8h\n"
+          "smlal v23.4s, v7.4h, v15.4h\n"
+          "smlal2 v24.4s, v7.8h, v15.8h\n"
+          "smlal v23.4s, v8.4h, v16.4h\n"
+          "smlal2 v24.4s, v8.8h, v16.8h\n"
+
+          "sqrdmulh v23.4s, v23.4s, v27.4s\n"
+          "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+          "sqrshl v23.4s, v23.4s, v26.4s\n"
+          "sqrshl v24.4s, v24.4s, v26.4s\n"
+          "sqxtn v23.4h, v23.4s\n"
+          "sqxtn2 v23.8h, v24.4s\n"
+          "sqadd v23.8h, v23.8h, v29.8h\n"
+          "sqxtun v23.8b, v23.8h\n"
+          "umax v23.8b, v23.8b, v30.8b\n"
+          "umin v23.8b, v23.8b, v31.8b\n"
+          "st1 {v23.8b}, [x7]\n"
+
+          DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP ":\n"
+          "subs %w[output_window_height], %w[output_window_height], #2\n"
+          "add %[input_ptr], %[input_ptr], %[input_height_increment]\n"
+          "cmp %w[output_window_height], #2\n"
+          "add %[output_ptr], %[output_ptr], %[output_height_increment]\n"
+          "bge " DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP ":\n"
+        "cmp %w[output_window_height], #1\n"
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
+
+        DEPTHWISECONV_LABEL_HEIGHT_1 ":\n"
+        "mov x11, %[input_ptr]\n"
+        "mov x12, x11\n"
+        "add x13, x12, %[input_row_size]\n"
+        "ld1 {v9.8b}, [x12], %[input_depth]\n"
+        "add x15, x13, %[input_row_size]\n"
+        "ld1 {v10.8b}, [x12], %[input_depth]\n"
+        "mov x6, %[output_ptr]\n"
+        "ld1 {v11.8b}, [x12], %[input_depth]\n"
+        "mov w14, %w[output_window_width]\n"
+        // The height 1 / width 2 loop loads an extra 1x1 output in anticipation
+        // for the next iteration. Make sure |output_window_width| is large
+        // enough to handle the additional load, otherwise jump to the
+        // appropriate label to handle smaller widths.
+        "cmp w14, #2\n"
+        "ld1 {v12.8b}, [x13], %[input_depth]\n"
+        "ld1 {v13.8b}, [x13], %[input_depth]\n"
+        "ld1 {v14.8b}, [x13], %[input_depth]\n"
+        "ld1 {v15.8b}, [x15], %[input_depth]\n"
+        "ld1 {v16.8b}, [x15], %[input_depth]\n"
+        "ld1 {v17.8b}, [x15], %[input_depth]\n"
+
+        "uaddw v9.8h, v28.8h, v9.8b\n"
+        "ld1 {v24.4s}, [%[bias_ptr]]\n"
+        "uaddw v10.8h, v28.8h, v10.8b\n"
+        "ld1 {v25.4s}, [x10]\n"
+        "uaddw v11.8h, v28.8h, v11.8b\n"
+        "ld1 {v26.4s}, [%[bias_ptr]]\n"
+        "ld1 {v27.4s}, [x10]\n"
+        "uaddw v12.8h, v28.8h, v12.8b\n"
+        "uaddw v13.8h, v28.8h, v13.8b\n"
+        "uaddw v14.8h, v28.8h, v14.8b\n"
+        "uaddw v15.8h, v28.8h, v15.8b\n"
+        "uaddw v16.8h, v28.8h, v16.8b\n"
+        "uaddw v17.8h, v28.8h, v17.8b\n"
+
+        "beq " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER "f\n"
+        "cmp w14, #1\n"
+        "beq " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP ":\n"
+          "smlal v24.4s, v0.4h, v9.4h\n"
+          "ld1 {v18.8b}, [x12], %[input_depth]\n"
+          "smlal2 v25.4s, v0.8h, v9.8h\n"
+          "ld1 {v19.8b}, [x12]\n"
+          "smlal v26.4s, v0.4h, v11.4h\n"
+          "ld1 {v20.8b}, [x13], %[input_depth]\n"
+          "smlal2 v27.4s, v0.8h, v11.8h\n"
+          "ld1 {v21.8b}, [x13]\n"
+          "smlal v24.4s, v1.4h, v10.4h\n"
+          "ld1 {v22.8b}, [x15], %[input_depth]\n"
+          "smlal2 v25.4s, v1.8h, v10.8h\n"
+          "ld1 {v23.8b}, [x15]\n"
+          "smlal v24.4s, v2.4h, v11.4h\n"
+          "subs w14, w14, #2\n"
+          "smlal2 v25.4s, v2.8h, v11.8h\n"
+          "cmp w14, #3\n"
+          "smlal v24.4s, v3.4h, v12.4h\n"
+          "add x11, x11, %[input_width_increment]\n"
+          "smlal2 v25.4s, v3.8h, v12.8h\n"
+          "mov x12, x11\n"
+          "smlal v26.4s, v3.4h, v14.4h\n"
+          "add x13, x12, %[input_row_size]\n"
+          "smlal2 v27.4s, v3.8h, v14.8h\n"
+          "add x15, x13, %[input_row_size]\n"
+          "smlal v24.4s, v4.4h, v13.4h\n"
+          "ld1 {v9.8b}, [x12], %[input_depth]\n"
+          "smlal2 v25.4s, v4.8h, v13.8h\n"
+          "ld1 {v10.8b}, [x12], %[input_depth]\n"
+          "smlal v24.4s, v5.4h, v14.4h\n"
+          "ld1 {v11.8b}, [x12], %[input_depth]\n"
+          "smlal2 v25.4s, v5.8h, v14.8h\n"
+          "ld1 {v12.8b}, [x13], %[input_depth]\n"
+          "smlal v24.4s, v6.4h, v15.4h\n"
+          "ld1 {v13.8b}, [x13], %[input_depth]\n"
+          "smlal2 v25.4s, v6.8h, v15.8h\n"
+          "ld1 {v14.8b}, [x13], %[input_depth]\n"
+          "smlal v26.4s, v6.4h, v17.4h\n"
+          "ld1 {v15.8b}, [x15], %[input_depth]\n"
+          "smlal2 v27.4s, v6.8h, v17.8h\n"
+          "smlal v24.4s, v7.4h, v16.4h\n"
+          "smlal2 v25.4s, v7.8h, v16.8h\n"
+          "ld1 {v16.8b}, [x15], %[input_depth]\n"
+          "smlal v24.4s, v8.4h, v17.4h\n"
+          "uaddw v18.8h, v28.8h, v18.8b\n"
+          "smlal2 v25.4s, v8.8h, v17.8h\n"
+          "ld1 {v17.8b}, [x15], %[input_depth]\n"
+          "uaddw v19.8h, v28.8h, v19.8b\n"
+
+          "smlal v26.4s, v1.4h, v18.4h\n"
+          "uaddw v20.8h, v28.8h, v20.8b\n"
+          "smlal2 v27.4s, v1.8h, v18.8h\n"
+          "smlal v26.4s, v2.4h, v19.4h\n"
+          "uaddw v21.8h, v28.8h, v21.8b\n"
+          "smlal2 v27.4s, v2.8h, v19.8h\n"
+          "smlal v26.4s, v4.4h, v20.4h\n"
+          "smlal v26.4s, v5.4h, v21.4h\n"
+          "smlal2 v27.4s, v4.8h, v20.8h\n"
+          "uaddw v22.8h, v28.8h, v22.8b\n"
+          "smlal2 v27.4s, v5.8h, v21.8h\n"
+          "uaddw v23.8h, v28.8h, v23.8b\n"
+          "smlal v26.4s, v7.4h, v22.4h\n"
+          "smlal2 v27.4s, v7.8h, v22.8h\n"
+          "smlal v26.4s, v8.4h, v23.4h\n"
+          "smlal2 v27.4s, v8.8h, v23.8h\n"
+
+          "dup v28.4s, w1\n"
+          "dup v29.4s, w9\n"
+          "sqrdmulh v24.4s, v24.4s, v28.4s\n"
+          "sqrdmulh v25.4s, v25.4s, v28.4s\n"
+          "sqrdmulh v26.4s, v26.4s, v28.4s\n"
+          "sqrdmulh v27.4s, v27.4s, v28.4s\n"
+          "dup v28.8h, w2\n"
+          "sqrshl v24.4s, v24.4s, v29.4s\n"
+          "sqrshl v25.4s, v25.4s, v29.4s\n"
+          "sqrshl v26.4s, v26.4s, v29.4s\n"
+          "sqrshl v27.4s, v27.4s, v29.4s\n"
+          "sqxtn v24.4h, v24.4s\n"
+          "sqxtn2 v24.8h, v25.4s\n"
+          "sqxtn v26.4h, v26.4s\n"
+          "sqxtn2 v26.8h, v27.4s\n"
+          "sqadd v24.8h, v24.8h, v28.8h\n"
+          "sqadd v26.8h, v26.8h, v28.8h\n"
+          "sqxtun v24.8b, v24.8h\n"
+          "sqxtun2 v24.16b, v26.8h\n"
+          "dup v28.8h, w0\n"
+          "ld1 {v25.4s}, [x10]\n"
+          "umax v24.16b, v24.16b, v30.16b\n"
+          "umin v24.16b, v24.16b, v31.16b\n"
+          "ld1 {v27.4s}, [x10]\n"
+          "uaddw v9.8h, v28.8h, v9.8b\n"
+          "st1 {v24.8b}, [x6], x5\n"
+          "uaddw v10.8h, v28.8h, v10.8b\n"
+          "mov v26.d[0], v24.d[1]\n"
+          "st1 {v26.8b}, [x6], x5\n"
+          "uaddw v11.8h, v28.8h, v11.8b\n"
+          "uaddw v12.8h, v28.8h, v12.8b\n"
+          "uaddw v13.8h, v28.8h, v13.8b\n"
+          "uaddw v14.8h, v28.8h, v14.8b\n"
+          "ld1 {v24.4s}, [%[bias_ptr]]\n"
+          "uaddw v15.8h, v28.8h, v15.8b\n"
+          "ld1 {v26.4s}, [%[bias_ptr]]\n"
+          "uaddw v16.8h, v28.8h, v16.8b\n"
+          "uaddw v17.8h, v28.8h, v17.8b\n"
+
+          "bge " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP "b\n"
+
+        // At this point, there will be one of 2 width or 1 width leftover,
+        // not both.
+        "cmp w14, #2\n"
+        "blt " DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER "f\n"
+
+        // Handle last two horizontal outputs if exists.
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER ":\n"
+        "smlal v24.4s, v0.4h, v9.4h\n"
+        "ld1 {v18.8b}, [x12], %[input_depth]\n"
+        "smlal2 v25.4s, v0.8h, v9.8h\n"
+        "ld1 {v19.8b}, [x12]\n"
+        "smlal v26.4s, v0.4h, v11.4h\n"
+        "ld1 {v20.8b}, [x13], %[input_depth]\n"
+        "smlal2 v27.4s, v0.8h, v11.8h\n"
+        "ld1 {v21.8b}, [x13]\n"
+        "smlal v24.4s, v1.4h, v10.4h\n"
+        "ld1 {v22.8b}, [x15], %[input_depth]\n"
+        "smlal2 v25.4s, v1.8h, v10.8h\n"
+        "ld1 {v23.8b}, [x15]\n"
+        "smlal v24.4s, v2.4h, v11.4h\n"
+        "smlal2 v25.4s, v2.8h, v11.8h\n"
+        "smlal v24.4s, v3.4h, v12.4h\n"
+        "smlal2 v25.4s, v3.8h, v12.8h\n"
+        "smlal v26.4s, v3.4h, v14.4h\n"
+        "smlal2 v27.4s, v3.8h, v14.8h\n"
+        "smlal v24.4s, v4.4h, v13.4h\n"
+        "smlal2 v25.4s, v4.8h, v13.8h\n"
+        "smlal v24.4s, v5.4h, v14.4h\n"
+        "smlal2 v25.4s, v5.8h, v14.8h\n"
+        "smlal v24.4s, v6.4h, v15.4h\n"
+        "smlal2 v25.4s, v6.8h, v15.8h\n"
+        "smlal v26.4s, v6.4h, v17.4h\n"
+        "smlal2 v27.4s, v6.8h, v17.8h\n"
+        "smlal v24.4s, v7.4h, v16.4h\n"
+        "smlal2 v25.4s, v7.8h, v16.8h\n"
+        "smlal v24.4s, v8.4h, v17.4h\n"
+        "uaddw v18.8h, v28.8h, v18.8b\n"
+        "smlal2 v25.4s, v8.8h, v17.8h\n"
+        "uaddw v19.8h, v28.8h, v19.8b\n"
+
+        "smlal v26.4s, v1.4h, v18.4h\n"
+        "uaddw v20.8h, v28.8h, v20.8b\n"
+        "smlal2 v27.4s, v1.8h, v18.8h\n"
+        "smlal v26.4s, v2.4h, v19.4h\n"
+        "uaddw v21.8h, v28.8h, v21.8b\n"
+        "smlal2 v27.4s, v2.8h, v19.8h\n"
+        "smlal v26.4s, v4.4h, v20.4h\n"
+        "smlal v26.4s, v5.4h, v21.4h\n"
+        "smlal2 v27.4s, v4.8h, v20.8h\n"
+        "uaddw v22.8h, v28.8h, v22.8b\n"
+        "smlal2 v27.4s, v5.8h, v21.8h\n"
+        "uaddw v23.8h, v28.8h, v23.8b\n"
+        "smlal v26.4s, v7.4h, v22.4h\n"
+        "smlal2 v27.4s, v7.8h, v22.8h\n"
+        "smlal v26.4s, v8.4h, v23.4h\n"
+        "smlal2 v27.4s, v8.8h, v23.8h\n"
+
+        "dup v28.4s, w1\n"
+        "dup v29.4s, w9\n"
+        "sqrdmulh v24.4s, v24.4s, v28.4s\n"
+        "sqrdmulh v25.4s, v25.4s, v28.4s\n"
+        "sqrdmulh v26.4s, v26.4s, v28.4s\n"
+        "sqrdmulh v27.4s, v27.4s, v28.4s\n"
+        "dup v28.8h, w2\n"
+        "sqrshl v24.4s, v24.4s, v29.4s\n"
+        "sqrshl v25.4s, v25.4s, v29.4s\n"
+        "sqrshl v26.4s, v26.4s, v29.4s\n"
+        "sqrshl v27.4s, v27.4s, v29.4s\n"
+        "sqxtn v24.4h, v24.4s\n"
+        "sqxtn2 v24.8h, v25.4s\n"
+        "sqxtn v26.4h, v26.4s\n"
+        "sqxtn2 v26.8h, v27.4s\n"
+        "sqadd v24.8h, v24.8h, v28.8h\n"
+        "sqadd v26.8h, v26.8h, v28.8h\n"
+        "sqxtun v24.8b, v24.8h\n"
+        "sqxtun2 v24.16b, v26.8h\n"
+        "dup v28.8h, w0\n"
+        "umax v24.16b, v24.16b, v30.16b\n"
+        "umin v24.16b, v24.16b, v31.16b\n"
+        "st1 {v24.8b}, [x6], x5\n"
+        "mov v26.d[0], v24.d[1]\n"
+        "st1 {v26.8b}, [x6]\n"
+        "b " DEPTHWISECONV_LABEL_HEIGHT_1_END "f\n"
+
+        // Handle bottom right output if exists.
+        DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER ":\n"
+        "dup v26.4s, w9\n"
+        "dup v27.4s, w1\n"
+        "dup v29.8h, w2\n"
+
+        "smlal v24.4s, v0.4h, v9.4h\n"
+        "smlal2 v25.4s, v0.8h, v9.8h\n"
+        "smlal v24.4s, v1.4h, v10.4h\n"
+        "smlal2 v25.4s, v1.8h, v10.8h\n"
+        "smlal v24.4s, v2.4h, v11.4h\n"
+        "smlal2 v25.4s, v2.8h, v11.8h\n"
+        "smlal v24.4s, v3.4h, v12.4h\n"
+        "smlal2 v25.4s, v3.8h, v12.8h\n"
+        "smlal v24.4s, v4.4h, v13.4h\n"
+        "smlal2 v25.4s, v4.8h, v13.8h\n"
+        "smlal v24.4s, v5.4h, v14.4h\n"
+        "smlal2 v25.4s, v5.8h, v14.8h\n"
+        "smlal v24.4s, v6.4h, v15.4h\n"
+        "smlal2 v25.4s, v6.8h, v15.8h\n"
+        "smlal v24.4s, v7.4h, v16.4h\n"
+        "smlal2 v25.4s, v7.8h, v16.8h\n"
+        "smlal v24.4s, v8.4h, v17.4h\n"
+        "smlal2 v25.4s, v8.8h, v17.8h\n"
+
+        "sqrdmulh v24.4s, v24.4s, v27.4s\n"
+        "sqrdmulh v25.4s, v25.4s, v27.4s\n"
+        "sqrshl v24.4s, v24.4s, v26.4s\n"
+        "sqrshl v25.4s, v25.4s, v26.4s\n"
+        "sqxtn v24.4h, v24.4s\n"
+        "sqxtn2 v24.8h, v25.4s\n"
+        "sqadd v24.8h, v24.8h, v29.8h\n"
+        "sqxtun v24.8b, v24.8h\n"
+        "umax v24.8b, v24.8b, v30.8b\n"
+        "umin v24.8b, v24.8b, v31.8b\n"
+        "st1 {v24.8b}, [x6]\n"
+
+        DEPTHWISECONV_LABEL_HEIGHT_1_END ":\n"
+    :
+    // Outputs.
+    [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+    [output_ptr] "+r"(output_ptr),
+    [output_window_height] "+r"(output_window_height)
+    :
+    // Inputs.
+    [bias_ptr] "r"(bias_ptr), [input_row_size] "r"(input_row_size),
+    [input_depth] "r"(input_depth),
+    [output_window_width] "r"(output_window_width),
+    [input_width_increment] "r"(input_width_increment),
+    [input_height_increment] "r"(input_height_increment),
+    [output_height_increment] "r"(output_height_increment),
+    [params_ptr] "r"(params_ptr)
+    :
+    // Clobbers.
+    "cc", "memory",
+    // We use these NEON registers.
+    "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
+    "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
+    "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29",
+    "v30", "v31",
+    // We use these general-purpose registers.
+    "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+    "x9", "x10", "x11", "x12", "x13", "x14", "x15",
+    "x19", "x20");
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_1_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_AFTER_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_1
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LOOP
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_1_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_WIDTH_2_LEFTOVER
+#undef DEPTHWISECONV_LABEL_HEIGHT_1_END
+  }
+};
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kCenter, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -2672,14 +4028,14 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
         "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
         "cmp x11, #16\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
-        "dup v28.4s, w9\n"
+        "dup v28.8h, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w10, w10\n"
         "dup v29.4s, w10\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v30.4s, w9\n"
+        "dup v30.16b, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
-        "dup v31.4s, w10\n"
+        "dup v31.16b, w10\n"
         "dup v25.8h, w9\n"
 
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
@@ -2708,15 +4064,12 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
           "sqadd v17.4s, v17.4s, v19.4s\n"
           "srshl v16.4s, v16.4s, v29.4s\n"
           "srshl v17.4s, v17.4s, v29.4s\n"
-          "add v16.4s, v16.4s, v28.4s\n"
-          "add v17.4s, v17.4s, v28.4s\n"
-          "smax v16.4s, v16.4s, v30.4s\n"
-          "smax v17.4s, v17.4s, v30.4s\n"
-          "smin v16.4s, v16.4s, v31.4s\n"
-          "smin v17.4s, v17.4s, v31.4s\n"
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
           "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
           "uaddw v8.8h, v26.8h, v8.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
@@ -2740,15 +4093,12 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
         "srshl v16.4s, v16.4s, v29.4s\n"
         "srshl v17.4s, v17.4s, v29.4s\n"
 
-        "add v16.4s, v16.4s, v28.4s\n"
-        "add v17.4s, v17.4s, v28.4s\n"
-        "smax v16.4s, v16.4s, v30.4s\n"
-        "smax v17.4s, v17.4s, v30.4s\n"
-        "smin v16.4s, v16.4s, v31.4s\n"
-        "smin v17.4s, v17.4s, v31.4s\n"
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
         "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2771,7 +4121,110 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
+                            EdgeType::kCenter, 1, 1> {
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         const DepthwiseConvParams* params_ptr) {
+#define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
+#define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
+    asm volatile(
+        // Performs depthwise convolutions for an input window of size 1x1 and
+        // padding of 1 across the full depth. Expects |input_ptr| and
+        // |filter_ptr| to be pointing to the 1x1 input and filter values.
+        "ld1 {v8.8b}, [%[input_ptr]], #8\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "ldr x11, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+        "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "dup v26.8h, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w10\n"
+        "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
+        "cmp x11, #16\n"
+        "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "dup v28.8h, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "neg w10, w10\n"
+        "dup v29.4s, w10\n"
+        "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v30.16b, w9\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+        "dup v31.16b, w10\n"
+        "dup v25.8h, w9\n"
+
+        "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v0.8h, v25.8h, v0.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_DEPTH_8_LOOP ":\n"
+          "smlal v16.4s, v0.4h, v8.4h\n"
+          "subs x11, x11, #8\n"
+          "smlal2 v17.4s, v0.8h, v8.8h\n"
+          "ld1 {v8.8b}, [%[input_ptr]], #8\n"
+          "cmp x11, #16\n"
+          "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
+
+          "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+          "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+          "sqrshl v16.4s, v16.4s, v29.4s\n"
+          "sqrshl v17.4s, v17.4s, v29.4s\n"
+          "sqxtn v16.4h, v16.4s\n"
+          "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
+          "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
+          "st1 {v16.8b}, [%[output_ptr]], #8\n"
+          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v0.8h, v25.8h, v0.8b\n"
+          "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+
+          "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP ":\n"
+        "smlal v16.4s, v0.4h, v8.4h\n"
+        "smlal2 v17.4s, v0.8h, v8.8h\n"
+
+        "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+        "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+        "sqrshl v16.4s, v16.4s, v29.4s\n"
+        "sqrshl v17.4s, v17.4s, v29.4s\n"
+
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
+        "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
+        "st1 {v16.8b}, [%[output_ptr]]\n"
+        :
+        // Outputs.
+        [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+        [output_ptr] "+r"(output_ptr), [bias_ptr] "+r"(bias_ptr)
+        :
+        // Inputs.
+        [params_ptr] "r"(params_ptr)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v8", "v16", "v17", "v18", "v19", "v25", "v26", "v27", "v28",
+        "v29", "v30", "v31",
+        // We use these general-purpose registers.
+        "x9", "x10", "x11");
+#undef DEPTHWISECONV_LABEL_DEPTH_8_LOOP
+#undef DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP
+  }
+};
+
+template <>
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kCorner, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -2811,14 +4264,14 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
-        "dup v28.4s, w6\n"
+        "dup v28.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w7, w7\n"
         "dup v29.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v30.4s, w6\n"
+        "dup v30.16b, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
-        "dup v31.4s, w7\n"
+        "dup v31.16b, w7\n"
         "dup v25.8h, w6\n"
 
         // Add input and filter offsets.
@@ -2867,15 +4320,12 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
           "sqadd v17.4s, v17.4s, v19.4s\n"
           "srshl v16.4s, v16.4s, v29.4s\n"
           "srshl v17.4s, v17.4s, v29.4s\n"
-          "add v16.4s, v16.4s, v28.4s\n"
-          "add v17.4s, v17.4s, v28.4s\n"
-          "smax v16.4s, v16.4s, v30.4s\n"
-          "smax v17.4s, v17.4s, v30.4s\n"
-          "smin v16.4s, v16.4s, v31.4s\n"
-          "smin v17.4s, v17.4s, v31.4s\n"
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
           "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
           "uaddw v8.8h, v26.8h, v8.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
@@ -2911,15 +4361,12 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
         "srshl v16.4s, v16.4s, v29.4s\n"
         "srshl v17.4s, v17.4s, v29.4s\n"
 
-        "add v16.4s, v16.4s, v28.4s\n"
-        "add v17.4s, v17.4s, v28.4s\n"
-        "smax v16.4s, v16.4s, v30.4s\n"
-        "smax v17.4s, v17.4s, v30.4s\n"
-        "smin v16.4s, v16.4s, v31.4s\n"
-        "smin v17.4s, v17.4s, v31.4s\n"
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
         "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2942,7 +4389,162 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
+                            EdgeType::kCorner, 1, 1> {
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         const DepthwiseConvParams* params_ptr) {
+#define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
+#define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
+    asm volatile(
+        // Performs depthwise convolutions for an input window of size 2x2 and
+        // padding of 1 across the full depth. Expects |input_ptr| and
+        // |filter_ptr| to be pointing to the beginning of the 2x2 input and
+        // filter values.
+
+        // Load input and filter values.
+        "ldr x15, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+        "ldr x9, [%[params_ptr], #" STR(OFFSET_INPUT_ROW_SIZE) "]\n"
+        "cmp x15, #16\n"
+        "add x12, %[input_ptr], x15\n"
+        "add x13, %[input_ptr], x9\n"
+        "ld1 {v8.8b}, [%[input_ptr]], #8\n"
+        "add x14, x13, x15\n"
+        "ld1 {v9.8b}, [x12], #8\n"
+        "ldr x6, [%[params_ptr], #" STR(OFFSET_FILTER_ROW_SIZE) "]\n"
+
+        "add x9, %[filter_ptr], x15\n"
+        "ld1 {v10.8b}, [x13], #8\n"
+        "add x10, %[filter_ptr], x6\n"
+        "ld1 {v11.8b}, [x14], #8\n"
+        "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
+        "add x11, x10, x15\n"
+        "ld1 {v1.8b}, [x9], #8\n"
+        "ld1 {v2.8b}, [x10], #8\n"
+        "ld1 {v3.8b}, [x11], #8\n"
+
+        // Load constants.
+        "ldr w6, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "dup v26.8h, w6\n"
+        "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w7\n"
+        "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "dup v28.8h, w6\n"
+        "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "neg w7, w7\n"
+        "dup v29.4s, w7\n"
+        "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v30.16b, w6\n"
+        "ldr w6, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+        "dup v31.16b, w7\n"
+        "dup v25.8h, w6\n"
+
+        // Add input and filter offsets.
+        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v10.8h, v26.8h, v10.8b\n"
+        "uaddw v11.8h, v26.8h, v11.8b\n"
+
+        "uaddw v0.8h, v25.8h, v0.8b\n"
+        "uaddw v1.8h, v25.8h, v1.8b\n"
+        "uaddw v2.8h, v25.8h, v2.8b\n"
+        "uaddw v3.8h, v25.8h, v3.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_DEPTH_8_LOOP ":\n"
+          "smlal v16.4s, v0.4h, v8.4h\n"
+          "subs x15, x15, #8\n"
+          "smlal2 v17.4s, v0.8h, v8.8h\n"
+          "ld1 {v8.8b}, [%[input_ptr]], #8\n"
+          "cmp x15, #16\n"
+          "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
+          "smlal v16.4s, v1.4h, v9.4h\n"
+          "smlal2 v17.4s, v1.8h, v9.8h\n"
+          "ld1 {v9.8b}, [x12], #8\n"
+          "smlal v16.4s, v2.4h, v10.4h\n"
+          "ld1 {v1.8b}, [x9], #8\n"
+          "smlal2 v17.4s, v2.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x13], #8\n"
+          "smlal v16.4s, v3.4h, v11.4h\n"
+          "ld1 {v2.8b}, [x10], #8\n"
+          "smlal2 v17.4s, v3.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x14], #8\n"
+          "ld1 {v3.8b}, [x11], #8\n"
+
+          "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+          "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+          "sqrshl v16.4s, v16.4s, v29.4s\n"
+          "sqrshl v17.4s, v17.4s, v29.4s\n"
+          "sqxtn v16.4h, v16.4s\n"
+          "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
+          "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
+          "st1 {v16.8b}, [%[output_ptr]], #8\n"
+          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v10.8h, v26.8h, v10.8b\n"
+          "uaddw v11.8h, v26.8h, v11.8b\n"
+          "uaddw v0.8h, v25.8h, v0.8b\n"
+          "uaddw v1.8h, v25.8h, v1.8b\n"
+          "uaddw v2.8h, v25.8h, v2.8b\n"
+          "uaddw v3.8h, v25.8h, v3.8b\n"
+
+          "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP ":\n"
+        "smlal v16.4s, v0.4h, v8.4h\n"
+        "smlal2 v17.4s, v0.8h, v8.8h\n"
+        "smlal v16.4s, v1.4h, v9.4h\n"
+        "smlal2 v17.4s, v1.8h, v9.8h\n"
+        "smlal v16.4s, v2.4h, v10.4h\n"
+        "smlal2 v17.4s, v2.8h, v10.8h\n"
+        "smlal v16.4s, v3.4h, v11.4h\n"
+        "smlal2 v17.4s, v3.8h, v11.8h\n"
+
+        "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+        "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+        "sqrshl v16.4s, v16.4s, v29.4s\n"
+        "sqrshl v17.4s, v17.4s, v29.4s\n"
+
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
+        "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
+        "st1 {v16.8b}, [%[output_ptr]]\n"
+        :
+        // Outputs.
+        [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+        [output_ptr] "+r"(output_ptr), [bias_ptr] "+r"(bias_ptr)
+        :
+        // Inputs.
+        [params_ptr] "r"(params_ptr)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v1", "v2", "v3", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
+        // We use these general-purpose registers.
+        "x6", "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
+#undef DEPTHWISECONV_LABEL_DEPTH_8_LOOP
+#undef DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP
+  }
+};
+
+template <>
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kHorizontal, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -2988,14 +4590,14 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
-        "dup v28.4s, w12\n"
+        "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v30.4s, w12\n"
+        "dup v30.8b, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
-        "dup v31.4s, w13\n"
+        "dup v31.8b, w13\n"
         "dup v25.8h, w12\n"
 
         // Add input and filter offsets.
@@ -3063,15 +4665,12 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
           "sqadd v17.4s, v17.4s, v19.4s\n"
           "srshl v16.4s, v16.4s, v29.4s\n"
           "srshl v17.4s, v17.4s, v29.4s\n"
-          "add v16.4s, v16.4s, v28.4s\n"
-          "add v17.4s, v17.4s, v28.4s\n"
-          "smax v16.4s, v16.4s, v30.4s\n"
-          "smax v17.4s, v17.4s, v30.4s\n"
-          "smin v16.4s, v16.4s, v31.4s\n"
-          "smin v17.4s, v17.4s, v31.4s\n"
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
           "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
           "uaddw v8.8h, v26.8h, v8.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
           "uaddw v9.8h, v26.8h, v9.8b\n"
@@ -3115,15 +4714,12 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
         "sqadd v17.4s, v17.4s, v19.4s\n"
         "srshl v16.4s, v16.4s, v29.4s\n"
         "srshl v17.4s, v17.4s, v29.4s\n"
-        "add v16.4s, v16.4s, v28.4s\n"
-        "add v17.4s, v17.4s, v28.4s\n"
-        "smax v16.4s, v16.4s, v30.4s\n"
-        "smax v17.4s, v17.4s, v30.4s\n"
-        "smin v16.4s, v16.4s, v31.4s\n"
-        "smin v17.4s, v17.4s, v31.4s\n"
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
         "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -3147,7 +4743,196 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
+                            EdgeType::kHorizontal, 1, 1> {
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         const DepthwiseConvParams* params_ptr) {
+#define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
+#define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
+    asm volatile(
+        // Performs depthwise convolutions for an input window of size 2x3 and
+        // padding of 1 across the full depth. Expects |input_ptr| and
+        // |filter_ptr| to be pointing to the beginning of the 2x3 input and
+        // filter values.
+
+        // Load input and filter values.
+        "ldr x7, [%[params_ptr], #" STR(OFFSET_INPUT_DEPTH) "]\n"
+        "mov x12, %[input_ptr]\n"
+        "ldr x11, [%[params_ptr], #" STR(OFFSET_INPUT_ROW_SIZE) "]\n"
+        "mov x9, %[filter_ptr]\n"
+        "ldr x14, [%[params_ptr], #" STR(OFFSET_FILTER_ROW_SIZE) "]\n"
+        "add x13, x12, x11\n"
+        "ldr x15, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+
+        "ld1 {v8.8b}, [x12], x7\n"
+        "add x10, x9, x14\n"
+        "ld1 {v9.8b}, [x12], x7\n"
+        "cmp x15, #16\n"
+        "ld1 {v10.8b}, [x12]\n"
+        "add %[input_ptr], %[input_ptr], #8\n"
+        "ld1 {v11.8b}, [x13], x7\n"
+        "add %[filter_ptr], %[filter_ptr], #8\n"
+        "ld1 {v12.8b}, [x13], x7\n"
+        "ld1 {v13.8b}, [x13]\n"
+
+        "ld1 {v0.8b}, [x9], x7\n"
+        "ld1 {v1.8b}, [x9], x7\n"
+        "ld1 {v2.8b}, [x9]\n"
+        "ld1 {v3.8b}, [x10], x7\n"
+        "ld1 {v4.8b}, [x10], x7\n"
+        "ld1 {v5.8b}, [x10]\n"
+
+        // Load constants.
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "dup v26.8h, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w13\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "dup v28.8h, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "neg w13, w13\n"
+        "dup v29.4s, w13\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v30.8b, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+        "dup v31.8b, w13\n"
+        "dup v25.8h, w12\n"
+
+        // Add input and filter offsets.
+        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v10.8h, v26.8h, v10.8b\n"
+        "uaddw v11.8h, v26.8h, v11.8b\n"
+        "uaddw v12.8h, v26.8h, v12.8b\n"
+        "uaddw v13.8h, v26.8h, v13.8b\n"
+
+        "uaddw v0.8h, v25.8h, v0.8b\n"
+        "uaddw v1.8h, v25.8h, v1.8b\n"
+        "uaddw v2.8h, v25.8h, v2.8b\n"
+        "uaddw v3.8h, v25.8h, v3.8b\n"
+        "uaddw v4.8h, v25.8h, v4.8b\n"
+        "uaddw v5.8h, v25.8h, v5.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_DEPTH_8_LOOP ":\n"
+          "mov x12, %[input_ptr]\n"
+          "subs x15, x15, #8\n"
+          "add x13, x12, x11\n"
+          "cmp x15, #16\n"
+          "add %[input_ptr], %[input_ptr], #8\n"
+
+          "smlal v16.4s, v0.4h, v8.4h\n"
+          "mov x9, %[filter_ptr]\n"
+          "smlal2 v17.4s, v0.8h, v8.8h\n"
+          "ld1 {v8.8b}, [x12], x7\n"
+          "smlal v16.4s, v1.4h, v9.4h\n"
+          "add x10, x9, x14\n"
+          "smlal2 v17.4s, v1.8h, v9.8h\n"
+          "ld1 {v9.8b}, [x12], x7\n"
+          "smlal v16.4s, v2.4h, v10.4h\n"
+          "add %[filter_ptr], %[filter_ptr], #8\n"
+          "smlal2 v17.4s, v2.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x12]\n"
+          "smlal v16.4s, v3.4h, v11.4h\n"
+          "ld1 {v0.8b}, [x9], x7\n"
+          "smlal2 v17.4s, v3.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x13], x7\n"
+          "smlal v16.4s, v4.4h, v12.4h\n"
+          "ld1 {v1.8b}, [x9], x7\n"
+          "smlal2 v17.4s, v4.8h, v12.8h\n"
+          "ld1 {v12.8b}, [x13], x7\n"
+          "smlal v16.4s, v5.4h, v13.4h\n"
+          "ld1 {v2.8b}, [x9]\n"
+          "smlal2 v17.4s, v5.8h, v13.8h\n"
+          "ld1 {v13.8b}, [x13]\n"
+
+          "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+          "ld1 {v3.8b}, [x10], x7\n"
+          "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+          "ld1 {v4.8b}, [x10], x7\n"
+          "sqrshl v16.4s, v16.4s, v29.4s\n"
+          "ld1 {v5.8b}, [x10]\n"
+          "sqrshl v17.4s, v17.4s, v29.4s\n"
+          "sqxtn v16.4h, v16.4s\n"
+          "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
+          "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
+          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "st1 {v16.8b}, [%[output_ptr]], #8\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "uaddw v10.8h, v26.8h, v10.8b\n"
+          "uaddw v11.8h, v26.8h, v11.8b\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "uaddw v13.8h, v26.8h, v13.8b\n"
+
+          "uaddw v0.8h, v25.8h, v0.8b\n"
+          "uaddw v1.8h, v25.8h, v1.8b\n"
+          "uaddw v2.8h, v25.8h, v2.8b\n"
+          "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v3.8h, v25.8h, v3.8b\n"
+          "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v4.8h, v25.8h, v4.8b\n"
+          "uaddw v5.8h, v25.8h, v5.8b\n"
+
+          "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP ":\n"
+        "smlal v16.4s, v0.4h, v8.4h\n"
+        "smlal2 v17.4s, v0.8h, v8.8h\n"
+        "smlal v16.4s, v1.4h, v9.4h\n"
+        "smlal2 v17.4s, v1.8h, v9.8h\n"
+        "smlal v16.4s, v2.4h, v10.4h\n"
+        "smlal2 v17.4s, v2.8h, v10.8h\n"
+        "smlal v16.4s, v3.4h, v11.4h\n"
+        "smlal2 v17.4s, v3.8h, v11.8h\n"
+        "smlal v16.4s, v4.4h, v12.4h\n"
+        "smlal2 v17.4s, v4.8h, v12.8h\n"
+        "smlal v16.4s, v5.4h, v13.4h\n"
+        "smlal2 v17.4s, v5.8h, v13.8h\n"
+
+        "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+        "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+        "sqrshl v16.4s, v16.4s, v29.4s\n"
+        "sqrshl v17.4s, v17.4s, v29.4s\n"
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
+        "sqxtun v16.8b, v16.8h\n"
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
+        "st1 {v16.8b}, [%[output_ptr]]\n"
+        :
+        // Outputs.
+        [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+        [output_ptr] "+r"(output_ptr), [bias_ptr] "+r"(bias_ptr)
+        :
+        // Inputs.
+        [params_ptr] "r"(params_ptr)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v1", "v2", "v3", "v4", "v5", "v8", "v9", "v10", "v11", "v12",
+        "v13", "v16", "v17", "v18", "v19", "v25", "v26", "v27", "v28", "v29",
+        "v30", "v31",
+        // We use these general-purpose registers.
+        "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
+#undef DEPTHWISECONV_LABEL_DEPTH_8_LOOP
+#undef DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP
+  }
+};
+
+template <>
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kVertical, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -3195,14 +4980,14 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
-        "dup v28.4s, w12\n"
+        "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "dup v30.4s, w12\n"
+        "dup v30.8b, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
-        "dup v31.4s, w13\n"
+        "dup v31.8b, w13\n"
         "dup v25.8h, w12\n"
 
         // Add input and filter offsets.
@@ -3272,15 +5057,12 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
           "sqadd v17.4s, v17.4s, v19.4s\n"
           "srshl v16.4s, v16.4s, v29.4s\n"
           "srshl v17.4s, v17.4s, v29.4s\n"
-          "add v16.4s, v16.4s, v28.4s\n"
-          "add v17.4s, v17.4s, v28.4s\n"
-          "smax v16.4s, v16.4s, v30.4s\n"
-          "smax v17.4s, v17.4s, v30.4s\n"
-          "smin v16.4s, v16.4s, v31.4s\n"
-          "smin v17.4s, v17.4s, v31.4s\n"
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
           "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
           "uaddw v8.8h, v26.8h, v8.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
           "uaddw v9.8h, v26.8h, v9.8b\n"
@@ -3324,15 +5106,206 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
         "sqadd v17.4s, v17.4s, v19.4s\n"
         "srshl v16.4s, v16.4s, v29.4s\n"
         "srshl v17.4s, v17.4s, v29.4s\n"
-        "add v16.4s, v16.4s, v28.4s\n"
-        "add v17.4s, v17.4s, v28.4s\n"
-        "smax v16.4s, v16.4s, v30.4s\n"
-        "smax v17.4s, v17.4s, v30.4s\n"
-        "smin v16.4s, v16.4s, v31.4s\n"
-        "smin v17.4s, v17.4s, v31.4s\n"
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
         "sqxtun v16.8b, v16.8h\n"
+        // TODO(b/129852264): Improve testing coverage.
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
+        "st1 {v16.8b}, [%[output_ptr]]\n"
+        :
+        // Outputs.
+        [filter_ptr] "+r"(filter_ptr), [input_ptr] "+r"(input_ptr),
+        [output_ptr] "+r"(output_ptr), [bias_ptr] "+r"(bias_ptr)
+        :
+        // Inputs.
+        [params_ptr] "r"(params_ptr)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v1", "v2", "v3", "v4", "v5", "v8", "v9", "v10", "v11", "v12",
+        "v13", "v16", "v17", "v18", "v19", "v25", "v26", "v27", "v28", "v29",
+        "v30", "v31",
+        // We use these general-purpose registers.
+        "x5", "x6", "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
+#undef DEPTHWISECONV_LABEL_DEPTH_8_LOOP
+#undef DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP
+  }
+};
+
+template <>
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
+                            EdgeType::kVertical, 1, 1> {
+  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
+                         const int32* bias_ptr, uint8* output_ptr,
+                         const DepthwiseConvParams* params_ptr) {
+#define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
+#define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
+    asm volatile(
+        // Performs depthwise convolutions for an input window of size 3x2 and
+        // padding of 1 across the full depth. Expects |input_ptr| and
+        // |filter_ptr| to be pointing to the beginning of the 3x2 input and
+        // filter values.
+
+        // Load input and filter values.
+        "ldr x6, [%[params_ptr], #" STR(OFFSET_INPUT_DEPTH) "]\n"
+        "mov x12, %[input_ptr]\n"
+        "ldr x11, [%[params_ptr], #" STR(OFFSET_INPUT_ROW_SIZE) "]\n"
+        "mov x7, %[filter_ptr]\n"
+        "ldr x5, [%[params_ptr], #" STR(OFFSET_FILTER_ROW_SIZE) "]\n"
+        "add x13, x12, x11\n"
+        "ldr x15, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
+        "add x14, x13, x11\n"
+
+        "ld1 {v8.8b}, [x12], x6\n"
+        "add x9, x7, x5\n"
+        "ld1 {v9.8b}, [x12]\n"
+        "cmp x15, #16\n"
+        "add x10, x9, x5\n"
+        "ld1 {v10.8b}, [x13], x6\n"
+        "add %[input_ptr], %[input_ptr], #8\n"
+        "ld1 {v11.8b}, [x13]\n"
+        "add %[filter_ptr], %[filter_ptr], #8\n"
+        "ld1 {v12.8b}, [x14], x6\n"
+        "ld1 {v13.8b}, [x14]\n"
+
+        "ld1 {v0.8b}, [x7], x6\n"
+        "ld1 {v1.8b}, [x7]\n"
+        "ld1 {v2.8b}, [x9], x6\n"
+        "ld1 {v3.8b}, [x9]\n"
+        "ld1 {v4.8b}, [x10], x6\n"
+        "ld1 {v5.8b}, [x10]\n"
+
+        // Load constants.
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
+        "dup v26.8h, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
+        "dup v27.4s, w13\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
+        "dup v28.8h, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
+        "neg w13, w13\n"
+        "dup v29.4s, w13\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
+        "dup v30.8b, w12\n"
+        "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
+        "dup v31.8b, w13\n"
+        "dup v25.8h, w12\n"
+
+        // Add input and filter offsets.
+        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+        "uaddw v10.8h, v26.8h, v10.8b\n"
+        "uaddw v11.8h, v26.8h, v11.8b\n"
+        "uaddw v12.8h, v26.8h, v12.8b\n"
+        "uaddw v13.8h, v26.8h, v13.8b\n"
+
+        "uaddw v0.8h, v25.8h, v0.8b\n"
+        "uaddw v1.8h, v25.8h, v1.8b\n"
+        "uaddw v2.8h, v25.8h, v2.8b\n"
+        "uaddw v3.8h, v25.8h, v3.8b\n"
+        "uaddw v4.8h, v25.8h, v4.8b\n"
+        "uaddw v5.8h, v25.8h, v5.8b\n"
+
+        "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
+
+        //"loop_%=:\n"
+        DEPTHWISECONV_LABEL_DEPTH_8_LOOP ":\n"
+          "mov x12, %[input_ptr]\n"
+          "subs x15, x15, #8\n"
+          "add x13, x12, x11\n"
+          "cmp x15, #16\n"
+          "add x14, x13, x11\n"
+          "add %[input_ptr], %[input_ptr], #8\n"
+
+          "smlal v16.4s, v0.4h, v8.4h\n"
+          "mov x7, %[filter_ptr]\n"
+          "smlal2 v17.4s, v0.8h, v8.8h\n"
+          "ld1 {v8.8b}, [x12], x6\n"
+          "smlal v16.4s, v1.4h, v9.4h\n"
+          "add x9, x7, x5\n"
+          "smlal2 v17.4s, v1.8h, v9.8h\n"
+          "add x10, x9, x5\n"
+          "ld1 {v9.8b}, [x12]\n"
+          "smlal v16.4s, v2.4h, v10.4h\n"
+          "add %[filter_ptr], %[filter_ptr], #8\n"
+          "smlal2 v17.4s, v2.8h, v10.8h\n"
+          "ld1 {v10.8b}, [x13], x6\n"
+          "smlal v16.4s, v3.4h, v11.4h\n"
+          "ld1 {v0.8b}, [x7], x6\n"
+          "smlal2 v17.4s, v3.8h, v11.8h\n"
+          "ld1 {v11.8b}, [x13]\n"
+          "smlal v16.4s, v4.4h, v12.4h\n"
+          "ld1 {v1.8b}, [x7]\n"
+          "smlal2 v17.4s, v4.8h, v12.8h\n"
+          "ld1 {v12.8b}, [x14], x6\n"
+          "smlal v16.4s, v5.4h, v13.4h\n"
+          "ld1 {v2.8b}, [x9], x6\n"
+          "smlal2 v17.4s, v5.8h, v13.8h\n"
+          "ld1 {v13.8b}, [x14]\n"
+
+          "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+          "ld1 {v3.8b}, [x9]\n"
+          "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+          "ld1 {v4.8b}, [x10], x6\n"
+          "sqrshl v16.4s, v16.4s, v29.4s\n"
+          "ld1 {v5.8b}, [x10]\n"
+          "sqrshl v17.4s, v17.4s, v29.4s\n"
+          "sqxtn v16.4h, v16.4s\n"
+          "sqxtn2 v16.8h, v17.4s\n"
+          "sqadd v16.8h, v16.8h, v28.8h\n"
+          "sqxtun v16.8b, v16.8h\n"
+          "umax v16.8b, v16.8b, v30.8b\n"
+          "umin v16.8b, v16.8b, v31.8b\n"
+          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "st1 {v16.8b}, [%[output_ptr]], #8\n"
+          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "uaddw v10.8h, v26.8h, v10.8b\n"
+          "uaddw v11.8h, v26.8h, v11.8b\n"
+          "uaddw v12.8h, v26.8h, v12.8b\n"
+          "uaddw v13.8h, v26.8h, v13.8b\n"
+
+          "uaddw v0.8h, v25.8h, v0.8b\n"
+          "uaddw v1.8h, v25.8h, v1.8b\n"
+          "uaddw v2.8h, v25.8h, v2.8b\n"
+          "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v3.8h, v25.8h, v3.8b\n"
+          "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
+          "uaddw v4.8h, v25.8h, v4.8b\n"
+          "uaddw v5.8h, v25.8h, v5.8b\n"
+
+          "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
+
+        DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP ":\n"
+        "smlal v16.4s, v0.4h, v8.4h\n"
+        "smlal2 v17.4s, v0.8h, v8.8h\n"
+        "smlal v16.4s, v1.4h, v9.4h\n"
+        "smlal2 v17.4s, v1.8h, v9.8h\n"
+        "smlal v16.4s, v2.4h, v10.4h\n"
+        "smlal2 v17.4s, v2.8h, v10.8h\n"
+        "smlal v16.4s, v3.4h, v11.4h\n"
+        "smlal2 v17.4s, v3.8h, v11.8h\n"
+        "smlal v16.4s, v4.4h, v12.4h\n"
+        "smlal2 v17.4s, v4.8h, v12.8h\n"
+        "smlal v16.4s, v5.4h, v13.4h\n"
+        "smlal2 v17.4s, v5.8h, v13.8h\n"
+
+        "sqrdmulh v16.4s, v16.4s, v27.4s\n"
+        "sqrdmulh v17.4s, v17.4s, v27.4s\n"
+        "sqrshl v16.4s, v16.4s, v29.4s\n"
+        "sqrshl v17.4s, v17.4s, v29.4s\n"
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+        "sqadd v16.8h, v16.8h, v28.8h\n"
+        "sqxtun v16.8b, v16.8h\n"
+        // TODO(b/129852264): Improve testing coverage.
+        "umax v16.8b, v16.8b, v30.8b\n"
+        "umin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -3371,48 +5344,8 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
 #undef OFFSET_OUTPUT_WIDTH
 #undef OFFSET_OUTPUT_HEIGHT
 
-// Copies a subset of the input designated by |input_ptr| into |output_ptr|
-// with the specified output dimensions. Supports output depths of 64 only as
-// this is the cache line size.
-inline void ShuffleInput(const uint8* input_ptr, int64_t input_depth,
-                         int32 input_width, int32 input_height,
-                         int64_t output_depth, int32 output_width,
-                         int32 output_height, uint8* output_ptr) {
-  const int64_t input_row_size = input_depth * input_width;
-  for (int32 y = 0; y < output_height; y++) {
-    const uint8* ptr = input_ptr;
-    for (int32 x = 0; x < output_width; x++) {
-      memcpy(output_ptr, ptr, output_depth);
-      output_ptr += output_depth;
-      ptr += input_depth;
-    }
-    input_ptr += input_row_size;
-  }
-}
-
-// Calculates the input size depending on stride and output.
-inline int32 get_shuffle_input_size(int32 stride, int32 output) {
-  return stride * (output - 1) + 3;
-}
-
-// Indicates the input and output dimensions used when shuffling input
-// activations.
-struct ShuffleParams {
-  int32 output_width;
-  int32 output_height;
-  int32 input_width;
-  int32 input_height;
-
-  ShuffleParams() = default;
-  ShuffleParams(int32 output_width, int32 output_height, int32 stride_width,
-                int32 stride_height)
-      : output_width(output_width),
-        output_height(output_height),
-        input_width(get_shuffle_input_size(stride_width, output_width)),
-        input_height(get_shuffle_input_size(stride_height, output_height)) {}
-};
-
-template <int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
+          int32 kStrideHeight>
 struct DepthwiseConvThroughDepth {
   // Runs the DepthwiseConvWindow kernels through the depth dimension from
   // |start_depth| to |end_depth|. Keep this not inlined to maintain a small
@@ -3424,7 +5357,7 @@ struct DepthwiseConvThroughDepth {
       int64_t input_depth, int64_t input_row_size, int32 output_window_height,
       int32 output_window_width, const DepthwiseConvParams& params) {
     for (; start_depth <= end_depth - 8; start_depth += 8) {
-      DepthwiseConvWindow<8, kStrideWidth, kStrideHeight>::Run(
+      DepthwiseConvWindow<output_rounding, 8, kStrideWidth, kStrideHeight>::Run(
           input_ptr, filter_ptr, bias_ptr, output_ptr, input_depth,
           input_row_size, output_window_height, output_window_width, &params);
       input_ptr += 8;
@@ -3435,9 +5368,11 @@ struct DepthwiseConvThroughDepth {
   }
 };
 
-template <int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
+          int32 kStrideHeight>
 struct DepthwiseConvMultiRow {
-  using ConvKernel = DepthwiseConvThroughDepth<kStrideWidth, kStrideHeight>;
+  using ConvKernel =
+      DepthwiseConvThroughDepth<output_rounding, kStrideWidth, kStrideHeight>;
 
   static inline void Run(const uint8* input_data, int32 start_x, int32 end_x,
                          const uint8* filter_data, const int32* bias_data,
@@ -3536,6 +5471,7 @@ struct DepthwiseConvMultiRow {
 //   * Corner edges.
 //   * Horizontal edges.
 //   * Vertical edges.
+template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConvHandlePadding(const uint8* input_data,
                                        const uint8* filter_data,
                                        const int32* bias_data,
@@ -3544,7 +5480,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   if (params.input_width == 1 && params.input_height == 1) {
     const uint8* filter_ptr =
         filter_data + params.filter_row_size + params.output_depth;
-    DepthwiseConvPartial<EdgeType::kCenter, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kCenter, 1, 1>::Run(
         input_data, filter_ptr, bias_data, output_data, &params);
     return;
   }
@@ -3560,7 +5496,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
       filter_data + params.filter_row_size + params.output_depth;
   uint8* output_ptr = output_data;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width - 1) * params.input_depth;
@@ -3569,13 +5505,13 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   // Handle left side.
@@ -3585,7 +5521,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
@@ -3600,7 +5536,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
@@ -3612,7 +5548,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   output_ptr =
       output_data + (params.output_height - 1) * params.output_row_size;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width == 1) ? 0 : params.input_depth;
@@ -3621,85 +5557,23 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 }
 
-inline bool Fast3x3FilterKernelSupported(
-    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    int32 stride_width, int32 stride_height, int32 dilation_width_factor,
-    int32 dilation_height_factor, int32 pad_width, int32 pad_height,
-    int32 depth_multiplier, const RuntimeShape& output_shape,
-    int32 output_shift) {
-  const int32 input_height = input_shape.Dims(1);
-  const int32 input_width = input_shape.Dims(2);
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
-  const int32 output_height = output_shape.Dims(1);
-  const int32 output_width = output_shape.Dims(2);
-
-  bool supported =
-      filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
-      (stride_width == 1 || stride_width == 2) &&
-      (stride_height == 1 || stride_height == 2) &&
-      (stride_width == stride_height) && (pad_width == 0 || pad_width == 1) &&
-      (pad_height == 0 || pad_height == 1) && (pad_width == pad_height) &&
-      (input_depth % 8) == 0 && (output_shift <= 0) &&
-      dilation_width_factor == 1 && dilation_height_factor == 1;
-
-  if (!supported) {
-    return false;
-  }
-
-  // Handle case where padding is zero but padding type is not kValid.
-  // This would require special boundary case handling that is not supported.
-
-  const int32 out_x = output_width - 1;
-  const int32 out_y = output_height - 1;
-
-  const int32 in_x_origin = (out_x * stride_width) - pad_width;
-  const int32 in_y_origin = (out_y * stride_height) - pad_height;
-
-  const int32 in_x_end = in_x_origin + filter_width;
-  const int32 in_y_end = in_y_origin + filter_height;
-
-  // Supported only if filter on the right and bottom boundary lies completely
-  // within the input if padding is zero.
-  if (pad_width == 0 && pad_height == 0) {
-    return in_x_end <= input_width && in_y_end <= input_height;
-  }
-
-  // Else if padding is 1, supported if bottom right filter lies +1 past input
-  // width and height.
-  supported = in_x_end <= (input_width + 1) && in_y_end <= (input_height + 1);
-
-  if (!supported) {
-    return false;
-  }
-
-  // Shapes with width 1 and height > 1, and vice versa are not supported yet.
-  if (input_width == 1) {
-    supported = (input_width == input_height);
-  } else if (input_height == 1) {
-    supported = (input_width == input_height);
-  }
-  return supported;
-}
-
+template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConv3x3Filter(
     const DepthwiseParams& rt_params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, int thread_start, int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
   DepthwiseConvParams params;
 
   const int32 stride_width = rt_params.stride_width;
@@ -3770,10 +5644,12 @@ inline void DepthwiseConv3x3Filter(
     eight_row_shuffle_params = ShuffleParams(2, 8, 2, 2);
   }
 
-  using conv_multirow_func_t = decltype(&DepthwiseConvMultiRow<1, 1>::Run);
-  conv_multirow_func_t conv_multirow_func = DepthwiseConvMultiRow<1, 1>::Run;
+  using conv_multirow_func_t =
+      decltype(&DepthwiseConvMultiRow<output_rounding, 1, 1>::Run);
+  conv_multirow_func_t conv_multirow_func =
+      DepthwiseConvMultiRow<output_rounding, 1, 1>::Run;
   if (stride_width == 2) {
-    conv_multirow_func = DepthwiseConvMultiRow<2, 2>::Run;
+    conv_multirow_func = DepthwiseConvMultiRow<output_rounding, 2, 2>::Run;
   }
 
   // Allocate maximum memory needed for shuffled input.
@@ -3804,9 +5680,9 @@ inline void DepthwiseConv3x3Filter(
   }
 
   for (int32 b = batch_start; b < batch_end; ++b) {
+    // input_ptr and output_ptr point to the start of each batch
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size +
-                        row_start * params.output_width * params.output_depth;
+    uint8* output_ptr = output_data + b * output_batch_size;
 
     int32 out_x = 0;
     int32 out_y = row_start;
@@ -3814,20 +5690,26 @@ inline void DepthwiseConv3x3Filter(
     int32 end_y = row_end;
 
     if (pad_width == 1 && pad_height == 1) {
-      DepthwiseConvHandlePadding(input_ptr, filter_data, bias_data, output_ptr,
-                                 params);
+      DepthwiseConvHandlePadding<output_rounding>(
+          input_ptr, filter_data, bias_data, output_ptr, params);
 
       // Update extents now that the edges have been handled.
       out_x = 1;
       end_x = params.output_width - 1;
       out_y = std::max(1, out_y);
       end_y = std::min(params.output_height - 1, end_y);
-      const int in_x = (out_x * stride_width) - pad_width;
-      const int in_y = (out_y * stride_height) - pad_height;
-      input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr +=
-          out_y * params.output_row_size + out_x * params.output_depth;
     }
+
+    // pad_width and pad_height can both be 0 or 1, depending on padding option,
+    // such as Padding_VALID / Padding_SAME.
+    const int in_x = (out_x * stride_width) - pad_width;
+    const int in_y = (out_y * stride_height) - pad_height;
+
+    // input_ptr and output_ptr point to (in_y, in_x) and (out_y, out_x),
+    // respectively. (in_y, in_x) and (out_y, out_x) change along with
+    // row_start.
+    input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
+    output_ptr += out_y * params.output_row_size + out_x * params.output_depth;
 
     // Shuffling shapes that maximize width over the shuffle workspace size
     // perform better since the inputs are closer together, minimizing
@@ -3885,86 +5767,6 @@ inline void DepthwiseConv3x3Filter(
 
 #endif
 
-// Permute filter data, and adjust bias data to account for symmetric input
-// offset. Details are provided in the implementation of the
-// kUseCModel3x3DotProduct version.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation>
-struct ProcessPerDepth {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
-};
-
-// Copy a macro block of data from the input buffer into the workspace,
-// permuting data within each micro block.
-//
-// (a) Copy a macro block of data, padding as required along the width and
-//     height.
-// (b) Transpose the data within each micro block.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation,
-          DepthwiseConvDepthMultiplication depth_multiplication,
-          int32 max_padding>
-struct PackMacroBlock {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
-};
-
-// Apply filter to macro block of input data and store results. Details are
-// provided in the implementation of the kUseCModel3x3DotProduct version.
-//
-// Parameters for repeats and residual sizes are in terms of outputs.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation,
-          DepthwiseConvDepthMultiplication depth_multiplication, int32 stride>
-struct KernelMacroBlock {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
-};
-
-#if defined(USE_NEON) && defined(__aarch64__)
-// Experiments suggest that a modest performance improvement is seen, at least
-// on 855 chipset big cores, with cache hints.
-inline void PreloadInputBlock(
-    const uint8* input_block_data,
-    const DepthwiseConvDotProdParams* function_params) {
-  // Preload.
-  const int input_width_micro_repeats =
-      function_params->input_width_micro_repeats;
-  const int block_height = function_params->inbound_block_height;
-  const int residual_width = function_params->residual_width;
-  const int input_height_stride = function_params->input_height_stride;
-  const int input_depth = function_params->input_depth;
-
-  const int total_width = 4 * input_width_micro_repeats + residual_width;
-  const uint8* row_ptr = input_block_data;
-  for (int k_height = 0; k_height < block_height; ++k_height) {
-    const uint8* ptr = row_ptr;
-    for (int j = 0; j < total_width; ++j) {
-      // Input data is loaded once.
-      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-      ptr += input_depth;
-    }
-    row_ptr += input_height_stride;
-  }
-}
-#endif  // USE_NEON &&__aarch64__
-
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 
 template <>
@@ -3986,12 +5788,22 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
     const int8x16_t ones_vector = vdupq_n_s8(1);
 
     // Simulate NEON-register transposition of subset of filter.
-    int8x16_t filter_reg_0_a;
-    int8x16_t filter_reg_0_b;
-    int8x16_t filter_reg_1_a;
-    int8x16_t filter_reg_1_b;
-    int8x16_t filter_reg_2_a;
-    int8x16_t filter_reg_2_b;
+    int8x16_t input_0_a;
+    int8x16_t input_0_b;
+    int8x16_t input_0_c;
+    int8x16_t input_1_a;
+    int8x16_t input_1_b;
+    int8x16_t input_1_c;
+    int8x16_t input_2_a;
+    int8x16_t input_2_b;
+    int8x16_t input_2_c;
+
+    int8x16_t filter_0_a;
+    int8x16_t filter_0_b;
+    int8x16_t filter_1_a;
+    int8x16_t filter_1_b;
+    int8x16_t filter_2_a;
+    int8x16_t filter_2_b;
 
     // Register pairs for each height.
     // Effect subtraction of zero-point = 128 by XOR of sign bit.
@@ -4003,56 +5815,52 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
       // height 3, width 3, micro-blocks, sub-block 0 or 1, depth 4.
       // filter_bank[3][2][4][4]; Sub-block, height 3, depth 4, width 4.
 
-      // Load zero-point into effective position of zero-padding of filter
-      // (register B, upper part).
-      filter_reg_0_b = vdupq_n_u8(kSignBit);
-      filter_reg_1_b = vdupq_n_u8(kSignBit);
-      filter_reg_2_b = vdupq_n_u8(kSignBit);
-
       const uint8* filter_block_ptr = filter_block;
-      filter_reg_0_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_a, 0);
+      input_0_a = vld1q_lane_s8x8(filter_block_ptr, input_0_a, 0);
       filter_block_ptr += depth;
-      filter_reg_0_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_b, 0);
+      input_0_b = vld1q_lane_s8x8(filter_block_ptr, input_0_b, 0);
       filter_block_ptr += depth;
-      filter_reg_0_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_a, 1);
+      input_0_c = vld1q_lane_s8x8(filter_block_ptr, input_0_c, 0);
       filter_block_ptr += depth;
-      filter_reg_1_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_a, 0);
+      input_1_a = vld1q_lane_s8x8(filter_block_ptr, input_1_a, 0);
       filter_block_ptr += depth;
-      filter_reg_1_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_b, 0);
+      input_1_b = vld1q_lane_s8x8(filter_block_ptr, input_1_b, 0);
       filter_block_ptr += depth;
-      filter_reg_1_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_a, 1);
+      input_1_c = vld1q_lane_s8x8(filter_block_ptr, input_1_c, 0);
       filter_block_ptr += depth;
-      filter_reg_2_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_a, 0);
+      input_2_a = vld1q_lane_s8x8(filter_block_ptr, input_2_a, 0);
       filter_block_ptr += depth;
-      filter_reg_2_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_b, 0);
+      input_2_b = vld1q_lane_s8x8(filter_block_ptr, input_2_b, 0);
       filter_block_ptr += depth;
-      filter_reg_2_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_a, 1);
+      input_2_c = vld1q_lane_s8x8(filter_block_ptr, input_2_c, 0);
 
-      filter_reg_0_a = veorq_s8(filter_reg_0_a, sign_bit);
-      filter_reg_0_b = veorq_s8(filter_reg_0_b, sign_bit);
-      filter_reg_1_a = veorq_s8(filter_reg_1_a, sign_bit);
-      filter_reg_1_b = veorq_s8(filter_reg_1_b, sign_bit);
-      filter_reg_2_a = veorq_s8(filter_reg_2_a, sign_bit);
-      filter_reg_2_b = veorq_s8(filter_reg_2_b, sign_bit);
+      filter_0_a = vzip1q_s8(input_0_a, input_0_b);
+      filter_0_b = vzip1q_s8(input_0_c, sign_bit);
+      filter_1_a = vzip1q_s8(input_1_a, input_1_b);
+      filter_1_b = vzip1q_s8(input_1_c, sign_bit);
+      filter_2_a = vzip1q_s8(input_2_a, input_2_b);
+      filter_2_b = vzip1q_s8(input_2_c, sign_bit);
+      filter_0_a = veorq_s8(filter_0_a, sign_bit);
+      filter_0_b = veorq_s8(filter_0_b, sign_bit);
+      filter_1_a = veorq_s8(filter_1_a, sign_bit);
+      filter_1_b = veorq_s8(filter_1_b, sign_bit);
+      filter_2_a = veorq_s8(filter_2_a, sign_bit);
+      filter_2_b = veorq_s8(filter_2_b, sign_bit);
+      vzipq_s8x2_in_place(&filter_0_a, &filter_0_b);
+      vzipq_s8x2_in_place(&filter_1_a, &filter_1_b);
+      vzipq_s8x2_in_place(&filter_2_a, &filter_2_b);
 
-      vzipq_s8_in_place(&filter_reg_0_a, &filter_reg_0_b);
-      vzipq_s8_in_place(&filter_reg_1_a, &filter_reg_1_b);
-      vzipq_s8_in_place(&filter_reg_2_a, &filter_reg_2_b);
-      vzipq_s8x2_in_place(&filter_reg_0_a, &filter_reg_0_b);
-      vzipq_s8x2_in_place(&filter_reg_1_a, &filter_reg_1_b);
-      vzipq_s8x2_in_place(&filter_reg_2_a, &filter_reg_2_b);
-
-      vst1q_s8(shuffled_filter_data, filter_reg_0_a);
+      vst1q_s8(shuffled_filter_data, filter_0_a);
       shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_0_b);
+      vst1q_s8(shuffled_filter_data, filter_0_b);
       shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_1_a);
+      vst1q_s8(shuffled_filter_data, filter_1_a);
       shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_1_b);
+      vst1q_s8(shuffled_filter_data, filter_1_b);
       shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_2_a);
+      vst1q_s8(shuffled_filter_data, filter_2_a);
       shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_2_b);
+      vst1q_s8(shuffled_filter_data, filter_2_b);
       shuffled_filter_data += 16;
 
       int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
@@ -4062,13 +5870,13 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
       // For instance, if input_offset == 128, no adjustment is needed.
 
       int32x4_t filter_sum_a = vdupq_n_s32(0);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_0_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_1_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_2_a, ones_vector);
+      filter_sum_a = vdotq_s32(filter_sum_a, filter_0_a, ones_vector);
+      filter_sum_a = vdotq_s32(filter_sum_a, filter_1_a, ones_vector);
+      filter_sum_a = vdotq_s32(filter_sum_a, filter_2_a, ones_vector);
       int32x4_t filter_sum_b = vdupq_n_s32(0);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_0_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_1_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_2_b, ones_vector);
+      filter_sum_b = vdotq_s32(filter_sum_b, filter_0_b, ones_vector);
+      filter_sum_b = vdotq_s32(filter_sum_b, filter_1_b, ones_vector);
+      filter_sum_b = vdotq_s32(filter_sum_b, filter_2_b, ones_vector);
 
       adjusted_bias_data_a = vmlaq_n_s32(adjusted_bias_data_a, filter_sum_a,
                                          input_offset_difference);
@@ -4884,10 +6692,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -5170,10 +6974,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -5287,7 +7087,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
     const int width_micro_stride = 4 * 8;
@@ -5356,8 +7156,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           uint8* output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
 
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(next_input_data);
@@ -5669,7 +7468,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             const bool no_right_block = output_width < 3;
 
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg = vdupq_n_s8(0);
               right_bank_1_reg = vdupq_n_s8(0);
               right_bank_2_reg = vdupq_n_s8(0);
@@ -5767,94 +7566,110 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           filter_reg_2_a_shifted = vshlq_n_u32(filter_reg_2_a, 8);
         }
       } else {
-        for (int s = 0; s < 2; ++s) {
-          // Work through one slice, by row, at a time.
-          const int8* input_data_base = input_data_depthwise + 2 * 8 * s;
-          uint8* output_data_base = output_data_depthwise + 4 * s;
+        const int8* input_data_base = input_data_depthwise;
+        uint8* output_data_base = output_data_depthwise;
 
-          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+        const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
+        const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
 
-          for (int k_height = 0; k_height < block_height; ++k_height) {
-            const int8* next_input_data = input_data_base;
-            uint8* output_data = output_data_base;
+        for (int k_height = 0; k_height < block_height; ++k_height) {
+          const int8* next_input_data = input_data_base;
+          uint8* output_data = output_data_base;
 
-            // Load first sub-micro block of data into operational banks.
-            int8x16_t left_bank_0_reg = vld1q_s8(next_input_data);
-            int8x16_t left_bank_1_reg =
-                vld1q_s8(next_input_data + workspace_height_stride);
-            int8x16_t left_bank_2_reg =
-                vld1q_s8(next_input_data + 2 * workspace_height_stride);
+          // Load first sub-micro block of data into operational banks.
+          int8x16_t left_bank_0_reg_a = vld1q_s8(next_input_data);
+          int8x16_t left_bank_1_reg_a =
+              vld1q_s8(next_input_data + workspace_height_stride);
+          int8x16_t left_bank_2_reg_a =
+              vld1q_s8(next_input_data + 2 * workspace_height_stride);
+          int8x16_t left_bank_0_reg_b = vld1q_s8(next_input_data + 16);
+          int8x16_t left_bank_1_reg_b =
+              vld1q_s8(next_input_data + workspace_height_stride + 16);
+          int8x16_t left_bank_2_reg_b =
+              vld1q_s8(next_input_data + 2 * workspace_height_stride + 16);
 
-            for (int i_width = 0; i_width < output_width_overall_micro_repeats;
-                 ++i_width) {
-              next_input_data += width_micro_stride;
-              const int output_width =
-                  i_width == output_width_micro_repeats ? residual_width : 4;
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            next_input_data += width_micro_stride;
+            const int output_width =
+                i_width == output_width_micro_repeats ? residual_width : 4;
 
-              // Load next sub-micro block of data.
-              int8x16_t right_bank_0_reg;
-              int8x16_t right_bank_1_reg;
-              int8x16_t right_bank_2_reg;
-              // Logic: (output_width - 1) * stride_val < 2.
-              const bool no_right_block = output_width < 3;
+            int8x16_t right_bank_0_reg_a;
+            int8x16_t right_bank_1_reg_a;
+            int8x16_t right_bank_2_reg_a;
+            int8x16_t right_bank_0_reg_b;
+            int8x16_t right_bank_1_reg_b;
+            int8x16_t right_bank_2_reg_b;
+            // Logic: (output_width - 1) * stride_val < 2.
+            const bool no_right_block = output_width < 3;
 
-              if (no_right_block) {
-                // Only needed for santizer checks.
-                right_bank_0_reg = vdupq_n_s8(0);
-                right_bank_1_reg = vdupq_n_s8(0);
-                right_bank_2_reg = vdupq_n_s8(0);
-              } else {
-                right_bank_0_reg = vld1q_s8(next_input_data);
-                right_bank_1_reg =
-                    vld1q_s8(next_input_data + workspace_height_stride);
-                right_bank_2_reg =
-                    vld1q_s8(next_input_data + 2 * workspace_height_stride);
-              }
-              // Load next sub-micro block of data.
-
-              // Iterate over input width shifts within 4x4 blocks.
-              for (int x = 0; x < output_width; ++x) {
-                int32x4_t acc = adjusted_bias_data;
-                acc = vdotq_s32(acc, filter_reg_0_a, left_bank_0_reg);
-                acc = vdotq_s32(acc, filter_reg_1_a, left_bank_1_reg);
-                acc = vdotq_s32(acc, filter_reg_2_a, left_bank_2_reg);
-
-                // Fixed-point multiplication.
-                acc = vqrdmulhq_n_s32(acc, output_multiplier);
-                acc = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                    acc, -output_shift);
-                // Add the output offset.
-                // Note that we need to fill the top half with vcombine, but can
-                // drop the instruction in ASM code.
-                int16x8_t acc_s16_0_0 =
-                    vcombine_s16(vqmovn_s32(acc), vqmovn_s32(acc));
-                acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
-                // Apply the activation function.
-                uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
-                acc_u8_0_0 =
-                    vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
-                acc_u8_0_0 =
-                    vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
-
-                vst1_lane_8x4(output_data, acc_u8_0_0, 0);
-
-                biregister_rotate_8(&left_bank_0_reg, &right_bank_0_reg);
-                biregister_rotate_8(&left_bank_1_reg, &right_bank_1_reg);
-                biregister_rotate_8(&left_bank_2_reg, &right_bank_2_reg);
-
-                output_data += depth;
-              }
+            // Load next sub-micro block of data.
+            if (no_right_block) {
+              // Only needed for sanitizer checks.
+              right_bank_0_reg_a = vdupq_n_s8(0);
+              right_bank_1_reg_a = vdupq_n_s8(0);
+              right_bank_2_reg_a = vdupq_n_s8(0);
+              right_bank_0_reg_b = vdupq_n_s8(0);
+              right_bank_1_reg_b = vdupq_n_s8(0);
+              right_bank_2_reg_b = vdupq_n_s8(0);
+            } else {
+              right_bank_0_reg_a = vld1q_s8(next_input_data);
+              right_bank_1_reg_a =
+                  vld1q_s8(next_input_data + workspace_height_stride);
+              right_bank_2_reg_a =
+                  vld1q_s8(next_input_data + 2 * workspace_height_stride);
+              right_bank_0_reg_b = vld1q_s8(next_input_data + 16);
+              right_bank_1_reg_b =
+                  vld1q_s8(next_input_data + workspace_height_stride + 16);
+              right_bank_2_reg_b =
+                  vld1q_s8(next_input_data + 2 * workspace_height_stride + 16);
             }
-            input_data_base += workspace_height_stride;
-            output_data_base += output_height_stride;
-          }
 
-          // Move to next sub-block: advance to second set of filters.
-          filter_reg_0_a = filter_reg_0_b;
-          filter_reg_1_a = filter_reg_1_b;
-          filter_reg_2_a = filter_reg_2_b;
+            // Iterate over input width shifts within 4x4 blocks.
+            for (int x = 0; x < output_width; ++x) {
+              int32x4_t acc_a = adjusted_bias_data_a;
+              int32x4_t acc_b = adjusted_bias_data_b;
+              acc_a = vdotq_s32(acc_a, filter_reg_0_a, left_bank_0_reg_a);
+              acc_a = vdotq_s32(acc_a, filter_reg_1_a, left_bank_1_reg_a);
+              acc_a = vdotq_s32(acc_a, filter_reg_2_a, left_bank_2_reg_a);
+              acc_b = vdotq_s32(acc_b, filter_reg_0_b, left_bank_0_reg_b);
+              acc_b = vdotq_s32(acc_b, filter_reg_1_b, left_bank_1_reg_b);
+              acc_b = vdotq_s32(acc_b, filter_reg_2_b, left_bank_2_reg_b);
+
+              // Fixed-point multiplication.
+              acc_a = vqrdmulhq_n_s32(acc_a, output_multiplier);
+              acc_b = vqrdmulhq_n_s32(acc_b, output_multiplier);
+              acc_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc_a, -output_shift);
+              acc_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc_b, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_0 =
+                  vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
+              acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
+              acc_u8_0_0 =
+                  vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
+              acc_u8_0_0 =
+                  vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
+
+              vst1_u8(output_data, acc_u8_0_0);
+
+              biregister_rotate_8(&left_bank_0_reg_a, &right_bank_0_reg_a);
+              biregister_rotate_8(&left_bank_1_reg_a, &right_bank_1_reg_a);
+              biregister_rotate_8(&left_bank_2_reg_a, &right_bank_2_reg_a);
+              biregister_rotate_8(&left_bank_0_reg_b, &right_bank_0_reg_b);
+              biregister_rotate_8(&left_bank_1_reg_b, &right_bank_1_reg_b);
+              biregister_rotate_8(&left_bank_2_reg_b, &right_bank_2_reg_b);
+
+              output_data += depth;
+            }
+          }
+          input_data_base += workspace_height_stride;
+          output_data_base += output_height_stride;
         }
       }
       input_data_depthwise += depth_micro_stride;
@@ -5887,8 +7702,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         function_params->output_width_micro_repeats;
     const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int depth = function_params->input_depth;
-    const int stride_val = function_params->stride;
-    const int four_over_stride = function_params->four_over_stride;
+    constexpr int kStrideVal = 2;
+    constexpr int kFourOverStride = 2;
+    TFLITE_DCHECK_EQ(function_params->stride, kStrideVal);
+    TFLITE_DCHECK_EQ(function_params->four_over_stride, kFourOverStride);
 
     const int workspace_width_micro_repeats =
         function_params->workspace_width_micro_repeats;
@@ -5897,7 +7714,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
     const int width_micro_stride = 4 * 8;
@@ -5928,7 +7745,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
     constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
 
-    TFLITE_DCHECK_EQ(stride_val, 2);
     TFLITE_DCHECK_LE(block_height, 2);
 
     for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
@@ -5952,7 +7768,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           const int8* input_data_0 = scratch_data + s * 2 * 8;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
 
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
@@ -5989,8 +7804,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
                   : output_width_overall_micro_repeats;
 
           for (; i_width < adjusted_width_micro_repeats; ++i_width) {
-            const int output_width = four_over_stride;
-            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int output_width = kFourOverStride;
+            TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
             const int8* input_data =
                 input_data_0 + width_micro_stride * i_width;
             acc0 = adjusted_bias_data;
@@ -6078,7 +7893,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             left_bank_4_reg = right_bank_4_reg;
           }
           for (; i_width < output_width_overall_micro_repeats; ++i_width) {
-            TFLITE_DCHECK_NE(residual_width, four_over_stride);
+            TFLITE_DCHECK_NE(residual_width, kFourOverStride);
 
             // No need to load next ("right") block of data.
 
@@ -6127,122 +7942,163 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
             }
           }
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
         }
       } else {
-        for (int s = 0; s < 2; ++s) {
-          // Simulate NEON-register transposition of subset of filter.
-          int8x16_t filter_reg_0_a;
-          int8x16_t filter_reg_1_a;
-          int8x16_t filter_reg_2_a;
+        // block_height == 1.
+        int8x16_t filter_reg_0_a;
+        int8x16_t filter_reg_1_a;
+        int8x16_t filter_reg_2_a;
+        int8x16_t filter_reg_0_b;
+        int8x16_t filter_reg_1_b;
+        int8x16_t filter_reg_2_b;
 
-          filter_reg_0_a = vld1q_s8(filter_block + s * 16);
-          filter_reg_1_a = vld1q_s8(filter_block + s * 16 + 32);
-          filter_reg_2_a = vld1q_s8(filter_block + s * 16 + 64);
+        filter_reg_0_a = vld1q_s8(filter_block);
+        filter_reg_1_a = vld1q_s8(filter_block + 32);
+        filter_reg_2_a = vld1q_s8(filter_block + 64);
+        filter_reg_0_b = vld1q_s8(filter_block + 16);
+        filter_reg_1_b = vld1q_s8(filter_block + 16 + 32);
+        filter_reg_2_b = vld1q_s8(filter_block + 16 + 64);
 
-          const int8* scratch_data =
-              scratch_block_data + depth_micro_stride * j_depth;
-          uint8* output_data = output_block_data + 8 * j_depth;
-          const int8* input_data_0 = scratch_data + s * 2 * 8;
+        const int8* scratch_data =
+            scratch_block_data + depth_micro_stride * j_depth;
+        uint8* output_data = output_block_data + 8 * j_depth;
+        const int8* input_data_0 = scratch_data;
 
-          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
+        const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
+        const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
 
-          // Load first sub-micro block of data into operational banks.
-          int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
-          int8x16_t left_bank_1_reg =
-              vld1q_s8(input_data_0 + workspace_height_stride);
-          int8x16_t left_bank_2_reg =
-              vld1q_s8(input_data_0 + 2 * workspace_height_stride);
+        // Load first sub-micro block of data into operational banks.
+        int8x16_t left_bank_0_reg_a = vld1q_s8(input_data_0);
+        int8x16_t left_bank_1_reg_a =
+            vld1q_s8(input_data_0 + workspace_height_stride);
+        int8x16_t left_bank_2_reg_a =
+            vld1q_s8(input_data_0 + 2 * workspace_height_stride);
+        int8x16_t left_bank_0_reg_b = vld1q_s8(input_data_0 + 16);
+        int8x16_t left_bank_1_reg_b =
+            vld1q_s8(input_data_0 + workspace_height_stride + 16);
+        int8x16_t left_bank_2_reg_b =
+            vld1q_s8(input_data_0 + 2 * workspace_height_stride + 16);
 
-          int8x16_t right_bank_0_reg;
-          int8x16_t right_bank_1_reg;
-          int8x16_t right_bank_2_reg;
+        int8x16_t right_bank_0_reg_a;
+        int8x16_t right_bank_1_reg_a;
+        int8x16_t right_bank_2_reg_a;
+        int8x16_t right_bank_0_reg_b;
+        int8x16_t right_bank_1_reg_b;
+        int8x16_t right_bank_2_reg_b;
 
-          int32x4_t acc0;
+        int32x4_t acc0_a;
+        int32x4_t acc0_b;
 
-          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
-               ++i_width) {
-            const int output_width = i_width == output_width_micro_repeats
-                                         ? residual_width
-                                         : four_over_stride;
-            TFLITE_DCHECK_LE(output_width * stride_val, 4);
-            const int8* input_data =
-                input_data_0 + width_micro_stride * i_width;
-            const bool no_right_block = i_width == output_width_micro_repeats &&
-                                        output_width_overall_micro_repeats ==
-                                            workspace_width_micro_repeats;
+        for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+             ++i_width) {
+          const int output_width = i_width == output_width_micro_repeats
+                                       ? residual_width
+                                       : kFourOverStride;
+          TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
+          const int8* input_data = input_data_0 + width_micro_stride * i_width;
+          const bool no_right_block = i_width == output_width_micro_repeats &&
+                                      output_width_overall_micro_repeats ==
+                                          workspace_width_micro_repeats;
 
-            if (!no_right_block) {
-              // Load next sub-micro block of data.
-              right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
-              right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
+          if (!no_right_block) {
+            // Load next sub-micro block of data.
+            right_bank_0_reg_a = vld1q_s8(input_data + width_micro_stride);
+            right_bank_1_reg_a = vld1q_s8(input_data + width_micro_stride +
                                           workspace_height_stride);
-              right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
+            right_bank_2_reg_a = vld1q_s8(input_data + width_micro_stride +
                                           2 * workspace_height_stride);
-            }
-
-            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
-
-            // Iterate over input width shifts within 4x4 blocks.
-            {
-              acc0 = adjusted_bias_data;
-
-              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
-
-              // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              // Add the output offset.
-              int16x8_t acc_s16_0_1 =
-                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc0));
-              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
-              // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
-
-              vst1_lane_8x4(output_data_base, acc_u8, 0);
-
-              left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
-              left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
-              left_bank_2_reg = vrev32q_u16(left_bank_2_reg);
-              vtrn1_s8x2_in_place(&left_bank_0_reg, &right_bank_0_reg);
-              vtrn1_s8x2_in_place(&left_bank_1_reg, &right_bank_1_reg);
-              vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
-            }
-
-            if (output_width > 1) {
-              acc0 = adjusted_bias_data;
-
-              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
-
-              // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              // Add the output offset.
-              int16x8_t acc_s16_0_1 =
-                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc0));
-              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
-              // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
-
-              vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
-
-              left_bank_0_reg = right_bank_0_reg;
-              left_bank_1_reg = right_bank_1_reg;
-              left_bank_2_reg = right_bank_2_reg;
-            }
+            right_bank_0_reg_b = vld1q_s8(input_data + width_micro_stride + 16);
+            right_bank_1_reg_b = vld1q_s8(input_data + width_micro_stride +
+                                          workspace_height_stride + 16);
+            right_bank_2_reg_b = vld1q_s8(input_data + width_micro_stride +
+                                          2 * workspace_height_stride + 16);
           }
-          bias_data += bias_increment;
+
+          uint8* output_data_base = output_data + depth * 2 * i_width;
+
+          // Iterate over input width shifts within 4x4 blocks.
+          {
+            acc0_a = adjusted_bias_data_a;
+            acc0_b = adjusted_bias_data_b;
+
+            acc0_a = vdotq_s32(acc0_a, filter_reg_0_a, left_bank_0_reg_a);
+            acc0_a = vdotq_s32(acc0_a, filter_reg_1_a, left_bank_1_reg_a);
+            acc0_a = vdotq_s32(acc0_a, filter_reg_2_a, left_bank_2_reg_a);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_0_b, left_bank_0_reg_b);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_1_b, left_bank_1_reg_b);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_2_b, left_bank_2_reg_b);
+
+            // Fixed-point multiplication.
+            acc0_a = vqrdmulhq_n_s32(acc0_a, output_multiplier);
+            acc0_b = vqrdmulhq_n_s32(acc0_b, output_multiplier);
+            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0_a, -output_shift);
+            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0_b, -output_shift);
+            // Add the output offset.
+            int16x8_t acc_s16_0_1 =
+                vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            vst1_u8(output_data_base, acc_u8);
+
+            left_bank_0_reg_a = vrev32q_u16(left_bank_0_reg_a);
+            left_bank_1_reg_a = vrev32q_u16(left_bank_1_reg_a);
+            left_bank_2_reg_a = vrev32q_u16(left_bank_2_reg_a);
+            left_bank_0_reg_b = vrev32q_u16(left_bank_0_reg_b);
+            left_bank_1_reg_b = vrev32q_u16(left_bank_1_reg_b);
+            left_bank_2_reg_b = vrev32q_u16(left_bank_2_reg_b);
+            vtrn1_s8x2_in_place(&left_bank_0_reg_a, &right_bank_0_reg_a);
+            vtrn1_s8x2_in_place(&left_bank_1_reg_a, &right_bank_1_reg_a);
+            vtrn1_s8x2_in_place(&left_bank_2_reg_a, &right_bank_2_reg_a);
+            vtrn1_s8x2_in_place(&left_bank_0_reg_b, &right_bank_0_reg_b);
+            vtrn1_s8x2_in_place(&left_bank_1_reg_b, &right_bank_1_reg_b);
+            vtrn1_s8x2_in_place(&left_bank_2_reg_b, &right_bank_2_reg_b);
+          }
+
+          if (output_width > 1) {
+            acc0_a = adjusted_bias_data_a;
+            acc0_b = adjusted_bias_data_b;
+
+            acc0_a = vdotq_s32(acc0_a, filter_reg_0_a, left_bank_0_reg_a);
+            acc0_a = vdotq_s32(acc0_a, filter_reg_1_a, left_bank_1_reg_a);
+            acc0_a = vdotq_s32(acc0_a, filter_reg_2_a, left_bank_2_reg_a);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_0_b, left_bank_0_reg_b);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_1_b, left_bank_1_reg_b);
+            acc0_b = vdotq_s32(acc0_b, filter_reg_2_b, left_bank_2_reg_b);
+
+            // Fixed-point multiplication.
+            acc0_a = vqrdmulhq_n_s32(acc0_a, output_multiplier);
+            acc0_b = vqrdmulhq_n_s32(acc0_b, output_multiplier);
+            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0_a, -output_shift);
+            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0_b, -output_shift);
+            // Add the output offset.
+            int16x8_t acc_s16_0_1 =
+                vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            vst1_u8(output_data_base + depth, acc_u8);
+
+            left_bank_0_reg_a = right_bank_0_reg_a;
+            left_bank_1_reg_a = right_bank_1_reg_a;
+            left_bank_2_reg_a = right_bank_2_reg_a;
+            left_bank_0_reg_b = right_bank_0_reg_b;
+            left_bank_1_reg_b = right_bank_1_reg_b;
+            left_bank_2_reg_b = right_bank_2_reg_b;
+          }
         }
       }
     }
@@ -6278,11 +8134,9 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
-
-    TFLITE_DCHECK_EQ(bias_increment, 4);
 
     const int32 output_activation_min =
         function_params->quantized_activation_min;
@@ -6353,8 +8207,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           uint8* output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
 
           int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
           int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
@@ -6804,90 +8657,90 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         }
       } else {
         // Block height < 4.
-        for (int s = 0; s < 2; ++s) {
-          // Work through one slice, by row, at a time.
-          uint8* output_data_base = output_data_depthwise + 4 * s;
+        uint8* output_data_base = output_data_depthwise;
 
-          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+        const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
+        const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
+        bias_data += kBiasIncrement;
 
-          for (int k_height = 0; k_height < block_height; ++k_height) {
-            const int8* next_input_data =
-                scratch_block_data + k_height * workspace_height_stride;
-            uint8* output_data = output_data_base;
+        for (int k_height = 0; k_height < block_height; ++k_height) {
+          const int8* next_input_data =
+              scratch_block_data + k_height * workspace_height_stride;
+          uint8* output_data = output_data_base;
 
-            int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
-            int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
+          int8x16_t input_bank_p_reg;  //  left 0, right 0, left 1, right 1.
+          int8x16_t input_bank_q_reg;  //  left 2, right 2, left 3, right 3.
 
-            // Load first sub-micro block of data into operational banks.
-            input_bank_a_reg =
-                vld1q_dup_s8x4(next_input_data);  // Load lane 0, avoiding
-                                                  // uninitialized variable.
-            input_bank_a_reg = vld1q_lane_8x4(
-                next_input_data + workspace_height_stride, input_bank_a_reg, 2);
-            input_bank_b_reg = vld1q_dup_s8x4(
-                next_input_data +
-                2 * workspace_height_stride);  // Load lane 0, avoiding
-                                               // uninitialized variable.
+          // Load first sub-micro block of data into operational banks.
+          input_bank_p_reg =
+              vld1q_dup_s8x4(next_input_data);  // Load lane 0, avoiding
+                                                // uninitialized variable.
+          input_bank_p_reg = vld1q_lane_8x4(
+              next_input_data + workspace_height_stride, input_bank_p_reg, 2);
+          input_bank_q_reg = vld1q_dup_s8x4(
+              next_input_data +
+              2 * workspace_height_stride);  // Load lane 0, avoiding
+                                             // uninitialized variable.
 
-            for (int i_width = 0; i_width < output_width_overall_micro_repeats;
-                 ++i_width) {
-              next_input_data += 4;
-              const int output_width =
-                  i_width == output_width_micro_repeats ? residual_width : 4;
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            next_input_data += 4;
+            const int output_width =
+                i_width == output_width_micro_repeats ? residual_width : 4;
 
-              // Load next sub-micro block of data.
-              input_bank_a_reg =
-                  vld1q_lane_8x4(next_input_data, input_bank_a_reg, 1);
-              input_bank_a_reg =
-                  vld1q_lane_8x4(next_input_data + workspace_height_stride,
-                                 input_bank_a_reg, 3);
-              input_bank_b_reg =
-                  vld1q_lane_8x4(next_input_data + 2 * workspace_height_stride,
-                                 input_bank_b_reg, 1);
-              // Iterate over input width shifts within 4x4 blocks.
-              for (int x = 0; x < output_width; ++x) {
-                int32x4_t acc = adjusted_bias_data;
-                acc = vdotq_four_lane_s32(acc, filter_reg_0_a, input_bank_a_reg,
-                                          0);
-                acc = vdotq_four_lane_s32(acc, filter_reg_1_a, input_bank_a_reg,
-                                          2);
-                acc = vdotq_four_lane_s32(acc, filter_reg_2_a, input_bank_b_reg,
-                                          0);
+            // Load next sub-micro block of data.
+            input_bank_p_reg =
+                vld1q_lane_8x4(next_input_data, input_bank_p_reg, 1);
+            input_bank_p_reg = vld1q_lane_8x4(
+                next_input_data + workspace_height_stride, input_bank_p_reg, 3);
+            input_bank_q_reg =
+                vld1q_lane_8x4(next_input_data + 2 * workspace_height_stride,
+                               input_bank_q_reg, 1);
+            // Iterate over input width shifts within 4x4 blocks.
+            for (int x = 0; x < output_width; ++x) {
+              int32x4_t acc_a = adjusted_bias_data_a;
+              int32x4_t acc_b = adjusted_bias_data_b;
+              acc_a = vdotq_four_lane_s32(acc_a, filter_reg_0_a,
+                                          input_bank_p_reg, 0);
+              acc_a = vdotq_four_lane_s32(acc_a, filter_reg_1_a,
+                                          input_bank_p_reg, 2);
+              acc_a = vdotq_four_lane_s32(acc_a, filter_reg_2_a,
+                                          input_bank_q_reg, 0);
+              acc_b = vdotq_four_lane_s32(acc_b, filter_reg_0_b,
+                                          input_bank_p_reg, 0);
+              acc_b = vdotq_four_lane_s32(acc_b, filter_reg_1_b,
+                                          input_bank_p_reg, 2);
+              acc_b = vdotq_four_lane_s32(acc_b, filter_reg_2_b,
+                                          input_bank_q_reg, 0);
 
-                // Fixed-point multiplication.
-                acc = vqrdmulhq_n_s32(acc, output_multiplier);
-                acc = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                    acc, -output_shift);
-                // Add the output offset.
-                // Note that we need to fill the top half with vcombine, but can
-                // drop the instruction in ASM code.
-                int16x8_t acc_s16_0_0 =
-                    vcombine_s16(vqmovn_s32(acc), vqmovn_s32(acc));
-                acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
-                // Apply the activation function.
-                uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
-                acc_u8_0_0 =
-                    vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
-                acc_u8_0_0 =
-                    vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
+              // Fixed-point multiplication.
+              acc_a = vqrdmulhq_n_s32(acc_a, output_multiplier);
+              acc_b = vqrdmulhq_n_s32(acc_b, output_multiplier);
+              acc_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc_a, -output_shift);
+              acc_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc_b, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_0 =
+                  vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
+              acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
+              acc_u8_0_0 =
+                  vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
+              acc_u8_0_0 =
+                  vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
 
-                vst1_lane_8x4(output_data, acc_u8_0_0, 0);
+              vst1_u8(output_data, acc_u8_0_0);
 
-                input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 8);
-                input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 8);
+              input_bank_p_reg = vshrq_n_u64(input_bank_p_reg, 8);
+              input_bank_q_reg = vshrq_n_u64(input_bank_q_reg, 8);
 
-                output_data += output_depth;
-              }
+              output_data += output_depth;
             }
-            output_data_base += output_height_stride;
           }
-
-          // Move to next sub-block: advance to second set of filters.
-          filter_reg_0_a = filter_reg_0_b;
-          filter_reg_1_a = filter_reg_1_b;
-          filter_reg_2_a = filter_reg_2_b;
+          output_data_base += output_height_stride;
         }
       }
       output_data_depthwise += 8;
@@ -6917,14 +8770,15 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         function_params->output_width_micro_repeats;
     const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int output_depth = function_params->output_depth;
-    const int stride_val = function_params->stride;
+    constexpr int kStrideVal = 2;
+    TFLITE_DCHECK_EQ(function_params->stride, kStrideVal);
 
     const int output_width_overall_micro_repeats =
         function_params->output_width_overall_micro_repeats;
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     const int32 output_activation_min =
         function_params->quantized_activation_min;
@@ -6941,7 +8795,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     TFLITE_DCHECK_LT(output_offset, 32768);
 
     TFLITE_DCHECK_GE(depth_micro_repeats, 1);
-    TFLITE_DCHECK_EQ(bias_increment, 4);
 
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
@@ -6971,11 +8824,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
       filter_reg_2_b = vld1q_s8(filter_workspace);
       filter_workspace += 16;
 
-      TFLITE_DCHECK_EQ(bias_increment, 4);
       const int32x4_t adjusted_bias_data_s_0 = vld1q_s32(bias_data);
-      bias_data += bias_increment;
+      bias_data += kBiasIncrement;
       const int32x4_t adjusted_bias_data_s_1 = vld1q_s32(bias_data);
-      bias_data += bias_increment;
+      bias_data += kBiasIncrement;
 
       if (block_height == 2) {
         const int8* scratch_data = scratch_block_data;
@@ -7310,7 +9162,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           TFLITE_DCHECK_LE(output_width, 2);
           TFLITE_DCHECK_GE(output_width, 1);
-          TFLITE_DCHECK_LE(output_width * stride_val, 4);
+          TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
           const int8* input_data = scratch_data + 4 + 4 * i_width;
 
           // Load next sub-micro block of data.
@@ -7942,6 +9794,15 @@ inline void DepthwiseConvDotProduct3x3(
               : function_params.output_width_micro_repeats + 1;
 
       for (int j_depth = 0; j_depth < depth_overall_macro_count; ++j_depth) {
+        // Process filter and bias data.
+        //
+        function_params.depth_micro_repeats =
+            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
+        ProcessPerDepth<implementation>::Run(
+            filter_data + 64 * j_depth,
+            bias_data + 8 * 2 * bias_increment * j_depth,
+            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
+
         const uint8* input_data_block =
             input_data + b * input_batch_stride +
             j_depth * input_depth_macro_stride +
@@ -7951,15 +9812,6 @@ inline void DepthwiseConvDotProduct3x3(
         uint8* output_data_block = output_data + b * output_batch_stride +
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
-
-        // Process filter and bias data.
-        //
-        function_params.depth_micro_repeats =
-            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
-        ProcessPerDepth<implementation>::Run(
-            filter_data + 64 * j_depth,
-            bias_data + 8 * 2 * bias_increment * j_depth,
-            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
 
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the

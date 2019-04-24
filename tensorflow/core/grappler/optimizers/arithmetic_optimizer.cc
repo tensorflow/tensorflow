@@ -2178,7 +2178,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   ~FoldTransposeIntoMatMul() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMatMul(*node);
+    return IsAnyMatMul(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3318,7 +3318,7 @@ class UniqueNodes {
     uint64 sig = ComputeSignature(*node);
     std::vector<NodeDef*>& candidates = rep_[sig];
     for (auto& candidate : candidates) {
-      if (SameNode(*candidate, *node)) {
+      if ((candidate == node) || SameNode(*candidate, *node)) {
         return candidate;
       }
     }

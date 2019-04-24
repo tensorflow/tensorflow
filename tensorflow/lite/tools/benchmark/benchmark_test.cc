@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/command_line_flags.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace {
 const std::string* g_model_path = nullptr;

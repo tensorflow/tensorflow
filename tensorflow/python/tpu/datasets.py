@@ -130,7 +130,12 @@ def StreamingFilesDataset(files,
   if sloppy is None:
     sloppy = True
 
-  with ops.device('/job:%s' % file_reader_job):
+  if file_reader_job == 'coordinator':
+    file_reader_device = '/job:coordinator/task:0'
+  else:
+    file_reader_device = '/job:%s' % file_reader_job
+
+  with ops.device(file_reader_device):
     if isinstance(files, str):
       source_dataset = dataset_ops.Dataset.list_files(files)
     elif isinstance(files, dataset_ops.DatasetV2):

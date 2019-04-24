@@ -545,17 +545,14 @@ void* GpuExecutor::Allocate(uint64 size) {
   return GpuDriver::DeviceAllocate(context_, size);
 }
 
-void* GpuExecutor::AllocateSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                                     uint64 size_bytes) {
+void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
+                                uint64 size_bytes) {
   // offset and size are in bytes, so char* works as the pointer type.
   return reinterpret_cast<char *>(mem->opaque()) + offset_bytes;
 }
 
 void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
-  // CUDA "sub-buffers" are just pointer + offset, so no dealloc is necessary.
-  if (!mem->is_sub_buffer()) {
-    GpuDriver::DeviceDeallocate(context_, mem->opaque());
-  }
+  GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
 bool GpuExecutor::HostMemoryRegister(void* location, uint64 size) {
@@ -1136,58 +1133,12 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
           CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device_)
           .ValueOrDie());
 
-  // We are loading a dummy ptx kernel to set the device description's
-  // blocks_per_core_limit by calling the CUDA occupancy calculator.  This
-  // value is currently required XLA GPU's CalculateLaunchDimensions()
-  const char* blank_ptx = R"(
-.version 6.0
-.target sm_30
-.address_size 64
-
-        // .globl       testkernel
-.visible .entry testkernel()
-{
-        ret;
-})";
-  const char* kernel_name = "testkernel";
-
-  CUmodule blank_module;
-  CUfunction blank_function;
-  int bpc = -1;
-  bool ptx_success =
-      cuda::CUDADriver::LoadPtx(context_, blank_ptx, &blank_module);
-  if (ptx_success) {
-    ptx_success = cuda::CUDADriver::GetModuleFunction(
-        context_, blank_module, kernel_name, &blank_function);
-    if (ptx_success) {
-      CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
-          &bpc, blank_function, 1, 1);
-      if (result != CUDA_SUCCESS) {
-        bpc = -1;
-        ptx_success = false;
-      }
-    }
-    cuda::CUDADriver::UnloadModule(context_, blank_module);
-  }
-  if (!ptx_success) {
-    LOG(ERROR) << "Failed to calculate max blocks per SM using dummy kernel.";
-  }
-  builder.set_blocks_per_core_limit(bpc);
-
   auto built = builder.Build();
   return built.release();
 }
 
 }  // namespace gpu
 
-void initialize_cuda_gpu_executor() {
-  *internal::MakeCUDAExecutorImplementation() = [](const PluginConfig& config) {
-    return new gpu::GpuExecutor{config};
-  };
-}
-
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(cuda_gpu_executor, {
-  stream_executor::initialize_cuda_gpu_executor();
-});
+REGISTER_MODULE_INITIALIZER(cuda_gpu_executor, {});

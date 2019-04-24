@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -220,7 +221,10 @@ class _SaveableView(object):
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj._create_resource()  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        with ops.device(obj._resource_device):
+          new_resource = obj._create_resource()
+        # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -546,6 +550,13 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
+  meta_graph_def.meta_info_def.tensorflow_git_version = (
+      versions.__git_version__)
+  # We currently always strip default attributes.
+  meta_graph_def.meta_info_def.stripped_default_attrs = True
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -580,8 +591,14 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
+    if not obj.name.endswith(":0"):
+      raise ValueError("Cowardly refusing to save variable %s because of"
+                       " unexpected suffix which won't be restored.")
+    proto.variable.name = meta_graph._op_name(obj.name)  # pylint: disable=protected-access
     proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.synchronization = obj.synchronization.value
+    proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
@@ -592,7 +609,7 @@ def _write_object_proto(obj, proto, asset_file_def_index):
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
   elif isinstance(obj, tracking.TrackableResource):
-    proto.resource.SetInParent()
+    proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:
@@ -759,9 +776,9 @@ def save(obj, export_dir, signatures=None):
 
   @compatibility(eager)
   Not well supported when graph building. From TensorFlow 1.x,
-  `tf.enable_eager_execution()` should run first. Calling tf.saved_model.save in
-  a loop when graph building from TensorFlow 1.x will add new save operations to
-  the default graph each iteration.
+  `tf.compat.v1.enable_eager_execution()` should run first. Calling
+  tf.saved_model.save in a loop when graph building from TensorFlow 1.x will
+  add new save operations to the default graph each iteration.
 
   May not be called from within a function body.
   @end_compatibility

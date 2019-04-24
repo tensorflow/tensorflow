@@ -72,7 +72,7 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
       for m in model.metrics
       if m not in model._compile_metric_functions
   ])
-  return [backend.mean(t) for t in metric_results]
+  return metric_results
 
 
 def _model_loss(model,
@@ -99,6 +99,7 @@ def _model_loss(model,
      regularization losses and applies masking and sample weighting
      to the loss value.
   """
+  # TODO(psv): Dedup code here with graph mode prepare_total_loss() fn.
   # Used to keep track of the total loss value (stateless).
   # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
   #                   loss_weight_2 * output_2_loss_fn(...) +
@@ -145,19 +146,25 @@ def _model_loss(model,
                 losses_utils.squeeze_or_expand_dimensions(mask, None, weights))
             weights *= mask
 
-        # Reset reduction on the loss so that we can get the per sample loss
-        # value. We use this to get both the stateless and stateful loss
-        # values without having to compute the underlying loss function
-        # twice.
         weighted_losses = None
         if hasattr(loss_fn, 'reduction'):
-          current_loss_reduction = loss_fn.reduction
-          loss_fn.reduction = losses_utils.ReductionV2.NONE
-          weighted_losses = loss_fn(targets[i], outs[i], sample_weight=weights)
-          loss_fn.reduction = current_loss_reduction
+          per_sample_losses = loss_fn.call(targets[i], outs[i])
+          weighted_losses = losses_utils.compute_weighted_loss(
+              per_sample_losses,
+              sample_weight=weights,
+              reduction=losses_utils.ReductionV2.NONE)
+          loss_reduction = loss_fn.reduction
+
+          # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
+          # compile use cases.
+          if loss_reduction == losses_utils.ReductionV2.AUTO:
+            loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
           # Compute the stateless loss value.
-          output_loss = losses_utils.reduce_weighted_loss(weighted_losses)
+          output_loss = losses_utils.reduce_weighted_loss(
+              weighted_losses, reduction=loss_reduction)
+          if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
         else:
           # Compute the stateless loss value for a custom loss class.
           # Here we assume that the class takes care of loss reduction
@@ -165,6 +172,8 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+          # For custom losses we assume reduction was mean.
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -183,8 +192,6 @@ def _model_loss(model,
 
       total_loss += model.loss_weights_list[i] * output_loss
 
-    if loss_fns:
-      total_loss = backend.mean(total_loss)
     # Add regularization losses
     custom_losses = model.losses
     if custom_losses:

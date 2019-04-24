@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -112,6 +114,110 @@ class LinearOperatorAdjointTest(
     operator = LinearOperatorAdjoint(operator)
 
     self.assertEqual("my_operator_adjoint", operator.name)
+
+  def test_matmul_adjoint_operator(self):
+    matrix1 = np.random.randn(4, 4)
+    matrix2 = np.random.randn(4, 4)
+    full_matrix1 = linalg.LinearOperatorFullMatrix(matrix1)
+    full_matrix2 = linalg.LinearOperatorFullMatrix(matrix2)
+
+    self.assertAllClose(
+        np.matmul(matrix1, matrix2.T),
+        self.evaluate(
+            full_matrix1.matmul(full_matrix2, adjoint_arg=True).to_dense()))
+
+    self.assertAllClose(
+        np.matmul(matrix1.T, matrix2),
+        self.evaluate(
+            full_matrix1.matmul(full_matrix2, adjoint=True).to_dense()))
+
+    self.assertAllClose(
+        np.matmul(matrix1.T, matrix2.T),
+        self.evaluate(
+            full_matrix1.matmul(
+                full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
+
+  def test_matmul_adjoint_complex_operator(self):
+    matrix1 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
+    matrix2 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
+    full_matrix1 = linalg.LinearOperatorFullMatrix(matrix1)
+    full_matrix2 = linalg.LinearOperatorFullMatrix(matrix2)
+
+    self.assertAllClose(
+        np.matmul(matrix1, matrix2.conj().T),
+        self.evaluate(
+            full_matrix1.matmul(full_matrix2, adjoint_arg=True).to_dense()))
+
+    self.assertAllClose(
+        np.matmul(matrix1.conj().T, matrix2),
+        self.evaluate(
+            full_matrix1.matmul(full_matrix2, adjoint=True).to_dense()))
+
+    self.assertAllClose(
+        np.matmul(matrix1.conj().T, matrix2.conj().T),
+        self.evaluate(
+            full_matrix1.matmul(
+                full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
+
+  def test_solve_adjoint_operator(self):
+    matrix1 = self.evaluate(
+        linear_operator_test_util.random_tril_matrix(
+            [4, 4], dtype=dtypes.float64, force_well_conditioned=True))
+    matrix2 = np.random.randn(4, 4)
+    full_matrix1 = linalg.LinearOperatorLowerTriangular(
+        matrix1, is_non_singular=True)
+    full_matrix2 = linalg.LinearOperatorFullMatrix(matrix2)
+
+    self.assertAllClose(
+        self.evaluate(linalg.triangular_solve(matrix1, matrix2.T)),
+        self.evaluate(
+            full_matrix1.solve(full_matrix2, adjoint_arg=True).to_dense()))
+
+    self.assertAllClose(
+        self.evaluate(
+            linalg.triangular_solve(
+                matrix1.T, matrix2, lower=False)),
+        self.evaluate(
+            full_matrix1.solve(full_matrix2, adjoint=True).to_dense()))
+
+    self.assertAllClose(
+        self.evaluate(
+            linalg.triangular_solve(matrix1.T, matrix2.T, lower=False)),
+        self.evaluate(
+            full_matrix1.solve(
+                full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
+
+  def test_solve_adjoint_complex_operator(self):
+    matrix1 = self.evaluate(linear_operator_test_util.random_tril_matrix(
+        [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
+                            1j * linear_operator_test_util.random_tril_matrix(
+                                [4, 4], dtype=dtypes.complex128,
+                                force_well_conditioned=True))
+    matrix2 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
+
+    full_matrix1 = linalg.LinearOperatorLowerTriangular(
+        matrix1, is_non_singular=True)
+    full_matrix2 = linalg.LinearOperatorFullMatrix(matrix2)
+
+    self.assertAllClose(
+        self.evaluate(linalg.triangular_solve(matrix1, matrix2.conj().T)),
+        self.evaluate(
+            full_matrix1.solve(full_matrix2, adjoint_arg=True).to_dense()))
+
+    self.assertAllClose(
+        self.evaluate(
+            linalg.triangular_solve(
+                matrix1.conj().T, matrix2, lower=False)),
+        self.evaluate(
+            full_matrix1.solve(full_matrix2, adjoint=True).to_dense()))
+
+    self.assertAllClose(
+        self.evaluate(
+            linalg.triangular_solve(
+                matrix1.conj().T, matrix2.conj().T, lower=False)),
+        self.evaluate(
+            full_matrix1.solve(
+                full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
 
 
 class LinearOperatorAdjointNonSquareTest(

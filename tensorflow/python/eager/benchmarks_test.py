@@ -917,6 +917,14 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(scan, 100)
 
+  def benchmark_fastpath_conversion_type_inference(self):
+    c = constant_op.constant(1., dtype=dtypes.float32)
+
+    def fn():
+      return gen_math_ops.add(c, 1)
+
+    self._run(fn, 10000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):

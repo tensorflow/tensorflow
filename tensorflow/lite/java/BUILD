@@ -30,9 +30,11 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
-# EXPERIMENTAL: AAR target that supports GPU acceleration.
+# EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
+# *only* the GPU delegate; clients must also include the core `tensorflow-lite`
+# runtime.
 aar_with_jni(
-    name = "tensorflow-lite-with-gpu",
+    name = "tensorflow-lite-gpu",
     android_library = ":tensorflowlite_gpu",
 )
 
@@ -59,19 +61,16 @@ android_library(
     ],
 )
 
-# EXPERIMENTAL: Android target that supports GPU acceleration.
+# EXPERIMENTAL: Android target target for GPU acceleration. Note that this
+# library contains *only* the GPU delegate and its Java wrapper; clients must
+# also include the core `tensorflowlite` runtime.
 android_library(
     name = "tensorflowlite_gpu",
-    # Note that we pull in the base sources directly here, as the aar_with_jni
-    # rule only bundles sources of the primary `android_library` argument, not
-    # its transitive dependencies. With the next stable release, the GPU
-    # aar target will *not* include the base TensorFlow Lite sources; clients
-    # will depend on both the base tensorflowlite aar as well as the GPU aar.
-    srcs = JAVA_SRCS + ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/experimental:gpu_delegate"],
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     manifest = "AndroidManifest.xml",
     visibility = ["//visibility:public"],
     deps = [
-        ":tensorflowlite",
+        ":tensorflowlite_java",
         ":tensorflowlite_native_gpu",
         "@org_checkerframework_qual",
     ],

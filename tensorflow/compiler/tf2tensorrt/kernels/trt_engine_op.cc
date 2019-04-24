@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
@@ -290,17 +291,17 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
-  auto res_mgr = ctx->resource_manager();
   TRTCalibrationResource* calib_res = nullptr;
   OP_REQUIRES_OK(ctx,
-                 res_mgr->LookupOrCreate(
-                     "TF_TRT_Calibration", name(),
+                 ctx->resource_manager()->LookupOrCreate(
+                     "TF-TRT-Calibration", name(),
                      reinterpret_cast<SerializableResourceBase**>(&calib_res),
                      {[ctx, this](SerializableResourceBase** cr) -> Status {
                        return this->AllocateCalibrationResources(ctx, cr);
                      }}));
   core::ScopedUnref calib_sc(calib_res);
   int num_inputs = ctx->num_inputs();
+  // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
   for (int i = 0; i < num_inputs; i++) {
@@ -425,8 +426,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(ERROR) << "FP16 inputs are not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
@@ -480,8 +482,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(WARNING) << "half size is not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
@@ -522,10 +525,22 @@ EngineContext* TRTEngineOp::GetEngine(
   // TODO(tmorris): using first input to get batch size - is this reliable?
   const int batch_size = input_shapes[0].dim_size(0);
 
-  // Get engine cache
+  // Canonicalize the op name by removing the scopes if any. This is mainly
+  // because in TFv2, the function graph can be instantiated in various ways and
+  // it'll insert scope names to the name of the TRTEngineOps, which will result
+  // in many different engine caches if we use the instantiated op name
+  // directly, but we still want all of them share the same cache (if they were
+  // representing the same subgraph).
+  absl::string_view resource_name = name();
+  size_t last_slash = resource_name.find_last_of('/');
+  if (last_slash != absl::string_view::npos) {
+    resource_name.remove_prefix(last_slash + 1);
+  }
+
+  // Get engine cache.
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      "TRTEngineCache", name(), &cache_res,
+      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
@@ -632,12 +647,13 @@ EngineContext* TRTEngineOp::GetEngine(
       cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
       return &empty_context;
     }
-    VLOG(1) << "Conversion is done";
     TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
         engine->createExecutionContext());
     cache.emplace(engine_input_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));
+    VLOG(1) << "Added new engine to cache of " << name()
+            << ". Cache size: " << cache.size();
   }
   return cache.at(engine_input_shapes).get();
 }

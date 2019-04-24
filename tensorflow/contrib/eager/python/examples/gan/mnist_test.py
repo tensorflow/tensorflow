@@ -35,11 +35,15 @@ def data_format():
   return 'channels_first' if tf.test.is_gpu_available() else 'channels_last'
 
 
+def device():
+  return '/gpu:0' if tf.test.is_gpu_available() else '/cpu:0'
+
+
 class MnistEagerGanBenchmark(tf.test.Benchmark):
 
   def _report(self, test_name, start, num_iters, batch_size):
     avg_time = (time.time() - start) / num_iters
-    dev = 'gpu' if test_util.is_gpu_available() else 'cpu'
+    dev = 'gpu' if tf.test.is_gpu_available() else 'cpu'
     name = 'eager_%s_%s_batch_%d_%s' % (test_name, dev, batch_size,
                                         data_format())
     extras = {'examples_per_sec': batch_size / avg_time}
@@ -58,7 +62,7 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
       measure_dataset = tf.data.Dataset.from_tensor_slices(measure_images)
 
       step_counter = tf.train.get_or_create_global_step()
-      with test_util.use_gpu():
+      with tf.device(device()):
         # Create the models and optimizers
         generator = mnist.Generator(data_format())
         discriminator = mnist.Discriminator(data_format())
@@ -87,7 +91,7 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
 
   def benchmark_generate(self):
     for batch_size in [64, 128, 256]:
-      with test_util.use_gpu():
+      with tf.device(device()):
         # Using random weights. This will generate garbage.
         generator = mnist.Generator(data_format())
 

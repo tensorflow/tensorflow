@@ -71,7 +71,7 @@ class AutoTrackable(base.Trackable):
 
   def __setattr__(self, name, value):
     """Support self.foo = trackable syntax."""
-    if getattr(self, "_setattr_tracking", True):
+    if getattr(self, "_self_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
           trackable=self, value=value, name=name)
     super(AutoTrackable, self).__setattr__(name, value)
@@ -153,12 +153,21 @@ def resource_tracker_scope(resource_tracker):
 class TrackableResource(base.Trackable):
   """Base class for all resources that need to be tracked."""
 
-  def __init__(self):
+  def __init__(self, device=""):
+    """Initialize the `TrackableResource`.
+
+    Args:
+      device: A string indicating a required placement for this resource,
+        e.g. "CPU" if this resource must be created on a CPU device. A blank
+        device allows the user to place resource creation, so generally this
+        should be blank unless the resource only makes sense on one device.
+    """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
 
     self._resource_handle = None
+    self._resource_device = device
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -173,7 +182,8 @@ class TrackableResource(base.Trackable):
   def resource_handle(self):
     """Returns the resource handle associated with this Resource."""
     if self._resource_handle is None:
-      self._resource_handle = self._create_resource()
+      with ops.device(self._resource_device):
+        self._resource_handle = self._create_resource()
     return self._resource_handle
 
   def _list_functions_for_serialization(self):
@@ -201,7 +211,7 @@ class TrackableAsset(base.Trackable):
     # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.
-    with ops.init_scope():
+    with ops.init_scope(), ops.device("CPU"):
       self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
                                                   name="asset_path")
 

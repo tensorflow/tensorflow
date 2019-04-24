@@ -103,7 +103,7 @@ class OneHotOp : public OpKernel {
       for (int i = 0; i < axis; ++i) {
         prefix_dim_size *= indices_shape.dim_size(i);
       }
-      TI suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
+      int64 suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
 
       // Split indices into matrix of size prefix_dim_size x suffix_dim_size
       auto indices_t =

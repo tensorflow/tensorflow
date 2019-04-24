@@ -423,10 +423,12 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 #ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
-      << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
+  DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
+                                                   input_literal->shape()))
+      << "parameter shape is: "
+      << ShapeUtil::HumanStringWithLayout(parameter->shape())
       << ", but input literal shape is: "
-      << ShapeUtil::HumanString(input_literal->shape());
+      << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
   return Status::OK();
@@ -1698,7 +1700,8 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
                       ShapeInference::InferReduceShape(
                           operand_shapes, dimensions_to_reduce,
                           /*to_apply=*/function->ComputeProgramShape()));
-  TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
+  TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(reduce->shape(),
+                                                        inferred_return_shape))
       << "return shape is set to: " << ShapeUtil::HumanString(reduce->shape())
       << " but is inferred to be: "
       << ShapeUtil::HumanString(inferred_return_shape);
@@ -1715,11 +1718,11 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
 
   // All args and results have the same dimensions, so pick an arbitrary one.
   const Shape& arg_shape = input_args[0]->shape();
-  const Shape& out_shape = reduce->shape();
+  const Shape& out_shape = inferred_return_shape;
   bool is_tuple = out_shape.IsTuple();
-  const Shape& output_shape = reduce->shape().IsTuple()
-                                  ? reduce->shape().tuple_shapes(0)
-                                  : reduce->shape();
+  const Shape& output_shape = inferred_return_shape.IsTuple()
+                                  ? inferred_return_shape.tuple_shapes(0)
+                                  : inferred_return_shape;
 
   absl::Span<const int64> arg_dimensions = AsInt64Slice(arg_shape.dimensions());
 
@@ -1762,7 +1765,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
       }));
 
   if (is_tuple) {
-    Literal tuple_result(reduce->shape());
+    Literal tuple_result(inferred_return_shape);
     for (int64 i = 0; i < num_args; ++i) {
       TF_CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
     }
@@ -1770,6 +1773,10 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
   } else {
     CHECK_EQ(results.size(), 1);
     evaluated_[reduce] = std::move(results[0]);
+  }
+  if (!ShapeUtil::Compatible(reduce->shape(), inferred_return_shape)) {
+    TF_ASSIGN_OR_RETURN(evaluated_[reduce],
+                        evaluated_[reduce].ConvertToShape(reduce->shape()));
   }
   return Status::OK();
 }

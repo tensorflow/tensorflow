@@ -181,8 +181,6 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
-        # TODO(b/129551923): Enable on Android after resolving GL context issue.
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [

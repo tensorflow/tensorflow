@@ -80,13 +80,14 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
+# LINT.IfChange
 @tf_export("VariableAggregation", v1=[])
 class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
-  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "replicas") acting data-parallel on different elements
-  of the input batch. When performing some variable-update operation, say
+  `tf.distribute.Strategy` distributes a model by making multiple copies
+  (called "replicas") acting data-parallel on different elements of the input
+  batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
   different values for `x` computed in the different replicas.
 
@@ -125,11 +126,52 @@ class VariableAggregation(enum.Enum):
 
   def __hash__(self):
     return hash(self.value)
-
+# LINT.ThenChange(//tensorflow/core/framework/variable.proto)
+#
+# Note that we are currently relying on the integer values of the Python enums
+# matching the integer values of the proto enums.
 
 VariableAggregation.__doc__ = (
     VariableAggregationV2.__doc__ +
     "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
+
+
+def validate_synchronization_aggregation_trainable(
+    synchronization, aggregation, trainable, name):
+  """Given user-provided variable properties, sets defaults and validates."""
+  if aggregation is None:
+    aggregation = VariableAggregation.NONE
+  else:
+    if not isinstance(aggregation,
+                      (VariableAggregation, VariableAggregationV2)):
+      try:
+        aggregation = VariableAggregationV2(aggregation)
+      except ValueError:
+        raise ValueError(
+            "Invalid variable aggregation mode: {} for variable: {}".format(
+                aggregation, name))
+  if synchronization is None:
+    synchronization = VariableSynchronization.AUTO
+  else:
+    try:
+      synchronization = VariableSynchronization(synchronization)
+    except ValueError:
+      raise ValueError(
+          "Invalid variable synchronization mode: {} for variable: {}".format(
+              synchronization, name))
+  if synchronization == VariableSynchronization.ON_READ:
+    if trainable:
+      raise ValueError(
+          "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ.")
+    else:
+      # Set trainable to be false when variable is to be synced on read.
+      trainable = False
+  elif trainable is None:
+    trainable = True
+  return synchronization, aggregation, trainable
 
 
 class VariableMetaclass(type):
@@ -264,7 +306,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -276,10 +318,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -330,8 +372,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,
@@ -455,6 +497,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def trainable(self):
     raise NotImplementedError
 
+  @property
+  def synchronization(self):
+    raise NotImplementedError
+
+  @property
+  def aggregation(self):
+    raise NotImplementedError
+
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
 
@@ -462,14 +512,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -499,7 +549,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     ```python
     # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
+    v = tf.Variable(tf.random.truncated_normal([10, 40]))
     # Use `initialized_value` to guarantee that `v` has been
     # initialized before its value is used to initialize `w`.
     # The random values are picked only once.
@@ -717,7 +767,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -768,7 +818,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = v.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -819,7 +869,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_assign(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -908,14 +958,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         v.load([2, 3], sess)
@@ -1230,7 +1280,7 @@ class VariableV1(Variable):
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -1242,10 +1292,10 @@ class VariableV1(Variable):
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -1295,8 +1345,8 @@ class VariableV1(Variable):
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,  # pylint: disable=super-init-not-called
@@ -1394,7 +1444,9 @@ class RefVariable(VariableV1):
                dtype=None,
                expected_shape=None,
                import_scope=None,
-               constraint=None):
+               constraint=None,
+               synchronization=None,
+               aggregation=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1446,6 +1498,15 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1471,7 +1532,9 @@ class RefVariable(VariableV1):
           name=name,
           dtype=dtype,
           expected_shape=expected_shape,
-          constraint=constraint)
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -1491,7 +1554,9 @@ class RefVariable(VariableV1):
                       name=None,
                       dtype=None,
                       expected_shape=None,
-                      constraint=None):
+                      constraint=None,
+                      synchronization=None,
+                      aggregation=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -1528,6 +1593,15 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1556,6 +1630,11 @@ class RefVariable(VariableV1):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            synchronization, aggregation, trainable, name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
     self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
@@ -1666,7 +1745,15 @@ class RefVariable(VariableV1):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
-    self._trainable = getattr(variable_def, "trainable", True)
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            variable_def.synchronization,
+            variable_def.aggregation,
+            variable_def.trainable,
+            variable_def.variable_name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
+    self._trainable = trainable
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -1742,6 +1829,14 @@ class RefVariable(VariableV1):
   def trainable(self):
     return self._trainable
 
+  @property
+  def synchronization(self):
+    return self._synchronization
+
+  @property
+  def aggregation(self):
+    return self._aggregation
+
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
 
@@ -1749,14 +1844,14 @@ class RefVariable(VariableV1):
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -2011,7 +2106,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -2063,7 +2158,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = ref.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -2115,7 +2210,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_update(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -2274,6 +2369,8 @@ class RefVariable(VariableV1):
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
       var_def.trainable = self.trainable
+      var_def.synchronization = self.synchronization.value
+      var_def.aggregation = self.aggregation.value
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(
@@ -2725,7 +2822,7 @@ def global_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to global variables are local variables. See
-  `tf.local_variables`
+  `tf.compat.v1.local_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2743,7 +2840,7 @@ def global_variables(scope=None):
 @tf_export(v1=["all_variables"])
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
-  """See `tf.global_variables`."""
+  """Use `tf.compat.v1.global_variables` instead."""
   return global_variables()
 
 
@@ -2778,7 +2875,7 @@ def local_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to local variables are global variables. See
-  `tf.global_variables`
+  `tf.compat.v1.global_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2884,7 +2981,7 @@ def variables_initializer(var_list, name="init"):
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
 def initialize_variables(var_list, name="init"):
-  """See `tf.variables_initializer`."""
+  """See `tf.compat.v1.variables_initializer`."""
   return variables_initializer(var_list, name=name)
 
 
@@ -2906,7 +3003,7 @@ def global_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
 def initialize_all_variables():
-  """See `tf.global_variables_initializer`."""
+  """See `tf.compat.v1.global_variables_initializer`."""
   return global_variables_initializer()
 
 
@@ -2928,7 +3025,7 @@ def local_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
 def initialize_local_variables():
-  """See `tf.local_variables_initializer`."""
+  """See `tf.compat.v1.local_variables_initializer`."""
   return local_variables_initializer()
 
 

@@ -227,6 +227,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
+    .Attr("max_sequence_lengths: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

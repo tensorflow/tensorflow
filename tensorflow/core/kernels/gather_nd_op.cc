@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 

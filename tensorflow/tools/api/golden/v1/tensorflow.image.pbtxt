@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "convert_image_dtype"
@@ -95,6 +95,10 @@ tf_module {
   member_method {
     name: "extract_jpeg_shape"
     argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "extract_patches"
+    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "flip_left_right"
@@ -209,6 +213,10 @@ tf_module {
     argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
   member_method {
+    name: "resize_with_crop_or_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "rgb_to_grayscale"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -250,11 +258,11 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'image\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "transpose_image"
-    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'image\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "yiq_to_rgb"
