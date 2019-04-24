@@ -390,15 +390,6 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             StepStatsCollector* collector,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
-                            const NamedTensors& in, StatusCallback done) {
-  ExecuteAsync(handle, step_id, session, opts, collector, response,
-               cancellation_manager, in, nullptr, done);
-}
-void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
-                            WorkerSession* session, const ExecutorOpts& opts,
-                            StepStatsCollector* collector,
-                            MutableRunGraphResponseWrapper* response,
-                            CancellationManager* cancellation_manager,
                             const NamedTensors& in,
                             tracing::TraceCollector* trace_collector,
                             StatusCallback done) {

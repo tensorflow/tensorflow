@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-import parallax_debugger as md
+#import parallax_debugger as md
 
 from tensorflow.keras.datasets.mnist import load_data
 import os, sys, subprocess
@@ -82,23 +82,24 @@ def _get_empty_port(hostname, num_ports):
         ports.append(port)
     return ports
 
-def _dump_profile(metadata, task_index):
+def _dump_profile(graph_def, metadata, task_index, global_step):
     profile_dir = os.path.join('profile',
-                               'elsa-10',
+                               'elsa-02',
                                'worekr:{}'.format(task_index),
                                'run_meta')
-    print profile_dir
+    #print profile_dir
     if not tf.gfile.Exists(profile_dir):
         tf.gfile.MakeDirs(profile_dir)
-    with tf.gfile.Open(os.path.join(profile_dir, 'run_meta_1'), 'wb') as f:
+    with tf.gfile.Open(os.path.join(profile_dir, 'run_meta_%d' % global_step), 'wb') as f:
         f.write(metadata.SerializeToString())
+    print(graph_def)
 
 def main(_):
     num_epoch = 20
 
     job_name = args.job_name
     task_index = args.task_index
-    tf_cluster_dict = {'ps': ['elsa-10:80000'], 'worker': ['elsa-10:80001', 'elsa-10:80002']} 
+    tf_cluster_dict = {'ps': ['elsa-02:80000'], 'worker': ['elsa-02:80001', 'elsa-02:80002']} 
     cluster_spec = tf.train.ClusterSpec(tf_cluster_dict)
     
     if job_name == 'server' or job_name == 's':
@@ -113,8 +114,9 @@ def main(_):
 
         is_chief = (task_index == 0)
 
+        assert task_index == 0 or task_index == 1
         with tf.device(tf.train.replica_device_setter(
-              "/job:worker/task:%d" % task_index,
+              worker_device='/job:worker/task:%d' % task_index,
               cluster=cluster_spec)):
             print "/job:worker/task:%d" % task_index
             x = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
@@ -176,21 +178,21 @@ def main(_):
             
             init = tf.global_variables_initializer()
 
-        curr_dir = os.path.dirname(os.path.abspath(__file__))
-        profile_dir = os.path.join(curr_dir, 'profile_dir')
-        profile_steps = range(10, 20)
+            curr_dir = os.path.dirname(os.path.abspath(__file__))
+            profile_dir = os.path.join(curr_dir, 'profile_dir')
+            profile_steps = range(10, 20)
 
-        sync_replicas_hook = optimizer.make_session_run_hook(is_chief)
-        stop_hook = tf.train.StopAtStepHook(last_step=num_epoch)
-        hooks = [sync_replicas_hook,stop_hook]
-
-        ps = md.ProfileSessionContext(profile_dir,
-                                          task_index,
-                                          profile_steps=profile_steps)
+            sync_replicas_hook = optimizer.make_session_run_hook(is_chief)
+            stop_hook = tf.train.StopAtStepHook(last_step=num_epoch)
+            hooks = [sync_replicas_hook,stop_hook]
+        #ps = md.ProfileSessionContext(profile_dir,
+        #                                  task_index,
+        #                                  profile_steps=profile_steps)
         with tf.train.MonitoredTrainingSession(
                 master=server.target,
                 is_chief=is_chief,
-                hooks=hooks) as sess:
+                hooks=hooks,
+                config=tf.ConfigProto(log_device_placement=True)) as sess:
             sess.run(init)
             """
             with md.ProfileSessionContext(profile_dir,
@@ -214,7 +216,7 @@ def main(_):
                 results = sess.run(fetches, feed_dict=feed_dict, 
                                    options=options, 
                                    run_metadata=run_metadata)
-                _dump_profile(run_metadata, task_index)
+                _dump_profile(tf.get_default_graph().as_graph_def(), run_metadata, task_index, results['global_step'])
                 finish = time.time()
                 if i % 1 == 0:
                     print("global step: %d, loss: %f, acc: %f, latency: %f secs" % (results['global_step'], results['loss'], results['accuracy'], (finish-start)))

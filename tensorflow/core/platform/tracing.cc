@@ -30,11 +30,8 @@ namespace tracing {
 namespace {
 std::atomic<uint64> unique_arg{1};
 
-#ifdef _MSC_VER
-#define __thread __declspec(thread)
-#endif
-static __thread const TraceCollector* trace_collector;
-}  // namespace
+TF_STATIC_THREAD_LOCAL_POD(const TraceCollector *, tls_trace_collector);
+} // namespace
 
 const char* GetEventCategoryName(EventCategory category) {
   switch (category) {
@@ -77,11 +74,11 @@ string TraceCollector::ConcatenateNames(StringPiece first, StringPiece second) {
 }
 
 void SetTraceCollector(const TraceCollector* collector) {
-  trace_collector = collector;
+  tls_trace_collector.get() = collector;
 }
 
 const TraceCollector* GetTraceCollector() {
-  return trace_collector;
+  return tls_trace_collector.get();
 }
 
 }  // namespace tracing

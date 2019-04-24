@@ -74,7 +74,6 @@ class DeviceTracer : public tracing::TraceCollector {
       StringPiece src_dev, StringPiece dst_dev) const = 0;
   virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
                                                        bool) const = 0;
-  string worker_name;
 };
 
 // Creates a platform-specific DeviceTracer.
