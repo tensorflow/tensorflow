@@ -83,6 +83,7 @@ ListOpsTest.testSetDoesNotUpdatePushIndex # Disable due to variants in lists
 ListOpsTest.testSetStackReservedUnknownElementShape # Disable due to variants in lists
 ListOpsTest.testStack # Disable due to variants in lists
 ListOpsTest.testStackWithUninitializedTensors # Disable due to variants in lists
+ListOpsTest.testZerosLikeForTensorList # Disable due to variants in lists
 StatelessRandomOpsTest.testDeterminism # poplibs CPU mode does not obey seed
 StatelessRandomOpsTest.testRandomUniformIsInRange # poplar CPU model random uniform int doesn't obey limits
 StatelessRandomOpsTest.testTruncatedNormal # Tests float64
