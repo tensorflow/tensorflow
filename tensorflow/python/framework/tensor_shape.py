@@ -906,7 +906,10 @@ class TensorShape(object):
     Raises:
       ValueError: If `self` and `other` are not compatible.
     """
-    other = as_shape(other)
+    try:
+      other = as_shape(other)
+    except TypeError:
+      return NotImplemented
     if self._dims is None:
       return other
     else:
@@ -936,7 +939,10 @@ class TensorShape(object):
     """
     # TODO(mrry): Handle the case where we concatenate a known shape with a
     # completely unknown shape, so that we can use the partial information.
-    other = as_shape(other)
+    try:
+      other = as_shape(other)
+    except TypeError:
+      return NotImplemented
     if self._dims is None or other.dims is None:
       return unknown_shape()
     else:
@@ -952,7 +958,10 @@ class TensorShape(object):
       ValueError: If `self` and `other` do not represent shapes with the
         same rank.
     """
-    other = as_shape(other)
+    try:
+      other = as_shape(other)
+    except TypeError:
+      return NotImplemented
     if self.rank is not None and other.rank is not None:
       if self.rank != other.rank:
         raise ValueError("Shapes %s and %s must have the same rank" %
