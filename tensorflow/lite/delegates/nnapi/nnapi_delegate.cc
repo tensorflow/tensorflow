@@ -703,6 +703,7 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinResizeBilinear:
         if (version == 1) {
+          // TODO(131255866): relax the constraint after tests on the drivers.
           if (android_sdk_version < kMinSdkVersionForNNAPI12) {
             // Some NNAPI 1.1 drivers don't support this operator properly.
             return nullptr;
@@ -720,8 +721,8 @@ class NNAPIDelegateKernel {
             const int output_height = output.dims->data[1];
             const int output_width = output.dims->data[2];
             // TfLiteResizeBilinearParams's |align_corners| is ignored.
-            mapping_args.builder->AddScalarInt32Operand(output_height);
             mapping_args.builder->AddScalarInt32Operand(output_width);
+            mapping_args.builder->AddScalarInt32Operand(output_height);
             return ANEURALNETWORKS_RESIZE_BILINEAR;
           };
         }
