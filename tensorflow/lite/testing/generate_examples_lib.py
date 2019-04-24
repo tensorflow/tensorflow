@@ -3724,6 +3724,12 @@ def make_rsqrt_tests(options):
 
 
 @register_make_test_function()
+def make_reciprocal_tests(options):
+  """Make a set of tests to do reciprocal."""
+  return _make_elementwise_tests(tf.reciprocal)(options)
+
+
+@register_make_test_function()
 def make_square_tests(options):
   """Make a set of tests to do square."""
   return _make_elementwise_tests(tf.square)(options)
