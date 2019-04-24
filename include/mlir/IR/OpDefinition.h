@@ -717,6 +717,9 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
+  /// Return the Region enclosing this Op.
+  Region *getContainingRegion() { return getOperation()->getParentRegion(); }
+
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in
   /// the subclass of Base.

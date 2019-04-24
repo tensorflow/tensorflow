@@ -30,6 +30,7 @@ namespace mlir {
 class Block;
 class Function;
 class Operation;
+class Region;
 class Value;
 
 /// Operands contain a Value.
@@ -80,6 +81,9 @@ public:
   /// If this value is the result of an operation, use it as a location,
   /// otherwise return an unknown location.
   Location getLoc();
+
+  /// Return the Region in which this Value is defined.
+  Region *getContainingRegion();
 
   using use_iterator = ValueUseIterator<OpOperand>;
   using use_range = llvm::iterator_range<use_iterator>;

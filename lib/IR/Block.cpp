@@ -282,6 +282,12 @@ Region::~Region() {
     bb.dropAllReferences();
 }
 
+Region *Region::getContainingRegion() {
+  if (auto *inst = getContainingOp())
+    return inst->getContainingRegion();
+  return nullptr;
+}
+
 Operation *Region::getContainingOp() {
   assert(!container.isNull() && "no container");
   return container.dyn_cast<Operation *>();
@@ -290,6 +296,17 @@ Operation *Region::getContainingOp() {
 Function *Region::getContainingFunction() {
   assert(!container.isNull() && "no container");
   return container.dyn_cast<Function *>();
+}
+
+bool Region::isProperAncestor(Region *other) {
+  if (this == other)
+    return false;
+
+  while ((other = other->getContainingRegion())) {
+    if (this == other)
+      return true;
+  }
+  return false;
 }
 
 /// Clone the internal blocks from this region into `dest`. Any

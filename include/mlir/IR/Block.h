@@ -329,7 +329,7 @@ private:
 namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - a Function or an operation region.
+/// is part of - a Function or an Operation.
 class Region {
 public:
   explicit Region(Function *container = nullptr);
@@ -360,6 +360,10 @@ public:
     return &Region::blocks;
   }
 
+  /// Return the region containing this region or nullptr if it is a top-level
+  /// region, i.e. a function body region.
+  Region *getContainingRegion();
+
   /// A Region is either a function body or a part of an operation.  If it is
   /// part of an operation, then return the operation, otherwise return null.
   Operation *getContainingOp();
@@ -367,6 +371,15 @@ public:
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
   Function *getContainingFunction();
+
+  /// Return true if this region is a proper ancestor of the `other` region.
+  bool isProperAncestor(Region *other);
+
+  /// Return true if this region is ancestor of the `other` region.  A region
+  /// is considered as its own ancestor, use `isProperAncestor` to avoid this.
+  bool isAncestor(Region *other) {
+    return this == other || isProperAncestor(other);
+  }
 
   /// Clone the internal blocks from this region into dest. Any
   /// cloned blocks are appended to the back of dest. If the mapper

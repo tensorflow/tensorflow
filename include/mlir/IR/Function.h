@@ -93,7 +93,7 @@ public:
   Region &getBody() { return body; }
 
   /// This is the list of blocks in the function.
-  using RegionType = llvm::iplist<Block>;
+  using RegionType = Region::RegionType;
   RegionType &getBlocks() { return body.getBlocks(); }
 
   // Iteration over the block in the function.

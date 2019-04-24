@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 using namespace mlir;
@@ -43,6 +44,16 @@ Location Value::getLoc() {
     return op->getLoc();
   }
   return UnknownLoc::get(getContext());
+}
+
+/// Return the Region in which this Value is defined.
+Region *Value::getContainingRegion() {
+  switch (getKind()) {
+  case Value::Kind::BlockArgument:
+    return cast<BlockArgument>(this)->getOwner()->getParent();
+  case Value::Kind::OpResult:
+    return getDefiningOp()->getContainingRegion();
+  }
 }
 
 //===----------------------------------------------------------------------===//

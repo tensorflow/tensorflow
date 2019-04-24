@@ -273,6 +273,10 @@ Dialect *Operation::getDialect() {
   return getContext()->getRegisteredDialect(dialectPrefix);
 }
 
+Region *Operation::getContainingRegion() const {
+  return block ? block->getParent() : nullptr;
+}
+
 Operation *Operation::getParentOp() {
   return block ? block->getContainingOp() : nullptr;
 }
