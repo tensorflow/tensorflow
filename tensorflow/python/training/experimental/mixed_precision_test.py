@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -32,9 +33,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training.experimental import loss_scale_optimizer as loss_scale_optimizer_v1
 from tensorflow.python.training.experimental import mixed_precision
+from tensorflow.python.training.experimental import mixed_precision_global_state
 
 
 if tf2.enabled():
@@ -55,6 +58,10 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     # to ignore performance and always transform the graph.
     self._original_ignore_perf_value = os.getenv(self.IGNORE_PERF_VAR)
     os.environ[self.IGNORE_PERF_VAR] = '1'
+    # Set global variables to their original state, in case other tests modified
+    # them
+    mixed_precision_global_state.mixed_precision_is_enabled = False
+    mixed_precision_global_state.non_mixed_precision_session_created = False
 
   def tearDown(self):
     # Set auto_mixed_precision back to it's default value.
@@ -64,6 +71,9 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
       os.environ[self.IGNORE_PERF_VAR] = self._original_ignore_perf_value
     else:
       del os.environ[self.IGNORE_PERF_VAR]
+    # Revert global variables
+    mixed_precision_global_state.mixed_precision_is_enabled = False
+    mixed_precision_global_state.non_mixed_precision_session_created = False
     super(MixedPrecisionTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
@@ -136,6 +146,34 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         out = overflow_in_float16()
         sess.run(var.initializer)
         self.assertEqual(sess.run(out), float('Inf'))
+
+      # Test Session will enable the auto_mixed_precision grappler pass in a
+      # ConfigProto passed by the user
+      with session.Session(config=config_pb2.ConfigProto()) as sess:
+        out = overflow_in_float16()
+        sess.run(var.initializer)
+        self.assertEqual(sess.run(out), float('Inf'))
+
+  @test.mock.patch.object(tf_logging, 'warn')
+  def test_warn_if_session_already_exists(self, mock_warn):
+    with session.Session():
+      enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+      mock_warn.assert_any_call(
+          'You already have existing Sessions that do not use mixed precision. '
+          'enable_mixed_precision_graph_rewrite() will not affect these '
+          'Sessions.')
+
+  @test.mock.patch.object(tf_logging, 'warn')
+  def test_do_not_warn_if_session_does_not_already_exist(self, mock_warn):
+    enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+    with session.Session():
+      # Make sure the "You already have existing Sessions" warning was not
+      # issued, since the Session was only created after
+      # enable_mixed_precision_graph_rewrite.
+      for call_arg in mock_warn.call_args_list:
+        msg = call_arg[0][0]
+        self.assertNotIn('You already have existing Sessions that do not use '
+                         'mixed precision', msg)
 
 
 if __name__ == '__main__':

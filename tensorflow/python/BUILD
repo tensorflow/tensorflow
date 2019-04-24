@@ -2908,6 +2908,12 @@ py_test(
 )
 
 py_library(
+    name = "mixed_precision_global_state",
+    srcs = ["training/experimental/mixed_precision_global_state.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "mixed_precision",
     srcs = ["training/experimental/mixed_precision.py"],
     srcs_version = "PY2AND3",
@@ -2915,6 +2921,7 @@ py_library(
         ":config",
         ":loss_scale",
         ":loss_scale_optimizer",
+        ":mixed_precision_global_state",
         "//tensorflow/python:util",
     ],
 )
@@ -4713,6 +4720,7 @@ py_library(
         ":pywrap_tensorflow",
         ":session_ops",
         ":util",
+        "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
     ],
 )
