@@ -17,26 +17,14 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/gemmlowp_support.h"
 
 namespace tflite {
 
-namespace {
-gemmlowp::GemmContext* IncrementUsageCounterAndGetGemmlowpContext(
-    TfLiteContext* tflite_context) {
-  gemmlowp_support::IncrementUsageCounter(tflite_context);
-  return gemmlowp_support::GetFromContext(tflite_context);
-}
-}  // namespace
-
 CpuBackendContext::CpuBackendContext(TfLiteContext* tflite_context)
     : tflite_context_(tflite_context),
-      gemmlowp_context_(
-          IncrementUsageCounterAndGetGemmlowpContext(tflite_context)) {}
+      gemmlowp_context_(new gemmlowp::GemmContext) {}
 
-CpuBackendContext::~CpuBackendContext() {
-  gemmlowp_support::DecrementUsageCounter(tflite_context_);
-}
+CpuBackendContext::~CpuBackendContext() {}
 
 void CpuBackendContext::set_max_num_threads(int max_num_threads) {
   gemmlowp_context_->set_max_num_threads(max_num_threads);

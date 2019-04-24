@@ -80,22 +80,6 @@ cc_test(
 )
 
 cc_library(
-    name = "gemmlowp_support",
-    srcs = [
-        "gemmlowp_support.cc",
-    ],
-    hdrs = [
-        "gemmlowp_support.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        ":op_macros",
-        "//tensorflow/lite/c:c_api_internal",
-        "@gemmlowp",
-    ],
-)
-
-cc_library(
     name = "cpu_backend_context",
     srcs = [
         "cpu_backend_context.cc",
@@ -105,7 +89,6 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":gemmlowp_support",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",
@@ -123,7 +106,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
-        ":gemmlowp_support",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_CONTEXT_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_CONTEXT_H_
 
+#include <memory>
+
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 
@@ -26,18 +28,16 @@ class CpuBackendContext final {
   explicit CpuBackendContext(TfLiteContext* tflite_context);
   ~CpuBackendContext();
 
-  gemmlowp::GemmContext* gemmlowp_context() const { return gemmlowp_context_; }
+  gemmlowp::GemmContext* gemmlowp_context() const {
+    return gemmlowp_context_.get();
+  }
 
   void set_max_num_threads(int max_num_threads);
 
  private:
   TfLiteContext* const tflite_context_;
   // gemmlowp context used to implement this CpuBackendContext.
-  // Not owned: currently this is shared with other direct usage of this
-  // gemmlowp context by other users of :gemmlowp_support.
-  // TODO(benoitjacob): factor all gemmlowp context usage through
-  // CpuBackendContext, then make this owned and delete :gemmlowp_support.
-  gemmlowp::GemmContext* const gemmlowp_context_;
+  const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
   CpuBackendContext() = delete;
   CpuBackendContext(const CpuBackendContext&) = delete;
