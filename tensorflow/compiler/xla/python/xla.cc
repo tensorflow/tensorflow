@@ -122,7 +122,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("C64", C64)
       .value("C128", C128)
       .value("TUPLE", TUPLE)
-      .value("OPAQUE", OPAQUE)
+      .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
   // Shapes
