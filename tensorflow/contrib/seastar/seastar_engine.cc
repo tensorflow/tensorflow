@@ -127,7 +127,6 @@ void SeastarEngine::ConstructArgs(int* argc, char*** argv) {
   std::string thread_affinity("--thread-affinity=0");
   av2 = new char[thread_affinity.size() + 1]();
   memcpy(av2, thread_affinity.c_str(), thread_affinity.size());
-  // GetCpuset(&av2);
 
   // Set av3 if necessary.
   char* av3 = NULL;

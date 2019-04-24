@@ -37,7 +37,6 @@ void InitSeastarClientTag(protobuf::Message* request,
   memcpy(tag->req_header_buf_.data_, "DEADBEEF", 8);
   memcpy(tag->req_header_buf_.data_ + 8, &tag, 8);
   memcpy(tag->req_header_buf_.data_ + 16, &tag->method_, 4);
-  // memcpy(tag->req_header_buf_.data_ + 20, &tag->status_, 2);
   memcpy(tag->req_header_buf_.data_ + 24, &tag->req_body_buf_.len_, 8);
 
   StatusCallback wrapper_done

@@ -2,8 +2,8 @@
 
 namespace tensorflow {
 
-void SeastarMessage::DeserializeMessage(SeastarMessage* sm, const char* message) {
-  // data_type, tensor_bytes, tensor_shape, is_dead
+void SeastarMessage::DeserializeMessage(SeastarMessage* sm,
+                                        const char* message) {
   memcpy(&sm->is_dead_, &message[kIsDeadStartIndex], sizeof(sm->is_dead_));
   memcpy(&sm->data_type_, &message[kDataTypeStartIndex],
          sizeof(sm->data_type_));
@@ -13,10 +13,9 @@ void SeastarMessage::DeserializeMessage(SeastarMessage* sm, const char* message)
          sizeof(sm->tensor_bytes_));
 }
 
-void SeastarMessage::SerializeMessage(const SeastarMessage& sm, char* message) {
-  // is_dead, data_type, tensor_shape, tensor_bytes
+void SeastarMessage::SerializeMessage(const SeastarMessage& sm,
+                                      char* message) {
   memcpy(&message[kIsDeadStartIndex], &sm.is_dead_, sizeof(sm.is_dead_));
-
   memcpy(&message[kDataTypeStartIndex], &sm.data_type_,
          sizeof(sm.data_type_));
   memcpy(&message[kTensorShapeStartIndex], &sm.tensor_shape_,
@@ -25,4 +24,4 @@ void SeastarMessage::SerializeMessage(const SeastarMessage& sm, char* message) {
            sizeof(sm.tensor_bytes_));
 }
 
-} // end of namespace tensorflow
+} // end namespace tensorflow
