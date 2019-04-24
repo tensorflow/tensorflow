@@ -479,10 +479,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         ctx.config.tpu_config.initial_infeed_sleep_secs)
 
     # When using model parallelism, the TPU is pre-initialized at startup to
-    # fetch mesh information.  We skip re-initializing it here to avoid
-    # suspected issues due to the mesh layout changing on the second
-    # initialization.
-    self._should_initialize_tpu = not ctx.model_parallelism_enabled
+    # fetch mesh information. We skip re-initializing it here for
+    # MeshTensorFlow since it places variables on TPU directly. Reinitialize tpu
+    # is causing the variable corruption since the previous allocated memory
+    # might be overwritten for other purpose.
+    if (ctx.model_parallelism_enabled and
+        ctx.is_input_broadcast_with_iterators()):
+      self._should_initialize_tpu = False
+    else:
+      self._should_initialize_tpu = True
+
     self._tpu_compile_op = tpu_compile_op
 
   def begin(self):
