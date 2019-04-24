@@ -3115,7 +3115,6 @@ void PrintToPythonStdout(const char* msg) {
     for (int i = 0; i < len; i += CHUNK_SIZE) {
       PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
     }
-    PySys_WriteStdout("\n");
 
     PyGILState_Release(py_threadstate);
   }
