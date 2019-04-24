@@ -1291,11 +1291,14 @@ class LossWeightingTest(keras_parameterized.TestCase):
         x_train[:batch_size],
         y_train[:batch_size],
         sample_weight=sample_weight[:batch_size])
-    ref_score = model.evaluate(x_test, y_test, verbose=0)
-    if not context.executing_eagerly():
-      score = model.evaluate(
-          x_test[test_ids, :], y_test[test_ids, :], verbose=0)
-      self.assertLess(score[0], ref_score[0])
+    ref_score = model.evaluate(
+        x_test, y_test, verbose=0, sample_weight=sample_weight)
+    score = model.evaluate(
+        x_test[test_ids, :],
+        y_test[test_ids, :],
+        verbose=0,
+        sample_weight=sample_weight[test_ids])
+    self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
   def test_temporal_sample_weights(self):

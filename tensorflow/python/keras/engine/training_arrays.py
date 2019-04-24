@@ -147,6 +147,8 @@ def model_iteration(model,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
+  model._update_sample_weight_modes(sample_weights=sample_weights)
+
   # Get step function and loop type.
   f = _make_execution_function(model, mode)
   use_steps = is_dataset or steps_per_epoch is not None

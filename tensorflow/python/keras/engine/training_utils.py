@@ -683,7 +683,7 @@ def standardize_weights(y,
   # Iterator may return sample_weight as 1-tuple
   if isinstance(sample_weight, tuple):
     sample_weight = sample_weight[0]
-  if sample_weight_mode is not None:
+  if sample_weight_mode is not None and sample_weight_mode != 'samplewise':
     if sample_weight_mode != 'temporal':
       raise ValueError('"sample_weight_mode '
                        'should be None or "temporal". '
@@ -1013,34 +1013,31 @@ def cast_if_floating_dtype(x):
   return nest.map_structure(cast_single_tensor, x)
 
 
-def get_output_sample_weight_and_mode(skip_target_weighing_indices,
-                                      sample_weight_mode, output_name,
-                                      output_index):
+def get_output_sample_weight(skip_target_weighing_indices, sample_weight_mode,
+                             output_name, output_index):
   """Returns the sample weight and weight mode for a single output."""
-  if output_index in skip_target_weighing_indices:
-    return None, None
+  if (output_index in skip_target_weighing_indices or
+      sample_weight_mode is None or context.executing_eagerly()):
+    return None
 
+  assert sample_weight_mode in ['temporal', 'samplewise']
   if sample_weight_mode == 'temporal':
     default_value = [[1.]]
     shape = [None, None]
-    mode = 'temporal'
-  else:
+  elif sample_weight_mode == 'samplewise':
     default_value = [1.]
     shape = [None]
-    mode = None
-  if context.executing_eagerly():
-    weight = None
-  else:
-    weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=output_name + '_sample_weights')
-  return weight, mode
+
+  weight = array_ops.placeholder_with_default(
+      constant_op.constant(default_value, dtype=K.floatx()),
+      shape=shape,
+      name=output_name + '_sample_weights')
+  return weight
 
 
-def prepare_sample_weights(output_names, sample_weight_mode,
-                           skip_target_weighing_indices):
-  """Prepares sample weights for the model.
+def prepare_sample_weight_modes(output_names, sample_weight_mode,
+                                skip_target_weighing_indices):
+  """Prepares sample weight modes for the model.
 
   Args:
     output_names: List of model output names.
@@ -1049,44 +1046,44 @@ def prepare_sample_weights(output_names, sample_weight_mode,
       should be skipped.
 
   Returns:
-    A pair of list of sample weights and sample weight modes
-      (one for each output).
+    List of sample weight modes (one for each output).
 
   Raises:
     ValueError: In case of invalid `sample_weight_mode` input.
   """
-  sample_weights = []
-  sample_weight_modes = []
+
   if isinstance(sample_weight_mode, collections.Mapping):
     generic_utils.check_for_unexpected_keys('sample_weight_mode',
                                             sample_weight_mode, output_names)
+
+    sample_weight_modes = []
     for i, name in enumerate(output_names):
-      if (i not in skip_target_weighing_indices and
-          name not in sample_weight_mode):
-        raise ValueError('Output missing from sample_weight_modes dictionary')
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  elif isinstance(sample_weight_mode, list):
+      if i in skip_target_weighing_indices:
+        sample_weight_modes.append(None)
+      elif name not in sample_weight_mode:
+        raise ValueError('Output ' + name +
+                         'missing from `_sample_weight_modes` dictionary')
+      else:
+        sample_weight_modes.append(sample_weight_mode.get(name))
+    return sample_weight_modes
+
+  if isinstance(sample_weight_mode, (list, tuple)):
     if len(sample_weight_mode) != len(output_names):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
                        'The model has ' + str(len(output_names)) +
                        ' outputs, but you passed ' +
-                       str(len(sample_weight_mode)) + 'sample_weight_modes')
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode[i], name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  else:
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode, name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  return sample_weights, sample_weight_modes
+                       str(len(sample_weight_mode)) + '_sample_weight_modes.')
+
+    return [
+        None if i in skip_target_weighing_indices else sample_weight_mode[i]
+        for i in range(len(output_names))
+    ]
+
+  return [
+      None if i in skip_target_weighing_indices else sample_weight_mode
+      for i in range(len(output_names))
+  ]
 
 
 def prepare_loss_functions(loss, output_names):
