@@ -14,11 +14,9 @@ SeastarTagFactory::SeastarTagFactory(SeastarWorkerService* worker_service) :
 SeastarClientTag* SeastarTagFactory::CreateSeastarClientTag(
     seastar::temporary_buffer<char>& header) {
   char* p = const_cast<char*>(header.get());
-
   SeastarClientTag* tag = nullptr;
   memcpy(&tag, p + 8, 8);
-  // igonre the method segment
-  // memcpy(&tag->method_, p + 16, 4);
+  // ignore the method segment 4B
   memcpy(&tag->status_, p + 20, 2);
   memcpy(&tag->resp_err_msg_len_, p + 22, 2);
 
@@ -37,9 +35,7 @@ SeastarServerTag* SeastarTagFactory::CreateSeastarServerTag(
                                                worker_service_);
   memcpy(&tag->client_tag_id_, p + 8, 8);
   memcpy(&tag->method_, p + 16, 4);
-  // igonre the status segment
-  // memcpy(&tag->status_, p + 20, 2);
-  
+  // ignore the status segment 2B
   memcpy(&(tag->req_body_buf_.len_), p + 24, 8);
   tag->req_body_buf_.data_ = new char[tag->req_body_buf_.len_];
 

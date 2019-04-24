@@ -17,9 +17,12 @@
 
 namespace tensorflow {
 
-class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterface {
+class SeastarRemoteWorker : public WorkerInterface,
+                            public SeastarWorkerInterface {
  public:
-  explicit SeastarRemoteWorker(seastar::channel* chan, WorkerCacheLogger* logger, WorkerEnv* env)
+  explicit SeastarRemoteWorker(seastar::channel* chan,
+                               WorkerCacheLogger* logger,
+                               WorkerEnv* env)
       : seastar_channel_(chan),
         logger_(logger),
         env_(env) {
@@ -38,7 +41,11 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                                  StatusCallback done,
                                  CallOptions* call_opts) {
     env_->compute_pool->Schedule([this, request, response, call_opts, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kGetStatus, std::move(done), call_opts);
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kGetStatus,
+                   std::move(done),
+                   call_opts);
     });
   }
 
@@ -46,7 +53,10 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kCreateWorkerSession, std::move(done));
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kCreateWorkerSession,
+                   std::move(done));
     });
   }
 
@@ -55,8 +65,11 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done, call_opts] {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kDeleteWorkerSession,
-                   std::move(done), call_opts);
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kDeleteWorkerSession,
+                   std::move(done),
+                   call_opts);
     });
   }
 
@@ -64,7 +77,10 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                           RegisterGraphResponse* response,
                           StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kRegisterGraph, std::move(done));
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kRegisterGraph,
+                   std::move(done));
     });
   }
 
@@ -72,7 +88,10 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                             DeregisterGraphResponse* response,
                             StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kDeregisterGraph, std::move(done));
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kDeregisterGraph,
+                   std::move(done));
     });
   }
 
@@ -80,7 +99,11 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                      RunGraphResponse* response, StatusCallback done) override {
     TRACEPRINTF("Seastar RunGraph: %lld", request->step_id());
     env_->compute_pool->Schedule([this, request, response, call_opts, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kRunGraph, std::move(done), call_opts);
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kRunGraph,
+                   std::move(done),
+                   call_opts);
     });
   }
 
@@ -89,8 +112,11 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                      StatusCallback done) override {
     TRACEPRINTF("wrapped Seastar RunGraph: %lld", request->step_id());
     env_->compute_pool->Schedule([this, request, response, call_opts, done]() {
-      IssueRequest(&request->ToProto(), get_proto_from_wrapper(response),
-                   SeastarWorkerServiceMethod::kRunGraph, std::move(done), call_opts);
+      IssueRequest(&request->ToProto(),
+                   get_proto_from_wrapper(response),
+                   SeastarWorkerServiceMethod::kRunGraph,
+                   std::move(done),
+                   call_opts);
     });
   }
 
@@ -98,7 +124,10 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kCleanupGraph, std::move(done));
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kCleanupGraph,
+                   std::move(done));
     });
   }
 
@@ -106,7 +135,10 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
                        CleanupAllResponse* response,
                        StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kCleanupAll, std::move(done));
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kCleanupAll,
+                   std::move(done));
     });
   }
 
@@ -115,10 +147,12 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
     done(errors::Unimplemented("SeastarWorker::RecvTensorAsync()")); 
   }
 
-  void RecvTensorAsync(CallOptions* call_opts, const RecvTensorRequest* request,
-                       SeastarTensorResponse* response, StatusCallback done) override {
+  void RecvTensorAsync(CallOptions* call_opts,
+                       const RecvTensorRequest* request,
+                       SeastarTensorResponse* response,
+                       StatusCallback done) override {
     VLOG(1) << "RecvTensorAsync req: " << request->DebugString();
-    // Don't propagate dma_ok over gRPC.
+    // Don't propagate dma_ok over Seastar.
     RecvTensorRequest* req_copy = nullptr;
     if (request->dma_ok()) {
       req_copy = new RecvTensorRequest;
@@ -138,21 +172,27 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
     }
 
     IssueRequest(req_copy ? req_copy : request, response,
-                 SeastarWorkerServiceMethod::kRecvTensor,
+                 SeastarWorkerServiceMethod::kRecvTensor, 
                  std::move(*cb_to_use), call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
                     StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kLogging, done);
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kLogging,
+                   done);
     });
   }
 
   void TracingAsync(const TracingRequest* request, TracingResponse* response,
                     StatusCallback done) override {
     env_->compute_pool->Schedule([this, request, response, done]() {
-      IssueRequest(request, response, SeastarWorkerServiceMethod::kTracing, done);
+      IssueRequest(request,
+                   response,
+                   SeastarWorkerServiceMethod::kTracing,
+                   done);
     });
   }
 

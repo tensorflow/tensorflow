@@ -1,7 +1,6 @@
 #include "tensorflow/contrib/seastar/seastar_channel_cache.h"
 #include "tensorflow/contrib/seastar/seastar_remote_worker.h"
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
-
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
@@ -65,12 +64,16 @@ private:
 };
 }
 
-WorkerCacheInterface* NewSeastarWorkerCache(SeastarChannelCache* channel_cache, WorkerEnv* env) {
+WorkerCacheInterface* NewSeastarWorkerCache(
+    SeastarChannelCache* channel_cache, WorkerEnv* env) {
   return new SeastarWorkerCache(channel_cache, nullptr, "", env);
 }
 
-WorkerCacheInterface* NewSeastarWorkerCacheWithLocalWorker(SeastarChannelCache* channel_cache,
-    WorkerInterface* local_worker, const string& local_target, WorkerEnv* env) {
+WorkerCacheInterface* NewSeastarWorkerCacheWithLocalWorker(
+    SeastarChannelCache* channel_cache,
+    WorkerInterface* local_worker,
+    const string& local_target,
+    WorkerEnv* env) {
   return new SeastarWorkerCache(channel_cache, local_worker, local_target, env);
 }
 }

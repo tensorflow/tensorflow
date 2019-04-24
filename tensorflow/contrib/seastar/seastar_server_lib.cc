@@ -1,43 +1,23 @@
 #include <fstream>
 #include <map>
-
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
-#include "grpc++/server_builder.h"
 #include "grpc/support/alloc.h"
-
 #include "tensorflow/contrib/seastar/seastar_channel_cache.h"
 #include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/contrib/seastar/seastar_rendezvous_mgr.h"
 #include "tensorflow/contrib/seastar/seastar_server_lib.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/graph_mgr.h"
-#include "tensorflow/core/distributed_runtime/local_master.h"
-#include "tensorflow/core/distributed_runtime/master.h"
-#include "tensorflow/core/distributed_runtime/master_env.h"
-#include "tensorflow/core/distributed_runtime/master_session.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
 namespace {
 const char* kEndpointMapFile = ".endpoint_map";
-
-RendezvousMgrInterface* NewSeastarRendezvousMgr(const WorkerEnv* env) {
-  return new SeastarRendezvousMgr(env);
-}
 } // namespace
 
 class SeastarPortMgr {
@@ -136,156 +116,32 @@ private:
 };
 
 SeastarServer::SeastarServer(const ServerDef& server_def, Env* env)
-  : server_def_(server_def), env_(env), state_(NEW) {
-  seastar_port_mgr_ = new SeastarPortMgr(server_def_);
+  : GrpcServer(server_def, env) {
+  seastar_port_mgr_ = new SeastarPortMgr(server_def);
 }
 
 SeastarServer::~SeastarServer() {
-  TF_CHECK_OK(Stop());
-  TF_CHECK_OK(Join());
-
+  delete seastar_worker_service_;
   delete seastar_engine_;
-  delete master_service_;
-  delete worker_service_;
-
-  if (worker_env_.session_mgr != nullptr) {
-    delete worker_env_.session_mgr;
-  } else {
-    delete worker_env_.device_mgr;
-  }
-
   delete seastar_port_mgr_;
 }
 
-Status SeastarServer::Init(const GrpcServerOptions& opts) {
-  mutex_lock l(mu_);
-  CHECK_EQ(state_, NEW);
-  master_env_.env = env_;
-  worker_env_.env = env_;
-
-  SessionOptions sess_opts;
-  ConfigProto config = server_def_.default_session_config();
-  sess_opts.config = config;
-
-  string name_prefix =
-    strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
-        "/task:", server_def_.task_index());
-
-  std::vector<std::unique_ptr<Device>> devices;
-  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
-        &devices));
-  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
-  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
-  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
-  worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
-                               ? new SeastarRendezvousMgr(&worker_env_)
-                               : opts.rendezvous_mgr_func(&worker_env_);
-
-  string unused;
-  string default_worker_name;
-  if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
-        &default_worker_name, &unused)) {
-    return errors::Internal("Could not parse worker name.");
-  }
-
-  int requested_port = -1;
-  for (const auto& job : server_def_.cluster().job()) {
-    if (job.name() == server_def_.job_name()) {
-      auto iter = job.tasks().find(server_def_.task_index());
-      if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def_.task_index(),
-                                       " was not defined in job \"",
-                                       server_def_.job_name(), "\"");
-      }
-      const std::vector<string> hostname_port =
-        str_util::Split(iter->second, ':');
-
-      if (hostname_port.size() != 2) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\"");
-      }
-
-      if (!strings::safe_strto32(hostname_port[1], &requested_port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\"");
-      }
-      break;
-    }
-  }
-
-  if (requested_port == -1) {
-    return errors::Internal("Job \"", server_def_.job_name(),
-        "\" was not defined in cluster");
-  }
-
-  ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port),
-      GetServerCredentials(server_def_), &bound_port_);
-  builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
-
-  master_impl_ = CreateMaster(&master_env_);
-  master_service_ = NewGrpcMasterService(
-      master_impl_.get(), config, &builder);
-
-  server_ = builder.BuildAndStart();
-  if (!server_) {
-    return errors::Unknown("Could not start gRPC server");
-  }
-
-  LOG(INFO) << "starting grpc server, bind port:" << bound_port_;
-
-  WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
-  worker_impl_ = NewSeastarWorker(&worker_env_);
-  worker_service_ = NewSeastarWorkerService(worker_impl_.get()).release();
-
-  worker_env_.compute_pool = ComputePool(sess_opts);
+Status SeastarServer::Init() {
+  seastar_worker_impl_ = NewSeastarWorker(&worker_env_);
+  seastar_worker_service_ =
+    NewSeastarWorkerService(seastar_worker_impl_.get()).release();
   seastar_bound_port_ = seastar_port_mgr_->GetLocalSeastarPort();
-  size_t server_number = ParseServers(worker_cache_factory_options);
-  seastar_engine_ = new SeastarEngine(server_number, seastar_bound_port_,
-                                      worker_service_);
+  seastar_engine_ = new SeastarEngine(seastar_bound_port_,
+                                      seastar_worker_service_);
 
-  WorkerCacheInterface* worker_cache;
-  TF_RETURN_IF_ERROR(
-      SeastarWorkerCacheFactory(worker_cache_factory_options, &worker_cache));
-  CHECK_NE(nullptr, worker_cache);
+  RendezvousMgrCreationFunction rendezvous_mgr_func =
+      [this](const WorkerEnv* env) {
+        return new SeastarRendezvousMgr(env);
+      };
 
-  worker_env_.session_mgr = new SessionMgr(
-      &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
-      std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
-        WorkerCacheFactoryOptions options(server_def);
-        return SeastarWorkerCacheFactory(options, worker_cache);
-      });
-
-  // master intialize
-  master_env_.ops = OpRegistry::Global();
-  master_env_.worker_cache = worker_cache;
-  StatsPublisherFactory stats_factory = opts.stats_factory;
-  master_env_.master_session_factory =
-    [config, stats_factory](
-        SessionOptions options, const MasterEnv* env,
-        std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
-        std::unique_ptr<WorkerCacheInterface> worker_cache,
-        std::unique_ptr<DeviceSet> device_set,
-        std::vector<string> filtered_worker_list) {
-      options.config.MergeFrom(config);
-      return new MasterSession(options, env, std::move(remote_devs),
-          std::move(worker_cache), std::move(device_set),
-          std::move(filtered_worker_list),
-          stats_factory);
-    };
-
-  master_env_.worker_cache_factory =
-    [this](const WorkerCacheFactoryOptions& options,
-        WorkerCacheInterface** worker_cache) {
-      return SeastarWorkerCacheFactory(options, worker_cache);
-    };
-  LocalMaster::Register(target(), master_impl_.get(),
-      config.operation_timeout_in_ms());
-
-  return Status::OK();
+  GrpcServerOptions opts;
+  opts.rendezvous_mgr_func = rendezvous_mgr_func;
+  return GrpcServer::Init(opts);
 }
 
 Status SeastarServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
@@ -325,16 +181,8 @@ Status SeastarServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
   return Status::OK();
 }
 
-size_t SeastarServer::ParseServers(const WorkerCacheFactoryOptions& options) {
-  size_t hosts_count = 0;
-  for (const auto& job : options.cluster_def->job()) {
-    hosts_count += job.tasks().size();
-  }
-  return hosts_count;
-}
-
-Status SeastarServer::SeastarWorkerCacheFactory(const WorkerCacheFactoryOptions& options,
-                                                WorkerCacheInterface** worker_cache) {
+Status SeastarServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
+                                         WorkerCacheInterface** worker_cache) {
   if (options.job_name == nullptr || options.job_name->empty()) {
     Status s = errors::InvalidArgument(
         "The master (current machine) is not included in the provided "
@@ -363,92 +211,16 @@ Status SeastarServer::SeastarWorkerCacheFactory(const WorkerCacheFactoryOptions&
 
   LOG(INFO) << "SeastarWorkerCacheFactory, name_prefix:" << name_prefix;
   *worker_cache = NewSeastarWorkerCacheWithLocalWorker(
-      channel_cache.release(), worker_impl_.get(), name_prefix, &worker_env_);
+      channel_cache.release(), seastar_worker_impl_.get(), name_prefix, &worker_env_);
 
   return Status::OK();
-}
-
-Status SeastarServer::Start() {
-  mutex_lock l(mu_);
-  switch (state_) {
-    case NEW: {
-      master_thread_.reset(
-          env_->StartThread(ThreadOptions(), "TF_master_service",
-                            [this] { master_service_->HandleRPCsLoop(); }));
-      state_ = STARTED;
-      LOG(INFO) << "Started server with target: " << target();
-      return Status::OK();
-    }
-    case STARTED:
-      LOG(INFO) << "Server already started (target: " << target() << ")";
-      return Status::OK();
-    case STOPPED:
-      return errors::FailedPrecondition("Server has stopped.");
-    default:
-      LOG(FATAL);
-  }
-  return Status::OK();
-}
-
-Status SeastarServer::Stop() {
-  mutex_lock l(mu_);
-  switch (state_) {
-    case NEW:
-      state_ = STOPPED;
-      return Status::OK();
-    case STARTED:
-      LOG(WARNING) << "Clean shutdown is not currently implemented";
-      server_->Shutdown();
-      master_service_->Shutdown();
-      state_ = STOPPED;
-      return Status::OK();
-    case STOPPED:
-      LOG(INFO) << "Server already stopped (target: " << target() << ")";
-      return Status::OK();
-    default:
-      LOG(FATAL);
-  }
-  return Status::OK();
-}
-
-Status SeastarServer::Join() {
-  mutex_lock l(mu_);
-  switch (state_) {
-    case NEW:
-      // Prevent the server from being started subsequently.
-      state_ = STOPPED;
-      return Status::OK();
-    case STARTED:
-    case STOPPED:
-      master_thread_.reset();
-      return Status::OK();
-    default:
-      LOG(FATAL);
-  }
-  return Status::OK();
-}
-
-const string SeastarServer::target() const {
-  return strings::StrCat("grpc://localhost:", bound_port_);
-}
-
-std::shared_ptr<::grpc::ServerCredentials> SeastarServer::GetServerCredentials(
-    const ServerDef& server_def) const {
-  return ::grpc::InsecureServerCredentials();
-}
-
-std::unique_ptr<Master> SeastarServer::CreateMaster(MasterEnv* master_env) {
-  return std::unique_ptr<Master>(new Master(master_env, 0.0));
 }
 
 Status SeastarServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
-
   std::unique_ptr<SeastarServer> ret(
       new SeastarServer(server_def, env == nullptr ? Env::Default() : env));
-  GrpcServerOptions options;
-  options.rendezvous_mgr_func = NewSeastarRendezvousMgr;
-  Status s = ret->Init(options);
+  Status s = ret->Init();
   if (!s.ok()) {
     LOG(ERROR) << s;
     return s;

@@ -20,8 +20,7 @@ using namespace seastar;
 
 class SeastarEngine {
 public:
-  SeastarEngine(uint16_t server_number,
-                uint16_t local,
+  SeastarEngine(uint16_t local,
                 SeastarWorkerService* worker_service);
   virtual ~SeastarEngine();
 

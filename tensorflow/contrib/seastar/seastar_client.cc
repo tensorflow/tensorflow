@@ -17,7 +17,8 @@ SeastarClient::Connection::Connection(seastar::connected_socket&& fd,
   _fd = std::move(fd);
   _fd.set_nodelay(true);
   _read_buf = _fd.input();
-  _channel->init(seastar::engine().get_packet_queue(), std::move(_fd.output()));
+  _channel->init(seastar::engine().get_packet_queue(),
+                 std::move(_fd.output()));
 }
 
 seastar::future<> SeastarClient::Connection::Read() {

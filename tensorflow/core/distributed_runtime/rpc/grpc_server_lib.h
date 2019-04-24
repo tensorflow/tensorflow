@@ -127,6 +127,8 @@ class GrpcServer : public ServerInterface {
   void set_channel_cache(GrpcChannelCache* channel_cache) {
     channel_cache_.reset(channel_cache);
   }
+ protected:
+  WorkerEnv worker_env_;
 
  private:
   // The overall server configuration.
@@ -159,7 +161,6 @@ class GrpcServer : public ServerInterface {
   std::shared_ptr<GrpcChannelCache> channel_cache_;
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
-  WorkerEnv worker_env_;
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);

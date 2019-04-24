@@ -27,12 +27,11 @@ namespace {
     }
   }
 
-  size_t GetCoreNumber(size_t total_connections) {
-    int64 max_core_number = DEFAULT_CORE_NUM;
+  size_t GetCoreNumber() {
+    int64 core_number = DEFAULT_CORE_NUM;
     Status s = ReadInt64FromEnvVar("SEASTAR_CORE_NUMBER", DEFAULT_CORE_NUM,
-                                   &max_core_number);
-
-    return std::min(total_connections, (size_t)max_core_number);
+                                   &core_number);
+    return core_number;
   }
 
   // force to avoid cleanup static variables and global variables in seastar
@@ -53,12 +52,12 @@ namespace {
   }
 }
 
-SeastarEngine::SeastarEngine(uint16_t server_number, uint16_t local,
+SeastarEngine::SeastarEngine(uint16_t local,
                              SeastarWorkerService* worker_service)
   : local_(local), core_id_(0), is_server_ready_(false) {
     ::on_exit(SeastarExit, (void*)nullptr);
     tag_factory_ = new SeastarTagFactory(worker_service);
-    core_number_ = GetCoreNumber(server_number);
+    core_number_ = GetCoreNumber();
     client_ = new SeastarClient();
     thread_ = std::thread(&SeastarEngine::AsyncStartServer, this);
 }
