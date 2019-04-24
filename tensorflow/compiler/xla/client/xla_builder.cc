@@ -1051,18 +1051,6 @@ XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
-    // If one operand is a scalar, just multiply the two operands.
-    if (ShapeUtil::IsScalar(lhs_shape) || ShapeUtil::IsScalar(rhs_shape)) {
-      if (dimension_numbers.rhs_batch_dimensions_size() != 0 ||
-          dimension_numbers.lhs_batch_dimensions_size() != 0 ||
-          dimension_numbers.rhs_contracting_dimensions_size() != 0 ||
-          dimension_numbers.lhs_contracting_dimensions_size() != 0) {
-        return InvalidArgument(
-            "Dots with scalar operands must have no contracting or batch "
-            "dimensions");
-      }
-      return xla::Mul(lhs, rhs);
-    }
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDotOpShape(lhs_shape, rhs_shape,
                                                         dimension_numbers));

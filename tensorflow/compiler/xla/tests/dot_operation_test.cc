@@ -1200,6 +1200,7 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{16, 34}, v{16, 34}, "ab,ab->ab"},
       p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
       p{v{5, 19}, v{}, "ab,->ab"},
+      p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf->bhqk"},
   };
   return test_cases;
 }
