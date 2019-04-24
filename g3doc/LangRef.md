@@ -678,8 +678,8 @@ of tensor type.
 Note: hexadecimal integer literals are not allowed in tensor type declarations
 to avoid confusion between `0xf32` and `0 x f32`. Zero sizes are allowed in
 tensors and treated as other sizes, e.g., `tensor<0 x 1 x i32>` and `tensor<1 x
-0 x i32>` are different types. Since zero sizes are not allowed in other types,
-such tensors should be optimized away before lowering tensors to memrefs.
+0 x i32>` are different types. Since zero sizes are not allowed in some other
+types, such tensors should be optimized away before lowering tensors to vectors.
 
 Examples:
 
@@ -722,7 +722,9 @@ A `memref` type is a reference to a region of memory (similar to a buffer
 pointer, but more powerful). The buffer pointed to by a memref can be allocated,
 aliased and deallocated. A memref can be used to read and write data from/to the
 memory region which it references. Memref types use the same shape specifier as
-tensor types, but do not allow unknown rank nor zero sizes.
+tensor types, but do not allow unknown rank. Note that `memref<f32>`, `memref<0
+x f32>`, `memref<1 x 0 x f32>`, and `memref<0 x 1 x f32>` are all different
+types.
 
 The memory space of a memref is specified by a target-specific integer index. If
 no memory space is specified, then the default memory space (0) is used. The

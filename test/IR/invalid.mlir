@@ -871,16 +871,6 @@ func @zero_in_vector_type() -> vector<1x0xi32>
 
 // -----
 
-// expected-error @+1 {{invalid memref size}}
-func @zero_memref_type() -> memref<0xi32>
-
-// -----
-
-// expected-error @+1 {{invalid memref size}}
-func @zero_in_memref_type() -> memref<1x0xi32>
-
-// -----
-
 // expected-error @+1 {{expected dimension size in vector type}}
 func @negative_vector_size() -> vector<-1xi32>
 

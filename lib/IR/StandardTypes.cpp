@@ -314,7 +314,7 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
 
   for (int64_t s : shape) {
     // Negative sizes are not allowed except for `-1` that means dynamic size.
-    if (s <= 0 && s != -1) {
+    if (s < -1) {
       if (location)
         context->emitError(*location, "invalid memref size");
       return {};
