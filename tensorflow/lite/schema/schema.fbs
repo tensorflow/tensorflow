@@ -230,6 +230,7 @@ enum BuiltinOperator : byte {
   QUANTIZE = 114,
   MATRIX_SET_DIAG = 115,
   ROUND = 116,
+  RECIPROCAL = 117,
 }
 
 // Options for the builtin operators.
