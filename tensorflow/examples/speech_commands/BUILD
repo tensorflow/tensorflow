@@ -345,3 +345,17 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
     ],
 )
+
+py_library(
+    name = "test_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":freeze",
+        ":generate_streaming_test_wav",
+        ":input_data",
+        ":label_wav",
+        ":models",
+        ":train",
+        ":wav_to_features",
+    ],
+)
