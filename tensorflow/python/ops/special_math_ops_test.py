@@ -402,91 +402,6 @@ class EinsumTest(test.TestCase):
             m0: [[[1, 2]]],
             m1: [3, 2],
         }
-        
-        
-class EinsumOptimizeTest(test.TestCase):
-
-    optimizations = [False, 'greedy', 'dp', True]
-
-    def test_matmatvec(self):
-        """
-        matrix-matrix-vector product: Without optimizations, the matrix-matrix
-        multiplication is performed first. 'dp' as well as 'greedy' perform 
-        two matrix-vector multiplications instead.
-        """
-        
-        results = [
-            [(0,1), (0,1)], # no optimizations
-            [(1,2), (0,1)], # greedy
-            [(1,2), (0,1)], # dp
-            [(1,2), (0,1)]  # True
-        ]
-        for o, r in zip(self.optimizations, results):
-            self.assertEqual(
-                special_math_ops.einsum_optimize(
-                    [(16,16), (16,16), (16,)], ["jk", "kl", "l"], "j",
-                    optimize=o
-                ),
-                r
-            )
-        
-    
-    def test_4(self):
-        """
-           p      
-        +-----D---- l
-        |     |
-        |     |r
-        |  n  |
-        A-----C---- k
-        |     |
-        |     |q
-        |     |
-        +-----B---- j
-           m
-           
-        test optimization as it is called from
-        einsum("qmj,krnq,rpl,mnp->jkl", B, C, D, A)
-        """
-        
-        A_shape = (16,2,16)
-        B_shape = (2,16,16)
-        C_shape = (2,2,2,2)
-        D_shape = (2,16,16)
-        
-        A_labels = "mnp"
-        B_labels = "qmj"
-        C_labels = "krnq"
-        D_labels = "rpl"
-        
-        ishapes = [B_shape,  C_shape,  D_shape,  A_shape]
-        ilabels = [B_labels, C_labels, D_labels, A_labels]
-        olabels = "jkl"
-        
-        results = [
-            [(0,1), (0,1), (0,1)], # (((B,C),D),A)
-            [(0,1), (1,2), (0,1)], # ((B,C),(A,D))
-            [(0,3), (0,1), (0,1)], # (((A,B),C),D)
-            [(0,3), (0,1), (0,1)]  # (((A,B),C),D)
-        ]
-        
-        for o, r in zip(self.optimizations, results):
-            self.assertEqual(
-                special_math_ops.einsum_optimize(
-                    ishapes, ilabels, olabels,
-                    optimize=o
-                ),
-                r
-            )
-
-    def test_invalid(self):
-        with self.assertRaises(ValueError):
-            special_math_ops.einsum_optimize(
-                [(16,16), (16,)], ["jk", "k"], "j",
-                optimize='invalid'
-            )
-
-        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, 2, None, 2))
@@ -499,6 +414,88 @@ class EinsumOptimizeTest(test.TestCase):
         }
         self.assertAllClose([[[7, 8]]], sess.run(out, feed_dict=feed_dict))
 
+
+class EinsumOptimizeTest(test.TestCase):
+
+  optimizations = [False, 'greedy', 'dp', True]
+
+  def test_matmatvec(self):
+    """
+    matrix-matrix-vector product: Without optimizations, the matrix-matrix
+    multiplication is performed first. 'dp' as well as 'greedy' perform 
+    two matrix-vector multiplications instead.
+    """
+    
+    results = [
+      [(0,1), (0,1)], # no optimizations
+      [(1,2), (0,1)], # greedy
+      [(1,2), (0,1)], # dp
+      [(1,2), (0,1)]  # True
+    ]
+    for o, r in zip(self.optimizations, results):
+      self.assertEqual(
+        special_math_ops.einsum_optimize(
+          [(16,16), (16,16), (16,)], ["jk", "kl", "l"], "j",
+          optimize=o
+        ),
+        r
+      )
+  
+  def test_4(self):
+    """
+       p      
+    +-----D---- l
+    |     |
+    |     |r
+    |  n  |
+    A-----C---- k
+    |     |
+    |     |q
+    |     |
+    +-----B---- j
+       m
+       
+    test optimization as it is called from
+    einsum("qmj,krnq,rpl,mnp->jkl", B, C, D, A)
+    """
+    
+    A_shape = (16,2,16)
+    B_shape = (2,16,16)
+    C_shape = (2,2,2,2)
+    D_shape = (2,16,16)
+    
+    A_labels = "mnp"
+    B_labels = "qmj"
+    C_labels = "krnq"
+    D_labels = "rpl"
+    
+    ishapes = [B_shape,  C_shape,  D_shape,  A_shape]
+    ilabels = [B_labels, C_labels, D_labels, A_labels]
+    olabels = "jkl"
+    
+    results = [
+      [(0,1), (0,1), (0,1)], # (((B,C),D),A)
+      [(0,1), (1,2), (0,1)], # ((B,C),(A,D))
+      [(0,3), (0,1), (0,1)], # (((A,B),C),D)
+      [(0,3), (0,1), (0,1)]  # (((A,B),C),D)
+    ]
+    
+    for o, r in zip(self.optimizations, results):
+      self.assertEqual(
+        special_math_ops.einsum_optimize(
+          ishapes, ilabels, olabels,
+          optimize=o
+        ),
+        r
+      )
+
+  def test_invalid(self):
+    with self.assertRaises(ValueError):
+      special_math_ops.einsum_optimize(
+        [(16,16), (16,)], ["jk", "k"], "j",
+        optimize='invalid'
+      )
+        
 
 if __name__ == '__main__':
   test.main()
