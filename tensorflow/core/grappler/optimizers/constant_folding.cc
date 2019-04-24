@@ -2394,15 +2394,9 @@ bool ConstantFolding::IsReductionWithConstantIndices(
       !reductions_indices->attr().count("value")) {
     return false;
   }
-  const TensorProto& reduction_indices_tensor =
-      reductions_indices->attr().at("value").tensor();
-  *indices_is_empty = false;
-  for (const auto& dim : reduction_indices_tensor.tensor_shape().dim()) {
-    if (dim.size() == 0) {
-      *indices_is_empty = true;
-      break;
-    }
-  }
+  const TensorShapeProto& reduction_indices_shape =
+      reductions_indices->attr().at("value").tensor().tensor_shape();
+  *indices_is_empty = TensorShape(reduction_indices_shape).num_elements() == 0;
   return true;
 }
 
