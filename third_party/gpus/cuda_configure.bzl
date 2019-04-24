@@ -691,13 +691,16 @@ def _get_cuda_config(repository_ctx):
 
     is_windows = _is_windows(repository_ctx)
     cuda_version = config["cuda_version"].split(".")
-    cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_version[0], cuda_version[1])
+    cuda_major = cuda_version[0]
+    cuda_minor = cuda_version[1]
+
+    cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_major, cuda_minor)
     cudnn_version = ("64_%s" if is_windows else "%s") % config["cudnn_version"]
 
     # cuda_lib_version is for libraries like cuBLAS, cuFFT, cuSOLVER, etc.
     # It changed from 'x.y' to just 'x' in CUDA 10.1.
-    if (int(cuda_version[0]), int(cuda_version[1])) >= (10, 1):
-        cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_version[0]
+    if (int(cuda_major), int(cuda_minor)) >= (10, 1):
+        cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
     else:
         cuda_lib_version = cuda_version
 
