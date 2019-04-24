@@ -334,18 +334,18 @@ class EinsumTest(test.TestCase):
     for idx in input_axes.split(','):
       shape = [all_axes[ax] for ax in idx if ax.isalpha()]
       input_vals.append(np.random.random(shape))
-
-    input_tensors = [constant_op.constant(val) for val in input_vals]
-    output_tensor = special_math_ops.einsum(axes, *input_tensors)
-
-    with self.session(use_gpu=True):
-      output_value = self.evaluate(output_tensor)
-
+    
     correct_value = np.einsum(axes, *input_vals)
 
-    err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
-    self.assertLess(err, 1e-8)
+    input_tensors = [constant_op.constant(val) for val in input_vals]
+    
+    for o in [False, True, 'dp', 'greedy']:
+      output_tensor = special_math_ops.einsum(axes, *input_tensors, optimize=o)
+      with self.session(use_gpu=True):
+        output_value = self.evaluate(output_tensor)
+    
+      err = np.abs(correct_value - output_value).max()
+      self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):
     with ops.Graph().as_default():
