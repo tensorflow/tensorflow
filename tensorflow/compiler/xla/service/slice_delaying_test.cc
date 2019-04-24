@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 #include "tensorflow/compiler/xla/service/slice_delaying.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -62,10 +63,23 @@ TEST_F(SliceDelayingTest, Basic) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(6, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 TEST_F(SliceDelayingTest, SliceDualDimension) {
@@ -92,11 +106,28 @@ TEST_F(SliceDelayingTest, SliceDualDimension) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(7, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice2 = inst->mutable_operand(2);
+  EXPECT_EQ(slice2->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice2->slice_limits(), std::vector<int64>({8, 4}));
+  EXPECT_EQ(slice2->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 TEST_F(SliceDelayingTest, SplitDualDimension) {
@@ -126,12 +157,33 @@ TEST_F(SliceDelayingTest, SplitDualDimension) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(9, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice2 = inst->mutable_operand(2);
+  EXPECT_EQ(slice2->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice2->slice_limits(), std::vector<int64>({8, 2}));
+  EXPECT_EQ(slice2->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice3 = inst->mutable_operand(3);
+  EXPECT_EQ(slice3->slice_starts(), std::vector<int64>({0, 2}));
+  EXPECT_EQ(slice3->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice3->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 TEST_F(SliceDelayingTest, OverlapSlice) {
@@ -158,11 +210,28 @@ TEST_F(SliceDelayingTest, OverlapSlice) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(7, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({3, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice2 = inst->mutable_operand(2);
+  EXPECT_EQ(slice2->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice2->slice_limits(), std::vector<int64>({5, 8}));
+  EXPECT_EQ(slice2->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 TEST_F(SliceDelayingTest, PartialSplit) {
@@ -303,12 +372,33 @@ TEST_F(SliceDelayingTest, MultiUsers) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(9, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice2 = inst->mutable_operand(2);
+  EXPECT_EQ(slice2->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice2->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice2->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice3 = inst->mutable_operand(3);
+  EXPECT_EQ(slice3->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice3->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice3->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 TEST_F(SliceDelayingTest, NonElementWise) {
@@ -352,10 +442,23 @@ TEST_F(SliceDelayingTest, Stride) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(6, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({7, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({2, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({1, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({2, 1}));
 }
 
 TEST_F(SliceDelayingTest, NotAllSliceOperand) {
@@ -410,12 +513,33 @@ TEST_F(SliceDelayingTest, Cascade) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&slice_delaying, module.get()));
   EXPECT_TRUE(result);
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
   EXPECT_EQ(11, module->entry_computation()->instruction_count());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
+  HloInstruction* inst = module->entry_computation()->root_instruction();
+  EXPECT_THAT(inst,
       GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
           m::Slice(m::Add(m::Parameter(0), m::Abs(m::Parameter(2)))),
           m::Slice(m::Add(m::Parameter(0), m::Abs(m::Parameter(2)))))));
+  HloInstruction* slice0 = inst->mutable_operand(0);
+  EXPECT_EQ(slice0->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice0->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice0->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice1 = inst->mutable_operand(1);
+  EXPECT_EQ(slice1->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice1->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice1->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice2 = inst->mutable_operand(2);
+  EXPECT_EQ(slice2->slice_starts(), std::vector<int64>({0, 0}));
+  EXPECT_EQ(slice2->slice_limits(), std::vector<int64>({2, 8}));
+  EXPECT_EQ(slice2->slice_strides(), std::vector<int64>({1, 1}));
+  HloInstruction* slice3 = inst->mutable_operand(3);
+  EXPECT_EQ(slice3->slice_starts(), std::vector<int64>({2, 0}));
+  EXPECT_EQ(slice3->slice_limits(), std::vector<int64>({8, 8}));
+  EXPECT_EQ(slice3->slice_strides(), std::vector<int64>({1, 1}));
 }
 
 }  // namespace

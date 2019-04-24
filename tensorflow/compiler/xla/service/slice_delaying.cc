@@ -34,9 +34,6 @@ class SliceDelayer {
   // Returns whether the slices are delayed successfully.
   StatusOr<bool> MergeWithPeers(const HloInstruction* inst);
 
-  // Eliminates dead instructions.
-  void EliminateDeadInstructions();
-
  private:
   // Collects true operands of inst. The inst's operands should all be slices,
   // and the true operands are the operands of slices. Returns true operand
@@ -66,10 +63,6 @@ class SliceDelayer {
       const std::vector<HloInstruction*>& users);
 
   absl::flat_hash_set<const HloInstruction*> visited_;
-
-  absl::flat_hash_set<HloInstruction*> slices_;
-
-  absl::flat_hash_set<HloInstruction*> removed_;
 };
 
 // Computes the cost of implimentation of delaying slice, and returns whether
@@ -133,22 +126,6 @@ StatusOr<bool> SliceDelayer::MergeWithPeers(const HloInstruction* inst) {
   // Change HLO graph.
   GenerateNewOp(operands, users);
   return true;
-}
-
-void SliceDelayer::EliminateDeadInstructions() {
-  // Remove dead users.
-  for (auto inst : removed_) {
-    VLOG(10) << "Delete: " << inst->ToString();
-    inst->parent()->RemoveInstruction(inst);
-  }
-
-  // Remove dead slices.
-  for (auto inst : slices_) {
-    if (inst->user_count() == 0) {
-      VLOG(10) << "Delete: " << inst->ToString();
-      inst->parent()->RemoveInstruction(inst);
-    }
-  }
 }
 
 StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
@@ -279,13 +256,6 @@ void SliceDelayer::GenerateNewOp(const std::vector<HloInstruction*>& operands,
              << " Replace: " << user->ToString();
     // Replaces true users with user slices.
     user->ReplaceAllUsesWith(user_slice);
-
-    // Records the operand-slices. They may be dead nodes.
-    for (HloInstruction* slice : user->operands()) {
-      slices_.insert(slice);
-    }
-    // The true users are dead nodes now.
-    removed_.insert(user);
   }
 }
 
@@ -311,8 +281,6 @@ StatusOr<bool> SliceDelaying::Run(HloModule* module) {
     }
   }
 
-  // Clears dead nodes.
-  slice_delayer.EliminateDeadInstructions();
   VLOG(10) << "after: " << name() << "\n" <<  module->ToString();
   return changed;
 }
