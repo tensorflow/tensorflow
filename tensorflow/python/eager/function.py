@@ -966,6 +966,8 @@ class FunctionSpec(object):
     #   - remove the corresponding arguments,
     #   - remove the corresponding keywords.
     _, unwrapped = tf_decorator.unwrap(python_function)
+    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
+    # fullargspec.kwonlydefaults.
     if isinstance(unwrapped, functools.partial):
       # Also consider the Python3 case with kwonlydefaults.
       if fullargspec.defaults or fullargspec.kwonlydefaults:

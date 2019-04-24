@@ -1296,6 +1296,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
 
+  def test_partial_bind_only_first_argument(self, cycles):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3. Only then we get some more "
+                    "advanced inspection of partials where this is allowed.")
+
+    def f(x, y):
+      return x + y
+
+    partial_func = functools.partial(f, x=5)
+    tf_func = def_function.function(partial_func)
+
+    root = tracking.AutoTrackable()
+    root.f = tf_func
+    self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(y=constant_op.constant(9)), 14)
+
   def test_partial_with_passed_fn_as_default(self, cycles):
 
     def f(x, y):
