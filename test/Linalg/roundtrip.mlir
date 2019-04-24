@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -verify | mlir-opt %s -verify | FileCheck %s
+// RUN: mlir-opt %s -verify | mlir-opt -verify | FileCheck %s
 
 func @range(%arg0: index, %arg1: index, %arg2: index) {
   %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
