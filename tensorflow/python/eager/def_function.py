@@ -607,7 +607,7 @@ class Function(object):
     # This is run only at serialization time on likely very small inputs so we
     # are not concerned about O(n^2) runtime.
     for concrete_function in concrete_functions:
-      signature, _ = concrete_function.structured_input_signature
+      signature = concrete_function.structured_input_signature
       flattened = nest.flatten(signature)
       if any(
           isinstance(arg, func_graph_module.UnknownArgument)

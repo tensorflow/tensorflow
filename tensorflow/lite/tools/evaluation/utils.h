@@ -19,10 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/model.h"
+
 namespace tflite {
 namespace evaluation {
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output);
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
+
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
+
 }  // namespace evaluation
 }  // namespace tflite
 

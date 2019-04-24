@@ -315,8 +315,8 @@ class Network(base_layer.Layer):
         output_tensors=self._nested_outputs)
 
     # Build self.input_names and self.output_names.
+    self._set_output_names()
     self.input_names = []
-    self.output_names = []
     self._feed_input_names = []
     self._feed_inputs = []
     self._feed_input_shapes = []
@@ -326,8 +326,25 @@ class Network(base_layer.Layer):
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
         self._feed_inputs.append(layer.input)
+
+  def _set_output_names(self):
+    """Assigns unique names to the Network's outputs.
+
+    Output layers with multiple output tensors would otherwise lead to duplicate
+    names in self.output_names.
+    """
+    uniquified = []
+    output_names = set()
+    prefix_count = {}
     for layer in self._output_layers:
-      self.output_names.append(layer.name)
+      proposal = layer.name
+      while proposal in output_names:
+        existing_count = prefix_count.get(layer.name, 1)
+        proposal = '{}_{}'.format(layer.name, existing_count)
+        prefix_count[layer.name] = existing_count + 1
+      output_names.add(proposal)
+      uniquified.append(proposal)
+    self.output_names = uniquified
 
   @trackable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None, dynamic=False):

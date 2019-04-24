@@ -71,6 +71,7 @@ py_test(
     name = "losses_test",
     size = "small",
     srcs = ["python/utils/losses_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":losses",
@@ -121,6 +122,7 @@ py_test(
     name = "gbdt_batch_test",
     size = "medium",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "notsan",  # b/62863147
@@ -150,6 +152,7 @@ py_test(
     name = "model_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/model_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":model_ops_py",
@@ -170,6 +173,7 @@ py_test(
     name = "prediction_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/prediction_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":model_ops_py",
@@ -187,6 +191,7 @@ py_test(
     name = "quantile_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
+    python_version = "PY2",
     shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
@@ -209,6 +214,7 @@ py_test(
     name = "split_handler_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/split_handler_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":split_handler_ops_py",
@@ -225,6 +231,7 @@ py_test(
     name = "stats_accumulator_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":stats_accumulator_ops_py",
@@ -239,6 +246,7 @@ py_test(
     name = "training_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/training_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":model_ops_py",

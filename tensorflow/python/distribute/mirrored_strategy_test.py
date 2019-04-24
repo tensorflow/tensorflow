@@ -44,6 +44,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
@@ -107,6 +108,20 @@ class MirroredTwoDeviceDistributionTest(
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
+  def reduce_axis_helper(self, distribution, replica_squared_fn):
+    with distribution.scope():
+      num_replicas = distribution.num_replicas_in_sync
+      result = distribution.extended.call_for_each_replica(replica_squared_fn)
+      # sum
+      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=0)
+      expected = sum(x * (x + 1) for x in range(num_replicas))
+      self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
+      # mean
+      reduced = distribution.reduce(reduce_util.ReduceOp.MEAN, result, axis=0)
+      expected /= sum(x + 1 for x in range(num_replicas))
+      self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
   def testReduceAxisToCpu(self, distribution):
     for dtype in (dtypes.float32, dtypes.int32):
       def replica_squared_fn(dtype=dtype):
@@ -114,18 +129,31 @@ class MirroredTwoDeviceDistributionTest(
         replica_id = _replica_id_as_int()
         return math_ops.cast([replica_id] * (replica_id + 1), dtype)
 
-      with distribution.scope():
-        num_replicas = distribution.num_replicas_in_sync
-        result = distribution.extended.call_for_each_replica(replica_squared_fn)
-        # sum
-        reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=0)
-        expected = sum(x * (x + 1) for x in range(num_replicas))
-        self.assertNear(expected, self.evaluate(reduced), 0.00001)
+      self.reduce_axis_helper(distribution, replica_squared_fn)
 
-        # mean
-        reduced = distribution.reduce(reduce_util.ReduceOp.MEAN, result, axis=0)
-        expected /= sum(x + 1 for x in range(num_replicas))
-        self.assertNear(expected, self.evaluate(reduced), 0.00001)
+  def set_v2_tensorshape(self, v2):
+    if v2:
+      tensor_shape.enable_v2_tensorshape()
+    else:
+      tensor_shape.disable_v2_tensorshape()
+
+  def testReduceAxisToCpuUnknownShape(self, distribution):
+    original_v2 = tensor_shape._TENSORSHAPE_V2_OVERRIDE  # pylint: disable=protected-access
+    try:
+      for v2 in (False, True):
+        self.set_v2_tensorshape(v2)
+        for dtype in (dtypes.float32, dtypes.int32):
+          for shape in ((None,), None):  # Test both unknown size and rank.
+            def replica_squared_fn(dtype=dtype, shape=shape):
+              # Lists with different lengths on different replicas.
+              replica_id = _replica_id_as_int()
+              tensor = math_ops.cast([replica_id] * (replica_id + 1), dtype)
+              # Erase shape information
+              return array_ops.placeholder_with_default(tensor, shape=shape)
+
+            self.reduce_axis_helper(distribution, replica_squared_fn)
+    finally:
+      self.set_v2_tensorshape(original_v2)
 
   def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)

@@ -613,7 +613,7 @@ class FileIoTest(test.TestCase):
     filename = os.path.join(self._base_dir, "a.npz")
     np.savez_compressed(filename, {"a": 1, "b": 2})
     with gfile.GFile(filename, "rb") as f:
-      info = np.load(f)
+      info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
 
 

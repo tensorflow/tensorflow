@@ -75,6 +75,14 @@ class Optimize(enum.Enum):
   Some optimizations may come at the cost of accuracy.
   """
 
+  # Default optimization strategy.
+  #
+  # Converter will do its best to improve size and latency based on the
+  # information provided.
+  # Enhanced optimizations can be gained by providing a representative_dataset.
+  # Currently this is recommended, and is equivalent to the modes below.
+  DEFAULT = "DEFAULT"
+
   # Optimize for size.
   #
   # Optimizations that reduce the size of the model.
@@ -153,12 +161,7 @@ class TFLiteConverterV2(object):
     target_spec: Experimental flag, subject to change. Specification of target
       device.
     optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. The converter applies the
-      optimizations by giving priority to the optimizations specified earlier in
-      the list. E.g. `[optimize.OPTIMIZE_FOR_SIZE,
-      optimize.OPTIMIZE_FOR_LATENCY]` requires the converter to do both size and
-      latency optimizations giving priority to size optimizations over latency
-      optimizations.
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
@@ -332,8 +335,10 @@ class TFLiteConverterV2(object):
     # training optimizations.
     post_training_optimize = bool(
         len(
-            set(self.optimizations)
-            & set([Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE])))
+            set(self.optimizations).intersection([
+                Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+                Optimize.DEFAULT
+            ])))
     # Do weights only quantization if there is no dataset for calibration.
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))
@@ -355,7 +360,8 @@ class TFLiteConverterV2(object):
     if self.representative_dataset and post_training_optimize:
       calibrate_quantize = _calibrator.Calibrator(result)
       result = calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen)
+          self.representative_dataset.input_gen, constants.FLOAT,
+          constants.FLOAT)
 
     return result
 
@@ -416,7 +422,7 @@ class TFLiteConverter(object):
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
     post_training_quantize: deprecated, please specify
-     `[optimize.OPTIMIZE_FOR_SIZE]` for `optimizations` instead. Boolean
+     `[Optimize.DEFAULT]` for `optimizations` instead. Boolean
      indicating whether to quantize the weights of the converted float model.
      Model size will be reduced and there will be latency improvements
      (at the cost of accuracy). (default False)
@@ -429,13 +435,8 @@ class TFLiteConverter(object):
     target_ops: Experimental flag, subject to change. Set of OpsSet
       options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
-    optimizations: Experimental flag, subject to change, A list of
-      optimizations to apply when converting the model. The converter applies
-      the optimizations by giving priority to the optimizations specified
-      earlier in the list. E.g.
-      `[optimize.OPTIMIZE_FOR_SIZE, optimize.OPTIMIZE_FOR_LATENCY]` requires
-      the converter to do both size and latency optimizations giving priority
-      to size optimizations over latency optimizations.
+    optimizations: Experimental flag, subject to change. A list of optimizations
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
@@ -733,11 +734,10 @@ class TFLiteConverter(object):
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    "please use optimizations=[Optimize.DEFAULT]"
                     " instead." % name)
       if value:
-        # Use OPTIMIZE_FOR_SIZE for post training for now.
-        self.optimizations = [Optimize.OPTIMIZE_FOR_SIZE]
+        self.optimizations = [Optimize.DEFAULT]
       else:
         self.optimizations = []
       return
@@ -746,9 +746,9 @@ class TFLiteConverter(object):
   def __getattribute__(self, name):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    "please use optimizations=[Optimize.DEFAULT]"
                     " instead." % name)
-      return Optimize.OPTIMIZE_FOR_SIZE in set(self.optimizations)
+      return Optimize.DEFAULT in set(self.optimizations)
     return object.__getattribute__(self, name)
 
   def convert(self):
@@ -805,8 +805,11 @@ class TFLiteConverter(object):
             "Provide an input generator for representative_dataset")
 
     post_training_optimize = bool(
-        len(set(self.optimizations) & set([Optimize.OPTIMIZE_FOR_LATENCY,
-                                           Optimize.OPTIMIZE_FOR_SIZE])))
+        len(
+            set(self.optimizations).intersection([
+                Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+                Optimize.DEFAULT
+            ])))
     # Do weights only quantization if there is no dataset for calibration.
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))

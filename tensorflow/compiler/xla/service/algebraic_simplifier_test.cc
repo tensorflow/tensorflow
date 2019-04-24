@@ -4418,7 +4418,7 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   int m, k, n;
   PrimitiveType element_type;
   std::tie(m, k, n, element_type) = GetParam();
-  std::vector<int64> lhs_dims = {1, 3, 5};
+  std::vector<int64> lhs_dims = {2, 3, 5};
   std::vector<int64> rhs_dims = lhs_dims;
   std::vector<int64> output_dims = lhs_dims;
   if (m > 0) {
@@ -4460,6 +4460,8 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
   const bool dot_should_be_transformed =
       m == 1 || k == 1 || n == 1 || m == -1 || k == -1 || n == -1;
+  EXPECT_EQ(changed, dot_should_be_transformed);
+  TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
   EXPECT_EQ(changed, dot_should_be_transformed);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
@@ -4515,11 +4517,17 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
+  // First pass of algebraic simplifier will remove degenerate dimensions
+  // and optimize dot(transpose(x),transpose(y))
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
   const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
   const bool computation_should_be_modified =
       dot_should_be_transformed || (transpose_lhs && transpose_rhs);
   EXPECT_EQ(changed, computation_should_be_modified);
+  // The second pass of algebriac simplifer will remove dots without
+  // non-contracting dimensions or contracting dimensions.
+  TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
+  EXPECT_EQ(changed, dot_should_be_transformed);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kDot) {

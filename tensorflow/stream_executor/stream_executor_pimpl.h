@@ -70,9 +70,6 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  explicit StreamExecutor(PlatformKind kind,
-                          const PluginConfig &plugin_config = PluginConfig());
-
   StreamExecutor(
       const Platform *platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation);
@@ -213,7 +210,7 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void *HostMemoryAllocate(uint64 bytes);
+  void *HostMemoryAllocate(uint64 size);
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void *location);
@@ -572,23 +569,23 @@ class StreamExecutor {
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event *event);
 
-  // Allocates stream resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateStream(Stream *subject);
+  // Allocates stream resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateStream(Stream *stream);
 
   // Deallocates stream resources on the underlying platform.
-  void DeallocateStream(Stream *subject);
+  void DeallocateStream(Stream *stream);
 
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream *dependent, Stream *other);
 
-  // Allocates timer resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateTimer(Timer *subject);
+  // Allocates timer resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateTimer(Timer *timer);
 
   // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer *subject);
+  void DeallocateTimer(Timer *timer);
 
   // Records a start event for an interval timer.
   bool StartTimer(Stream *stream, Timer *timer);
@@ -610,7 +607,7 @@ class StreamExecutor {
   // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
   // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
   // tracked.
-  void CreateAllocRecord(void *opaque, uint64 size);
+  void CreateAllocRecord(void *opaque, uint64 bytes);
 
   // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
   // pointers will not be erased (as they're not tracked, per above).

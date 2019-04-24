@@ -152,7 +152,11 @@ message FunctionSpec {
 }
 
 // A SavedResource represents a TF object that holds state during its lifetime.
+// An object of this type can have a reference to a:
+// create_resource() and an initialize() function.
 message SavedResource {
-  // An object of this type can have a reference to a:
-  // create_resource() and an initialize() function.
+  // A device specification indicating a required placement for the resource
+  // creation function, e.g. "CPU". An empty string allows the user to select a
+  // device.
+  string device = 1;
 }

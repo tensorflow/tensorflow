@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_COMMON_H_
-#define TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_COMMON_H_
+#ifndef TENSORFLOW_CORE_UTIL_MATMUL_BCAST_H_
+#define TENSORFLOW_CORE_UTIL_MATMUL_BCAST_H_
 
 #include <vector>
 
@@ -67,4 +67,4 @@ class MatMulBCast {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_COMMON_H_
+#endif  // TENSORFLOW_CORE_UTIL_MATMUL_BCAST_H_

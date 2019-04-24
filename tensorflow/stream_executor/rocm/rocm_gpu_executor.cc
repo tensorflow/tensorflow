@@ -961,14 +961,6 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
 
 }  // namespace gpu
 
-void initialize_rocm_gpu_executor() {
-  *internal::MakeROCMExecutorImplementation() = [](const PluginConfig& config) {
-    return new gpu::GpuExecutor{config};
-  };
-}
-
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_gpu_executor, {
-  stream_executor::initialize_rocm_gpu_executor();
-});
+REGISTER_MODULE_INITIALIZER(rocm_gpu_executor, {});

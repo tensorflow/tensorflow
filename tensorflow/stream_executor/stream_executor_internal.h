@@ -383,21 +383,6 @@ class StreamExecutorInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
 
-using StreamExecutorFactory =
-    std::function<StreamExecutorInterface *(const PluginConfig &)>;
-using EventFactory = std::function<EventInterface *(StreamExecutor *)>;
-using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
-using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
-using KernelFactory = std::function<KernelInterface*()>;
-
-StreamExecutorFactory *MakeCUDAExecutorImplementation();
-
-StreamExecutorFactory *MakeROCMExecutorImplementation();
-
-StreamExecutorFactory *MakeOpenCLExecutorImplementation();
-
-extern StreamExecutorFactory MakeHostExecutorImplementation;
-
 
 }  // namespace internal
 }  // namespace stream_executor

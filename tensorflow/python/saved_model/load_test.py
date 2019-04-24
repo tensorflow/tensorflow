@@ -37,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
@@ -65,20 +66,16 @@ from tensorflow.python.util import tf_inspect
     dict(testcase_name="ReloadThrice", cycles=3))
 class LoadTest(test.TestCase, parameterized.TestCase):
 
-  def cycle(self, obj, cycles, signatures=None, use_gpu=True):
+  def cycle(self, obj, cycles, signatures=None):
     to_save = obj
     # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
     # point w.r.t. saving/restoring, ideally after 2nd saving.
     for _ in range(cycles):
       path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      if use_gpu:
-        # If available, we'll run the save and restore preferring the GPU. This
-        # just makes sure we aren't throwing errors and have enough
-        # device("CPU") blocks to satisfy the placer.
-        with test_util.use_gpu():
-          save.save(to_save, path, signatures)
-          loaded = load.load(path)
-      else:
+      # If available, we'll run the save and restore preferring the GPU. This
+      # just makes sure we aren't throwing errors and have enough
+      # device("CPU") blocks to satisfy the placer.
+      with test_util.use_gpu():
         save.save(to_save, path, signatures)
         loaded = load.load(path)
       to_save = loaded
@@ -1299,6 +1296,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
 
+  def test_partial_bind_only_first_argument(self, cycles):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3. Only then we get some more "
+                    "advanced inspection of partials where this is allowed.")
+
+    def f(x, y):
+      return x + y
+
+    partial_func = functools.partial(f, x=5)
+    tf_func = def_function.function(partial_func)
+
+    root = tracking.AutoTrackable()
+    root.f = tf_func
+    self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(y=constant_op.constant(9)), 14)
+
   def test_partial_with_passed_fn_as_default(self, cycles):
 
     def f(x, y):
@@ -1446,16 +1461,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return current_sum
 
     root = HasDataset()
-    self.assertEqual(3 * (1 + 4 + 9 + 16),
-                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
-    with ops.device("CPU"):
-      # TODO(b/130706977): Fix loading of captured Datsets with a GPU device
-      # available.
-      root = self.cycle(
-          root, cycles,
-          use_gpu=False)
-    self.assertEqual(3 * (1 + 4 + 9 + 16),
-                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    root = self.cycle(root, cycles)
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
@@ -1483,6 +1495,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded = self.cycle(model, cycles)
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
+
+  def test_multi_output_layer(self, cycles):
+
+    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(base_layer.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name="out")(inp)
+    model = training_lib.Model(inp, out)
+    loaded = self.cycle(model, cycles)
+    self.assertAllClose(
+        dict(out=2., out_1=3.),
+        loaded.signatures["serving_default"](constant_op.constant(1.)))
 
   def test_model_with_custom_function_attached(self, cycles):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))

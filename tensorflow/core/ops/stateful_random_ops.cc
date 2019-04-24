@@ -69,6 +69,17 @@ REGISTER_OP("StatefulUniformInt")
       return Status::OK();
     });
 
+REGISTER_OP("RngSkip")
+    .Input("resource: resource")
+    .Input("algorithm: int64")
+    .Input("delta: int64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    });
+
 REGISTER_OP("NonDeterministicInts")
     .Input("shape: shape_dtype")
     .SetIsStateful()

@@ -268,7 +268,7 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
   Array2D<float> a_val = GenerateRandomMatrix(512, 512);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SVD(a, 100, 1e-6);
+  auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
