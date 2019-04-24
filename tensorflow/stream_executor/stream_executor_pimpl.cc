@@ -60,37 +60,6 @@ void BlockOnThreadExecutor(port::ThreadPool *executor) {
   n.WaitForNotification();
 }
 
-internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
-    PlatformKind platform_kind, const PluginConfig &plugin_config) {
-  // Note: we use this factory-assignment-in-switch pattern instead of just
-  // invoking the callable in case linkage is messed up -- instead of invoking a
-  // nullptr std::function (due to failed registration) we give a nice
-  // LOG(FATAL) message.
-  internal::StreamExecutorFactory factory;
-  switch (platform_kind) {
-    case PlatformKind::kCuda:
-      factory = *internal::MakeCUDAExecutorImplementation();
-      break;
-    case PlatformKind::kROCm:
-      factory = *internal::MakeROCMExecutorImplementation();
-      break;
-    case PlatformKind::kOpenCL:
-      factory = *internal::MakeOpenCLExecutorImplementation();
-      break;
-    case PlatformKind::kHost:
-      factory = internal::MakeHostExecutorImplementation;
-      break;
-    default:
-      factory = nullptr;
-  }
-  if (factory == nullptr) {
-    LOG(FATAL)
-        << "cannot create StreamExecutor implementation for platform kind: "
-        << PlatformKindString(platform_kind);
-  }
-  return factory(plugin_config);
-}
-
 std::atomic_int_fast64_t correlation_id_generator(0);
 
 }  // namespace
@@ -153,20 +122,6 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
                                  &LOC ## Complete, ## __VA_ARGS__);
 
 /* static */ mutex StreamExecutor::static_mu_{LINKER_INITIALIZED};
-
-StreamExecutor::StreamExecutor(PlatformKind platform_kind,
-                               const PluginConfig &plugin_config)
-    : platform_(nullptr),
-      implementation_(StreamExecutorImplementationFromPlatformKind(
-          platform_kind, plugin_config)),
-      platform_kind_(platform_kind),
-      device_ordinal_(-1),
-      background_threads_(new port::ThreadPool(
-          port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
-      live_stream_count_(0),
-      tracing_enabled_(false) {
-  CheckPlatformKindIsValid(platform_kind);
-}
 
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.

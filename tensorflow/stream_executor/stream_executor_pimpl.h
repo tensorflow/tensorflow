@@ -70,9 +70,6 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  explicit StreamExecutor(PlatformKind kind,
-                          const PluginConfig &plugin_config = PluginConfig());
-
   StreamExecutor(
       const Platform *platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation);
