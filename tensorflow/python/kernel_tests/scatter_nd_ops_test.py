@@ -96,6 +96,14 @@ def _NumpyDiv(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: p / u)
 
 
+def _NumpyMin(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, lambda p, u: min(p, u))
+
+
+def _NumpyMax(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, lambda p, u: max(p, u))
+
+
 class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
@@ -222,6 +230,14 @@ class StatefulScatterNdTest(test.TestCase):
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
+  @test_util.run_deprecated_v1
+  def testVariableRankMin(self):
+    self._VariableRankTests(_NumpyMin, state_ops.scatter_nd_min)
+
+  @test_util.run_deprecated_v1
+  def testVariableRankMax(self):
+    self._VariableRankTests(_NumpyMax, state_ops.scatter_nd_max)
+
   # TODO(ebrevdo): Re-enable when we need ScatterNdMul.
   # def testVariableRankMul(self):
   #   self._VariableRankTests(_NumpyMul, state_ops.scatter_nd_mul)
@@ -241,6 +257,8 @@ class StatefulScatterNdTest(test.TestCase):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
+    self._ScatterRepeatIndicesTest(_NumpyMin, state_ops.scatter_nd_min)
+    self._ScatterRepeatIndicesTest(_NumpyMax, state_ops.scatter_nd_max)
     # TODO(ebrevdo): Re-enable when we need ScatterNdMul and ScatterNdDiv.
     # self._ScatterRepeatIndicesTest(_NumpyMul, state_ops.scatter_nd_mul)
     # self._ScatterRepeatIndicesTest(_NumpyDiv, state_ops.scatter_nd_div)
@@ -264,7 +282,8 @@ class StatefulScatterNdTest(test.TestCase):
     # scatter_nd ops is under control.
     #  tf.scatter_nd_mul, tf.scatter_nd_div,
     for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
-               state_ops.scatter_nd_update):
+               state_ops.scatter_nd_update, state_ops.scatter_nd_min,
+               state_ops.scatter_nd_max):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.cached_session(use_gpu=False):
@@ -751,6 +770,56 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertLess(err_added_wrt_updates, 2e-4)
       self.assertLess(err_subbed_wrt_updates, 2e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateMinMax(self):
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant([0, 2, -1, 1.2], dtype=dtypes.float32)
+    t = array_ops.ones([8], dtype=dtypes.float32)
+    assigned = array_ops.tensor_scatter_update(t, indices, updates)
+    min_result = array_ops.tensor_scatter_min(t, indices, updates)
+    max_result = array_ops.tensor_scatter_max(t, indices, updates)
+
+    self.assertAllEqual(assigned,
+                        constant_op.constant([1, -1, 1, 2, 0, 1, 1, 1.2]))
+    self.assertAllEqual(min_result,
+                        constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1]))
+    self.assertAllEqual(max_result,
+                        constant_op.constant([1, 1, 1, 2, 1, 1, 1, 1.2]))
+
+  @test_util.run_v1_only("b/120545219")
+  def testUpdateMinMaxGradients(self):
+
+    with self.cached_session():
+      indices = constant_op.constant([[3], [1]])
+      updates = constant_op.constant([0, 2], dtype=dtypes.float32)
+      x = array_ops.ones([4], dtype=dtypes.float32)
+
+      assigned = array_ops.tensor_scatter_update(x, indices, updates)
+      min_result = array_ops.tensor_scatter_min(x, indices, updates)
+      max_result = array_ops.tensor_scatter_max(x, indices, updates)
+
+      err_assigned = gradient_checker.compute_gradient_error(
+          x, [4], assigned, [4])
+      err_min_result = gradient_checker.compute_gradient_error(
+          x, [4], min_result, [4])
+      err_max_result = gradient_checker.compute_gradient_error(
+          x, [4], max_result, [4])
+
+      self.assertLess(err_assigned, 2e-4)
+      self.assertLess(err_min_result, 2e-4)
+      self.assertLess(err_max_result, 2e-4)
+
+      err_assigned_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], assigned, [4])
+      err_min_result_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], min_result, [4])
+      err_max_result_wrt_updates = gradient_checker.compute_gradient_error(
+          updates, [2], max_result, [4])
+
+      self.assertLess(err_assigned_wrt_updates, 2e-4)
+      self.assertLess(err_min_result_wrt_updates, 2e-4)
+      self.assertLess(err_max_result_wrt_updates, 2e-4)
+ 
   def testTensorScatterUpdateWithForwarding(self):
     @def_function.function
     def _TestFn():

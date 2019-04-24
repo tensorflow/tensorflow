@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "TensorScatterMax"
+  deprecation_message: "Use tensor_scatter_nd_max instead"
+  endpoint {
+    name: "tensor_scatter_nd_max"
+  }
+  endpoint {
+    name: "tensor_scatter_max"
+    deprecation_version: 2
+  }
+}
