@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <string.h>
+
 #include <map>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <string>
@@ -657,12 +658,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
-  // BufferAssignment::ToString() includes a header, so no need for us to
-  // print one ourselves.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "buffer_assignment",
-                            assignment->ToString());
-  }
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
   // Each computation is a single function.  Emit all embedded computations

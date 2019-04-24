@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
@@ -676,10 +677,6 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "buffer_assignment",
-                            buffer_assignment->ToString());
-  }
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
