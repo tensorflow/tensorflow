@@ -352,17 +352,17 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
           ])
 
   # The actual testing methods go here.
-  # test_chief_only_callback = generate_callback_test_function(
-  #     callableForTestChiefOnlyCallback.__func__)
-  # test_model_checkpoint_saves_on_chief_but_not_otherwise = \
-  #     generate_callback_test_function(
-  #         callableForTestModelCheckpointSavesOnChiefButNotOtherwise.__func__)
+  test_chief_only_callback = generate_callback_test_function(
+      callableForTestChiefOnlyCallback.__func__)
+  test_model_checkpoint_saves_on_chief_but_not_otherwise = \
+      generate_callback_test_function(
+          callableForTestModelCheckpointSavesOnChiefButNotOtherwise.__func__)
   test_load_weight_from_model_checkpoint = generate_callback_test_function(
       callableForTestLoadWeightFromModelCheckpoint.__func__)
-  # test_model_restore_callback = generate_callback_test_function(
-  #     callableForTestModelRestoreCallback.__func__)
-  # test_unmatched_model_file = generate_callback_test_function(
-  #     callableForTestUnmatchedModelFile.__func__)
+  test_model_restore_callback = generate_callback_test_function(
+      callableForTestModelRestoreCallback.__func__)
+  test_unmatched_model_file = generate_callback_test_function(
+      callableForTestUnmatchedModelFile.__func__)
 
 
 if __name__ == '__main__':
