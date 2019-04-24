@@ -144,6 +144,7 @@ TfLiteRegistration* Register_REVERSE_SEQUENCE();
 TfLiteRegistration* Register_MATRIX_DIAG();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_MATRIX_SET_DIAG();
+TfLiteRegistration* Register_RECIPROCAL();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -358,6 +359,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
+  AddBuiltin(BuiltinOperator_RECIPROCAL, Register_RECIPROCAL());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());

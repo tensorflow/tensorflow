@@ -114,6 +114,15 @@ TEST(ElementWise, Rsqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, Reciprocal) {
+  ElementWiseOpFloatModel m(BuiltinOperator_RECIPROCAL, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -4.0});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, 0.5, 2, -0.25})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(ElementWise, Square) {
   ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});
