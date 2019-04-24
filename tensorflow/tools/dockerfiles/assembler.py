@@ -592,6 +592,7 @@ def main(argv):
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
           last_event = None
+          image_id = None
           # Manually process log output extracting build success and image id
           # in order to get built image
           while True:
@@ -608,7 +609,7 @@ def main(argv):
                   image_id = match.group(2)
                 last_event = json_output['stream']
                 # collect all log lines into the logs object
-                logs.append(last_event)
+                logs.append(json_output)
             except StopIteration:
               eprint('Docker image build complete.')
               break
