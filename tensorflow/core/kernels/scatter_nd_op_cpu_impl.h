@@ -82,6 +82,24 @@ class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
   }
 };
 
+template <typename Input, typename Update, typename Output>
+class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
+ public:
+  EIGEN_STRONG_INLINE static void Execute(Input value/* input */, Update update,
+                                          Output output) {
+    output = value.cwiseMax(update);
+  }
+};
+
+template <typename Input, typename Update, typename Output>
+class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
+ public:
+  EIGEN_STRONG_INLINE static void Execute(Input value/* input */, Update update,
+                                          Output output) {
+    output = value.cwiseMin(update);
+  }
+};
+
 }  // namespace update_executor
 
 namespace functor {
@@ -157,10 +175,15 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 
 #define REGISTER_SCATTER_ND_MATH(type)                           \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB); 
+  
+#define REGISTER_SCATTER_ND_MINMAX(type)                         \
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MAX); \
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MIN);  
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
 REGISTER_SCATTER_ND_INDEX(string, scatter_nd_op::UpdateOp::ADD);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MINMAX);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
 TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_MATH
@@ -241,10 +264,15 @@ struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
 
 #define REGISTER_SCATTER_ND_MATH_SYCL(type)                           \
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::SUB);
+  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::SUB); 
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL)
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MATH_SYCL)
+#define REGISTER_SCATTER_ND_MINMAX_SYCL(type)
+  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MIN); \
+  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MAX);
+
+TF_CALL_GPU_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MINMAX_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MATH_SYCL);
 REGISTER_SCATTER_ND_UPDATE_SYCL(int32);
 REGISTER_SCATTER_ND_MATH_SYCL(int32);
 
