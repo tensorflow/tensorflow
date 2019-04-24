@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
@@ -253,32 +254,14 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
     auto* infeed_dataset_iterator = itr->second.get();
     auto tensor_count = infeed_dataset_iterator->shapes.size();
     for (auto j = 0; j < tensor_count; ++j) {
+      auto& queue = infeed_dataset_iterator->tensor_queues[j];
+      auto length = ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]);
       current_engine_->connectStreamToCallback(
           GetInfeedCopyHandle(infeed_info.stream_prefix, j),
-          [this, j, infeed_dataset_iterator](void* dest) {
-            auto infeed_queue_manager = GetXfeedManager(ordinal_)->infeed();
-            auto buffer = infeed_queue_manager->BlockingDequeueBuffer();
-
-            const char* data = reinterpret_cast<const char*>(buffer->data());
-            auto length = buffer->length();
-            CHECK_EQ(length,
-                     ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]));
-
-            std::memcpy(dest, data, length);
-
-            infeed_queue_manager->ReleaseCurrentBuffer(
-                length, buffer->data(), infeed_dataset_iterator->shapes[j]);
-
-            bool all_tensors_used = false;
-            {
-              std::lock_guard<std::mutex> lock(infeed_dataset_iterator->mutex);
-              infeed_dataset_iterator->used[j] = true;
-              all_tensors_used = infeed_dataset_iterator->all_tensors_used();
-            }
-
-            if (all_tensors_used) {
-              infeed_dataset_iterator->tensors_dequeued_cv.notify_one();
-            }
+          [&queue, length](void* dest) {
+            tensorflow::TensorBuffer* buffer;
+            queue->BlockPop(buffer);
+            std::memcpy(dest, buffer->data(), length);
           });
     }
   }
@@ -354,59 +337,37 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
     infeed_dataset_iterators.push_back(itr->second.get());
   }
 
-  return [this, infeed_dataset_iterators, executor]() {
-    auto platform =
-        se::MultiPlatformManager::PlatformWithName("Poplar").ValueOrDie();
-    auto* transfer_manager = static_cast<PoplarTransferManager*>(
-        xla::TransferManager::GetForPlatform(platform).ValueOrDie());
-
+  return [this, infeed_dataset_iterators]() {
     while (false == infeed_thread_cancelled_) {
       for (auto& infeed_dataset_iterator : infeed_dataset_iterators) {
-        bool end_of_sequence = false;
-        {
-          std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
-
-          // We make an assumption that every sub tensor from the infeed is
-          // dequeued every iteration. If all tensors have been used, then get
-          // the next set of tensors.
-          if (infeed_dataset_iterator->all_tensors_used()) {
-            std::vector<tensorflow::Tensor> outputs;
-            TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
-                infeed_dataset_iterator->iterator_ctx.get(), &outputs,
-                &end_of_sequence));
-            infeed_dataset_iterator->tensors = outputs;
-            absl::c_fill(infeed_dataset_iterator->used, false);
-          }
+        // We do not call GetNext if queues are full.
+        // We make an assumption that all tensors from each queue for an infeed
+        // are dequeued every iteration - we therefore only need to check if the
+        // first queue is full to know whether all the queues are full.
+        if (infeed_dataset_iterator->tensor_queues[0]->IsFull()) {
+          continue;
         }
 
+        bool end_of_sequence = false;
+        std::vector<tensorflow::Tensor> outputs;
+        TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
+            infeed_dataset_iterator->iterator_ctx.get(), &outputs,
+            &end_of_sequence));
+
         if (!end_of_sequence) {
-          auto tensor_count = infeed_dataset_iterator->shapes.size();
-          for (auto j = 0; j < tensor_count; ++j) {
-            auto tensor = infeed_dataset_iterator->tensors[j];
-
-            const char* tensor_data = tensor.tensor_data().data();
-            const auto& shape = infeed_dataset_iterator->shapes[j];
-
-            auto literal = MutableBorrowingLiteral(tensor_data, shape);
-            auto status =
-                transfer_manager->TransferLiteralToInfeed(executor, literal);
-
-            if (false == status.ok()) {
-              infeed_thread_cancelled_ = true;
-              return;
-            }
+          for (auto j = 0; j < outputs.size(); ++j) {
+            auto& tensor = outputs[j];
+            tensorflow::TensorBuffer* tb =
+                tensorflow::DMAHelper::buffer(&tensor);
+            tb->Ref();
+            auto& queue = infeed_dataset_iterator->tensor_queues[j];
+            queue->Push(tb);
           }
         } else {
           infeed_thread_cancelled_ = true;
           LOG(INFO)
               << "The dataset iterator has reached the end of the dataset.";
         }
-
-        std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
-        infeed_dataset_iterator->tensors_dequeued_cv.wait(lock, [&]() {
-          return infeed_dataset_iterator->all_tensors_used() ||
-                 infeed_thread_cancelled_;
-        });
       }
     }
   };
@@ -420,12 +381,7 @@ void PoplarExecutor::LaunchInfeedThread(
   thread_pool_.Schedule(infeed_thread_io_fn);
 }
 
-void PoplarExecutor::StopThreadPool() {
-  infeed_thread_cancelled_ = true;
-  for (auto& infeed_it : infeed_dataset_iterators_) {
-    infeed_it.second->tensors_dequeued_cv.notify_one();
-  }
-}
+void PoplarExecutor::StopThreadPool() { infeed_thread_cancelled_ = true; }
 
 void PoplarExecutor::DeferredDeallocation() {
   std::lock_guard<std::recursive_mutex> g(mutex_);

@@ -63,6 +63,8 @@ struct CompilerResources {
 
   uint32 replication_factor;
 
+  bool merge_infeed_io_copies;
+
   std::map<std::string, TensorMap> tensor_maps;
 
   conv_graph_caching::ConvolutionGraphCache conv_graph_cache;
@@ -88,13 +90,15 @@ struct CompilerResources {
                     const poplar::OptionFlags& conv_options,
                     const poplar::OptionFlags& pooling_options,
                     bool disable_graph_convolution_caching,
-                    uint32 replication_factor, HloModule* module)
+                    bool merge_infeed_io_copies, uint32 replication_factor,
+                    HloModule* module)
       : main_graph(dev),
         annotations(module),
         default_conv_options(conv_options),
         default_pooling_options(pooling_options),
         disable_graph_convolution_caching(disable_graph_convolution_caching),
-        replication_factor(replication_factor) {}
+        replication_factor(replication_factor),
+        merge_infeed_io_copies(merge_infeed_io_copies) {}
 };
 
 }  // namespace poplarplugin

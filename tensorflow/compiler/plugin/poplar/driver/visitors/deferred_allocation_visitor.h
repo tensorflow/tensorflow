@@ -43,6 +43,13 @@ class DeferredAllocationVisitor : public FullVisitor {
 
   Status HandleInfeed(HloInstruction* inst) override;
 
+  poplar::program::Sequence GetSequence() const override {
+    poplar::program::Sequence seq;
+    seq.add(merged_infeed_sequence);
+    seq.add(sequence);
+    return seq;
+  }
+
  protected:
   // Allocates the input and calls the post processing function - this function
   // should be called by HandleParameter and HandleInfeed. If it's allocating a
@@ -65,6 +72,8 @@ class DeferredAllocationVisitor : public FullVisitor {
 
  private:
   bool IsDeferredAllocation(const HloInstruction* inst, int64 flat_tuple_index);
+
+  poplar::program::Sequence merged_infeed_sequence;
 };
 
 }  // namespace poplarplugin
