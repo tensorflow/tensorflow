@@ -1136,6 +1136,19 @@ void ConvertRsqrtOperator(const Model& model,
   (*rsqrt_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertReciprocalOperator(const Model& model,
+                               const TensorFlowReciprocalOperator& src_op,
+                               GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* reciprocal_op = tensorflow_graph->add_node();
+  reciprocal_op->set_op("Reciprocal");
+  reciprocal_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *reciprocal_op->add_input() = src_op.inputs[0];
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*reciprocal_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertSplitOperator(const Model& model,
                           const TensorFlowSplitOperator& src_op,
                           GraphDef* tensorflow_graph) {
@@ -2200,6 +2213,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertRsqrtOperator(model,
                          static_cast<const TensorFlowRsqrtOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kReciprocal) {
+    ConvertReciprocalOperator(
+        model, static_cast<const TensorFlowReciprocalOperator&>(src_op),
+        tensorflow_graph);
   } else if (src_op.type == OperatorType::kSplit) {
     ConvertSplitOperator(model,
                          static_cast<const TensorFlowSplitOperator&>(src_op),

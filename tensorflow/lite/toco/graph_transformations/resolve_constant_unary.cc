@@ -124,6 +124,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
     case OperatorType::kExp:
     case OperatorType::kLog:
     case OperatorType::kNeg:
+    case OperatorType::kReciprocal:
     case OperatorType::kRsqrt:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
@@ -284,6 +285,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   } else if (unary_op->type == OperatorType::kExp ||
              unary_op->type == OperatorType::kNeg ||
              unary_op->type == OperatorType::kLog ||
+             unary_op->type == OperatorType::kReciprocal ||
              unary_op->type == OperatorType::kRsqrt ||
              unary_op->type == OperatorType::kSqrt ||
              unary_op->type == OperatorType::kSquare) {
@@ -301,6 +303,8 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
         outval = -val;
       } else if (unary_op->type == OperatorType::kLog) {
         outval = std::log(val);
+      } else if (unary_op->type == OperatorType::kReciprocal) {
+        outval = 1.0f / val;
       } else if (unary_op->type == OperatorType::kRsqrt) {
         outval = 1.0f / std::sqrt(val);
       } else if (unary_op->type == OperatorType::kSqrt) {

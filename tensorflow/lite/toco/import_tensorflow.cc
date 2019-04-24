@@ -2517,6 +2517,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
       {"Rank", ConvertSimpleOperator<TensorFlowRankOperator, 1, 1>},
+      {"Reciprocal", ConvertSimpleOperator<TensorFlowReciprocalOperator, 1, 1>},
       {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},

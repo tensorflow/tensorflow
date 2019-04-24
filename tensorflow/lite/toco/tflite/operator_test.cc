@@ -138,6 +138,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
+  CheckSimpleOperator<TensorFlowReciprocalOperator>("RECIPROCAL",
+                                                    OperatorType::kReciprocal);
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
   CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
                                          OperatorType::kLogicalOr);

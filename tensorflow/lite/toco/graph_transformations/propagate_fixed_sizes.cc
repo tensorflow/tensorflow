@@ -2145,6 +2145,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kIdentity:
     case OperatorType::kFakeQuant:
     case OperatorType::kNeg:
+    case OperatorType::kReciprocal:
     case OperatorType::kRsqrt:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:

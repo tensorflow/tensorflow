@@ -120,6 +120,7 @@ enum class OperatorType : uint8 {
   kMatMul,
   kMerge,
   kNeg,
+  kReciprocal,
   kReshape,
   kRsqrt,
   kShape,
@@ -1314,6 +1315,16 @@ struct SelectOperator : Operator {
 // TensorFlow equivalent: Rsqrt
 struct TensorFlowRsqrtOperator : Operator {
   TensorFlowRsqrtOperator() : Operator(OperatorType::kRsqrt) {}
+};
+
+// Element-wise reciprocal(1 / x) operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Reciprocal
+struct TensorFlowReciprocalOperator : Operator {
+  TensorFlowReciprocalOperator() : Operator(OperatorType::kReciprocal) {}
 };
 
 // Stacks a list of rank-R tensors into one rank-(R+1) tensor.
