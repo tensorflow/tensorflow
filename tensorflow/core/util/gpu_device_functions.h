@@ -118,7 +118,11 @@ const unsigned kCudaWarpAll = 0xffffffff;
 __device__ inline unsigned CudaLaneId() {
   unsigned int lane_id;
 #if GOOGLE_CUDA
+#if __clang__
+  return __nvvm_read_ptx_sreg_laneid();
+#else   // __clang__
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+#endif  // __clang__
 #elif TENSORFLOW_USE_ROCM
   land_id = __lane_id();
 #endif
