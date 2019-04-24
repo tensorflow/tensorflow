@@ -720,43 +720,44 @@ class OpTrait;
 
 // NativeOpTrait corresponds to the MLIR C++ OpTrait mechanism. The
 // purpose to wrap around C++ symbol string with this class is to make
-// traits specified for ops in TableGen less alien and more
-// integrated.
+// traits specified for ops in TableGen less alien and more integrated.
 class NativeOpTrait<string prop> : OpTrait {
   string trait = prop;
 }
 
-// Specify a trait to control op definition generator internals.
-class OpGenInternalTrait<string prop> : OpTrait {
+// GenInternalOpTrait is an op trait that does not have direct C++ mapping but
+// affects op definition generator internals, like how op builders and
+// operand/attribute/result getters are generated.
+class GenInternalOpTrait<string prop> : OpTrait {
   string trait = prop;
 }
 
-// Specify a trait by way of a predicate on the operation.
-class PredOpTrait<string d, Pred p> : OpTrait {
-  string desc = d;
-  Pred pred = p;
+// PredOpTrait is an op trait implemented by way of a predicate on the op.
+class PredOpTrait<string descr, Pred pred> : OpTrait {
+  string description = descr;
+  Pred predicate = pred;
 }
 
-// op supports operand broadcast behavior
+// Op supports operand broadcast behavior.
 def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative      : NativeOpTrait<"IsCommutative">;
-// op results are float or vectors/tensors thereof
+// Op results are float or vectors/tensors thereof.
 def FloatLikeResults : NativeOpTrait<"ResultsAreFloatLike">;
-// op has no side effect
+// Op has no side effect.
 def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
-// op has same operand and result shape
+// Op has same operand and result shape.
 def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
-// op has the same operand and result type
+// Op has the same operand and result type.
 def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
-// op is a terminator
+// Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 
-// op result type is derived from the first attribute. If the attribute is an
+// Op result type is derived from the first attribute. If the attribute is an
 // subclass of `TypeAttrBase`, its value is used, otherwise, the type of the
 // attribute content is used.
 def FirstAttrDerivedResultType :
-  OpGenInternalTrait<"FirstAttrDerivedResultType">;
+  GenInternalOpTrait<"FirstAttrDerivedResultType">;
 
 //===----------------------------------------------------------------------===//
 // Op definitions
