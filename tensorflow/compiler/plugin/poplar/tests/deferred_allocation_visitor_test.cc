@@ -54,10 +54,11 @@ namespace {
 
 class DeferredAllocationsVisitorTest : public HloTestBase {};
 
-std::unique_ptr<CompilerResources> GetMockResources(HloModule* module) {
+std::unique_ptr<CompilerResources> GetMockResources(HloModule* module,
+                                                    bool merge_infeeds) {
   auto resources = absl::make_unique<CompilerResources>(
       poplar::Device::createCPUDevice(), poplar::OptionFlags(),
-      poplar::OptionFlags(), false, 1, module);
+      poplar::OptionFlags(), false, 1, merge_infeeds, module);
   poplin::addCodelets(resources->main_graph);
   popnn::addCodelets(resources->main_graph);
   popops::addCodelets(resources->main_graph);
@@ -103,7 +104,7 @@ ENTRY cluster (arg0.1: (f32[1,4,4,2], f32[2], f32[1,1,2,2])) -> f32[1,4,4,2] {
 )";
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
-  auto resources = GetMockResources(module.get());
+  auto resources = GetMockResources(module.get(), false);
   HloPassPipeline pipeline = GetMockPipeline(*resources.get());
   ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
   EntryVisitor visitor(*resources.get(), false);
@@ -118,7 +119,7 @@ ENTRY cluster (arg0.1: (f32[1,4,4,2], f32[2], f32[1,1,2,2])) -> f32[1,4,4,2] {
   auto arg = gte1->operand(0);
   poplar::Tensor root_tensor =
       FindInstructionInput(tensor_map, *resources.get(), root, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor arg_tensor = FindInstructionOutputs(tensor_map, arg)[1];
@@ -149,7 +150,7 @@ ENTRY cluster (arg0.1: ((f32[1,4,4,2], f32[2], f32[1,1,2,2]))) -> f32[1,4,4,2] {
 )";
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
-  auto resources = GetMockResources(module.get());
+  auto resources = GetMockResources(module.get(), false);
   HloPassPipeline pipeline = GetMockPipeline(*resources.get());
   ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
   EntryVisitor visitor(*resources.get(), false);
@@ -165,7 +166,7 @@ ENTRY cluster (arg0.1: ((f32[1,4,4,2], f32[2], f32[1,1,2,2]))) -> f32[1,4,4,2] {
   auto arg = gte->operand(0);
   poplar::Tensor root_tensor =
       FindInstructionInput(tensor_map, *resources.get(), root, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor gte_tensor = FindInstructionOutputs(tensor_map, gte)[1];
@@ -200,7 +201,7 @@ ENTRY cluster (arg0.1: ((f32[1,4,4,2], (f32[2], f32[1,1,2,2])))) -> f32[1,4,4,2]
 )";
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
-  auto resources = GetMockResources(module.get());
+  auto resources = GetMockResources(module.get(), false);
   HloPassPipeline pipeline = GetMockPipeline(*resources.get());
   ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
   EntryVisitor visitor(*resources.get(), false);
@@ -217,7 +218,7 @@ ENTRY cluster (arg0.1: ((f32[1,4,4,2], (f32[2], f32[1,1,2,2])))) -> f32[1,4,4,2]
   auto arg = gte->operand(0);
   poplar::Tensor root_tensor =
       FindInstructionInput(tensor_map, *resources.get(), root, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_0_tensor = FindInstructionOutputs(tensor_map, gte1_0)[0];
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
@@ -269,7 +270,7 @@ ENTRY cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f
 )";
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
-  auto resources = GetMockResources(module.get());
+  auto resources = GetMockResources(module.get(), false);
   HloPassPipeline pipeline = GetMockPipeline(*resources.get());
   ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
   EntryVisitor visitor(*resources.get(), false);
@@ -288,7 +289,7 @@ ENTRY cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f
   auto arg = gte->operand(0);
   poplar::Tensor fusion_0_input_one_tensor =
       FindInstructionInput(tensor_map, *resources.get(), fusion_0, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_0_tensor = FindInstructionOutputs(tensor_map, gte1_0)[0];
   poplar::Tensor gte1_tensor_zero = FindInstructionOutputs(tensor_map, gte1)[0];
@@ -307,7 +308,7 @@ ENTRY cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f
 
   poplar::Tensor fusion_1_input_one_tensor =
       FindInstructionInput(tensor_map, *resources.get(), fusion_1, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_2_tensor = FindInstructionOutputs(tensor_map, gte1_2)[0];
   poplar::Tensor gte1_tensor_two = FindInstructionOutputs(tensor_map, gte1)[2];
@@ -344,7 +345,7 @@ ENTRY cluster (arg: f32[1,1,2,2]) -> f32[1,4,4,2] {
 )";
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
-  auto resources = GetMockResources(module.get());
+  auto resources = GetMockResources(module.get(), false);
   HloPassPipeline pipeline = GetMockPipeline(*resources.get());
   ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
   EntryVisitor visitor(*resources.get(), false);
@@ -360,7 +361,7 @@ ENTRY cluster (arg: f32[1,1,2,2]) -> f32[1,4,4,2] {
   auto infeed = gte->operand(0);
   poplar::Tensor root_tensor =
       FindInstructionInput(tensor_map, *resources.get(), root, 1,
-                           visitor.sequence, false)
+                           visitor.GetMutableSequence(), false)
           .ValueOrDie();
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor gte_tensor = FindInstructionOutputs(tensor_map, gte)[1];

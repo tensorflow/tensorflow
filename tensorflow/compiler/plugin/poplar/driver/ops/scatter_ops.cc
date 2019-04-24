@@ -84,7 +84,7 @@ StatusOr<poplar::program::Program> CreateScatter(
             poplar::program::Copy(b_elem, update_comp_visitor->inputs()[1][0]));
 
         // Add the sequence
-        p.add(update_comp_visitor->sequence);
+        p.add(update_comp_visitor->GetSequence());
 
         // Copy the output out
         p.add(poplar::program::Copy(update_comp_visitor->outputs()[0], o_elem));

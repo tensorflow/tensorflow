@@ -83,6 +83,11 @@ message IpuOptions {
     // Option to enable re-computation of non linearities.
     bool recompute_norm_inputs = 3;
     bool has_recompute_norm_inputs = 4;
+
+    // Merge all streaming reads into a block to reduce the host-sync round-trip
+    // count.  This may decrease the device->host read latency at the expense of
+    // having more live tensors in memory on the device.
+    bool merge_infeed_io_copies = 5;
   }
   SpeedSizeConfig speed_size_config = 5;
 

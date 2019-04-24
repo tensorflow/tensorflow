@@ -157,14 +157,19 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleCholesky(HloInstruction* hlo) override;
 
-  TensorMap tensor_map;
+  virtual poplar::program::Sequence GetSequence() const { return sequence; }
 
-  poplar::program::Sequence sequence;
+  // This should only be used for unit tests
+  virtual poplar::program::Sequence& GetMutableSequence() { return sequence; }
 
  protected:
   Status Unimplemented(HloInstruction* inst);
 
   CompilerResources& resources_;
+
+  TensorMap tensor_map;
+
+  poplar::program::Sequence sequence;
 
   bool has_infeed_ = false;
 };

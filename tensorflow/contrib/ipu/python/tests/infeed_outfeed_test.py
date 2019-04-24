@@ -130,6 +130,39 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
 
+  def testSingleInfeedRepeatTupleMerge(self):
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
+
+    def dataset_parser(value):
+      image_1 = value
+      image_2 = (value + 10.) / 2.0
+      return (image_1, image_2)
+
+    dataset = dataset.map(dataset_parser)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def body(v, im1, im2):
+      v = v + im1 + im2
+      return (v)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=[4, 4], dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config(merge_infeed_io_copies=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
+
   def testSingleInfeedRepeatNamed(self):
     dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
 

@@ -413,6 +413,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   CompilerResources resources(dev, poplarExecutor->GetConvolutionOptions(),
                               poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
+                              poplarExecutor->MergeInfeedCopies(),
                               poplarExecutor->GetNumberOfReplicas(),
                               module.get());
 
@@ -619,7 +620,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
 
     // Add the main program sequence
-    main_program.add(visitor.sequence);
+    main_program.add(visitor.GetSequence());
 
     // =======================================================================
     // DO NOT CHANGE THE ORDER OF THESE WITHOUT UPDATING PoplarProgramType IN

@@ -192,7 +192,12 @@ StatusOr<poplar::Tensor> DeferredAllocationVisitor::PostProcessInfeedAllocation(
         GetInfeedCopyHandle(inst->name(), flat_tuple_index),
         master_tensor.elementType(), master_tensor.numElements());
 
-    sequence.add(poplar::program::Copy(fifo, master_tensor, false));
+    auto prog = poplar::program::Copy(fifo, master_tensor, false);
+    if (resources_.merge_infeed_io_copies) {
+      merged_infeed_sequence.add(prog);
+    } else {
+      sequence.add(prog);
+    }
   }
   return tensor;
 }

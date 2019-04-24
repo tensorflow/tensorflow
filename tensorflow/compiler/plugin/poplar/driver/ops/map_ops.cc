@@ -226,7 +226,7 @@ StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
   MapVisitor visitor(res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
-  seq.add(visitor.sequence);
+  seq.add(visitor.GetSequence());
 
   auto outputs = visitor.outputs();
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -252,7 +252,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
     InlineCallVisitor inline_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
-    seq.add(inline_visitor.sequence);
+    seq.add(inline_visitor.GetSequence());
 
     for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
       poplar::Tensor out;
@@ -264,7 +264,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
     ArithmeticExprVisitor arithmetic_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&arithmetic_visitor));
 
-    seq.add(arithmetic_visitor.sequence);
+    seq.add(arithmetic_visitor.GetSequence());
 
     for (size_t i = 0; i < arithmetic_visitor.outputs().size(); i++) {
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i,
@@ -289,7 +289,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
       }
     }
 
-    seq.add(subcomp_visitor->sequence);
+    seq.add(subcomp_visitor->GetSequence());
 
     for (size_t i = 0; i < subcomp_visitor->outputs().size(); i++) {
       auto name = StrCat(GetDebugName(inst), "_out_", i);
@@ -332,7 +332,7 @@ StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
   InlineCallVisitor inline_visitor(res, inputs);
   TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
-  seq.add(inline_visitor.sequence);
+  seq.add(inline_visitor.GetSequence());
 
   for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
     TF_CHECK_OK(
@@ -401,12 +401,12 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
       cond_seq.add(poplar::program::Copy(body_inputs[i], cond_inputs[i]));
     }
   }
-  cond_seq.add(cond->sequence);
+  cond_seq.add(cond->GetSequence());
   poplar::Tensor pred =
       popops::allTrue(graph, cond_outputs[0], cond_seq, GetDebugName(inst));
 
   // Body
-  poplar::program::Sequence body_seq(body->sequence);
+  poplar::program::Sequence body_seq(body->GetSequence());
   TF_ASSIGN_OR_RETURN(auto seq_argvector_pair,
                       GetWhileAndRepeatAliasingCopies(
                           graph, *body.get(), body_inputs, body_outputs,
@@ -465,7 +465,7 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   }
 
   // Body
-  poplar::program::Sequence body_seq(body->sequence);
+  poplar::program::Sequence body_seq(body->GetSequence());
   TF_ASSIGN_OR_RETURN(auto seq_argvector_pair,
                       GetWhileAndRepeatAliasingCopies(
                           graph, *body.get(), body_inputs, body_outputs,
@@ -553,7 +553,7 @@ StatusOr<poplar::program::Program> CreateConditionalOp(
     }
 
     // Add the actual body
-    seqs[b].add(bodies[b]->sequence);
+    seqs[b].add(bodies[b]->GetSequence());
 
     // Add output copies
     for (unsigned int i = 0; i < output_count; i++) {
