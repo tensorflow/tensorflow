@@ -226,13 +226,11 @@ void* PoplarExecutor::GetSubBuffer(se::DeviceMemoryBase* parent,
 }
 
 void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
-  if (!mem->is_sub_buffer()) {
-    TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
-    {
-      std::lock_guard<std::recursive_mutex> g(mutex_);
-      if (tc->ref_count > 0) {
-        tc->ref_count--;
-      }
+  TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
+  {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    if (tc->ref_count > 0) {
+      tc->ref_count--;
     }
   }
 }
