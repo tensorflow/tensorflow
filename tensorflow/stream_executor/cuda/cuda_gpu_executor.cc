@@ -911,13 +911,13 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
   return false;
 }
 
-bool GpuExecutor::FillBlockDimLimit(BlockDim* block_dim_limit) const {
+bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device_)) {
+  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
     return false;
   }
 
@@ -1022,7 +1022,21 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #endif
 }
 
-DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+GpuExecutor::CreateDeviceDescription(int device_ordinal) {
+  GpuDeviceHandle device;
+  auto status = GpuDriver::GetDevice(device_ordinal, &device);
+  if (!status.ok()) {
+    return status;
+  }
+
+  int cc_major;
+  int cc_minor;
+  status = GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device);
+  if (!status.ok()) {
+    return status;
+  }
+
   internal::DeviceDescriptionBuilder builder;
 
   {
@@ -1036,57 +1050,57 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
   }
 
   {
-    string pci_bus_id = GpuDriver::GetPCIBusID(device_);
+    string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = port::Lowercase(pci_bus_id);
     builder.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
-    int numa_node = TryToReadNumaNode(pci_bus_id, device_ordinal_);
+    int numa_node = TryToReadNumaNode(pci_bus_id, device_ordinal);
     builder.set_numa_node(numa_node);
   }
 
   {
     builder.set_threads_per_block_limit(
         GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
-                                      device_)
+                                      device)
             .ValueOrDie());
 
     ThreadDim thread_dim_limit;
     thread_dim_limit.x = GpuDriver::GetDeviceAttribute(
-                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device_)
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device)
                              .ValueOrDie();
     thread_dim_limit.y = GpuDriver::GetDeviceAttribute(
-                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device_)
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device)
                              .ValueOrDie();
     thread_dim_limit.z = GpuDriver::GetDeviceAttribute(
-                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device_)
+                             CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device)
                              .ValueOrDie();
     builder.set_thread_dim_limit(thread_dim_limit);
 
     int clock_rate =
-        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device_)
+        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device)
             .ValueOrDie();
     builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
 
   {
     bool ecc_enabled = false;
-    (void)GpuDriver::IsEccEnabled(device_, &ecc_enabled);
+    (void)GpuDriver::IsEccEnabled(device, &ecc_enabled);
     builder.set_ecc_enabled(ecc_enabled);
   }
 
   {
     uint64 device_memory_size = -1;
-    (void)GpuDriver::GetDeviceTotalMemory(device_, &device_memory_size);
+    (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
     builder.set_device_memory_size(device_memory_size);
   }
 
   port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
-      CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal_);
+      CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
   port::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
-      CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal_);
+      CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal);
   if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
     // Times 2 because HBM is DDR memory; it gets two data bits per each data
     // lane.
@@ -1097,44 +1111,43 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(&block_dim_limit);
+    FillBlockDimLimit(device, &block_dim_limit);
     builder.set_block_dim_limit(block_dim_limit);
   }
 
   {
     string device_name;
-    (void)GpuDriver::GetDeviceName(device_, &device_name);
+    (void)GpuDriver::GetDeviceName(device, &device_name);
     builder.set_name(device_name);
   }
 
   builder.set_platform_version(
-      absl::StrCat("Compute Capability ", cc_major_, ".", cc_minor_));
+      absl::StrCat("Compute Capability ", cc_major, ".", cc_minor));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
   builder.set_device_address_bits(64);
 
   builder.set_device_vendor("NVIDIA Corporation");
-  builder.set_cuda_compute_capability(cc_major_, cc_minor_);
+  builder.set_cuda_compute_capability(cc_major, cc_minor);
   builder.set_shared_memory_per_core(
-      GpuDriver::GetMaxSharedMemoryPerCore(device_).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());
   builder.set_shared_memory_per_block(
-      GpuDriver::GetMaxSharedMemoryPerBlock(device_).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerBlock(device).ValueOrDie());
   builder.set_core_count(
-      GpuDriver::GetMultiprocessorCount(device_).ValueOrDie());
+      GpuDriver::GetMultiprocessorCount(device).ValueOrDie());
   builder.set_threads_per_core_limit(
-      GpuDriver::GetMaxThreadsPerMultiprocessor(device_).ValueOrDie());
+      GpuDriver::GetMaxThreadsPerMultiprocessor(device).ValueOrDie());
   builder.set_registers_per_block_limit(
-      GpuDriver::GetMaxRegistersPerBlock(device_).ValueOrDie());
+      GpuDriver::GetMaxRegistersPerBlock(device).ValueOrDie());
   builder.set_threads_per_warp(
-      GpuDriver::GetThreadsPerWarp(device_).ValueOrDie());
+      GpuDriver::GetThreadsPerWarp(device).ValueOrDie());
   builder.set_registers_per_core_limit(
       GpuDriver::GetDeviceAttribute(
-          CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device_)
+          CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device)
           .ValueOrDie());
 
-  auto built = builder.Build();
-  return built.release();
+  return builder.Build();
 }
 
 }  // namespace gpu

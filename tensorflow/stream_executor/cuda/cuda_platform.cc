@@ -143,6 +143,11 @@ int CudaPlatform::VisibleDeviceCount() const {
 
 const string& CudaPlatform::Name() const { return name_; }
 
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+CudaPlatform::DescriptionForDevice(int ordinal) const {
+  return GpuExecutor::CreateDeviceDescription(ordinal);
+}
+
 port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;

@@ -288,7 +288,8 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual DeviceDescription *PopulateDeviceDescription() const = 0;
+  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription() const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has
