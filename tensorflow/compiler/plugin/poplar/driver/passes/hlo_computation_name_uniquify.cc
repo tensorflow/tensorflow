@@ -40,7 +40,7 @@ class ReservedNamespaceNameUniquer : public NameUniquer {
       return tensorflow::str_util::StartsWith(name_str, reserved);
     };
     if (absl::c_any_of(GetReservedPrefixes(), starts_with_reserved_prefix)) {
-      name_str.insert(0, "a");
+      name_str.insert(0, "x");
     }
     return name_str;
   }

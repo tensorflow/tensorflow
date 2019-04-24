@@ -28,7 +28,7 @@ namespace {
 
 using HloComputationNameUniquifyTest = HloTestBase;
 
-TEST_F(HloComputationNameUniquifyTest, RenameResarved) {
+TEST_F(HloComputationNameUniquifyTest, RenameReserved) {
   std::string hlo = R"(
 HloModule top
 
@@ -67,14 +67,17 @@ ENTRY _pop_op_test2 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
+  // The incoming module has 'a_repeat_test', 'a_inline_test' and
+  // 'a_arithmetic_test', but '_pop_op_test'.
+
   HloComputationNameUniquify hcnu;
   EXPECT_TRUE(hcnu.Run(module0).ValueOrDie());
 
-  // Expect all computations begin with 'a'
+  // Expect '_pop_op_test' to begin with 'x'
   auto comp_name_starts_with_a = [&](HloComputation* comp) {
-    return tensorflow::str_util::StartsWith(comp->name(), "a");
+    return tensorflow::str_util::StartsWith(comp->name(), "x");
   };
-  EXPECT_TRUE(absl::c_all_of(module0->computations(), comp_name_starts_with_a));
+  EXPECT_TRUE(absl::c_any_of(module0->computations(), comp_name_starts_with_a));
 }
 
 TEST_F(HloComputationNameUniquifyTest, DontRename) {
@@ -118,9 +121,9 @@ ENTRY b_pop_op_test2 {
 
   HloComputationNameUniquify hcnu;
   EXPECT_FALSE(hcnu.Run(module0).ValueOrDie());
-  // Expect none of computations begin with 'a'
+  // Expect none of computations begin with 'x'
   auto comp_name_starts_with_a = [&](HloComputation* comp) {
-    return tensorflow::str_util::StartsWith(comp->name(), "a");
+    return tensorflow::str_util::StartsWith(comp->name(), "x");
   };
   EXPECT_TRUE(
       absl::c_none_of(module0->computations(), comp_name_starts_with_a));
