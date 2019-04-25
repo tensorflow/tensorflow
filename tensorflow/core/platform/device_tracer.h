@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -51,7 +52,7 @@ class StepStatsCollector;
 // given time.  The 'Start' method will return an error if tracing is
 // already in progress elsewhere.
 //
-class DeviceTracer {
+class DeviceTracer : public tracing::TraceCollector {
  public:
   virtual ~DeviceTracer() {}
 
@@ -68,6 +69,11 @@ class DeviceTracer {
   // StepStatsCollector.  Does not clear any existing stats.
   // It is an error to call 'Collect' while a trace is running.
   virtual Status Collect(StepStatsCollector* collector) = 0;
+  virtual std::unique_ptr<Handle> CreateAnnotationHandle(
+      StringPiece name_part1, StringPiece name_part2,
+      StringPiece src_dev, StringPiece dst_dev) const = 0;
+  virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
+                                                       bool) const = 0;
 };
 
 // Creates a platform-specific DeviceTracer.

@@ -1260,6 +1260,8 @@ class ExecutorState {
 
   std::atomic_int_fast32_t num_outstanding_ops_;
 
+  tracing::TraceCollector* trace_collector_;
+
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
 
@@ -1365,7 +1367,8 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
-      num_outstanding_ops_(0) {
+      num_outstanding_ops_(0),
+      trace_collector_(args.trace_collector) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
@@ -1582,6 +1585,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
 
+  tracing::SetTraceCollector(trace_collector_);
   Status s;
   NodeExecStatsWrapper* stats = nullptr;
   EntryVector outputs;

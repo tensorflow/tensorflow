@@ -217,9 +217,13 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
 
+  tracing::TraceCollector* trace_collector = NULL;
+  if (tracer) {
+    trace_collector = static_cast<tracing::TraceCollector*>(tracer);
+  }
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
-      collector, response, cm, in,
+      collector, response, cm, in, trace_collector,
       [this, step_id, response, session, cm, out, token, tracer, collector, opts,
        done](Status s) {
         if (s.ok()) {
@@ -305,6 +309,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     session->graph_mgr->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
+        nullptr /* trace collector*/,
         [this, token, step_id, session](Status s) {
           cancellation_manager_.DeregisterCallback(token);
           partial_run_mgr_.ExecutorDone(step_id, s);

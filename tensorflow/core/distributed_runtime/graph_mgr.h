@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
@@ -91,7 +92,9 @@ class GraphMgr {
                     StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, StatusCallback done);
+                    const NamedTensors& in,
+                    tracing::TraceCollector* trace_collector,
+                    StatusCallback done);
 
   Status SendInputs(const int64 step_id, const NamedTensors& in);
   Status RecvOutputs(const int64 step_id, NamedTensors* out);
@@ -168,6 +171,7 @@ class GraphMgr {
                               StepStatsCollector* collector,
                               CostGraphDef* cost_graph,
                               CancellationManager* cancellation_manager,
+                              tracing::TraceCollector* trace_collector,
                               StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at

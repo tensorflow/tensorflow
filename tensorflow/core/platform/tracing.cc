@@ -29,8 +29,9 @@ namespace tensorflow {
 namespace tracing {
 namespace {
 std::atomic<uint64> unique_arg{1};
-std::atomic<const TraceCollector*> trace_collector;
-}  // namespace
+
+TF_STATIC_THREAD_LOCAL_POD(const TraceCollector *, tls_trace_collector);
+} // namespace
 
 const char* GetEventCategoryName(EventCategory category) {
   switch (category) {
@@ -73,11 +74,11 @@ string TraceCollector::ConcatenateNames(StringPiece first, StringPiece second) {
 }
 
 void SetTraceCollector(const TraceCollector* collector) {
-  return trace_collector.store(collector, std::memory_order_release);
+  tls_trace_collector.get() = collector;
 }
 
 const TraceCollector* GetTraceCollector() {
-  return trace_collector.load(std::memory_order_acquire);
+  return tls_trace_collector.get();
 }
 
 }  // namespace tracing

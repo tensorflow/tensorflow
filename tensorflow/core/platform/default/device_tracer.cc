@@ -157,8 +157,7 @@ class CUPTIManager {
 
     // Mapping tid -> client more than twice 
     if (thread_to_client_.find(tid) != thread_to_client_.end()) {
-      CHECK(thread_to_client_[tid] == client);
-      return;
+        client_to_threads_[thread_to_client_[tid]].erase(tid);
     }
 
     thread_to_client_[tid] = client;
@@ -369,29 +368,6 @@ CUPTIManager *GetCUPTIManager() {
   return manager;
 }
 
-#ifdef _MSC_VER
-#define __thread __declspec(thread)
-#endif
-
-// TODO(pbar) Move this to platform specific header file?
-// Static thread local variable for POD types.
-#define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
-  static __thread _Type_ s_obj_##_var_;                            \
-  namespace {                                                      \
-  class ThreadLocal_##_var_ {                                      \
-   public:                                                         \
-    ThreadLocal_##_var_() {}                                       \
-    void Init() {}                                                 \
-    inline _Type_ *pointer() const { return &s_obj_##_var_; }      \
-    inline _Type_ *safe_pointer() const { return &s_obj_##_var_; } \
-    _Type_ &get() const { return s_obj_##_var_; }                  \
-    bool is_native_tls() const { return true; }                    \
-                                                                   \
-   private:                                                        \
-    TF_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
-  } _var_;                                                         \
-  }  // namespace
-
 // Thread-local state recording the most recent annotation (if any).
 // When non-null, this points to a string in the active annotation
 // of the current thread.  The annotation is guaranteed to remain live
@@ -574,7 +550,7 @@ Status DeviceTracerImpl::Start() {
   }
 
   // Register as a TraceEngine to receive ScopedAnnotations.
-  tracing::SetTraceCollector(this);
+  //tracing::SetTraceCollector(this);
   
   if (ret != CUPTI_ERROR_MAX_LIMIT_REACHED) {
     subscribed_ = true;
@@ -626,7 +602,7 @@ Status DeviceTracerImpl::Stop() {
   if (subscribed_) {
     CUPTI_CALL(Unsubscribe(subscriber_));
   }
-  tracing::SetTraceCollector(nullptr);
+  //tracing::SetTraceCollector(nullptr);
   TF_RETURN_IF_ERROR(cupti_manager_->DisableTrace(this));
   end_walltime_us_ = NowInUsec();
   CUPTI_CALL(GetTimestamp(&end_timestamp_));
