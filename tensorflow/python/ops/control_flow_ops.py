@@ -1952,8 +1952,12 @@ def cond(pred,
   with ops.name_scope(name, "cond", [pred]):
     if context.executing_eagerly():
       if pred:
-        return _UnpackIfSingleton(true_fn())
-      return _UnpackIfSingleton(false_fn())
+        result = true_fn()
+      else:
+        result = false_fn()
+      if not strict:
+        result = _UnpackIfSingleton(result)
+      return result
 
     # Add the Switch to the graph.
     if isinstance(pred, bool):
