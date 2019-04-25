@@ -2275,11 +2275,8 @@ class MeanIoU(Metric):
     
     # If y_true and y_pred are lists then 
     # they are converted into Tensors 
-    if type(y_true) == list:
-      y_true = ops.convert_to_tensor(y_true)
-      
-    if type(y_pred) == list:
-      y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
     
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
