@@ -67,7 +67,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (type) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
-    case kTfLiteUInt8:
       break;
     default:
       context->ReportError(context, "Type '%s' is not supported by floor_div.",
@@ -132,10 +131,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32: {
       return EvalImpl<float>(context, data->requires_broadcast, input1, input2,
                              output);
-    }
-    case kTfLiteUInt8: {
-      return EvalImpl<uint8_t>(context, data->requires_broadcast, input1,
-                               input2, output);
     }
     default: {
       context->ReportError(context, "Type '%s' is not supported by floor_div.",

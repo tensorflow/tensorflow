@@ -112,28 +112,6 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
 }
-
-TEST(FloorDivModel, SimpleUInt8) {
-  FloorDivModel<uint8_t> model({TensorType_UINT8, {1, 2, 2, 1}},
-                               {TensorType_UINT8, {1, 2, 2, 1}},
-                               {TensorType_UINT8, {}});
-  model.PopulateTensor<uint8_t>(model.input1(), {10, 9, 11, 7});
-  model.PopulateTensor<uint8_t>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5, 4, 3, 1));
-}
-
-TEST(FloorDivModel, BroadcastFloorDivUInt8) {
-  FloorDivModel<uint8_t> model({TensorType_UINT8, {1, 2, 2, 1}},
-                               {TensorType_UINT8, {1}}, {TensorType_UINT8, {}});
-  model.PopulateTensor<uint8_t>(model.input1(), {10, 9, 11, 7});
-  model.PopulateTensor<uint8_t>(model.input2(), {3});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(3, 3, 3, 2));
-}
-
 }  // namespace
 }  // namespace tflite
 
