@@ -232,6 +232,17 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>());
 
+  py::class_<DebugOptions>(m, "DebugOptions")
+      .def_property("xla_cpu_enable_fast_math",
+                    &DebugOptions::xla_cpu_enable_fast_math,
+                    &DebugOptions::set_xla_cpu_enable_fast_math)
+      .def_property("xla_cpu_fast_math_honor_infs",
+                    &DebugOptions::xla_cpu_fast_math_honor_infs,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_infs)
+      .def_property("xla_cpu_fast_math_honor_nans",
+                    &DebugOptions::xla_cpu_fast_math_honor_nans,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
+
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
       .def_property(
@@ -243,7 +254,10 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
-                    &ExecutableBuildOptions::set_num_replicas);
+                    &ExecutableBuildOptions::set_num_replicas)
+      .def_property_readonly(
+          "debug_options", &ExecutableBuildOptions::mutable_debug_options,
+          py::return_value_policy::reference, py::keep_alive<1, 0>());
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def("GetProgramShape", &XlaComputation::GetProgramShape)

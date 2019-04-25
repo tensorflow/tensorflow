@@ -135,6 +135,8 @@ class LocalBackend(Backend):
       argument_layouts = c_computation.GetProgramShape().Parameters()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout.as_xla_shape()
+    options.debug_options.xla_cpu_fast_math_honor_infs = True
+    options.debug_options.xla_cpu_fast_math_honor_nans = True
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
                                         options, self.client)
 
