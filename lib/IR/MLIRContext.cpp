@@ -580,6 +580,7 @@ public:
   llvm::BumpPtrAllocator attributeAllocator;
   llvm::sys::SmartRWMutex<true> attributeMutex;
 
+  UnitAttributeStorage unitAttr;
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
   DenseSet<IntegerAttributeStorage *, IntegerAttrKeyInfo> integerAttrs;
   DenseSet<FloatAttributeStorage *, FloatAttrKeyInfo> floatAttrs;
@@ -982,6 +983,10 @@ const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
 //===----------------------------------------------------------------------===//
 // Attribute uniquing
 //===----------------------------------------------------------------------===//
+
+UnitAttr UnitAttr::get(MLIRContext *context) {
+  return &context->getImpl().unitAttr;
+}
 
 BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   auto &impl = context->getImpl();

@@ -546,6 +546,9 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   }
 
   switch (attr.getKind()) {
+  case Attribute::Kind::Unit:
+    os << "unit";
+    break;
   case Attribute::Kind::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
     break;
@@ -1133,7 +1136,13 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   // Otherwise, print them all out in braces.
   os << " {";
   interleaveComma(filteredAttrs, [&](NamedAttribute attr) {
-    os << attr.first << ": ";
+    os << attr.first;
+
+    // Pretty printing elides the attribute value for unit attributes.
+    if (attr.second.isa<UnitAttr>())
+      return;
+
+    os << ": ";
     printAttributeAndType(attr.second);
   });
   os << '}';

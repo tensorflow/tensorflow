@@ -1010,7 +1010,8 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 
 /// Attribute parsing.
 ///
-///  attribute-value ::= bool-literal
+///  attribute-value ::= `unit`
+///                    | bool-literal
 ///                    | integer-literal (`:` (index-type | integer-type))?
 ///                    | float-literal (`:` float-type)?
 ///                    | string-literal
@@ -1026,6 +1027,10 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///
 Attribute Parser::parseAttribute(Type type) {
   switch (getToken().getKind()) {
+  case Token::kw_unit:
+    consumeToken(Token::kw_unit);
+    return builder.getUnitAttr();
+
   case Token::kw_true:
     consumeToken(Token::kw_true);
     return builder.getBoolAttr(true);
@@ -1595,8 +1600,12 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
     Identifier nameId = builder.getIdentifier(getTokenSpelling());
     consumeToken();
 
-    if (parseToken(Token::colon, "expected ':' in attribute list"))
-      return ParseFailure;
+    // Try to parse the ':' for the attribute value.
+    if (!consumeIf(Token::colon)) {
+      // If there is no ':', we treat this as a unit attribute.
+      attributes.push_back({nameId, builder.getUnitAttr()});
+      return ParseSuccess;
+    }
 
     auto attr = parseAttribute();
     if (!attr)

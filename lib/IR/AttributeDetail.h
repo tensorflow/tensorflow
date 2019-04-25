@@ -45,6 +45,11 @@ struct AttributeStorage {
   bool isOrContainsFunctionCache : 1;
 };
 
+/// An attribute representing a unit value.
+struct UnitAttributeStorage : public AttributeStorage {
+  UnitAttributeStorage() : AttributeStorage(Attribute::Kind::Unit) {}
+};
+
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
   BoolAttributeStorage(Type type, bool value)

@@ -109,6 +109,8 @@ NamedAttribute Builder::getNamedAttr(StringRef name, Attribute val) {
   return NamedAttribute(getIdentifier(name), val);
 }
 
+UnitAttr Builder::getUnitAttr() { return UnitAttr::get(context); }
+
 BoolAttr Builder::getBoolAttr(bool value) {
   return BoolAttr::get(value, context);
 }

@@ -50,6 +50,7 @@ class DenseElementsAttr;
 class DenseIntElementsAttr;
 class AffineMapAttr;
 class AffineMap;
+class UnitAttr;
 
 /// This class is a general helper class for creating context-global objects
 /// like types, attributes, and affine expressions.
@@ -98,6 +99,7 @@ public:
   // Attributes.
   NamedAttribute getNamedAttr(StringRef name, Attribute val);
 
+  UnitAttr getUnitAttr();
   BoolAttr getBoolAttr(bool value);
   IntegerAttr getIntegerAttr(Type type, int64_t value);
   IntegerAttr getIntegerAttr(Type type, const APInt &value);

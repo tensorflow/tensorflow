@@ -38,6 +38,7 @@ class VectorOrTensorType;
 namespace detail {
 
 struct AttributeStorage;
+struct UnitAttributeStorage;
 struct BoolAttributeStorage;
 struct IntegerAttributeStorage;
 struct FloatAttributeStorage;
@@ -68,6 +69,7 @@ class AttributeListStorage;
 class Attribute {
 public:
   enum class Kind {
+    Unit,
     Bool,
     Integer,
     Float,
@@ -157,6 +159,18 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
   attr.print(os);
   return os;
 }
+
+/// Unit attributes are attributes that hold no specific value and are given
+/// meaning by their existence.
+class UnitAttr : public Attribute {
+public:
+  using Attribute::Attribute;
+  using ImplType = detail::UnitAttributeStorage;
+
+  static UnitAttr get(MLIRContext *context);
+
+  static bool kindof(Kind kind) { return kind == Attribute::Kind::Unit; }
+};
 
 /// Numeric attributes are (vector/tensor of) bool, integer, or floating-point
 /// constants. For all the attributes, we can only build constant op out of

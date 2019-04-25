@@ -73,10 +73,6 @@ func @memrefs(memref<42x42xi8, #map0, #map1>) // expected-error {{memref affine 
 
 // -----
 
-func @illegalattrs() -> () attributes { key } // expected-error {{expected ':' in attribute list}}
-
-// -----
-
 func missingsigil() -> (i1, index, f32) // expected-error {{expected a function identifier like}}
 
 
@@ -147,24 +143,8 @@ func @block_first_has_predecessor() {
 
 // -----
 
-func @illegalattrs() -> ()
-  attributes { key } { // expected-error {{expected ':' in attribute list}}
-^bb42:
-  return
-}
-
-// -----
-
 func @empty() {
 } // expected-error {{function must have a body}}
-
-// -----
-
-func @illegalattrs() -> ()
-  attributes { key } { // expected-error {{expected ':' in attribute list}}
-^bb42:
-  return
-}
 
 // -----
 

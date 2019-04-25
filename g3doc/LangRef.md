@@ -972,6 +972,7 @@ attribute-value ::= affine-map-attribute
                   | function-attribute
                   | string-attribute
                   | type-attribute
+                  | unit-attribute
 ```
 
 #### AffineMap Attribute
@@ -1156,6 +1157,30 @@ type-attribute ::= type
 ```
 
 A type attribute is an attribute that represents a [type object](#type-system).
+
+#### Unit Attribute
+
+``` {.ebnf}
+unit-attribute ::= `unit`
+```
+
+A unit attribute is an attribute that represents a value of `unit` type. The
+`unit` type allows only one value forming a singleton set. This attribute value
+is used to represent attributes that only have meaning from their existence.
+
+One example of such an attribute could be the `swift.self` attribute. This
+attribute indicates that a function parameter is the self/context parameter. It
+could be represented as a [boolean attribute](#boolean-attribute)(true or
+false), but a value of false doesn't really bring any value. The parameter
+either is the self/context or it isn't.
+
+```mlir {.mlir}
+// A unit attribute defined with the `unit` value specifier.
+func @verbose_form(i1 {unitAttr : unit})
+
+// A unit attribute can also be defined without the value specifier.
+func @simple_form(i1 {unitAttr})
+```
 
 ## Module
 

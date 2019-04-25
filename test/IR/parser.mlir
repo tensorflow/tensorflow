@@ -511,6 +511,16 @@ func @stringquote() -> () {
   return
 }
 
+// CHECK-LABEL: func @unitAttrs
+func @unitAttrs() -> () {
+  // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
+  "foo"() {unitAttr : unit} : () -> ()
+
+  // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
+  "foo"() {unitAttr} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @floatAttrs
 func @floatAttrs() -> () {
 ^bb0:
