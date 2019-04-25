@@ -76,16 +76,6 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-
-    # TFLite/Toco does not support BatchMatMul(V2) broadcasting semantic yet.
-    # Simple broadcast.
-    r"unroll_batch_matmul.*shape=\[\(1,2,3\),\(3,5\).*": "130887526",
-    # Empty batch broadcast.
-    r"unroll_batch_matmul.*shape=\[\(2,5,3\),\(3,7\).*": "130887526",
-    # Single batch with non-empty batch broadcast.
-    r"unroll_batch_matmul.*shape=\[\(1,5,3\),\(4,3,7\).*": "130887526",
-    # Broadcast both operands
-    r"unroll_batch_matmul.*shape=\[\(3,1,5,3\),\(1,4,3,7\).*": "130887526",
 }
 
 
