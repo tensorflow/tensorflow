@@ -3134,11 +3134,30 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   }
 }
 
+template <typename Bounds, typename Input>
+constexpr bool IsIntegerInBounds(const Input& inp) {
+  static_assert(std::is_integral<Input>::value, "This function is only implemented for integral types.");
+  return (sizeof(Bounds) >= sizeof(Input))
+    // Since Input is smaller, it will always be in range of Bounds.
+    ? true
+    // Since Input is larger, we cast all values to that.
+    : (inp >= static_cast<Input>(std::numeric_limits<Bounds>::lowest())
+      && inp <= static_cast<Input>(std::numeric_limits<Bounds>::max()));
+}
+
 template <DataType dtype>
-void CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
+Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
   typedef typename EnumToDataType<dtype>::Type CType;
   const CType* src = tensor.flat<CType>().data();
+  for (int i = 0; i < tensor.NumElements(); ++i) {
+    // This becomes a no-op if sizeof(CType) < sizeof(int32)
+    if (!IsIntegerInBounds<int32>(src[i])) {
+      return errors::InvalidArgument("Value at index " + std::to_string(i) + " is outside the range of int32");
+    }
+    dst[i] = static_cast<int32>(src[i]);
+  }
   std::copy(src, src + tensor.NumElements(), dst);
+  return Status::OK();
 }
 
 Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
@@ -3152,7 +3171,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   // this.
   DataType converted_dtype = dtype;
   if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
-      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16) {
+      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16 || dtype == DataType::DT_INT64) {
     converted_dtype = DT_INT32;
   }
 
@@ -3192,6 +3211,9 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
       break;
     case DT_UINT16:
       CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      break;
+    case DT_INT64:
+      CopyToTrtInt32Array<DT_INT64>(tensor, dst);
       break;
     default:
       return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
