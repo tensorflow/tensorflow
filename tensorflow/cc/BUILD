@@ -785,6 +785,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "checkpoint_management",
+    srcs = ["training/checkpoint_management.cc"],
+    hdrs = ["training/checkpoint_management.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "checkpoint_management_test",
+    srcs = ["training/checkpoint_management_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":checkpoint_management",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/python:protos_all_cc",
+    ],
+)
+
 transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
