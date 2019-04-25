@@ -342,7 +342,6 @@ class Buffer(object):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
     result = self._backend.destructure_tuple(self.c_buffer)
-    self.delete()
     return tuple(
         Buffer(sub_buffer, device=self._device, backend=self._backend)
         for sub_buffer in result)
