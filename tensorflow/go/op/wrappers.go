@@ -15753,6 +15753,14 @@ func UnicodeDecodeReplaceControlCharacters(value bool) UnicodeDecodeAttr {
 	}
 }
 
+// UnicodeDecodeTsplits sets the optional Tsplits attribute to value.
+// If not specified, defaults to DT_INT64
+func UnicodeDecodeTsplits(value tf.DataType) UnicodeDecodeAttr {
+	return func(m optionalAttr) {
+		m["Tsplits"] = value
+	}
+}
+
 // Decodes each string in `input` into a sequence of Unicode code points.
 //
 // The character codepoints for all strings are returned using a single vector
@@ -19406,6 +19414,17 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 	return op.Output(0)
 }
 
+// RaggedRangeAttr is an optional argument to RaggedRange.
+type RaggedRangeAttr func(optionalAttr)
+
+// RaggedRangeTsplits sets the optional Tsplits attribute to value.
+// If not specified, defaults to DT_INT64
+func RaggedRangeTsplits(value tf.DataType) RaggedRangeAttr {
+	return func(m optionalAttr) {
+		m["Tsplits"] = value
+	}
+}
+
 // Returns a `RaggedTensor` containing the specified sequences of numbers.
 //
 //
@@ -19433,15 +19452,20 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 //	deltas: The deltas of each range.
 //
 // Returns The `row_splits` for the returned `RaggedTensor`.The `flat_values` for the returned `RaggedTensor`.
-func RaggedRange(scope *Scope, starts tf.Output, limits tf.Output, deltas tf.Output) (rt_nested_splits tf.Output, rt_dense_values tf.Output) {
+func RaggedRange(scope *Scope, starts tf.Output, limits tf.Output, deltas tf.Output, optional ...RaggedRangeAttr) (rt_nested_splits tf.Output, rt_dense_values tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "RaggedRange",
 		Input: []tf.Input{
 			starts, limits, deltas,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
@@ -27577,6 +27601,14 @@ func UnicodeDecodeWithOffsetsReplacementChar(value int64) UnicodeDecodeWithOffse
 func UnicodeDecodeWithOffsetsReplaceControlCharacters(value bool) UnicodeDecodeWithOffsetsAttr {
 	return func(m optionalAttr) {
 		m["replace_control_characters"] = value
+	}
+}
+
+// UnicodeDecodeWithOffsetsTsplits sets the optional Tsplits attribute to value.
+// If not specified, defaults to DT_INT64
+func UnicodeDecodeWithOffsetsTsplits(value tf.DataType) UnicodeDecodeWithOffsetsAttr {
+	return func(m optionalAttr) {
+		m["Tsplits"] = value
 	}
 }
 
