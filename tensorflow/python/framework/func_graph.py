@@ -27,7 +27,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -79,7 +78,6 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
-  structure = composite_tensor.replace_composites_with_components(structure)
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
