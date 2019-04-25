@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -109,17 +110,19 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable, variable_2])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [variable_2])
+
     if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
-      # regularizers only supported in GRAPH mode.
-      regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
-      _ = layer.add_variable(
-          'reg_var', [2, 2],
-          initializer=init_ops.zeros_initializer(),
-          regularizer=regularizer)
-      self.assertEqual(len(layer.losses), 1)
+    regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
+    _ = layer.add_variable(
+        'reg_var', [2, 2],
+        initializer=init_ops.zeros_initializer(),
+        regularizer=regularizer)
+    self.assertEqual(len(layer.losses), 1)
+
+    added_variable = [False]
 
     # Test that sync `ON_READ` variables are defaulted to be non-trainable.
     variable_3 = layer.add_variable(
@@ -128,6 +131,18 @@ class BaseLayerTest(test.TestCase):
         synchronization=variable_scope.VariableSynchronization.ON_READ,
         aggregation=variable_scope.VariableAggregation.SUM)
     self.assertEqual(layer.non_trainable_variables, [variable_2, variable_3])
+
+    @def_function.function
+    def function_adds_weight():
+      if not added_variable[0]:
+        layer.add_variable(
+            'reg_var_from_function', [2, 2],
+            initializer=init_ops.zeros_initializer(),
+            regularizer=regularizer)
+        added_variable[0] = True
+
+    function_adds_weight()
+    self.assertEqual(len(layer.losses), 2)
 
   def testInvalidTrainableSynchronizationCombination(self):
     layer = base_layers.Layer(name='my_layer')
@@ -143,6 +158,7 @@ class BaseLayerTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
+  @test_util.run_deprecated_v1
   def testReusePartitionedVaraiblesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
@@ -445,6 +461,7 @@ class BaseLayerTest(test.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
+  @test_util.run_deprecated_v1
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
     layer = base_layers.Layer(activity_regularizer=regularizer)
@@ -533,6 +550,7 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
+  @test_util.run_deprecated_v1
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -577,6 +595,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
+  @test_util.run_deprecated_v1
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):

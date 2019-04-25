@@ -31,17 +31,16 @@ namespace {
 class DeviceResolverLocalTest : public ::testing::Test {
  protected:
   DeviceResolverLocalTest() {
-    ConfigProto cp;
     SessionOptions options;
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
   }
 
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
 };
@@ -56,7 +55,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesKnown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });
@@ -74,7 +73,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesUnknown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });

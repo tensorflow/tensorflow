@@ -64,6 +64,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
+@test_util.run_v1_only("b/120545219")
 class NumericsTest(test.TestCase):
 
   def testInf(self):

@@ -158,6 +158,23 @@ class FFTTest(xla_test.XLATestCase):
 
     self._VerifyFftMethod(INNER_DIMS_3D, np.real, _to_expected, _tf_fn)
 
+  def testRFFT3DMismatchedSize(self):
+
+    def _to_expected(x):
+      return np.fft.rfftn(
+          x,
+          axes=(-3, -2, -1),
+          s=[x.shape[-3] // 2, x.shape[-2], x.shape[-1] * 2])
+
+    def _tf_fn(x):
+      return signal.rfft3d(
+          x,
+          fft_length=[
+              x.shape[-3].value // 2, x.shape[-2].value, x.shape[-1].value * 2
+          ])
+
+    self._VerifyFftMethod(INNER_DIMS_3D, np.real, _to_expected, _tf_fn)
+
   def testIRFFT(self):
 
     def _tf_fn(x):
@@ -201,6 +218,30 @@ class FFTTest(xla_test.XLATestCase):
           ])
 
     self._VerifyFftMethod(INNER_DIMS_3D, _to_input, _to_expected, _tf_fn)
+
+  def testIRFFT3DMismatchedSize(self):
+
+    def _to_input(x):
+      return np.fft.rfftn(
+          np.real(x),
+          axes=(-3, -2, -1),
+          s=[x.shape[-3] // 2, x.shape[-2], x.shape[-1] * 2])
+
+    def _to_expected(x):
+      return np.fft.irfftn(
+          x,
+          axes=(-3, -2, -1),
+          s=[x.shape[-3] // 2, x.shape[-2], x.shape[-1] * 2])
+
+    def _tf_fn(x):
+      return signal.irfft3d(
+          x,
+          fft_length=[
+              x.shape[-3].value // 2, x.shape[-2].value, x.shape[-1].value * 2
+          ])
+
+    self._VerifyFftMethod(INNER_DIMS_3D, _to_input, _to_expected, _tf_fn)
+
 
 
 if __name__ == "__main__":

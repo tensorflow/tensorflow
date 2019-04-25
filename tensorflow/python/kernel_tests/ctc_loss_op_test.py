@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
 from tensorflow.python.ops import gradients_impl
@@ -98,13 +99,14 @@ class CTCLossTest(test.TestCase):
       self.assertShapeEqual(grad_truth, grad)
 
       if expected_err_re is None:
-        (tf_loss, tf_grad) = sess.run([loss, grad])
+        (tf_loss, tf_grad) = self.evaluate([loss, grad])
         self.assertAllClose(tf_loss, loss_truth, atol=1e-6)
         self.assertAllClose(tf_grad, grad_truth, atol=1e-6)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          sess.run([loss, grad])
+          self.evaluate([loss, grad])
 
+  @test_util.run_v1_only("b/120545219")
   def testBasic(self):
     """Test two batch entries."""
     # Input and ground truth from Alex Graves' implementation.
@@ -266,9 +268,10 @@ class CTCLossTest(test.TestCase):
           sequence_length=seq_lens,
           time_major=False)
 
-      (tf_loss, tf_loss_transposed) = sess.run([loss, loss_transposed])
+      (tf_loss, tf_loss_transposed) = self.evaluate([loss, loss_transposed])
       self.assertAllEqual(tf_loss, tf_loss_transposed)
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidSecondGradient(self):
     inputs = np.random.randn(2, 2, 3).astype(np.float32)
     inputs_t = constant_op.constant(inputs)
@@ -285,6 +288,7 @@ class CTCLossTest(test.TestCase):
                                    "explicitly disabled"):
         _ = gradients_impl._hessian_vector_product(loss, [inputs_t], v)
 
+  @test_util.run_v1_only("b/120545219")
   def testEmptyBatch(self):
     inputs = constant_op.constant([], dtype=dtypes.float32, shape=(1, 0, 2))
     sequence_lengths = constant_op.constant([], dtype=dtypes.int32)
@@ -301,6 +305,7 @@ class CTCLossTest(test.TestCase):
 
 class CTCLossTestV2(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testCtcLossV2(self):
     random_seed.set_random_seed(5)
 
@@ -332,9 +337,10 @@ class CTCLossTestV2(test.TestCase):
 
     def assert_same_loss_and_grads(loss):
       with self.cached_session() as sess:
-        self.assertAllClose(*sess.run([loss, ref_loss]))
+        self.assertAllClose(*self.evaluate([loss, ref_loss]))
         grad = gradients_impl.gradients(loss, [logits])
-        self.assertAllClose(*sess.run([grad, ref_grad]), rtol=2e-06, atol=2e-06)
+        self.assertAllClose(
+            *self.evaluate([grad, ref_grad]), rtol=2e-06, atol=2e-06)
 
     assert_same_loss_and_grads(
         ctc_ops.ctc_loss_v2(
@@ -344,6 +350,7 @@ class CTCLossTestV2(test.TestCase):
             logit_length=logit_length,
             blank_index=0))
 
+  @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseIsSameAsCtcLoss(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
       random_seed.set_random_seed(5)
@@ -391,10 +398,13 @@ class CTCLossTestV2(test.TestCase):
 
       with self.cached_session() as sess:
         for _ in range(32):
-          self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-          self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                              rtol=2e-06, atol=2e-06)
+          self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+          self.assertAllClose(
+              *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+              rtol=2e-06,
+              atol=2e-06)
 
+  @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseUniqueFastPathIsSameAsCtcLoss(self):
     random_seed.set_random_seed(5)
 
@@ -442,10 +452,13 @@ class CTCLossTestV2(test.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(32):
-        self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-        self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                            rtol=2e-06, atol=2e-06)
+        self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+        self.assertAllClose(
+            *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+            rtol=2e-06,
+            atol=2e-06)
 
+  @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseWithBlankIndexIsSameAsCtcLoss(self):
     random_seed.set_random_seed(5)
 
@@ -496,10 +509,13 @@ class CTCLossTestV2(test.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(32):
-        self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-        self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                            rtol=2e-06, atol=2e-06)
+        self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+        self.assertAllClose(
+            *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+            rtol=2e-06,
+            atol=2e-06)
 
+  @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseWithNegativeBlankIndexIsSameAsCtcLoss(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
       random_seed.set_random_seed(5)
@@ -542,9 +558,11 @@ class CTCLossTestV2(test.TestCase):
 
       with self.cached_session() as sess:
         for _ in range(32):
-          self.assertAllClose(*sess.run([ctc_loss, tf_nn_ctc_loss]))
-          self.assertAllClose(*sess.run([ctc_loss_grads, tf_nn_ctc_grads]),
-                              rtol=2e-06, atol=2e-06)
+          self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+          self.assertAllClose(
+              *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+              rtol=2e-06,
+              atol=2e-06)
 
   def testCollapseRepeated(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
@@ -744,6 +762,7 @@ class CTCLossTestV2(test.TestCase):
          [22.0 + 23.0 + 24.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
     ])
 
+  @test_util.run_deprecated_v1
   def testScan(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
       out = ctc_ops._scan(
@@ -776,15 +795,17 @@ class CTCLossTestV2(test.TestCase):
           constant_op.constant([23.0, 24.0]))
       self.assertAllEqual([[23.0, 25.0], [25.0, 28.0], [29.0, 33.0]], out)
 
+  @test_util.run_deprecated_v1
   def testScanCapturesVariables(self):
     with self.cached_session() as sess:
       x = random_ops.random_uniform([])
       fn = lambda accum, elem: accum + x * elem
       out = ctc_ops._scan(fn, constant_op.constant([0.0, 1.0, 2.0]), 23.0)
-      self.assertAllEqual(*sess.run([
+      self.assertAllClose(*sess.run([
           [23.0 + x * 0.0, 23.0 + x * 1.0, 23.0 + x * 3.0], out
       ]))
 
+  @test_util.run_deprecated_v1
   def testScanMultipleAccumulators(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
       def fn(accum, elem):
@@ -797,6 +818,7 @@ class CTCLossTestV2(test.TestCase):
       self.assertAllEqual([24.0, 26.0, 29.0], a)
       self.assertAllEqual([[1.0, 2.0], [2.0, 4.0], [6.0, 12.0]], b)
 
+  @test_util.run_deprecated_v1
   def testScanMultipleElements(self):
     with ops.device("/GPU:0" if test.is_gpu_available() else "/CPU:0"):
       def fn(accum, elem):

@@ -34,14 +34,18 @@ namespace tensorflow {
 // empty, XlaTensor.
 class XlaDeviceAllocator : public Allocator {
  public:
-  XlaDeviceAllocator();
+  XlaDeviceAllocator(se::StreamExecutor* stream_executor);
   ~XlaDeviceAllocator() override;
 
   string Name() override;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
+
+ private:
+  // The stream executor of the device.
+  se::StreamExecutor* stream_executor_;
 };
 
 // Helper class for managing data transfers between host and XLA devices.
@@ -62,14 +66,14 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
 
   xla::LocalClient* client() const { return client_; }
   se::Stream* stream() const { return stream_.get(); }
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
-  }
-  se::Stream* device_to_host_stream() const {
-    return device_to_host_stream_.get();
   }
   se::Stream* device_to_device_stream(int index) const {
     return device_to_device_streams_.at(index).get();
@@ -92,7 +96,8 @@ class XlaDeviceContext : public DeviceContext {
   // idential to stream_, but must not be nullptr.
   std::shared_ptr<se::Stream> host_to_device_stream_;
   // The stream to use for transferring data from device to host. Can be
-  // idential to stream_, but must not be nullptr.
+  // idential to stream_. If nullptr, borrow a stream from backend for each
+  // transfer request to support out-of-order requests.
   std::shared_ptr<se::Stream> device_to_host_stream_;
   // Streams to use for transferring data directly between different devices,
   // e.g., over NVLINK.

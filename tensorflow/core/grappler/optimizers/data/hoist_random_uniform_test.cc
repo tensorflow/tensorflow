@@ -55,7 +55,7 @@ TEST(HoistRandomUniform, SimpleHoisting) {
   const int zip_dataset_id =
       graph_utils::FindGraphNodeWithOp("ZipDataset", output);
   const int random_dataset_id =
-      graph_utils::FindGraphNodeWithOp("RandomDataset", output);
+      graph_utils::FindGraphNodeWithOp("ExperimentalRandomDataset", output);
   const int batch_random_id =
       graph_utils::FindGraphNodeWithOp("BatchDatasetV2", output);
   ASSERT_NE(random_dataset_id, -1);

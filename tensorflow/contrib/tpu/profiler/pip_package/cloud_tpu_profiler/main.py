@@ -90,12 +90,12 @@ def main(unused_argv=None):
   tf_version = tf.__version__
   print('TensorFlow version %s detected' % tf_version)
 
-  if FLAGS.service_addr is None and FLAGS.tpu is None:
+  if not FLAGS.service_addr and not FLAGS.tpu:
     sys.exit('You must specify either --service_addr or --tpu.')
 
   tpu_cluster_resolver = None
-  if FLAGS.service_addr is not None:
-    if FLAGS.tpu is not None:
+  if FLAGS.service_addr:
+    if FLAGS.tpu:
       tf.logging.warn('Both --service_addr and --tpu are set. Ignoring '
                       '--tpu and using --service_addr.')
     service_addr = FLAGS.service_addr

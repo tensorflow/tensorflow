@@ -20,12 +20,20 @@ limitations under the License.
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 using tensorflow::int32;
 using tensorflow::int64;
 
 namespace {
 
-template <typename T>
+bool Is16BytesAligned(void* ptr) {
+  return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
+}
+
+template <typename T, Eigen::AlignmentType Alignment>
 void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
             int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
   int64 lhs_rows = m;
@@ -40,11 +48,11 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
     std::swap(rhs_rows, rhs_cols);
   }
 
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, Eigen::Aligned> A(
-      lhs, lhs_rows, lhs_cols);
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, Eigen::Aligned> B(
-      rhs, rhs_rows, rhs_cols);
-  Eigen::TensorMap<Eigen::Tensor<T, 2>, Eigen::Aligned> C(out, m, n);
+  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, Alignment> A(lhs, lhs_rows,
+                                                                 lhs_cols);
+  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, Alignment> B(rhs, rhs_rows,
+                                                                 rhs_cols);
+  Eigen::TensorMap<Eigen::Tensor<T, 2>, Alignment> C(out, m, n);
 
   typedef typename Eigen::Tensor<T, 2>::DimensionPair DimPair;
   int lhs_contract_dim = transpose_lhs ? 0 : 1;
@@ -59,14 +67,22 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
 }
 
 template <typename T>
-void SingleThreadedMatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs,
-                          int64 m, int64 n, int64 k, int32 transpose_lhs,
-                          int32 transpose_rhs) {
+void SingleThreadedMatMulDispatch(const void* run_options_ptr, T* out, T* lhs,
+                                  T* rhs, int64 m, int64 n, int64 k,
+                                  int32 transpose_lhs, int32 transpose_rhs) {
+  bool all_buffers_16b_aligned =
+      Is16BytesAligned(out) && Is16BytesAligned(lhs) && Is16BytesAligned(rhs);
+
+  if (!all_buffers_16b_aligned) {
+    MatMul<T, Eigen::Unaligned>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                transpose_lhs, transpose_rhs);
+  }
+
   if (m == 1 || n == 1) {
     xla::EigenMatVec<T>(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
   } else {
-    MatMul<T>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-              transpose_rhs);
+    MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                transpose_lhs, transpose_rhs);
   }
 }
 
@@ -77,8 +93,8 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
     Eigen::half* rhs, int64 m, int64 n, int64 k, int32 transpose_lhs,
     int32 transpose_rhs) {
-  SingleThreadedMatMul<Eigen::half>(run_options_ptr, out, lhs, rhs, m, n, k,
-                                    transpose_lhs, transpose_rhs);
+  SingleThreadedMatMulDispatch<Eigen::half>(run_options_ptr, out, lhs, rhs, m,
+                                            n, k, transpose_lhs, transpose_rhs);
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -87,8 +103,8 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF32(const void* run_options_ptr,
                                                float* rhs, int64 m, int64 n,
                                                int64 k, int32 transpose_lhs,
                                                int32 transpose_rhs) {
-  SingleThreadedMatMul<float>(run_options_ptr, out, lhs, rhs, m, n, k,
-                              transpose_lhs, transpose_rhs);
+  SingleThreadedMatMulDispatch<float>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                      transpose_lhs, transpose_rhs);
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -97,6 +113,6 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
                                                double* rhs, int64 m, int64 n,
                                                int64 k, int32 transpose_lhs,
                                                int32 transpose_rhs) {
-  SingleThreadedMatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k,
-                               transpose_lhs, transpose_rhs);
+  SingleThreadedMatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                       transpose_lhs, transpose_rhs);
 }

@@ -86,7 +86,7 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
 
   // Set offset of strings.
   int32_t start = sizeof(int32_t) * (num_strings + 2);
-  for (int i = 0; i < offset_.size(); i++) {
+  for (size_t i = 0; i < offset_.size(); i++) {
     int32_t offset = start + offset_[i];
     memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset, sizeof(int32_t));
   }
@@ -96,8 +96,7 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   return bytes;
 }
 
-void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor) {
-  // Set tensor content pointer to tensor_buffer, and release original data.
+void DynamicBuffer::WriteToTensorAsVector(TfLiteTensor* tensor) {
   auto dims = TfLiteIntArrayCreate(1);
   dims->data[0] = offset_.size() - 1;  // Store number of strings.
   WriteToTensor(tensor, dims);
@@ -107,6 +106,10 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
                                   TfLiteIntArray* new_shape) {
   char* tensor_buffer;
   int bytes = WriteToBuffer(&tensor_buffer);
+
+  if (new_shape == nullptr) {
+    new_shape = TfLiteIntArrayCopy(tensor->dims);
+  }
 
   // Set tensor content pointer to tensor_buffer, and release original data.
   TfLiteTensorReset(tensor->type, tensor->name, new_shape, tensor->params,

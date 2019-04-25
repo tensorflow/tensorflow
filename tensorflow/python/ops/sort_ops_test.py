@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sort_ops
@@ -33,9 +34,11 @@ from tensorflow.python.platform import test
 
 class SortTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testRandom_lowDimensionality(self):
     self._testRandom_lowDimensionality(negative_axis=False)
 
+  @test_util.run_deprecated_v1
   def testRandom_lowDimensionality_negative(self):
     self._testRandom_lowDimensionality(negative_axis=True)
 
@@ -53,6 +56,7 @@ class SortTest(test.TestCase):
             np.sort(arr, axis=sort_axis),
             sort_ops.sort(constant_op.constant(arr), axis=sort_axis).eval())
 
+  @test_util.run_deprecated_v1
   def testRandom_highDimensionality(self):
     np.random.seed(100)
     for _ in range(20):
@@ -65,6 +69,7 @@ class SortTest(test.TestCase):
             np.sort(arr, axis=sort_axis),
             sort_ops.sort(constant_op.constant(arr), axis=sort_axis).eval())
 
+  @test_util.run_deprecated_v1
   def testScalar(self):
     # Create an empty scalar where the static shape is unknown.
     zeros_length_1 = array_ops.zeros(
@@ -77,11 +82,13 @@ class SortTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sort.eval()
 
+  @test_util.run_deprecated_v1
   def testNegativeOutOfBounds_staticShape(self):
     arr = constant_op.constant([3, 4, 5])
     with self.assertRaises(ValueError):
       sort_ops.sort(arr, axis=-4)
 
+  @test_util.run_deprecated_v1
   def testDescending(self):
     arr = np.random.random((10, 5, 5))
     with self.cached_session():
@@ -90,6 +97,7 @@ class SortTest(test.TestCase):
           sort_ops.sort(
               constant_op.constant(arr), axis=0, direction='DESCENDING').eval())
 
+  @test_util.run_deprecated_v1
   def testSort_staticallyKnownRank_constantTransposition(self):
     # The transposition array should be a constant if the rank of "values" is
     # statically known.
@@ -107,6 +115,7 @@ class SortTest(test.TestCase):
         tensor_util.constant_value(transposition),
         [0, 4, 2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testArgsort_1d(self):
     arr = np.random.random(42)
     with self.cached_session():
@@ -114,6 +123,7 @@ class SortTest(test.TestCase):
           np.sort(arr),
           array_ops.gather(arr, sort_ops.argsort(arr)).eval())
 
+  @test_util.run_deprecated_v1
   def testArgsort(self):
     arr = np.random.random((5, 6, 7, 8))
     for axis in range(4):

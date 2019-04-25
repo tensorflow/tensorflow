@@ -19,20 +19,36 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
 
+usage() {
+  echo "Usage: $(basename "$0") [-a]"
+  echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64 arm64)"
+  echo "  default is [x86_64 armv7 armv7s arm64]"
+  echo "-p enable profiling"
+  exit 1
+}
+
+profiling_args=""
+BUILD_ARCHS="x86_64 armv7 armv7s arm64"
+while getopts "a:p" opt_name; do
+  case "$opt_name" in
+    a) BUILD_ARCHS="${OPTARG}";;
+    p) profiling_args='-DGEMMLOWP_PROFILING,-DTFLITE_PROFILING_ENABLED';;
+    *) usage;;
+  esac
+done
+shift $(($OPTIND - 1))
+
 # Build library for supported architectures and packs them in a fat binary.
 make_library() {
-    for arch in x86_64 armv7 armv7s arm64
+    LIBS=""
+    for arch in $BUILD_ARCHS
     do
         make -f tensorflow/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} \
-        -j 8
+            EXTRA_CXXFLAGS=$profiling_args -j 8
+        LIBS="${LIBS} tensorflow/lite/tools/make/gen/ios_${arch}/lib/${1}"
     done
     mkdir -p tensorflow/lite/tools/make/gen/lib
-    lipo \
-    tensorflow/lite/tools/make/gen/ios_x86_64/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_armv7/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_armv7s/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_arm64/lib/${1} \
-    -create \
+    lipo $LIBS -create \
     -output tensorflow/lite/tools/make/gen/lib/${1}
 }
 

@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for contrib.seq2seq.python.ops.attention_wrapper."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# pylint: enable=unused-import
 
 import collections
 import functools
@@ -30,11 +28,13 @@ from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -65,6 +65,7 @@ def get_result_summary(x):
   return x
 
 
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class AttentionWrapperTest(test.TestCase):
 
   def assertAllCloseOrEqual(self, x, y, **kwargs):
@@ -357,7 +358,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00597103),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.6))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -386,7 +387,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.3333333333))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -453,7 +454,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.3333333333333333))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -513,7 +514,7 @@ class AttentionWrapperTest(test.TestCase):
     for axis in [0, 1]:
       for exclusive in [True, False]:
         with self.cached_session():
-          # Compute cumprod with regular tf.cumprod
+          # Compute cumprod with regular tf.math.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
           # Compute cumprod with safe_cumprod
@@ -695,7 +696,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0025896581),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.6))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.73333333))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -706,12 +707,12 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-0.00069823361),
         time=3,
         alignments=ResultSummary(
-            shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
+            shape=(5, 8), dtype=dtype('float32'), mean=0.029914695),
         attention_state=ResultSummary(
-            shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
+            shape=(5, 8), dtype=dtype('float32'), mean=0.029914695),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.04865776002407074)
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.0465225502849)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -920,9 +921,9 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11723966),
+            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.115853324533),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=7.266666666666667))
+            shape=(5, 3), dtype=dtype('int32'), mean=8.6))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -930,7 +931,7 @@ class AttentionWrapperTest(test.TestCase):
             h=ResultSummary(
                 shape=(5, 9), dtype=dtype('float32'), mean=-0.0018327223)),
         attention=ResultSummary(
-            shape=(5, 20), dtype=dtype('float32'), mean=0.11601614207),
+            shape=(5, 20), dtype=dtype('float32'), mean=0.11462739855),
         time=3,
         alignments=(ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
@@ -991,6 +992,68 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
+
+  def testCustomizedAttention(self):
+    batch_size = 2
+    max_time = 3
+    num_units = 2
+    memory = constant_op.constant([[[1., 1.], [2., 2.], [3., 3.]],
+                                   [[4., 4.], [5., 5.], [6., 6.]]])
+    memory_sequence_length = constant_op.constant([3, 2])
+    attention_mechanism = wrapper.BahdanauAttention(num_units, memory,
+                                                    memory_sequence_length)
+
+    # Sets all returned values to be all ones.
+    def _customized_attention(unused_attention_mechanism, unused_cell_output,
+                              unused_attention_state, unused_attention_layer):
+      """Customized attention.
+
+      Returns:
+        attention: `Tensor` of shape [batch_size, num_units], attention output.
+        alignments: `Tensor` of shape [batch_size, max_time], sigma value for
+          each input memory (prob. function of input keys).
+        next_attention_state: A `Tensor` representing the next state for the
+          attention.
+      """
+      attention = array_ops.ones([batch_size, num_units])
+      alignments = array_ops.ones([batch_size, max_time])
+      next_attention_state = alignments
+      return attention, alignments, next_attention_state
+
+    attention_cell = wrapper.AttentionWrapper(
+        rnn_cell.LSTMCell(2),
+        attention_mechanism,
+        attention_layer_size=None,  # don't use attention layer.
+        output_attention=False,
+        alignment_history=(),
+        attention_fn=_customized_attention,
+        name='attention')
+    self.assertEqual(num_units, attention_cell.output_size)
+
+    initial_state = attention_cell.zero_state(
+        batch_size=2, dtype=dtypes.float32)
+    source_input_emb = array_ops.ones([2, 3, 2])
+    source_input_length = constant_op.constant([3, 2])
+
+    # 'state' is a tuple of
+    # (cell_state, h, attention, alignments, alignment_history, attention_state)
+    output, state = rnn.dynamic_rnn(
+        attention_cell,
+        inputs=source_input_emb,
+        sequence_length=source_input_length,
+        initial_state=initial_state,
+        dtype=dtypes.float32)
+
+    with self.session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_value, state_value = sess.run([output, state], feed_dict={})
+      self.assertAllEqual(np.array([2, 3, 2]), output_value.shape)
+      self.assertAllClose(np.array([[1., 1.], [1., 1.]]), state_value.attention)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.alignments)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.attention_state)
+
 
 if __name__ == '__main__':
   test.main()

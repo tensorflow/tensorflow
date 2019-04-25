@@ -22,6 +22,7 @@ from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors as tf_errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
@@ -47,6 +48,7 @@ class RuntimeErrorsTest(test.TestCase):
                                     'test_comment')
     return loc, origin
 
+  @test_util.run_deprecated_v1
   def test_improved_errors_basic(self):
     loc, origin = self.fake_origin(zero_div, 2)
     zero_div_caller.ag_source_map = {loc: origin}
@@ -55,13 +57,14 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(errors.TfRuntimeError) as cm:
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
     for frame in cm.exception.custom_traceback:
       _, _, function_name, _ = frame
       self.assertNotEqual('zero_div', function_name)
     self.assertIn(origin.as_frame(), set(cm.exception.custom_traceback))
 
+  @test_util.run_deprecated_v1
   def test_improved_errors_no_matching_lineno(self):
     loc, origin = self.fake_origin(zero_div, -1)
     zero_div_caller.ag_source_map = {loc: origin}
@@ -70,7 +73,7 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(errors.TfRuntimeError) as cm:
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
     all_function_names = set()
     for frame in cm.exception.custom_traceback:
@@ -79,6 +82,7 @@ class RuntimeErrorsTest(test.TestCase):
       self.assertNotEqual('test_function_name', function_name)
     self.assertIn('zero_div', all_function_names)
 
+  @test_util.run_deprecated_v1
   def test_improved_errors_failures(self):
     loc, _ = self.fake_origin(zero_div, 2)
     zero_div_caller.ag_source_map = {loc: 'bogus object'}
@@ -87,7 +91,7 @@ class RuntimeErrorsTest(test.TestCase):
     with self.assertRaises(tf_errors.InvalidArgumentError):
       with errors.improved_errors(zero_div_caller):
         with self.cached_session() as sess:
-          sess.run(ops)
+          self.evaluate(ops)
 
   def test_improved_errors_validation(self):
     with self.assertRaisesRegexp(

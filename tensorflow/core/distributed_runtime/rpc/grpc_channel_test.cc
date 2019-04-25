@@ -184,18 +184,39 @@ TEST(GrpcChannelTest, SparseHostPorts) {
 TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
   SharedGrpcChannelPtr mock_ptr;
 
-  EXPECT_TRUE(NewHostPortGrpcChannel("127.0.0.1:2222", &mock_ptr).ok());
-  EXPECT_TRUE(NewHostPortGrpcChannel("example.com:2222", &mock_ptr).ok());
-  EXPECT_TRUE(NewHostPortGrpcChannel("fqdn.example.com.:2222", &mock_ptr).ok());
-  EXPECT_TRUE(NewHostPortGrpcChannel("[2002:a9c:258e::]:2222", &mock_ptr).ok());
-  EXPECT_TRUE(NewHostPortGrpcChannel("[::]:2222", &mock_ptr).ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("127.0.0.1:2222", /*rpc_options=*/nullptr,
+                                     &mock_ptr)
+                  .ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("example.com:2222",
+                                     /*rpc_options=*/nullptr, &mock_ptr)
+                  .ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("fqdn.example.com.:2222",
+                                     /*rpc_options=*/nullptr, &mock_ptr)
+                  .ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("[2002:a9c:258e::]:2222",
+                                     /*rpc_options=*/nullptr, &mock_ptr)
+                  .ok());
+  EXPECT_TRUE(
+      NewHostPortGrpcChannel("[::]:2222", /*rpc_options=*/nullptr, &mock_ptr)
+          .ok());
 
-  EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:2222", &mock_ptr).ok());
-  EXPECT_FALSE(NewHostPortGrpcChannel("127.0.0.1:2222/", &mock_ptr).ok());
-  EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:", &mock_ptr).ok());
-  EXPECT_FALSE(NewHostPortGrpcChannel("[::]/:2222", &mock_ptr).ok());
-  EXPECT_FALSE(NewHostPortGrpcChannel("[::]:2222/", &mock_ptr).ok());
-  EXPECT_FALSE(NewHostPortGrpcChannel("[::]:", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:2222",
+                                      /*rpc_options=*/nullptr, &mock_ptr)
+                   .ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("127.0.0.1:2222/",
+                                      /*rpc_options=*/nullptr, &mock_ptr)
+                   .ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel(
+                   "example.com/abc:", /*rpc_options=*/nullptr, &mock_ptr)
+                   .ok());
+  EXPECT_FALSE(
+      NewHostPortGrpcChannel("[::]/:2222", /*rpc_options=*/nullptr, &mock_ptr)
+          .ok());
+  EXPECT_FALSE(
+      NewHostPortGrpcChannel("[::]:2222/", /*rpc_options=*/nullptr, &mock_ptr)
+          .ok());
+  EXPECT_FALSE(
+      NewHostPortGrpcChannel("[::]:", /*rpc_options=*/nullptr, &mock_ptr).ok());
 }
 
 }  // namespace tensorflow

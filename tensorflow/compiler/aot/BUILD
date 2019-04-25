@@ -30,15 +30,16 @@ cc_library(
         "flags.h",
     ],
     deps = [
+        ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/tf2xla:tf2xla_proto",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -69,8 +70,10 @@ tf_cc_test(
     ],
     deps = [
         ":tfcompile_lib",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
@@ -203,6 +206,15 @@ cc_library(
         "@llvm//:support",
         "@llvm//:target",
     ],
+)
+
+cc_library(
+    name = "aot_only_var_handle_op",
+    srcs = ["aot_only_var_handle_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_test(

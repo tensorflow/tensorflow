@@ -41,11 +41,37 @@ class ExportTest : public ::testing::Test {
       if (name == "Conv") {
         auto* op = new ConvOperator;
         op->padding.type = PaddingType::kSame;
+        op->inputs = {"input", "filter"};
+        op->outputs = {"output"};
+        Array& input_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& filter_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input_array.data_type = ArrayDataType::kFloat;
+        filter_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
         input_model_.operators.emplace_back(op);
       } else if (name == "Add") {
-        input_model_.operators.emplace_back(new AddOperator);
+        auto* op = new AddOperator;
+        op->inputs = {"input1", "input2"};
+        op->outputs = {"output"};
+        Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input1_array.data_type = ArrayDataType::kFloat;
+        input2_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
+        input_model_.operators.emplace_back(op);
       } else if (name == "Sub") {
-        input_model_.operators.emplace_back(new SubOperator);
+        auto* op = new SubOperator;
+        op->inputs = {"input1", "input2"};
+        op->outputs = {"output"};
+        Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input1_array.data_type = ArrayDataType::kFloat;
+        input2_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
+        input_model_.operators.emplace_back(op);
       } else if (name == "Assert") {
         auto* op = new TensorFlowAssertOperator;
 
@@ -97,9 +123,27 @@ class ExportTest : public ::testing::Test {
       auto* op = new ConvOperator;
       op->padding.type = PaddingType::kSame;
       op->inputs = {"inputs", "weights"};
+      op->outputs = {"output"};
+      Array& input_array = input_model_.GetArray(op->inputs[0]);
+      Array& filter_array = input_model_.GetArray(op->inputs[1]);
+      Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+      input_array.data_type = ArrayDataType::kFloat;
+      filter_array.data_type = ArrayDataType::kFloat;
+      output_array.data_type = ArrayDataType::kFloat;
       input_model_.operators.emplace_back(op);
     }
-    input_model_.operators.emplace_back(new AddOperator);
+    {
+      auto* op = new AddOperator;
+      op->inputs = {"input1", "input2"};
+      op->outputs = {"output"};
+      Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+      Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+      Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+      input1_array.data_type = ArrayDataType::kFloat;
+      input2_array.data_type = ArrayDataType::kFloat;
+      output_array.data_type = ArrayDataType::kFloat;
+      input_model_.operators.emplace_back(op);
+    }
   }
 
   std::vector<string> ExportAndSummarizeOperators(const ExportParams& params) {
@@ -207,7 +251,7 @@ class OpSetsTest : public ExportTest {
     params_.enable_select_tf_ops = false;
     params_.quantize_weights = false;
 
-    for (OpSet i : sets) {
+    for (const OpSet& i : sets) {
       switch (i) {
         case kTfLiteBuiltins:
           import_all_ops_as_unsupported_ = false;
@@ -301,8 +345,9 @@ class FakeConvolutionOperator
                         OperatorType::kConv) {}
 
   // Returning the op version according to the op parameters.
-  int GetVersion(const Operator& op) const override {
-    const TocoOperator& conv_op = static_cast<const TocoOperator&>(op);
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const TocoOperator& conv_op =
+        static_cast<const TocoOperator&>(*op_signature.op);
     if (conv_op.dilation_width_factor != 1 ||
         conv_op.dilation_height_factor != 1) {
       // Version 2 if dilation is used.
@@ -429,7 +474,7 @@ TEST_F(VersionedOpExportTest, Export) {
   auto* model = ::tflite::GetModel(result.data());
   auto operator_codes = model->operator_codes();
 
-  // Verify that 2 operator codes are populdated. Both are CONV_2D but with
+  // Verify that 2 operator codes are populated. Both are CONV_2D but with
   // different versions.
   EXPECT_EQ(2, operator_codes->size());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
@@ -448,22 +493,58 @@ TEST_F(VersionedOpExportTest, Export) {
 }
 
 TEST(OperatorKeyTest, TestBuiltinOp) {
+  Model model;
   auto op = absl::make_unique<ConvOperator>();
 
+  // Test a normal float operation.
+  op->inputs = {"input", "filter"};
+  op->outputs = {"output"};
+  Array& input_array = model.GetOrCreateArray(op->inputs[0]);
+  Array& filter_array = model.GetOrCreateArray(op->inputs[1]);
+  Array& output_array = model.GetOrCreateArray(op->outputs[0]);
+  input_array.data_type = ArrayDataType::kFloat;
+  filter_array.data_type = ArrayDataType::kFloat;
+  output_array.data_type = ArrayDataType::kFloat;
+
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::OperatorKey(*op, ops_by_type, false);
+  const toco::OperatorSignature op_signature = {op.get(), &model};
+  const auto key = details::OperatorKey(op_signature, ops_by_type, false);
 
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CONV_2D);
   EXPECT_EQ(key.custom_code(), "");
   EXPECT_EQ(key.version(), 1);
 }
 
+TEST(OperatorKeyTest, TestBuiltinOpWithVersionedInputTypes) {
+  Model model;
+  auto op = absl::make_unique<DequantizeOperator>();
+
+  op->inputs = {"input"};
+  op->outputs = {"output"};
+  Array& input_array = model.GetOrCreateArray(op->inputs[0]);
+  Array& output_array = model.GetOrCreateArray(op->outputs[0]);
+  input_array.data_type = ArrayDataType::kInt8;
+  output_array.data_type = ArrayDataType::kFloat;
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+
+  // Test a signed int8 dequantize operation.
+  const toco::OperatorSignature op_signature = {op.get(), &model};
+  const auto key = details::OperatorKey(op_signature, ops_by_type, false);
+
+  EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_DEQUANTIZE);
+  EXPECT_EQ(key.custom_code(), "");
+  EXPECT_EQ(key.version(), 2);
+}
+
 TEST(OperatorKeyTest, TestCustomOp) {
+  Model model;
   auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "MyCrazyCustomOp";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::OperatorKey(*op, ops_by_type, false);
+  const toco::OperatorSignature op_signature = {op.get(), &model};
+  const auto key = details::OperatorKey(op_signature, ops_by_type, false);
 
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
   EXPECT_EQ(key.custom_code(), "MyCrazyCustomOp");
@@ -471,12 +552,14 @@ TEST(OperatorKeyTest, TestCustomOp) {
 }
 
 TEST(OperatorKeyTest, TestFlexOp) {
+  Model model;
   auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "BatchMatMul";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
   {
-    const auto key = details::OperatorKey(*op, ops_by_type, false);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type, false);
     // It shouldn't be converted to Flex op if `allow_flex_op` is false.
     EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
     EXPECT_EQ(key.custom_code(), "BatchMatMul");
@@ -488,7 +571,8 @@ TEST(OperatorKeyTest, TestFlexOp) {
   {
     // Verify that the custom op name is prefixed by "Flex" and `is_flex_op`
     // is true.
-    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type, true);
     EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
     EXPECT_EQ(key.custom_code(), "FlexBatchMatMul");
     EXPECT_EQ(key.version(), 1);
@@ -498,11 +582,13 @@ TEST(OperatorKeyTest, TestFlexOp) {
 }
 
 TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
+  Model model;
   auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "Merge";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::OperatorKey(*op, ops_by_type, true);
+  const toco::OperatorSignature op_signature = {op.get(), &model};
+  const auto key = details::OperatorKey(op_signature, ops_by_type, true);
 
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
   EXPECT_EQ(key.custom_code(), "FlexMerge");
@@ -514,11 +600,13 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
 }
 
 TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
+  Model model;
   auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "HashTableV2";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::OperatorKey(*op, ops_by_type, true);
+  const toco::OperatorSignature op_signature = {op.get(), &model};
+  const auto key = details::OperatorKey(op_signature, ops_by_type, true);
 
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
   EXPECT_EQ(key.custom_code(), "HashTableV2");
@@ -532,6 +620,7 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
 
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   // Test Toco-supported/TFLite-unsupported operators.
+  Model model;
   // TODO(ycling): The test will be broken if TensorFlowAssert is implemented in
   // TFLite. Find a more robust way to test the fallback logic.
   auto op = absl::make_unique<TensorFlowAssertOperator>();
@@ -541,7 +630,8 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   {
     // If NodeDef isn't retained in the Toco op, a regular custom op
     // will be exported.
-    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type, true);
     EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
     EXPECT_EQ(key.custom_code(), "Assert");
     EXPECT_EQ(key.version(), 1);
@@ -556,7 +646,8 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
 
   {
     // If NodeDef is retained in the Toco op, a Flex op will be exported.
-    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type, true);
     EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
     EXPECT_EQ(key.custom_code(), "FlexAssert");
     EXPECT_EQ(key.version(), 1);

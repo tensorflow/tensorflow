@@ -20,7 +20,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 // Return a tensor handle containing a float scalar
-TFE_TensorHandle* TestScalarTensorHandle();
+TFE_TensorHandle* TestScalarTensorHandle(float value);
+
+// Return a tensor handle containing a int scalar
+TFE_TensorHandle* TestScalarTensorHandle(int value);
+
+// Return a tensor handle containing a bool scalar
+TFE_TensorHandle* TestScalarTensorHandle(bool value);
 
 // Return a tensor handle containing a 2x2 matrix of doubles
 TFE_TensorHandle* DoubleTestMatrixTensorHandle();
@@ -36,6 +42,9 @@ TFE_TensorHandle* TestMatrixTensorHandle3X2();
 
 // Return a matmul op multiplying `a` by `b`.
 TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
+
+// Return a shape op fetching the shape of `a`.
+TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
 
 // Return an 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle();

@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "Case"
+  in_arg {
+    name: "branch_index"
+    description: "The branch selector, an int32 Tensor."
+  }
+  in_arg {
+    name: "input"
+    description: "A list of input tensors passed to the branch function."
+  }
+  out_arg {
+    name: "output"
+    description: "A list of return values."
+  }
+  attr { name: "Tin"  description: "A list of input types." }
+  attr { name: "Tout"  description: "A list of output types." }
+  attr {
+    name: "branches"
+    description: <<END
+      A list of functions each of which takes 'inputs' and returns a list of
+      tensors, whose types are the same as what every other branch returns.
+END
+  }
+  summary: "An n-way switch statement which calls a single branch function."
+  description: <<END
+    An n-way switch statement, implementing the following:
+    ```
+    switch (branch_index) {
+      case 0:
+        output = branches[0](input);
+        break;
+      case 1:
+        output = branches[1](input);
+        break;
+      ...
+      case [[nbranches-1]]:
+      default:
+        output = branches[nbranches-1](input);
+        break;
+    }
+    ```
+END
+}

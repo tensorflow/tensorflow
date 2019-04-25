@@ -24,7 +24,10 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -33,6 +36,7 @@ from tensorflow.python.util import compat
 _NUMPY_RANDOM_SEED = 42
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class IgnoreErrorsTest(test_base.DatasetTestBase):
 
   def testMapIgnoreError(self):
@@ -42,16 +46,12 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.check_numerics(x, "message")).apply(
             error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for x in [1., 2., 3., 5.]:
+      self.assertEqual(x, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -60,16 +60,12 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components).map(
             lambda x: array_ops.check_numerics(x, "message"),
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for x in [1., 2., 3., 5.]:
+      self.assertEqual(x, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testReadFileIgnoreError(self):
 
@@ -87,28 +83,48 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(filenames).map(
             io_ops.read_file,
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      # All of the files are present.
-      sess.run(init_op)
-      for filename in filenames:
-        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # All of the files are present.
+    for filename in filenames:
+      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-      # Delete one of the files.
-      os.remove(filenames[0])
+    # Delete one of the files.
+    os.remove(filenames[0])
 
-      # Attempting to read filenames[0] will fail, but ignore_errors()
-      # will catch the error.
-      sess.run(init_op)
-      for filename in filenames[1:]:
-        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Attempting to read filenames[0] will fail, but ignore_errors()
+    # will catch the error.
+    get_next = self.getNext(dataset)
+    for filename in filenames[1:]:
+      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  def testTFRecordDatasetIgnoreError(self):
+    filenames = []
+    for i in range(5):
+      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+      filenames.append(fn)
+      writer = python_io.TFRecordWriter(fn)
+      for j in range(10):
+        writer.write(b"record")
+      writer.close()
+      # Append corrupted data
+      with open(fn, "a") as f:
+        f.write("corrupted data")
+
+    dataset = readers.TFRecordDataset(filenames).apply(
+        error_ops.ignore_errors())
+    get_next = self.getNext(dataset)
+
+    # All of the files are present.
+    for filename in filenames:
+      for j in range(10):
+        self.assertEqual(b"record", self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

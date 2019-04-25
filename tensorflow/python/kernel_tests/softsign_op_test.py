@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -49,6 +50,7 @@ class SoftsignTest(test.TestCase):
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -65,6 +67,7 @@ class SoftsignTest(test.TestCase):
     print("softsign (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testNoInts(self):
     with self.cached_session():
       with self.assertRaisesRegexp(

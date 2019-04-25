@@ -25,7 +25,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 
 class TrainingGPUTest(test.TestCase):
@@ -65,7 +64,7 @@ class TrainingGPUTest(test.TestCase):
                            bias_initializer='ones')(input_tensor)
       simple_model = keras.models.Model(inputs=input_tensor,
                                         outputs=predictions)
-      simple_model.compile(optimizer=rmsprop.RMSPropOptimizer(1e-3), loss=loss)
+      simple_model.compile(optimizer='rmsprop', loss=loss)
       return simple_model
 
     if test.is_gpu_available(cuda_only=True):
@@ -114,11 +113,12 @@ class TrainingGPUTest(test.TestCase):
 
         K.set_image_data_format(old_data_format)
 
-        np.testing.assert_allclose(loss_channels_first,
-                                   loss_channels_last,
-                                   err_msg='{}{}'.format(
-                                       'Computed different losses for ',
-                                       'channels_first and channels_last'))
+        np.testing.assert_allclose(
+            loss_channels_first,
+            loss_channels_last,
+            rtol=1e-06,
+            err_msg='{}{}'.format('Computed different losses for ',
+                                  'channels_first and channels_last'))
 
 
 if __name__ == '__main__':

@@ -32,7 +32,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
   explicit FlatMapDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "f", /*params=*/{},
+                                                 &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -40,23 +41,22 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
-    *output = new Dataset(ctx, input, func_, std::move(captured_func),
-                          output_types_, output_shapes_);
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
+    *output = new Dataset(ctx, input, std::move(captured_func), output_types_,
+                          output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          func_(func),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
           output_shapes_(output_shapes) {
@@ -67,8 +67,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::FlatMap")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::FlatMap")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -85,22 +85,14 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
@@ -122,7 +114,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -243,8 +236,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         return MakeIteratorFromInputElement(
             ctx, captured_func_inputs_, element_index_++,
-            dataset()->captured_func_.get(), prefix(),
-            &current_element_iterator_);
+            *instantiated_captured_func_, prefix(), &current_element_iterator_);
       }
 
       mutex mu_;
@@ -252,10 +244,10 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
       std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
@@ -264,7 +256,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FlatMapDataset").Device(DEVICE_CPU),

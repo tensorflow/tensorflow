@@ -24,7 +24,6 @@ cc_binary(
 cc_test(
     name = "generator_test",
     srcs = ["generator_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":generator",
         "@com_google_googletest//:gtest",
@@ -37,7 +36,6 @@ cc_test(
     data = [
         "//tensorflow/lite:builtin_ops.h",
     ],
-    tags = ["no_oss"],
     deps = [
         ":generator",
         "@com_google_googletest//:gtest",

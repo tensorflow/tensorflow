@@ -45,7 +45,7 @@ typedef ::testing::Types<Int8_IT, UInt8_IT, Int16_IT, UInt16_IT, Int32_IT,
                          Int64_IT, UInt64_IT, Long_IT>
     SupportedIntTypes;
 
-TYPED_TEST_CASE(IntTypeTest, SupportedIntTypes);
+TYPED_TEST_SUITE(IntTypeTest, SupportedIntTypes);
 
 TYPED_TEST(IntTypeTest, TestInitialization) {
   constexpr typename TestFixture::T a;

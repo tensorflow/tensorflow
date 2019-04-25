@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "BoostedTreesAggregateStats"
+  visibility: HIDDEN
+  in_arg {
+    name: "node_ids"
+    description: <<END
+int32; Rank 1 Tensor containing node ids for each example, shape [batch_size].
+END
+  }
+  in_arg {
+    name: "gradients"
+    description: <<END
+float32; Rank 2 Tensor (shape=[batch_size, logits_dimension]) with gradients for each example.
+END
+  }
+  in_arg {
+    name: "hessians"
+    description: <<END
+float32; Rank 2 Tensor (shape=[batch_size, hessian_dimension]) with hessians for each example.
+END
+  }
+  in_arg {
+    name: "feature"
+    description: <<END
+int32; Rank 2 feature Tensors (shape=[batch_size, feature_dimension]).
+END
+  }
+  out_arg {
+    name: "stats_summary"
+    description: <<END
+output Rank 4 Tensor (shape=[splits, feature_dimension, buckets, logits_dimension + hessian_dimension])
+containing accumulated stats for each node, feature dimension and bucket.
+END
+  }
+  attr {
+    name: "max_splits"
+    description: <<END
+int; the maximum number of splits possible in the whole tree.
+END
+  }
+  attr {
+    name: "num_buckets"
+    description: <<END
+int; equals to the maximum possible value of bucketized feature.
+END
+  }
+  summary: "Aggregates the summary of accumulated stats for the batch."
+  description: <<END
+The summary stats contains gradients and hessians accumulated for each node, feature dimension id and bucket.
+END
+}

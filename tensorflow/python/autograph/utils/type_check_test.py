@@ -28,6 +28,7 @@ from tensorflow.python.platform import test
 
 class TypeCheckTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_checks(self):
     self.assertTrue(type_check.is_tensor(constant_op.constant([1, 2, 3])))
     self.assertTrue(

@@ -21,6 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -175,7 +179,8 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
@@ -341,7 +346,8 @@ class FunctionInstantiationHelper {
         gnode->set_op(FunctionLibraryDefinition::kRetOp);
       }
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = ret_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
@@ -507,6 +513,16 @@ string Print(const NodeDef& n) {
       entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
     }
     std::sort(entries.begin(), entries.end());
+    // Add a short device string at the end of all attributes.
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        entries.push_back(
+            strings::StrCat("device=", parsed.type, ":", parsed.id));
+      } else {
+        entries.push_back("device=<FAILED_TO_PARSE>");
+      }
+    }
     strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
@@ -557,6 +573,9 @@ string Print(const FunctionDef& fdef) {
   for (const auto& n : fdef.node_def()) {
     strings::StrAppend(&out, "  ", Print(n), "\n");
   }
+  for (const auto& cr : fdef.control_ret()) {
+    strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
+  }
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }
@@ -590,10 +609,22 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::sort(ret.begin(), ret.end(), comp);
   string out;
   strings::StrAppend(&out, "\n(");
-  auto get_type = [](const NodeDef& n) {
+  auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
     if (!GetNodeAttr(n, "T", &dt).ok()) {
       dt = DT_INVALID;
+    }
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
+                               parsed.id);
+      } else {
+        LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
+                     << n.op() << ":" << n.name();
+        return strings::StrCat(DataTypeString(dt), "@",
+                               "<FAILED_TO_PARSE_DEVICE>");
+      }
     }
     return DataTypeString(dt);
   };
@@ -601,15 +632,29 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_GE(n->attr_size(), 2);
-    strings::StrAppend(&out, n->name(), ":", get_type(*n));
+    strings::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_LE(2, n->attr_size());
-    CHECK_EQ(1, n->input_size());
-    strings::StrAppend(&out, n->input(0), ":", get_type(*n));
+
+    // The _RetVal op should have a unique non-control input. We assert that
+    // here and add it to the output.
+    bool found_non_control_input = false;
+    for (const string& input : n->input()) {
+      if (!input.empty() && input[0] != '^') {
+        DCHECK_EQ(found_non_control_input, false)
+            << "RetVal node has more than one non-control input: "
+            << absl::StrJoin(n->input(), ", ");
+        strings::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
+        found_non_control_input = true;
+      }
+    }
+    DCHECK_EQ(found_non_control_input, true)
+        << "RetVal did not have any non-control inputs: "
+        << absl::StrJoin(n->input(), ", ");
   }
   strings::StrAppend(&out, ") {\n");
   for (size_t i = 0; i < body.size(); ++i) {
@@ -637,16 +682,18 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
+// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(3) << "Instantiation Function: " << Print(fdef);
+  VLOG(4) << "Instantiation Function: " << Print(fdef);
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
-  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
-                        fdef.attr().at("experimental_ints_on_device").b();
+  bool ints_on_device =
+      fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+      fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
@@ -787,6 +834,12 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   std::map<string, string> ret2(f2.ret().begin(), f2.ret().end());
   if (ret1 != ret2) return false;
 
+  std::map<string, string> control_ret1(f1.control_ret().begin(),
+                                        f1.control_ret().end());
+  std::map<string, string> control_ret2(f2.control_ret().begin(),
+                                        f2.control_ret().end());
+  if (control_ret1 != control_ret2) return false;
+
   return true;
 }
 
@@ -811,6 +864,14 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
     h = Hash64(p.second.data(), p.second.size(), h);
   }
 
+  // control output names
+  std::map<string, string> control_ret(fdef.control_ret().begin(),
+                                       fdef.control_ret().end());
+  for (const auto& p : control_ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
   return h;
 }
 
@@ -831,7 +892,8 @@ string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
+  entries.reserve(attrs.size() + static_cast<int>(options.target.empty()) +
+                  options.input_devices.size());
   for (auto p : attrs) {
     if (p.first != kExecutorAttr) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
@@ -841,9 +903,29 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_target", "=", str_util::CEscape(options.target)));
   }
-  if (options.overlay_lib) {
+  for (int i = 0; i < options.input_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
-        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+        "_input_dev", i, "=", str_util::CEscape(options.input_devices[i])));
+  }
+  for (int i = 0; i < options.output_devices.size(); ++i) {
+    entries.push_back(strings::StrCat(
+        "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
+  }
+  for (const auto& iter : options.input_tensor_shapes) {
+    entries.push_back(
+        strings::StrCat("_input_tensor_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.DebugString())));
+  }
+  for (const auto& iter : options.input_resource_dtypes_and_shapes) {
+    entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
+                                      DataTypeString(iter.second.first)));
+    entries.push_back(
+        strings::StrCat("_input_resource_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.second.DebugString())));
+  }
+  if (options.lib_def) {
+    entries.push_back(strings::StrCat(
+        "_lib_def", "=", reinterpret_cast<uintptr_t>(options.lib_def)));
   }
   if (!options.state_handle.empty()) {
     entries.push_back(
@@ -852,6 +934,12 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
   if (!executor_type.empty()) {
     entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
+  }
+  string config_proto_serialized;
+  options.config_proto.SerializeToString(&config_proto_serialized);
+  if (!config_proto_serialized.empty()) {
+    entries.push_back(strings::StrCat(
+        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -1017,7 +1105,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
           "' because a different function with the same name already "
           "exists.");
     }
-    // Ignore duplicate FunctionDefs
+    // Ignore duplicate FunctionDefs.
     return Status::OK();
   }
   const OpDef* op_def;
@@ -1152,8 +1240,8 @@ Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
 Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   const auto& i = function_defs_.find(func);
   if (i == function_defs_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent function ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent function '",
+                                   func, "'.");
   }
   function_defs_.erase(i);
   return Status::OK();
@@ -1162,8 +1250,8 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent gradient ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent gradient '",
+                                   func, "'.");
   }
   func_grad_.erase(i);
   return Status::OK();
@@ -1292,7 +1380,7 @@ GET_ATTR(bool)
 
 namespace {
 
-constexpr char kExperimentalApiImplements[] = "experimental_api_implements";
+constexpr char kApiImplements[] = "api_implements";
 
 absl::flat_hash_set<string> ReachableFunctions(
     const FunctionLibraryDefinition& flib,
@@ -1300,11 +1388,10 @@ absl::flat_hash_set<string> ReachableFunctions(
   // Functions that are reachable from the graph.
   absl::flat_hash_set<string> reachable_funcs;
 
-  // For any functions, if it has attribute "experimental_api_implements" =
+  // For any functions, if it has attribute "api_implements" =
   // "some_interface" and it is reachable, then it means any other
   // function with same attribute name and value could also be potentially
-  // reachable, eg via experimental_implementation_selector swapping the
-  // nodedef.
+  // reachable, eg via implementation_selector swapping the nodedef.
   absl::flat_hash_set<string> reachable_api_interface;
 
   // Functions might be reachable from the nested function calls, so we keep a
@@ -1316,6 +1403,22 @@ absl::flat_hash_set<string> ReachableFunctions(
     const FunctionDef* func = flib.Find(func_name);
     if (func && reachable_funcs.find(func_name) == reachable_funcs.end()) {
       func_queue.push_back(func);
+    }
+  };
+
+  // If any function with certain API name is reachable, all the other functions
+  // with same API name should also be checked.
+  const auto add_function_with_api_interface = [&](const string& api_name) {
+    if (!reachable_api_interface.contains(api_name)) {
+      reachable_api_interface.insert(api_name);
+      for (const auto& func_name : flib.ListFunctionNames()) {
+        const auto& func_def = flib.Find(func_name);
+        const auto attr_it = func_def->attr().find(kApiImplements);
+        if (attr_it != func_def->attr().end() &&
+            attr_it->second.s() == api_name) {
+          add_to_func_queue(func_name);
+        }
+      }
     }
   };
 
@@ -1353,9 +1456,9 @@ absl::flat_hash_set<string> ReachableFunctions(
     const string& func_name = func->signature().name();
     reachable_funcs.insert(func_name);
 
-    const auto attr_it = func->attr().find(kExperimentalApiImplements);
+    const auto attr_it = func->attr().find(kApiImplements);
     if (attr_it != func->attr().end()) {
-      reachable_api_interface.insert(attr_it->second.s());
+      add_function_with_api_interface(attr_it->second.s());
     }
 
     // Find all the functions called from the function body.
@@ -1365,16 +1468,6 @@ absl::flat_hash_set<string> ReachableFunctions(
     // Check if the function has a registered gradient.
     const string grad_func_name = flib.FindGradient(func_name);
     if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
-  }
-
-  for (const auto& func_name : flib.ListFunctionNames()) {
-    const auto& func_def = flib.Find(func_name);
-    const auto attr_it = func_def->attr().find(kExperimentalApiImplements);
-    if (attr_it != func_def->attr().end()) {
-      if (reachable_api_interface.contains(attr_it->second.s())) {
-        reachable_funcs.insert(func_name);
-      }
-    }
   }
 
   return reachable_funcs;
@@ -1410,6 +1503,24 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
   return reachable_flib;
 }
 
+string AllocatorAttributesToString(
+    const std::vector<AllocatorAttributes>& attrs) {
+  string result("[");
+  // AllocatorAttribute::DebugString produces around 85 bytes now.
+  result.reserve(100 * attrs.size());
+  for (const AllocatorAttributes& attr : attrs) {
+    result.append(attr.DebugString());
+    result.append(", ");
+  }
+  if (!attrs.empty()) {
+    result.resize(result.size() - 2);
+  }
+  result.append("]");
+  return result;
+}
+
+const char* IsSet(void* ptr) { return ptr == nullptr ? "unset" : "set"; }
+
 }  // namespace
 
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
@@ -1420,6 +1531,20 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
+}
+
+string FunctionLibraryRuntime::Options::DebugString() const {
+  return absl::StrCat(
+      "FLR::Options(step_id=", step_id, " rendezvous=", IsSet(rendezvous),
+      " cancellation_manager=", IsSet(cancellation_manager),
+      " collective_executor=", IsSet(collective_executor),
+      " step_container=", IsSet(step_container),
+      " stats_collector=", IsSet(stats_collector), " runner=", IsSet(runner),
+      " remote_execution=", remote_execution, " source_device=", source_device,
+      " create_rendezvous=", create_rendezvous,
+      " allow_dead_tensors=", allow_dead_tensors,
+      " args_alloc_attrs=", AllocatorAttributesToString(args_alloc_attrs),
+      " rets_alloc_attrs=", AllocatorAttributesToString(rets_alloc_attrs), ")");
 }
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
@@ -1454,6 +1579,9 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   for (const string& d : this->dep) {
     n.add_input(strings::StrCat("^", d));
   }
+  if (!this->device.empty()) {
+    n.set_device(this->device);
+  }
   return n;
 }
 
@@ -1462,7 +1590,8 @@ FunctionDef FunctionDefHelper::Create(
     const string& function_name, gtl::ArraySlice<string> in_def,
     gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
     gtl::ArraySlice<Node> node_def,
-    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+    gtl::ArraySlice<std::pair<string, string>> ret_def,
+    gtl::ArraySlice<std::pair<string, string>> control_ret_def) {
   FunctionDef fdef;
 
   // Signature
@@ -1470,6 +1599,7 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& i : in_def) b.Input(i);
   for (const auto& o : out_def) b.Output(o);
   for (const auto& a : attr_def) b.Attr(a);
+  for (const auto& c : control_ret_def) b.ControlOutput(c.first);
 
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(b.Finalize(&op_reg_data));
@@ -1485,6 +1615,11 @@ FunctionDef FunctionDefHelper::Create(
     fdef.mutable_ret()->insert({r.first, r.second});
   }
 
+  // Control returns
+  for (const auto& cr : control_ret_def) {
+    fdef.mutable_control_ret()->insert({cr.first, cr.second});
+  }
+
   auto* op_def_registry = OpRegistry::Global();
   // Check if any op is stateful.
   for (const auto& n : node_def) {
@@ -1496,7 +1631,18 @@ FunctionDef FunctionDefHelper::Create(
       fdef.mutable_signature()->set_is_stateful(true);
     }
   }
+
   return fdef;
+}
+
+/* static */
+FunctionDef FunctionDefHelper::Create(
+    const string& function_name, gtl::ArraySlice<string> in_def,
+    gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
+    gtl::ArraySlice<Node> node_def,
+    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+  return Create(function_name, in_def, out_def, attr_def, node_def, ret_def,
+                /*control_ret_def=*/{});
 }
 
 /* static */
@@ -1603,4 +1749,4 @@ Status GetOpGradientCreator(const string& op, Creator* creator) {
 
 }  // end namespace gradient
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

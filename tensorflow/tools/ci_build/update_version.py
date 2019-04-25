@@ -35,6 +35,7 @@ TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
+TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
 DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
 GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
 CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-mkl" % TF_SRC_DIR
@@ -84,18 +85,25 @@ class Version(object):
       identifier_string: extension string eg. (-rc0)
       version_type: version parameter ((REGULAR|NIGHTLY)_VERSION)
     """
-    self.string = "%s.%s.%s%s" % (major,
-                                  minor,
-                                  patch,
-                                  identifier_string)
     self.major = major
     self.minor = minor
     self.patch = patch
     self.identifier_string = identifier_string
     self.version_type = version_type
+    self._update_string()
+
+  def _update_string(self):
+    self.string = "%s.%s.%s%s" % (self.major,
+                                  self.minor,
+                                  self.patch,
+                                  self.identifier_string)
 
   def __str__(self):
     return self.string
+
+  def set_identifier_string(self, identifier_string):
+    self.identifier_string = identifier_string
+    self._update_string()
 
   @property
   def pep_440_str(self):
@@ -211,6 +219,16 @@ def update_readme(old_version, new_version):
                          "%s-" % pep_440_str, README_MD)
 
 
+def update_tensorflow_bzl(old_version, new_version):
+  """Update tensorflow.bzl."""
+  old_mmp = "%s.%s.%s" % (old_version.major, old_version.minor,
+                          old_version.patch)
+  new_mmp = "%s.%s.%s" % (new_version.major, new_version.minor,
+                          new_version.patch)
+  replace_string_in_line('VERSION = "%s"' % old_mmp,
+                         'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
+
+
 def major_minor_change(old_version, new_version):
   """Check if a major or minor change occurred."""
   major_mismatch = old_version.major != new_version.major
@@ -283,15 +301,14 @@ def main():
   """
 
   parser = argparse.ArgumentParser(description="Cherry picking automation.")
-  group = parser.add_mutually_exclusive_group(required=True)
 
   # Arg information
-  group.add_argument("--version",
-                     help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
-                     default="")
-  group.add_argument("--nightly",
-                     help="disable the service provisioning step",
-                     action="store_true")
+  parser.add_argument("--version",
+                      help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
+                      default="")
+  parser.add_argument("--nightly",
+                      help="disable the service provisioning step",
+                      action="store_true")
 
   args = parser.parse_args()
 
@@ -299,13 +316,17 @@ def main():
   old_version = get_current_semver_version()
 
   if args.nightly:
-    # Dev minor version is one ahead of official.
-    nightly_minor_ver = int(old_version.minor) + 1
-    new_version = Version(old_version.major,
-                          str(nightly_minor_ver),
-                          old_version.patch,
-                          "-dev" + time.strftime("%Y%m%d"),
-                          NIGHTLY_VERSION)
+    if args.version:
+      new_version = Version.parse_from_string(args.version, NIGHTLY_VERSION)
+      new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
+    else:
+      # Dev minor version is one ahead of official.
+      nightly_minor_ver = int(old_version.minor) + 1
+      new_version = Version(old_version.major,
+                            str(nightly_minor_ver),
+                            old_version.patch,
+                            "-dev" + time.strftime("%Y%m%d"),
+                            NIGHTLY_VERSION)
   else:
     new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
 
@@ -313,6 +334,7 @@ def main():
   update_setup_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
   update_dockerfiles(old_version, new_version)
+  update_tensorflow_bzl(old_version, new_version)
 
   # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))

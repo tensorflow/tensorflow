@@ -33,6 +33,30 @@ namespace swig {
 //   dict.
 bool IsSequence(PyObject* o);
 
+// Implements the same interface as nest.is_sequence_or_composite
+// Returns a true if its input is a collections.Sequence (except strings)
+// or a CompositeTensor.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a not a string and is a collections.Sequence or a
+//   dict or a CompositeTensor.
+bool IsSequenceOrComposite(PyObject* o);
+
+// Implements the same interface as nest.is_sequence_or_composite
+// Returns a true if its input is a collections.Sequence (except strings)
+// or a CompositeTensor.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a not a string and is a collections.Sequence or a
+//   dict or a CompositeTensor.
+bool IsCompositeTensor(PyObject* o);
+
 // Implements the same interface as tensorflow.util.nest._is_namedtuple
 // Returns Py_True iff `instance` should be considered a `namedtuple`.
 //
@@ -55,6 +79,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 // Returns:
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
+
+// A version of PyMapping_Keys that works in C++11
+//
+// Args:
+//   o: The input to extract keys from
+//
+// Returns:
+//   A new reference to a list of keys in the mapping.
+PyObject* MappingKeys(PyObject* o);
 
 // Returns a true if its input is an instance of an attr.s decorated class.
 //
@@ -118,7 +151,8 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
 //
 // Returns:
 //  Py_None on success, nullptr on error.
-PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
+PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
+                              bool expand_composites);
 
 // Implements the same interface as tensorflow.util.nest.flatten
 //
@@ -139,6 +173,9 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 // Args:
 //   nest: an arbitrarily nested structure or a scalar object. Note, numpy
 //       arrays are considered scalars.
+//   expand_composites: If true, then composite tensors (such as
+//       `tf.SparseTensor` and `tf.RaggedTensor` are flattened into their
+//       component tensors.
 //
 // Returns:
 //   A Python list, the flattened version of the input.
@@ -146,7 +183,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 //
 // Raises:
 //   TypeError: The nest is or contains a dict with non-sortable keys.
-PyObject* Flatten(PyObject* nested);
+PyObject* Flatten(PyObject* nested, bool expand_composites = false);
 
 // The tensorflow.python.data package has its own nest utility that follows very
 // slightly different semantics for its functions than the tensorflow.python

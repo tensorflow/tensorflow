@@ -38,9 +38,13 @@ class IdentityOp : public XlaOpKernel {
 
 // XLA_* devices also register a "real" Identity operator so we suppress the
 // dummy operator using CompilationOnly().
-REGISTER_XLA_OP(Name("Identity").AllowResourceTypes().CompilationOnly(),
-                IdentityOp);
-REGISTER_XLA_OP(Name("IdentityN").AllowResourceTypes().CompilationOnly(),
+REGISTER_XLA_OP(
+    Name("Identity").AllowResourceTypes().AllowVariantTypes().CompilationOnly(),
+    IdentityOp);
+REGISTER_XLA_OP(Name("IdentityN")
+                    .AllowResourceTypes()
+                    .AllowVariantTypes()
+                    .CompilationOnly(),
                 IdentityOp);
 REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);

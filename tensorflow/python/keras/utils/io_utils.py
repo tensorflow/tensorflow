@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
+import collections
 
 import numpy as np
 import six
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -31,7 +31,7 @@ except ImportError:
   h5py = None
 
 
-@tf_export('keras.utils.HDF5Matrix')
+@keras_export('keras.utils.HDF5Matrix')
 class HDF5Matrix(object):
   """Representation of HDF5 dataset to be used instead of a Numpy array.
 
@@ -58,7 +58,7 @@ class HDF5Matrix(object):
   Returns:
       An array-like HDF5 dataset.
   """
-  refs = defaultdict(int)
+  refs = collections.defaultdict(int)
 
   def __init__(self, datapath, dataset, start=0, end=None, normalizer=None):
     if h5py is None:

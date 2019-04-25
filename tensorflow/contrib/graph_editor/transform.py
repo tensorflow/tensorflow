@@ -22,7 +22,6 @@ from __future__ import print_function
 from copy import deepcopy
 from functools import partial
 from six import iteritems
-from six import iterkeys
 from six import string_types
 from six import StringIO
 from tensorflow.contrib.graph_editor import reroute
@@ -87,7 +86,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
   """Add the transformed elem to the (renamed) collections of elem.
 
   A collection is renamed only if is not a known key, as described in
-  `tf.GraphKeys`.
+  `tf.compat.v1.GraphKeys`.
 
   Args:
     info: Transform._TmpInfo instance.
@@ -735,9 +734,8 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
   # control dependencies.
   graph = util.get_unique_graph(flatten_target_ts, check_types=(tf_ops.Tensor))
   control_ios = util.ControlOutputs(graph)
-  ops = select.get_walks_intersection_ops(list(iterkeys(replacement_ts)),
-                                          flatten_target_ts,
-                                          control_ios=control_ios)
+  ops = select.get_walks_intersection_ops(
+      list(replacement_ts), flatten_target_ts, control_ios=control_ios)
   if not ops:
     raise ValueError("Targets and replacements are not connected!")
 

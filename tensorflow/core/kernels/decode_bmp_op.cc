@@ -16,13 +16,13 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -142,7 +142,7 @@ class DecodeBmpOp : public OpKernel {
   }
 
   uint8* Decode(const uint8* input, const int row_size, uint8* const output,
-                const int width, const int height, const int channles,
+                const int width, const int height, const int channels,
                 bool top_down);
 
  private:

@@ -25,11 +25,11 @@ import java.lang.annotation.Target;
  * Annotation used by classes to make TensorFlow operations conveniently accessible via {@code
  * org.tensorflow.op.Ops}.
  *
- * <p>An annotation processor (TODO: not yet implemented) builds the {@code Ops} class by
- * aggregating all classes annotated as {@code @Operator}s. Each annotated class <b>must</b> have at
- * least one public static factory method named {@code create} that accepts a {@link
- * org.tensorflow.op.Scope} as its first argument. The processor then adds a convenience method in
- * the {@code Ops} class. For example:
+ * <p>An annotation processor ({@code org.tensorflow.processor.OperatorProcessor}) builds the
+ * {@code Ops} class by aggregating all classes annotated as {@code @Operator}s. Each annotated
+ * class <b>must</b> have at least one public static factory method named {@code create} that
+ * accepts a {@link org.tensorflow.op.Scope} as its first argument. The processor then adds a
+ * convenience method in the {@code Ops} class. For example:
  *
  * <pre>{@code
  * @Operator
@@ -45,7 +45,7 @@ import java.lang.annotation.Target;
  * <pre>{@code
  * import org.tensorflow.op.Ops;
  * ...
- * Ops ops = new Ops(graph);
+ * Ops ops = Ops.create(graph);
  * ...
  * ops.myOp(operand);
  * // and has exactly the same effect as calling

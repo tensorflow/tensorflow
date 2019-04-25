@@ -28,6 +28,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import tf_stack
 
 
 # Allow deprecation warnings to be silenced temporarily with a context manager.
@@ -98,21 +99,15 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  frame = tf_inspect.currentframe()
-  if frame:
-    # CPython internals are available, use them for performance.
-    # walk back two frames to get to deprecated function caller.
-    frame = frame.f_back
-    if frame.f_back:
-      frame = frame.f_back
-    if outer and frame.f_back:
-      frame = frame.f_back
-    return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
-  else:
-    # Slow fallback path
-    stack = tf_inspect.stack(0)  # 0 avoids generating unused context
-    entry = stack[3 if outer else 2]
-    return '%s:%d' % (entry[1], entry[2])
+  stack = tf_stack.extract_stack_file_and_line(max_length=4)
+  length = len(stack)
+  if length == 0:  # should never happen as we're in a function
+    return 'UNKNOWN'
+  index = length-4 if outer else length-3
+  if index < 0:
+    index = 0
+  frame = stack[index]
+  return '{}:{}'.format(frame.file, frame.line)
 
 
 def _wrap_decorator(wrapped_function):
@@ -619,3 +614,17 @@ def silence():
   _PRINT_DEPRECATION_WARNINGS = False
   yield
   _PRINT_DEPRECATION_WARNINGS = print_deprecation_warnings
+
+
+class _HiddenTfApiAttribute(object):
+  pass
+
+# Attributes in public classes can be hidden from the API by having an '_'
+# in front of the name (e.g. ClassName._variables). This doesn't work when
+# attributes or methods are inherited from a parent class. To hide inherited
+# attributes, set their values to be `deprecation.HIDDEN_ATTRIBUTE`.
+# For example, this is used in V2 Estimator to hide the deprecated
+# export_savedmodel method:
+#   class EstimatorV2(Estimator):
+#     export_savedmodel = deprecation.HIDDEN_ATTRIBUTE
+HIDDEN_ATTRIBUTE = _HiddenTfApiAttribute()

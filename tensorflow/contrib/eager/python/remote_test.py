@@ -24,13 +24,14 @@ import os
 import numpy as np
 
 from tensorflow.contrib.eager.python import parameter_server
-from tensorflow.contrib.eager.python import remote
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -220,12 +221,10 @@ class RemoteExecutionTest(test.TestCase):
     self.assertEqual(y.device,
                      "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
 
+  @test_util.run_gpu_only
   @run_sync_and_async
   def testGPUToRemoteCopy(self):
     """Tests that the remote copy happens satisfactorily."""
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs.")
-
     x1 = array_ops.ones([2, 2]).gpu()
 
     with ops.device("/job:remote_device/replica:0/task:1/device:CPU:0"):

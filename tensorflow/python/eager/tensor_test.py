@@ -37,6 +37,7 @@ from tensorflow.python.ops import io_ops
 
 
 def _create_tensor(value, device=None, dtype=None):
+  context.ensure_initialized()
   ctx = context.context()
   if device is None:
     device = ctx.device_name
@@ -61,24 +62,27 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("tf.Tensor", repr(t))
 
   def testBadConstructorArgs(self):
+    context.ensure_initialized()
     ctx = context.context()
     handle = ctx._handle
     device = ctx.device_name
     # Missing context.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'context' \(pos 2\) not found"):
+        TypeError, r".*argument 'context' \(pos 2\).*"):
       ops.EagerTensor(1, device=device)
     # Missing device.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'device' \(pos 3\) not found"):
+        TypeError, r".*argument 'device' \(pos 3\).*"):
       ops.EagerTensor(1, context=handle)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
       ops.EagerTensor(1, context=handle, device=device, dtype="1")
+
     # Following errors happen when trying to copy to GPU.
-    if not context.context().num_gpus():
+    if not test_util.is_gpu_available():
       self.skipTest("No GPUs found")
+
     with ops.device("/device:GPU:0"):
       device = ctx.device_name
       # Bad context.
@@ -94,6 +98,18 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     values = np.array([3.0])
     t = _create_tensor(values)
     self.assertAllEqual(values, t)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNumpyDtypeSurvivesThroughTensorConversion(self):
+    scalar_creators = [np.int32, np.int64, np.float32, np.float64]
+    conversion_functions = [ops.convert_to_tensor, constant_op.constant]
+
+    for scalar_creator in scalar_creators:
+      for conversion_function in conversion_functions:
+        np_val = scalar_creator(3)
+        tensor_val = conversion_function(np_val)
+        self.assertEqual(tensor_val.numpy().dtype, np_val.dtype)
+        self.assertEqual(tensor_val.numpy(), np_val)
 
   def testNumpyValueWithCast(self):
     values = np.array([3.0], dtype=np.float32)
@@ -175,9 +191,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float64, t.dtype)
 
   def testBool(self):
-    t = _create_tensor(False)
-    if t:
-      self.assertFalse(True)
+    self.assertFalse(bool(_create_tensor(False)))
+    self.assertFalse(bool(_create_tensor([False])))
+    self.assertFalse(bool(_create_tensor([[False]])))
+    self.assertFalse(bool(_create_tensor([0])))
+    self.assertFalse(bool(_create_tensor([0.])))
+    self.assertTrue(bool(_create_tensor([1])))
+    self.assertTrue(bool(_create_tensor([1.])))
 
   def testIntDowncast(self):
     t = _create_tensor(3)
@@ -253,9 +273,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     for list_element, tensor_element in zip(l, t):
       self.assertAllEqual(list_element, tensor_element.numpy())
 
+  @test_util.run_gpu_only
   def testStringTensorOnGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with ops.device("/device:GPU:0"):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):
@@ -323,13 +342,31 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorNumpyZeroDim(self):
+    for np_type, dtype in [(np.int32, dtypes.int32),
+                           (np.half, dtypes.half),
+                           (np.float32, dtypes.float32)]:
+      x = ops.convert_to_tensor([np.array(65, dtype=np_type),
+                                 np.array(16, dtype=np_type)])
+      self.assertEqual(x.dtype, dtype)
+      self.assertAllEqual(x, [65, 16])
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorNumpyScalar(self):
+    x = ops.convert_to_tensor(
+        [np.array(321, dtype=np.int).item(),
+         np.array(16, dtype=np.int).item()])
+    self.assertAllEqual(x, [321, 16])
+
   def testEagerTensorError(self):
     with self.assertRaisesRegexp(
         TypeError,
         "Cannot convert provided value to EagerTensor. "
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
-
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

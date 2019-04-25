@@ -107,7 +107,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Generate n-grams recursively.
   tflite::DynamicBuffer buf;
   if (words.size() < params->ngram_size) {
-    buf.WriteToTensor(GetOutput(context, node, 0));
+    buf.WriteToTensorAsVector(GetOutput(context, node, 0));
     return kTfLiteOk;
   }
 
@@ -145,7 +145,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  buf.WriteToTensor(GetOutput(context, node, 0));
+  buf.WriteToTensorAsVector(GetOutput(context, node, 0));
   return kTfLiteOk;
 }
 }  // namespace

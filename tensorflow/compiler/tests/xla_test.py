@@ -22,7 +22,6 @@ import contextlib
 import os
 import random
 import re
-import sys
 
 import numpy as np
 
@@ -38,10 +37,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-
-# TODO(b/35678764): Disable monkeypatched exit handlers once we find a proper
-# solution to invoke exit handlers during program exit.
-test._googletest.SetOSExit(sys.exit)
 
 FLAGS = flags.FLAGS
 
@@ -71,7 +66,7 @@ def parse_disabled_manifest(manifest_content):
       raise ValueError('Bad entry in manifest file.')
 
   disabled_regex = '|'.join(disabled_tests)
-  method_types_filter = dict()
+  method_types_filter = {}
   for method, types in disabled_method_types:
     method_types_filter[method] = set([
         dtypes.as_dtype(types_pb2.DataType.Value(name)).as_numpy_dtype

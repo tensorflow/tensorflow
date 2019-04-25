@@ -66,28 +66,27 @@ int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
 bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
                          int port) {
   const auto output = GraphView::OutputPort(node, port);
-  const auto fanout = graph_view.GetFanout(output);
-  return fanout.size() <= 1;
+  return graph_view.GetFanout(output).size() <= 1;
 }
 
 bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port) {
   const auto output = GraphView::OutputPort(node, port);
-  const auto fanout = graph_view.GetFanout(output);
-  return !fanout.empty();
+  return !graph_view.GetFanout(output).empty();
 }
 
-bool NoControlFanin(const GraphView& graph_view, const NodeDef* node) {
-  const auto control_port = GraphView::InputPort(node, -1);
-  return graph_view.GetFanin(control_port).empty();
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::InputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanin(control_port).empty();
 }
 
-bool NoControlFanout(const GraphView& graph_view, const NodeDef* node) {
-  const auto control_port = GraphView::OutputPort(node, -1);
-  return graph_view.GetFanout(control_port).empty();
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::OutputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanout(control_port).empty();
 }
 
-bool NoControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node) {
-  return NoControlFanin(graph_view, node) && NoControlFanout(graph_view, node);
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node) {
+  return HasControlFanin(graph_view, node) ||
+         HasControlFanout(graph_view, node);
 }
 
 }  // end namespace grappler

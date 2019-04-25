@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
@@ -29,23 +29,11 @@ class MatchingFilesDataset(dataset_ops.DatasetSource):
   """A `Dataset` that list the files according to the input patterns."""
 
   def __init__(self, patterns):
-    super(MatchingFilesDataset, self).__init__()
     self._patterns = ops.convert_to_tensor(
         patterns, dtype=dtypes.string, name="patterns")
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_matching_files_dataset(self._patterns)
-
-  @property
-  def output_classes(self):
-    return ops.Tensor
+    variant_tensor = ged_ops.experimental_matching_files_dataset(self._patterns)
+    super(MatchingFilesDataset, self).__init__(variant_tensor)
 
   @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
-
-
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])

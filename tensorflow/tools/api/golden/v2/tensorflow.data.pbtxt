@@ -9,10 +9,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Iterator"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Options"
     mtype: "<type \'type\'>"
   }

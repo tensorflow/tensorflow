@@ -45,7 +45,7 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
 
-    self.assertIsInstance(node.body[0].value.left.id, str)
+    self.assertIsInstance(node.value.left.id, str)
     source = compiler.ast_to_source(node)
     self.assertEqual(source.strip(), 'renamed_a + b')
 
@@ -76,11 +76,10 @@ class AstUtilTest(test.TestCase):
       def f(a):
         return a + 1
     """))
-    setattr(node.body[0], '__foo', 'bar')
+    setattr(node, '__foo', 'bar')
     new_node = ast_util.copy_clean(node)
     self.assertIsNot(new_node, node)
-    self.assertIsNot(new_node.body[0], node.body[0])
-    self.assertFalse(hasattr(new_node.body[0], '__foo'))
+    self.assertFalse(hasattr(new_node, '__foo'))
 
   def test_copy_clean_preserves_annotations(self):
     node = parser.parse_str(
@@ -88,20 +87,20 @@ class AstUtilTest(test.TestCase):
       def f(a):
         return a + 1
     """))
-    anno.setanno(node.body[0], 'foo', 'bar')
-    anno.setanno(node.body[0], 'baz', 1)
+    anno.setanno(node, 'foo', 'bar')
+    anno.setanno(node, 'baz', 1)
     new_node = ast_util.copy_clean(node, preserve_annos={'foo'})
-    self.assertEqual(anno.getanno(new_node.body[0], 'foo'), 'bar')
-    self.assertFalse(anno.hasanno(new_node.body[0], 'baz'))
+    self.assertEqual(anno.getanno(new_node, 'foo'), 'bar')
+    self.assertFalse(anno.hasanno(new_node, 'baz'))
 
   def test_keywords_to_dict(self):
     keywords = parser.parse_expression('f(a=b, c=1, d=\'e\')').keywords
     d = ast_util.keywords_to_dict(keywords)
     # Make sure we generate a usable dict node by attaching it to a variable and
     # compiling everything.
-    node = parser.parse_str('def f(b): pass').body[0]
+    node = parser.parse_str('def f(b): pass')
     node.body.append(ast.Return(d))
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertDictEqual(result.f(3), {'a': 3, 'c': 1, 'd': 'e'})
 
   def assertMatch(self, target_str, pattern_str):
@@ -138,7 +137,6 @@ class AstUtilTest(test.TestCase):
 
   def test_apply_to_single_assignments_dynamic_unpack(self):
     node = parser.parse_str('a, b, c = d')
-    node = node.body[0]
     ast_util.apply_to_single_assignments(node.targets, node.value,
                                          self._mock_apply_fn)
     self.assertDictEqual(self._invocation_counts, {
@@ -149,7 +147,6 @@ class AstUtilTest(test.TestCase):
 
   def test_apply_to_single_assignments_static_unpack(self):
     node = parser.parse_str('a, b, c = d, e, f')
-    node = node.body[0]
     ast_util.apply_to_single_assignments(node.targets, node.value,
                                          self._mock_apply_fn)
     self.assertDictEqual(self._invocation_counts, {
@@ -159,11 +156,20 @@ class AstUtilTest(test.TestCase):
     })
 
   def test_parallel_walk(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
+    src = """
       def f(a):
         return a + 1
-    """))
+    """
+    node = parser.parse_str(textwrap.dedent(src))
+    for child_a, child_b in ast_util.parallel_walk(node, node):
+      self.assertEqual(child_a, child_b)
+
+  def test_parallel_walk_string_leaves(self):
+    src = """
+      def f(a):
+        global g
+    """
+    node = parser.parse_str(textwrap.dedent(src))
     for child_a, child_b in ast_util.parallel_walk(node, node):
       self.assertEqual(child_a, child_b)
 
@@ -229,70 +235,6 @@ class AstUtilTest(test.TestCase):
     f = lambda y: y
     nodes = ast_util.find_matching_definitions(node, f)
     self.assertLambdaNodes(nodes, ('(2)',))
-
-  def assertFunctionDefNodes(self, matching_nodes, expected_bodies):
-    self.assertEqual(len(matching_nodes), len(expected_bodies))
-    for node in matching_nodes:
-      self.assertIsInstance(node, gast.FunctionDef)
-      self.assertIn(compiler.ast_to_source(node.body).strip(), expected_bodies)
-
-  def test_find_matching_definitions_function(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
-      def f(x):
-        return 1
-    """))
-
-    def f(x):
-      return x
-
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertFunctionDefNodes(nodes, ('return 1',))
-
-  def test_find_matching_definitions_nested_functions_same_name(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
-      def f(x, *args, **kwargs):
-        def f(x, y):
-          return 1
-        return 2
-    """))
-
-    def f(x, y):
-      return x + y
-
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertFunctionDefNodes(nodes, ('return 1',))
-
-  def test_find_matching_definitions_nested_functions_same_args(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
-      def g(x):
-        def f(x):
-          return 1
-        return 2
-    """))
-
-    def f(x):
-      return x
-
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertFunctionDefNodes(nodes, ('return 1',))
-
-  def test_find_matching_definitions_multiple_matches(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
-      def f(x):
-        return 1
-      def f(x):
-        return 2
-    """))
-
-    def f(x):
-      return x
-
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertFunctionDefNodes(nodes, ('return 1', 'return 2'))
 
 
 if __name__ == '__main__':

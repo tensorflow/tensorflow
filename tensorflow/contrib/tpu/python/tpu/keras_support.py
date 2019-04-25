@@ -30,7 +30,7 @@ strategy = keras_support.TPUDistributionStrategy(resolver)
 model = keras_support.tpu_model(model, strategy=strategy)
 
 # Only TF optimizers are currently supported.
-model.compile(optimizer=tf.train.AdamOptimizer(), ...)
+model.compile(optimizer=tf.compat.v1.train.AdamOptimizer(), ...)
 
 # `images` and `labels` should be Numpy arrays.  Support for tensor input
 # (e.g. datasets) is planned.
@@ -55,8 +55,6 @@ import numpy as np
 import six
 
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver as tpu_cluster_resolver_lib
-from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import keras_tpu_variables
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -64,6 +62,8 @@ from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
+from tensorflow.python import tf2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -81,6 +81,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers as keras_optimizers
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.layers import embeddings
@@ -93,6 +94,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 # TODO(b/114775106): temporary shim to optionally initialize the TPU
@@ -132,7 +134,7 @@ def _tpu_session_context():
 An error occurred connecting or initializing your TPU.
 
 The session has been reset. re-run keras_to_tpu_model to create a new session.
-""" + e)
+""" + str(e))
 
 
 def setup_tpu_session(cluster_resolver):
@@ -199,13 +201,22 @@ class TPUDistributionStrategy(object):
         removed in future once the model replication functionality is mature
         enough. If `False` (default behavior), the system automatically finds
         the best configuration, in terms of number of TPU cores, for the model
-        replication, typically using all avaiable TPU cores. If overwrites as
+        replication, typically using all available TPU cores. If overwrites as
         `True`, force the model replication using single core, i.e., no
         replication.
     Raises:
       Exception: No TPU Found on the given worker.
     """
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     if tpu_cluster_resolver is None:
       tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
 
@@ -297,10 +308,11 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(
-      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
+  mask = math_ops.cast(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id),
+      dtypes.float32)
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
-  result = mask * math_ops.to_float(tensor)
+  result = mask * math_ops.cast(tensor, dtypes.float32)
   local_tensor_with_holes = array_ops.reshape(result,
                                               [-1] + result.shape.as_list()[2:])
   concat_tensor = tpu_ops.cross_replica_sum(local_tensor_with_holes)
@@ -438,7 +450,7 @@ class TPURewriteContext(object):
 
     self._default_placeholder = array_ops.placeholder
     self._default_name_scope = ops.name_scope
-    self._default_make_variable = base_layer.make_variable
+    self._default_make_variable = base_layer_utils.make_variable
     self._default_random_normal = random_ops.random_normal
     self._default_qr = gen_linalg_ops.qr
 
@@ -486,14 +498,14 @@ class TPURewriteContext(object):
     gen_linalg_ops.qr = qr
 
     ops.name_scope = _name_scope
-    base_layer.make_variable = variable_scope.get_variable
+    base_layer_utils.make_variable = variable_scope.get_variable
     logging.info('Overriding default placeholder.')
     return
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     array_ops.placeholder = self._default_placeholder
     ops.name_scope = self._default_name_scope
-    base_layer.make_variable = self._default_make_variable
+    base_layer_utils.make_variable = self._default_make_variable
     random_ops.random_normal = self._default_random_normal
     gen_linalg_ops.qr = self._default_qr
 
@@ -724,11 +736,12 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
     self._dataset = dataset
     self._tpu_assignment = tpu_assignment
-    dummy_x_shape = dataset.output_shapes[0].as_list()
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    dummy_x_shape = dataset_output_shapes[0].as_list()
     dummy_x_shape[0] *= tpu_assignment.num_towers
-    dummy_y_shape = dataset.output_shapes[1].as_list()
+    dummy_y_shape = dataset_output_shapes[1].as_list()
     dummy_y_shape[0] *= tpu_assignment.num_towers
-    self._iterator = dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(dataset)
     K.get_session().run(self._iterator.initializer)
 
     self._get_next_ops = []
@@ -742,23 +755,26 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
     # Use dummy numpy inputs for the rest of Keras' shape checking. We
     # intercept them when building the model.
+    dataset_output_types = dataset_ops.get_legacy_output_types(dataset)
     self._dummy_x = np.zeros(
-        dummy_x_shape, dtype=dataset.output_types[0].as_numpy_dtype)
+        dummy_x_shape, dtype=dataset_output_types[0].as_numpy_dtype)
     self._dummy_y = np.zeros(
-        dummy_y_shape, dtype=dataset.output_types[1].as_numpy_dtype)
+        dummy_y_shape, dtype=dataset_output_types[1].as_numpy_dtype)
 
     input_specs = []
-    if isinstance(self._iterator.output_shapes, tuple):
-      assert isinstance(self._iterator.output_types, tuple)
-      assert len(self._iterator.output_shapes) == len(
-          self._iterator.output_types)
-      for i in range(len(self._iterator.output_shapes)):
-        spec = tensor_spec.TensorSpec(self._iterator.output_shapes[i],
-                                      self._iterator.output_types[i])
+    iterator_output_shapes = dataset_ops.get_legacy_output_shapes(
+        self._iterator)
+    iterator_output_types = dataset_ops.get_legacy_output_types(self._iterator)
+    if isinstance(iterator_output_shapes, tuple):
+      assert isinstance(iterator_output_types, tuple)
+      assert len(iterator_output_shapes) == len(iterator_output_types)
+      for i in range(len(iterator_output_shapes)):
+        spec = tensor_spec.TensorSpec(iterator_output_shapes[i],
+                                      iterator_output_types[i])
         input_specs.append(spec)
-    elif isinstance(self._iterator.output_shapes, tensor_shape.TensorShape):
-      spec = tensor_spec.TensorSpec(self._iterator.output_shapes,
-                                    self._iterator.output_types)
+    elif isinstance(iterator_output_shapes, tensor_shape.TensorShape):
+      spec = tensor_spec.TensorSpec(iterator_output_shapes,
+                                    iterator_output_types)
       input_specs.append(spec)
 
     # Pre-process the inputs and get_next_ops before caching.
@@ -769,24 +785,26 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
   def _verify_dataset_shape(self, dataset):
     """Verifies a dataset is of an appropriate shape for TPUs."""
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    dataset_output_classes = dataset_ops.get_legacy_output_classes(dataset)
     if not isinstance(dataset, dataset_ops.DatasetV2):
       raise ValueError('The function passed as the `x` parameter did not '
                        'return a `tf.data.Dataset`.')
-    if not isinstance(dataset.output_classes, tuple):
+    if not isinstance(dataset_output_classes, tuple):
       raise ValueError('The dataset must return a tuple of tf.Tensors, '
-                       'instead it returns: %s' % dataset.output_classes)
-    if len(dataset.output_classes) != 2:
+                       'instead it returns: %s' % dataset_output_classes)
+    if len(dataset_output_classes) != 2:
       raise ValueError('The dataset must return a 2-element tuple, got '
-                       '%s output classes instead.' % (dataset.output_classes,))
-    for i, cls in enumerate(dataset.output_classes):
+                       '%s output classes instead.' % (dataset_output_classes,))
+    for i, cls in enumerate(dataset_output_classes):
       if cls != ops.Tensor:
         raise ValueError('The dataset returned a non-Tensor type (%s) at '
                          'index %d.' % (cls, i))
-    for i, shape in enumerate(dataset.output_shapes):
+    for i, shape in enumerate(dataset_output_shapes):
       if not shape:
         raise ValueError('The dataset returns a scalar tensor in '
                          'tuple index %d. Did you forget to batch? '
-                         '(Output shapes: %s).' % (i, dataset.output_shapes))
+                         '(Output shapes: %s).' % (i, dataset_output_shapes))
       for j, dim in enumerate(shape):
         if dim.value is None:
           if j == 0:
@@ -799,7 +817,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
               'currently requires static shapes. The provided '
               'dataset only has a partially defined shape. '
               '(Dimension %d of output tensor %d is not statically known '
-              'for output shapes: %s.%s)' % (j, i, dataset.output_shapes, hint))
+              'for output shapes: %s.%s)' % (j, i, dataset_output_shapes, hint))
 
   @property
   def dummy_x(self):
@@ -1027,29 +1045,29 @@ class TPUFunction(object):
           # the Momentum optimizer) when _make_train_function is invoked.
           with keras_tpu_variables.replicated_variable_for_optimizer(
               self._tpu_assignment.num_towers):
-            self._cloned_model._make_fit_function()
+            self._cloned_model._make_train_function()
         else:
-          self._cloned_model._make_fit_function()
+          self._cloned_model._make_train_function()
 
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._fit_function.outputs
+            for tensor in self._cloned_model.train_function.outputs
         ]
         return [
-            self._cloned_model._fit_function.updates_op,
+            self._cloned_model.train_function.updates_op,
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._fit_function.outputs,
+                self._cloned_model.train_function.outputs,
                 name='outfeed-enqueue-train')
         ]
       elif is_test:
-        self._cloned_model._make_eval_function()
+        self._cloned_model._make_test_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._eval_function.outputs
+            for tensor in self._cloned_model.test_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._eval_function.outputs,
+                self._cloned_model.test_function.outputs,
                 name='outfeed-enqueue-test')
         ]
       elif is_predict:
@@ -1366,17 +1384,28 @@ class KerasTPUModel(models.Model):
         outputs=cpu_model.outputs,
         name=cpu_model.name,
     )
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     # Create a mapping from numpy arrays to infeed managers.
     # Note: uses a list of tuples instead of a map because numpy arrays are
     # not hashable.
     self._numpy_to_infeed_manager_list = []
 
+    # Add distribution specific arguments since we don't call the Model init.
+    self._distribution_strategy = None
+    self._compile_distribution = None
+
     self.predict_function = None
     self.test_function = None
     self.train_function = None
-    self._fit_function = None
-    self._eval_function = None
     self._stateful_metric_functions = []
 
     cluster_resolver = strategy._tpu_cluster_resolver
@@ -1612,7 +1641,7 @@ class KerasTPUModel(models.Model):
         validation_split=validation_split)
 
     # Prepare validation data
-    val_x, val_y, val_sample_weights = self._prepare_validation_data(
+    x, y, val_x, val_y, val_sample_weights = self._prepare_validation_data(
         validation_data, validation_split, validation_steps, x, y,
         sample_weights, batch_size)
     return self._pipeline_fit_loop(
@@ -1675,14 +1704,10 @@ class KerasTPUModel(models.Model):
         callbacks,
         self,
         do_validation=do_validation,
-        val_inputs=val_inputs,
-        val_targets=val_targets,
-        val_sample_weights=val_sample_weights,
         batch_size=batch_size,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
         samples=num_training_samples,
-        validation_steps=validation_steps,
         verbose=verbose,
         count_mode=count_mode)
 
@@ -1909,7 +1934,7 @@ class KerasTPUModel(models.Model):
       batch_size: The training batch size (if provided)
 
     Returns:
-      A 3-tuple of (val_x, val_y, val_sample_weights).
+      A 5-tuple of (x, y, val_x, val_y, val_sample_weights).
 
     Raises:
       ValueError: If the provided arguments are not compatible with
@@ -1921,7 +1946,7 @@ class KerasTPUModel(models.Model):
     # in TPUs.
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator) or
+          isinstance(validation_data, iterator_ops.IteratorV2) or
           isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '
@@ -1966,7 +1991,7 @@ class KerasTPUModel(models.Model):
       val_y = None
       val_sample_weights = None
 
-    return val_x, val_y, val_sample_weights
+    return x, y, val_x, val_y, val_sample_weights
 
   def predict(self,
               x,
@@ -2021,21 +2046,6 @@ class KerasTPUModel(models.Model):
           self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
     return self.test_function
 
-  def _make_fit_function(self):
-    if not self._fit_function:
-      self._fit_function = TPUFunction(
-          self,
-          model_fn_lib.ModeKeys.TRAIN,
-          tpu_assignment=self._tpu_assignment)
-
-    return self._fit_function
-
-  def _make_eval_function(self):
-    if not self._eval_function:
-      self._eval_function = TPUFunction(
-          self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
-    return self._eval_function
-
   def _make_predict_function(self):
     if not self.predict_function:
       self.predict_function = TPUFunction(
@@ -2072,6 +2082,8 @@ class KerasTPUModel(models.Model):
       # tpu_model may not be compiled, e.g., loading weights and then predict.
       return
     for k, v in six.iteritems(cpu_optimizer_config):
+      if k == 'name':
+        continue
       opt_var = getattr(self._tpu_model.optimizer, k)
       if isinstance(opt_var, variables.Variable):
         logging.info('CPU -> TPU %s: %s {%s}', k, v, K.get_value(opt_var))
@@ -2100,6 +2112,8 @@ class KerasTPUModel(models.Model):
     self._cpu_model.set_weights(tpu_weights)
     for k, v in six.iteritems(tpu_optimizer_config):
       logging.info('TPU -> CPU %s: %s', k, v)
+      if k == 'name':
+        continue
       opt_var = getattr(self.cpu_optimizer, k)
       if isinstance(opt_var, variables.Variable):
         K.get_session().run(opt_var.assign(v))
@@ -2167,7 +2181,10 @@ Output shape: %(output_shape)s
 # pylint: enable=bad-continuation
 
 
-@experimental
+@deprecated(
+    '2019-02-20', 'Switch to tf.contrib.distribute.TPUStrategy. '
+    'https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/DistributionStrategy'
+)
 def tpu_model(model, strategy=None):
   """Copy `model` along with weights to the TPU.
 
@@ -2184,7 +2201,7 @@ def tpu_model(model, strategy=None):
   strategy = keras_support.TPUDistributionStrategy(tpu_cluster_resolver)
   model = keras_support.tpu_model(model, strategy)
   model.compile(
-      optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
+      optimizer=tf.compat.v1.train.GradientDescentOptimizer(learning_rate=1.0),
       ...)
   ```
 

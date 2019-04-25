@@ -63,11 +63,13 @@ class FlexModelTest : public ::testing::Test {
   void SetValues(int tensor_index, const std::vector<float>& values) {
     SetTypedValues<float>(tensor_index, values);
   }
+  void SetStringValues(int tensor_index, const std::vector<string>& values);
 
   // Returns the tensor's values at the given index.
   std::vector<float> GetValues(int tensor_index) {
     return GetTypedValues<float>(tensor_index);
   }
+  std::vector<string> GetStringValues(int tensor_index) const;
 
   // Sets the tensor's shape at the given index.
   void SetShape(int tensor_index, const std::vector<int>& values);
@@ -101,6 +103,7 @@ class FlexModelTest : public ::testing::Test {
  protected:
   std::unique_ptr<Interpreter> interpreter_;
   TestErrorReporter error_reporter_;
+  std::vector<int> tf_ops_;
 
  private:
   // Helper method to add a TensorFlow op. tflite_names needs to start with
@@ -110,6 +113,8 @@ class FlexModelTest : public ::testing::Test {
                const std::vector<int>& outputs);
 
   std::vector<std::vector<uint8_t>> flexbuffers_;
+
+  int next_op_index_ = 0;
 };
 
 }  // namespace testing

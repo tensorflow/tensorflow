@@ -65,6 +65,15 @@ TEST(ElementWise, Sin) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, Cos) {
+  ElementWiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, -1, -1, 0.54030})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(ElementWise, Log) {
   ElementWiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});
@@ -72,6 +81,19 @@ TEST(ElementWise, Log) {
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(FloatActivationsOpTest, Abs) {
+  ElementWiseOpFloatModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
+  m.PopulateTensor<float>(m.input(), {
+                                         0.f, -6.2f, 2.f, 4.f,  //
+                                         3.f, -2.f, 10.f, 1.f,  //
+                                     });
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()), ElementsAreArray({
+                                                      0.f, 6.2f, 2.f, 4.f,  //
+                                                      3.f, 2.f, 10.f, 1.f,  //
+                                                  }));
 }
 
 TEST(ElementWise, Sqrt) {

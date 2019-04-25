@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.framework import load_library
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -27,6 +28,7 @@ from tensorflow.python.platform import test
 
 class DuplicateOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     library_filename = os.path.join(resource_loader.get_data_files_path(),
                                     'duplicate_op.so')

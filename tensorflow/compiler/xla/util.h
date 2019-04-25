@@ -85,7 +85,7 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 // Helper for macros above.  Don't use directly.
 #define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
   ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, VLOG_IS_ON(level))
+      label, counter, VLOG_IS_ON(level))
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
@@ -93,11 +93,17 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 struct ScopedLoggingTimer {
   // The timer does nothing if enabled is false.  This lets you pass in your
   // file's VLOG_IS_ON value.
-  ScopedLoggingTimer(const string& label, bool enabled);
+  //
+  // timer_id should be derived from a __COUNTER__ macro. This is unique
+  // per each XLA_SCOPED_LOGGING_TIMER* invocation, which lets us display
+  // cumulative time across different timer instances created for the same
+  // macro in the source code.
+  ScopedLoggingTimer(const std::string& label, uint64 timer_id, bool enabled);
   ~ScopedLoggingTimer();
 
   bool enabled;
   string label;
+  uint64 timer_id;
   uint64 start_micros;
 };
 
@@ -150,6 +156,13 @@ static inline absl::Span<const int64> AsInt64Slice(
   absl::Span<const tensorflow::protobuf_int64> slice(v);
   return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
                                  slice.size());
+}
+
+// TODO(b/29771030): This nop overload was added to simplify the migration of
+// Shape from a proto to a C++ class. Remove after class has been migrated.
+static inline absl::Span<const int64> AsInt64Slice(
+    absl::Span<const int64> slice) {
+  return slice;
 }
 
 // As above, but for uint64 types.
@@ -253,6 +266,16 @@ Status Unavailable(const absl::FormatSpec<Args...>& format,
   return WithLogBacktrace(
       tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
 }
+template <typename... Args>
+Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
@@ -317,8 +340,7 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation);
 
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
-  return std::distance(container.begin(),
-                       std::find(container.begin(), container.end(), value));
+  return std::distance(container.begin(), absl::c_find(container, value));
 }
 
 // Formats the container as a comma-separated string. StrAppend must support

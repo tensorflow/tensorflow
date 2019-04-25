@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal
@@ -45,6 +46,7 @@ class KLTest(test.TestCase):
     a = MyDist(loc=0.0, scale=1.0)
     self.assertEqual("OK", kullback_leibler.kl_divergence(a, a, name="OK"))
 
+  @test_util.run_deprecated_v1
   def testDomainErrorExceptions(self):
 
     class MyDistException(normal.Normal):

@@ -146,8 +146,8 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
   Example broadcasting many batch dims
 
   ```python
-  x = tf.random_normal(shape=(2, 3, 1, 4, 4))
-  y = tf.random_normal(shape=(1, 3, 2, 5, 5))
+  x = tf.random.normal(shape=(2, 3, 1, 4, 4))
+  y = tf.random.normal(shape=(1, 3, 2, 5, 5))
   x_bc, y_bc = broadcast_matrix_batch_dims([x, y])
 
   x_bc.shape
@@ -260,10 +260,10 @@ def matmul_with_broadcast(a,
 
   ```python
   # A 2-batch of 3x4 matrices
-  a = tf.random_normal(shape=(2, 3, 4))
+  a = tf.random.normal(shape=(2, 3, 4))
 
   # A single 4x5 matrix
-  b = tf.random_normal(shape=(4, 5))
+  b = tf.random.normal(shape=(4, 5))
 
   result = matmul_with_broadcast(a, b)
 
@@ -365,7 +365,7 @@ def matrix_triangular_solve_with_broadcast(matrix,
                                            name=None):
   """Solves triangular systems of linear equations with by backsubstitution.
 
-  Works identically to `tf.matrix_triangular_solve`, but broadcasts batch dims
+  Works identically to `tf.linalg.triangular_solve`, but broadcasts batch dims
   of `matrix` and `rhs` (by replicating) if they are determined statically to be
   different, or if static shapes are not fully defined.  Thus, this may result
   in an inefficient replication of data.
@@ -481,9 +481,9 @@ def _reshape_for_efficiency(a,
 
   # Permutation to put the extra dims at the end.
   perm = (
-      array_ops.concat(
-          (math_ops.range(b_extra_ndims, b.shape.ndims),
-           math_ops.range(0, b_extra_ndims)), 0))
+      np.concatenate(
+          (np.arange(b_extra_ndims, b.shape.ndims),
+           np.arange(0, b_extra_ndims)), 0))
   b_extra_on_end = array_ops.transpose(b, perm=perm)
 
   # Now squash this end into one long dim.
@@ -497,7 +497,7 @@ def _reshape_for_efficiency(a,
     y_extra_shape = array_ops.concat(
         (array_ops.shape(y)[:-1], [b_main_sh[-1]], b_extra_sh), 0)
     y_extra_on_end = array_ops.reshape(y, y_extra_shape)
-    return array_ops.transpose(
-        y_extra_on_end, perm=array_ops.invert_permutation(perm))
+    inverse_perm = np.argsort(perm)
+    return array_ops.transpose(y_extra_on_end, perm=inverse_perm)
 
   return a, b_squashed_end, reshape_inv, still_need_to_transpose

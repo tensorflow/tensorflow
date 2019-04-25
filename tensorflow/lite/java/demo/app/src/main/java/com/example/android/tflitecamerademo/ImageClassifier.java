@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.gpu.GpuDelegate;
 
 /**
  * Classifies images with Tensorflow Lite.
@@ -92,6 +93,9 @@ public abstract class ImageClassifier {
               return (o1.getValue()).compareTo(o2.getValue());
             }
           });
+
+  /** holds a gpu delegate */
+  GpuDelegate gpuDelegate = null;
 
   /** Initializes an {@code ImageClassifier}. */
   ImageClassifier(Activity activity) throws IOException {
@@ -163,8 +167,21 @@ public abstract class ImageClassifier {
     }
   }
 
-  public void setUseNNAPI(Boolean nnapi) {
-    tfliteOptions.setUseNNAPI(nnapi);
+  public void useGpu() {
+    if (gpuDelegate == null) {
+      gpuDelegate = new GpuDelegate();
+      tfliteOptions.addDelegate(gpuDelegate);
+      recreateInterpreter();
+    }
+  }
+
+  public void useCPU() {
+    tfliteOptions.setUseNNAPI(false);
+    recreateInterpreter();
+  }
+
+  public void useNNAPI() {
+    tfliteOptions.setUseNNAPI(true);
     recreateInterpreter();
   }
 
@@ -177,6 +194,10 @@ public abstract class ImageClassifier {
   public void close() {
     tflite.close();
     tflite = null;
+    if (gpuDelegate != null) {
+      gpuDelegate.close();
+      gpuDelegate = null;
+    }
     tfliteModel = null;
   }
 

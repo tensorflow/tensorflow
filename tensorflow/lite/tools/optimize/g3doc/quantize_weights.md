@@ -3,7 +3,7 @@
 ## Recommended usage
 
 The Quantize Weights transformation is integrated with
-[tflite_convert](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/toco/g3doc/cmdline_reference.md#transformation-flags).
+[tflite_convert](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/convert/cmdline_reference.md#transformation-flags).
 
 The recommended way of invoking this tool is by simply adding the
 `--post_training_quantize` flag to your original tflite_convert invocation. For

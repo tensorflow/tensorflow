@@ -1,0 +1,100 @@
+op {
+  graph_op_name: "TPUReplicate"
+  visibility: HIDDEN
+  in_arg {
+    name: "inputs"
+    description: <<END
+the inputs to 'computation', flattened, in replica-major order.
+END
+  }
+  in_arg {
+    name: "broadcast_inputs"
+    description: <<END
+additional arguments to broadcast to all replicas. The
+broadcast inputs are appended to the per-replica inputs when calling
+computation.
+END
+  }
+  in_arg {
+    name: "guaranteed_constants"
+    description: <<END
+arguments which have been guaranteed to not
+change their values during the session lifetime. These contain tensors marked as
+constant using the GuaranteeConstOp.
+END
+  }
+  out_arg {
+    name: "outputs"
+    description: <<END
+the outputs of 'computation'.
+END
+  }
+  attr {
+    name: "computation"
+    description: <<END
+a function containing the computation to run.
+END
+  }
+  attr {
+    name: "num_replicas"
+    description: <<END
+the number of replicas of the computation to run.
+END
+  }
+  attr {
+    name: "num_cores_per_replica"
+    description: <<END
+the number of logical cores in each replica.
+END
+  }
+  attr {
+    name: "topology"
+    description: <<END
+A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
+END
+  }
+  attr {
+    name: "use_tpu"
+    description: <<END
+a bool indicating if this computation will run on TPU or CPU/GPU.
+Currently, only supports a default placement (computation is placed on GPU
+if one is available, and on CPU if not).
+END
+  }
+  attr {
+    name: "device_assignment"
+    description: <<END
+a flattened array with shape
+[replica, num_cores_per_replica, mesh_dimension] that maps the coordinates
+of logical cores in each replica of a computation to physical coordinates in
+the TPU topology.
+END
+  }
+  attr {
+    name: "Tinputs"
+    description: <<END
+the types of the arguments to 'computation'.
+END
+  }
+  attr {
+    name: "Tbroadcast_inputs"
+    description: <<END
+the types of the additional arguments to broadcast to all
+replicas.
+END
+  }
+  attr {
+    name: "Tguaranteed_constants"
+    description: <<END
+the types of the arguments to 'guaranteed_constants'.
+END
+  }
+  attr {
+    name: "output_types"
+    description: <<END
+the types of the outputs of 'computation'.
+END
+  }
+  summary: "Runs replicated computations on a distributed TPU system."
+}

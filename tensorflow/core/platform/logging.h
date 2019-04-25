@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(GOOGLE_LOGGING)
+    defined(GOOGLE_LOGGING) || defined(__EMSCRIPTEN__)
 #include "tensorflow/core/platform/google/build_config/logging.h"
 #else
 #include "tensorflow/core/platform/default/logging.h"

@@ -1066,4 +1066,31 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
               error::INTERNAL == status.code());
 }
 
+TEST(SessionTest, TestCompression) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 100);
+  RPCOptions* rpc_options = options.config.mutable_rpc_options();
+  rpc_options->set_compression_algorithm("deflate");
+  rpc_options->set_compression_level(GRPC_COMPRESS_LEVEL_HIGH);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  static const float kTestValue = 409.1934f;
+  Graph graph(OpRegistry::Global());
+  Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
+  tensor.flat<float>()(0) = kTestValue;
+  Node* b = test::graph::Constant(&graph, tensor);
+  GraphDef gdef;
+  graph.ToGraphDef(&gdef);
+  RunOptions run_options;
+  TF_CHECK_OK(session->Create(run_options, gdef));
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+  TF_CHECK_OK(session->Run(inputs, {b->name()}, {}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  IsSingleFloatValue(outputs[0], kTestValue);
+}
+
 }  // namespace tensorflow

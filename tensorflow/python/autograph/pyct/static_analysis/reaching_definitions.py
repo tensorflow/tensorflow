@@ -153,10 +153,9 @@ class Analyzer(cfg.GraphVisitor):
       # This Name node below is a literal name, e.g. False
       # This can also happen if activity.py forgot to annotate the node with a
       # scope object.
-      assert isinstance(
-          node.ast_node,
-          (gast.Name, gast.Break, gast.Continue, gast.Raise)), (node.ast_node,
-                                                                node)
+      assert isinstance(node.ast_node,
+                        (gast.Name, gast.Break, gast.Continue, gast.Raise,
+                         gast.Pass)), (node.ast_node, node)
       defs_out = defs_in
 
     self.in_[node] = defs_in
@@ -217,10 +216,10 @@ class TreeAnnotator(transformer.Base):
 
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
   def visit_Name(self, node):
@@ -232,7 +231,8 @@ class TreeAnnotator(transformer.Base):
     analyzer = self.current_analyzer
     cfg_node = self.current_cfg_node
 
-    assert cfg_node is not None, 'name node outside of any statement?'
+    assert cfg_node is not None, ('name node, %s, outside of any statement?'
+                                  % node.id)
 
     qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Load):
@@ -274,6 +274,16 @@ class TreeAnnotator(transformer.Base):
   def visit_While(self, node):
     self._aggregate_predecessors_defined_in(node)
     return self.generic_visit(node)
+
+  def visit_Try(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    return self.generic_visit(node)
+
+  def visit_ExceptHandler(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    # TODO(mdan): Also track the exception type / name symbols.
+    node.body = self.visit_block(node.body)
+    return node
 
   def visit(self, node):
     parent = self.current_cfg_node

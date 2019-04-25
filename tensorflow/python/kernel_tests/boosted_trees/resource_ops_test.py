@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 class ResourceOpsTest(test_util.TensorFlowTestCase):
   """Tests resource_ops."""
 
+  @test_util.run_deprecated_v1
   def testCreate(self):
     with self.cached_session():
       ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
@@ -43,6 +44,7 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(0, self.evaluate(num_attempted_layers))
       self.assertAllEqual([0, 1], self.evaluate(nodes_range))
 
+  @test_util.run_deprecated_v1
   def testCreateWithProto(self):
     with self.cached_session():
       ensemble_proto = boosted_trees_pb2.TreeEnsemble()
@@ -160,6 +162,7 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(6, self.evaluate(num_attempted_layers))
       self.assertAllEqual([16, 19], self.evaluate(nodes_range))
 
+  @test_util.run_deprecated_v1
   def testSerializeDeserialize(self):
     with self.cached_session():
       # Initialize.

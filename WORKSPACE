@@ -1,12 +1,14 @@
 workspace(name = "org_tensorflow")
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
+
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "a38539c5b5c358548e75b44141b4ab637bba7c4dc02b46b1f62a96d6433f56ae",
-    strip_prefix = "rules_closure-dbb96841cc0a5fb2664c37822803b06dab20c7d1",
+    sha256 = "e0a111000aeed2051f29fcc7a3f83be3ad8c6c93c186e64beb1ad313f0c7f9f9",
+    strip_prefix = "rules_closure-cf1e44edb908e9616030cc83d085989b8e6cd6df",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",  # 2018-04-13
+        "http://mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/cf1e44edb908e9616030cc83d085989b8e6cd6df.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/cf1e44edb908e9616030cc83d085989b8e6cd6df.tar.gz",  # 2019-04-04
     ],
 )
 
@@ -14,38 +16,72 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
-http_archive(
-    name = "base_images_docker",
-    sha256 = "e2b1b7254270bb7605e814a9dbf6d1e4ae04a11136ff1714fbfdabe3f87f7cf9",
-    strip_prefix = "base-images-docker-12801524f867e657fbb5d1a74f31618aff181ac6",
-    urls = ["https://github.com/GoogleCloudPlatform/base-images-docker/archive/12801524f867e657fbb5d1a74f31618aff181ac6.tar.gz"],
+load("//third_party/toolchains/preconfig/generate:archives.bzl",
+     "bazel_toolchains_archive")
+
+bazel_toolchains_archive()
+
+load(
+    "@bazel_toolchains//repositories:repositories.bzl",
+    bazel_toolchains_repositories = "repositories",
 )
 
-http_archive(
-    name = "bazel_toolchains",
-    sha256 = "15b5858b1b5541ec44df31b94c3b8672815b31d71215a98398761ea9f4c4eedb",
-    strip_prefix = "bazel-toolchains-6200b238c9c2d137c0d9a7262c80cc71d98e692b",
-    urls = [
-        "https://github.com/bazelbuild/bazel-toolchains/archive/6200b238c9c2d137c0d9a7262c80cc71d98e692b.tar.gz",
-    ],
+bazel_toolchains_repositories()
+
+load(
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
+    container_repositories = "repositories",
 )
 
-http_archive(
-    name = "io_bazel_rules_docker",
-    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
-    strip_prefix = "rules_docker-0.5.1",
-    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
-)
+container_repositories()
 
-load("//third_party/toolchains/preconfig/generate:workspace.bzl", "remote_config_workspace")
+load("//third_party/toolchains/preconfig/generate:workspace.bzl",
+     "remote_config_workspace")
 
 remote_config_workspace()
+
+# Apple and Swift rules.
+http_archive(
+    name = "build_bazel_rules_apple",
+    sha256 = "8f32e2839fba28d549e1670dbed83606dd339a9f7489118e481814d61738270f",
+    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.14.0/rules_apple.0.14.0.tar.gz"],
+)  # https://github.com/bazelbuild/rules_apple/releases
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "7356dbd44dea71570a929d1d4731e870622151a5f27164d966dda97305f33471",
+    urls = ["https://github.com/bazelbuild/apple_support/releases/download/0.6.0/apple_support.0.6.0.tar.gz"],
+)  # https://github.com/bazelbuild/apple_support/releases
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "2ef429f5d7ce7111263289644d233707dba35e39696377ebab8b0bc701f7818e",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/releases/download/0.8.0/bazel-skylib.0.8.0.tar.gz"],
+)  # https://github.com/bazelbuild/bazel-skylib/releases
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "31aad005a9c4e56b256125844ad05eb27c88303502d74138186f9083479f93a6",
+    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.8.0/rules_swift.0.8.0.tar.gz"],
+)  # https://github.com/bazelbuild/rules_swift/releases
+http_archive(
+    name = "com_github_apple_swift_swift_protobuf",
+    type = "zip",
+    strip_prefix = "swift-protobuf-1.4.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.4.0.zip"],
+)  # https://github.com/apple/swift-protobuf/releases
+http_file(
+    name = "xctestrunner",
+    executable = 1,
+    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.7/ios_test_runner.par"],
+)  # https://github.com/google/xctestrunner/releases
+# Use `swift_rules_dependencies` to fetch the toolchains. With the
+# `git_repository` rules above, the following call will skip redefining them.
+load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+swift_rules_dependencies()
 
 # We must check the bazel version before trying to parse any other BUILD
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.15.0")
+check_bazel_version_at_least("0.19.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
@@ -57,9 +93,9 @@ android_workspace()
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
 
-new_http_archive(
+http_archive(
     name = "inception_v1",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
@@ -67,9 +103,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "mobile_ssd",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
@@ -77,9 +113,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "mobile_multibox",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
@@ -87,9 +123,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "stylize",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "3d374a730aef330424a356a8d4f04d8a54277c425e274ecb7d9c83aa912c6bfa",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
@@ -97,13 +133,12 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "speech_commands",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
-

@@ -32,6 +32,12 @@ py_library(
     ],
 )
 
+py_library(
+    name = "loss_reduction",
+    srcs = ["loss_reduction.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_test(
     name = "util_test",
     size = "small",

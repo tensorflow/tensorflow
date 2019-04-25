@@ -56,6 +56,11 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {
@@ -230,8 +235,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     if (!directory_
              .insert(std::make_pair(
                  element_iter->name(),
-                 FileRegion(element_iter->offset(),
-                            prev_element_offset - element_iter->offset())))
+                 FileRegion(element_iter->offset(), element_iter->length())))
              .second) {
       return errors::DataLoss("Corrupted memmapped model file: ", filename,
                               " Duplicate name of internal component ",

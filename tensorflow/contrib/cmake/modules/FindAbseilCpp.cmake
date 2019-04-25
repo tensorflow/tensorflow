@@ -24,10 +24,10 @@ if(EXISTS "${ABSEIL_CPP_INCLUDE_DIR}" AND NOT "${ABSEIL_CPP_INCLUDE_DIR}" STREQU
     # search all libraries if no COMPONENTS was requested
     set(AbseilCpp_FIND_COMPONENTS
         "absl_algorithm;absl_any;absl_bad_any_cast"
-        "absl_bad_optional_access;absl_base absl_container;absl_debugging"
+        "absl_bad_optional_access;absl_base;absl_container;absl_debugging"
         "absl_dynamic_annotations;absl_examine_stack;absl_failure_signal_handler"
-        "absl_int128;absl_leak_check;absl_malloc_internal;absl_memory;absl_meta"
-        "absl_numeric;absl_optional;absl_span;absl_spinlock_wait;absl_stack_consumption"
+        "absl_int128;absl_leak_check;absl_internal_malloc_internal;absl_memory;absl_meta"
+        "absl_numeric;absl_optional;absl_span;absl_internal_spinlock_wait;absl_stack_consumption"
         "absl_stacktrace;absl_str_format;absl_strings;absl_symbolize;absl_synchronization"
         "absl_throw_delegate;absl_time;absl_utility;str_format_extension_internal"
         "str_format_internal;test_instance_tracker_lib")

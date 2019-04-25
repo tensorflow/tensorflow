@@ -436,6 +436,7 @@ py_test(
     name = "eval_metrics_test",
     size = "small",
     srcs = ["client/eval_metrics_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":eval_metrics",
@@ -461,6 +462,7 @@ py_test(
     name = "scatter_add_ndim_op_test",
     size = "small",
     srcs = ["python/kernel_tests/scatter_add_ndim_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
@@ -502,6 +504,7 @@ py_test(
     name = "tensor_forest_test",
     size = "small",
     srcs = ["python/tensor_forest_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
@@ -537,8 +540,10 @@ py_library(
 
 py_test(
     name = "random_forest_test",
-    size = "large",
+    size = "medium",
     srcs = ["client/random_forest_test.py"],
+    python_version = "PY2",
+    shard_count = 6,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",

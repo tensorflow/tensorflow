@@ -27,10 +27,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnected1DLayersTest(test.TestCase):
-  # TODO(fchollet): investigate why LocallyConnected1D
-  # fails inside a graph function in an eager context (fails with error
-  # "Incompatible shapes between op input and calculated input gradient").
 
   def test_locallyconnected_1d(self):
     with self.cached_session():
@@ -115,10 +113,8 @@ class LocallyConnected1DLayersTest(test.TestCase):
               self.assertEqual(layer.bias.constraint, b_constraint)
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnected2DLayersTest(test.TestCase):
-  # TODO(fchollet): investigate why LocallyConnected2D
-  # fails inside a graph function in an eager context (fails with error
-  # "Incompatible shapes between op input and calculated input gradient").
 
   def test_locallyconnected_2d(self):
     with self.cached_session():
@@ -230,6 +226,7 @@ class LocallyConnected2DLayersTest(test.TestCase):
             self.assertEqual(layer.bias.constraint, b_constraint)
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnectedImplementationModeTest(test.TestCase):
 
   def test_locallyconnected_implementation(self):
@@ -259,13 +256,16 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                             'kernel_size': kernel_x + kernel_y,
                             'strides': stride_x + stride_y,
                             'data_format': data_format,
-                            'num_classes': num_classes,
-                            'input_shape': inputs.shape
+                            'num_classes': num_classes
                         }
-
                         model_1 = get_model(implementation=1, **kwargs)
                         model_2 = get_model(implementation=2, **kwargs)
 
+                        # Build models.
+                        model_1.train_on_batch(inputs, targets)
+                        model_2.train_on_batch(inputs, targets)
+
+                        # Copy weights.
                         copy_model_weights(model_2, model_1)
 
                         # Compare outputs at initialization.
@@ -279,7 +279,6 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                                     y=targets,
                                     epochs=num_epochs,
                                     batch_size=num_samples)
-
                         model_2.fit(x=inputs,
                                     y=targets,
                                     epochs=num_epochs,
@@ -288,10 +287,9 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                         # Compare outputs after a few training steps.
                         out_1 = model_1.call(inputs)
                         out_2 = model_2.call(inputs)
-                        self.assertAllCloseAccordingToType(out_1, out_2,
-                                                           rtol=1e-5, atol=1e-5)
+                        self.assertAllCloseAccordingToType(
+                            out_1, out_2, atol=2e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_make_2d(self):
     input_shapes = [
         (0,),
@@ -366,8 +364,7 @@ def get_model(implementation,
               strides,
               layers,
               num_classes,
-              data_format,
-              input_shape):
+              data_format):
   model = keras.Sequential()
 
   if len(kernel_size) == 1:
@@ -396,7 +393,6 @@ def get_model(implementation,
       metrics=[keras.metrics.categorical_accuracy],
       loss=xent
   )
-  model.build(input_shape)
   return model
 
 

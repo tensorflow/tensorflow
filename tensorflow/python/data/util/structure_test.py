@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
@@ -28,12 +29,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class StructureTest(test.TestCase, parameterized.TestCase):
+class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
   # will be executed before the (eager- or graph-mode) test environment has been
@@ -42,6 +45,9 @@ class StructureTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       (lambda: constant_op.constant(37.0), structure.TensorStructure,
        [dtypes.float32], [[]]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       structure.TensorArrayStructure, [dtypes.variant], [None, 3]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        structure.SparseTensorStructure, [dtypes.variant], [None]),
@@ -77,6 +83,20 @@ class StructureTest(test.TestCase, parameterized.TestCase):
           variables.Variable(100.0), 42.0,
           np.array(42.0, dtype=np.float32)
       ], lambda: [constant_op.constant([1.0, 2.0]), constant_op.constant(37)]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=10)
+       ],
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.int32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(), size=0)
+       ]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        lambda: [
@@ -115,6 +135,7 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
+  @test_util.run_deprecated_v1
   def testIsCompatibleWithStructure(
       self, original_value_fn, compatible_values_fn, incompatible_values_fn):
     original_value = original_value_fn()
@@ -134,6 +155,8 @@ class StructureTest(test.TestCase, parameterized.TestCase):
       (lambda: constant_op.constant(37.0),),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(), size=1).write(0, 7)),
       (lambda: {"a": constant_op.constant(37.0),
                 "b": constant_op.constant([1, 2, 3])},),
       (lambda: {"a": constant_op.constant(37.0),
@@ -146,8 +169,15 @@ class StructureTest(test.TestCase, parameterized.TestCase):
   def testRoundTripConversion(self, value_fn):
     value = value_fn()
     s = structure.Structure.from_value(value)
-    before = self.evaluate(value)
-    after = self.evaluate(s._from_tensor_list(s._to_tensor_list(value)))
+    def maybe_stack_ta(v):
+      if isinstance(v, tensor_array_ops.TensorArray):
+        return v.stack()
+      else:
+        return v
+
+    before = self.evaluate(maybe_stack_ta(value))
+    after = self.evaluate(
+        maybe_stack_ta(s._from_tensor_list(s._to_tensor_list(value))))
 
     flat_before = nest.flatten(before)
     flat_after = nest.flatten(after)
@@ -340,6 +370,18 @@ class StructureTest(test.TestCase, parameterized.TestCase):
       ("SparseTensor", dtypes.int32, tensor_shape.matrix(2, 2),
        sparse_tensor.SparseTensor,
        structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+      ("TensorArray0", dtypes.int32, tensor_shape.as_shape([None, True, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=None, infer_shape=True)),
+      ("TensorArray1", dtypes.int32, tensor_shape.as_shape([True, None, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=None)),
+      ("TensorArray2", dtypes.int32, tensor_shape.as_shape([True, False, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=False)),
       ("Nest",
        {"a": dtypes.float32, "b": (dtypes.int32, dtypes.string)},
        {"a": tensor_shape.scalar(),
@@ -350,12 +392,141 @@ class StructureTest(test.TestCase, parameterized.TestCase):
            "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
                  structure.TensorStructure(dtypes.string, []))})),
   )
-  def testFromLegacyStructure(self, output_types, output_shapes, output_classes,
-                              expected_structure):
-    actual_structure = structure.Structure._from_legacy_structure(
+  def testConvertLegacyStructure(self, output_types, output_shapes,
+                                 output_classes, expected_structure):
+    actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertTrue(expected_structure.is_compatible_with(actual_structure))
     self.assertTrue(actual_structure.is_compatible_with(expected_structure))
+
+  def testNestedNestedStructure(self):
+    # Although `Structure.from_value()` will not construct one, a nested
+    # structure containing nested `NestedStructure` objects can occur if a
+    # structure is constructed manually.
+    s = structure.NestedStructure(
+        (structure.TensorStructure(dtypes.int64, []),
+         structure.NestedStructure(
+             (structure.TensorStructure(dtypes.float32, []),
+              structure.TensorStructure(dtypes.string, [])))))
+
+    int64_t = constant_op.constant(37, dtype=dtypes.int64)
+    float32_t = constant_op.constant(42.0)
+    string_t = constant_op.constant("Foo")
+
+    nested_tensors = (int64_t, (float32_t, string_t))
+
+    tensor_list = s._to_tensor_list(nested_tensors)
+    for expected, actual in zip([int64_t, float32_t, string_t], tensor_list):
+      self.assertIs(expected, actual)
+
+    (actual_int64_t, (actual_float32_t, actual_string_t)) = s._from_tensor_list(
+        tensor_list)
+    self.assertIs(int64_t, actual_int64_t)
+    self.assertIs(float32_t, actual_float32_t)
+    self.assertIs(string_t, actual_string_t)
+
+    (actual_int64_t, (actual_float32_t, actual_string_t)) = (
+        s._from_compatible_tensor_list(tensor_list))
+    self.assertIs(int64_t, actual_int64_t)
+    self.assertIs(float32_t, actual_float32_t)
+    self.assertIs(string_t, actual_string_t)
+
+  @parameterized.named_parameters(
+      ("Tensor", structure.TensorStructure(dtypes.float32, []), 32,
+       structure.TensorStructure(dtypes.float32, [32])),
+      ("TensorUnknown", structure.TensorStructure(dtypes.float32, []), None,
+       structure.TensorStructure(dtypes.float32, [None])),
+      ("SparseTensor", structure.SparseTensorStructure(dtypes.float32, [None]),
+       32, structure.SparseTensorStructure(dtypes.float32, [32, None])),
+      ("SparseTensorUnknown",
+       structure.SparseTensorStructure(dtypes.float32, [4]), None,
+       structure.SparseTensorStructure(dtypes.float32, [None, 4])),
+      ("Nest", structure.NestedStructure({
+          "a": structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                structure.TensorStructure(dtypes.string, []))}), 128,
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, [128]),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
+                 structure.TensorStructure(dtypes.string, [128]))})),
+  )
+  def testBatch(self, element_structure, batch_size,
+                expected_batched_structure):
+    batched_structure = element_structure._batch(batch_size)
+    self.assertTrue(
+        batched_structure.is_compatible_with(expected_batched_structure))
+    self.assertTrue(
+        expected_batched_structure.is_compatible_with(batched_structure))
+
+  @parameterized.named_parameters(
+      ("Tensor", structure.TensorStructure(dtypes.float32, [32]),
+       structure.TensorStructure(dtypes.float32, [])),
+      ("TensorUnknown", structure.TensorStructure(dtypes.float32, [None]),
+       structure.TensorStructure(dtypes.float32, [])),
+      ("SparseTensor",
+       structure.SparseTensorStructure(dtypes.float32, [32, None]),
+       structure.SparseTensorStructure(dtypes.float32, [None])),
+      ("SparseTensorUnknown",
+       structure.SparseTensorStructure(dtypes.float32, [None, 4]),
+       structure.SparseTensorStructure(dtypes.float32, [4])),
+      ("Nest", structure.NestedStructure({
+          "a": structure.TensorStructure(dtypes.float32, [128]),
+          "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
+                structure.TensorStructure(dtypes.string, [None]))}),
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                 structure.TensorStructure(dtypes.string, []))})),
+  )
+  def testUnbatch(self, element_structure, expected_unbatched_structure):
+    unbatched_structure = element_structure._unbatch()
+    self.assertTrue(
+        unbatched_structure.is_compatible_with(expected_unbatched_structure))
+    self.assertTrue(
+        expected_unbatched_structure.is_compatible_with(unbatched_structure))
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Tensor", lambda: constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+       lambda: constant_op.constant([1.0, 2.0])),
+      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2]),
+       lambda: sparse_tensor.SparseTensor(
+           indices=[[0]], values=[13], dense_shape=[2])),
+      ("Nest", lambda: (
+          constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+          sparse_tensor.SparseTensor(
+              indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2])),
+       lambda: (constant_op.constant([1.0, 2.0]), sparse_tensor.SparseTensor(
+           indices=[[0]], values=[13], dense_shape=[2]))),
+  )
+  def testToBatchedTensorList(self, value_fn, element_0_fn):
+    batched_value = value_fn()
+    s = structure.Structure.from_value(batched_value)
+    batched_tensor_list = s._to_batched_tensor_list(batched_value)
+
+    # The batch dimension is 2 for all of the test cases.
+    # NOTE(mrry): `tf.shape()` does not currently work for the DT_VARIANT
+    # tensors in which we store sparse tensors.
+    for t in batched_tensor_list:
+      if t.dtype != dtypes.variant:
+        self.assertEqual(2, self.evaluate(array_ops.shape(t)[0]))
+
+    # Test that the 0th element from the unbatched tensor is equal to the
+    # expected value.
+    expected_element_0 = self.evaluate(element_0_fn())
+    unbatched_s = s._unbatch()
+    actual_element_0 = unbatched_s._from_tensor_list(
+        [t[0] for t in batched_tensor_list])
+
+    for expected, actual in zip(
+        nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
+      if sparse_tensor.is_sparse(expected):
+        self.assertSparseValuesEqual(expected, actual)
+      else:
+        self.assertAllEqual(expected, actual)
+
+  # pylint: enable=g-long-lambda
 
 if __name__ == "__main__":
   test.main()

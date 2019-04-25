@@ -49,12 +49,14 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction, BitVector* bit_vector) {
   // If instruction is part of inputs, don't reset the bit_vector.
-  if (std::find(inputs.begin(), inputs.end(), instruction) == inputs.end()) {
+  if (!absl::c_linear_search(inputs, instruction)) {
     bit_vector->SetToZero();
   }
   bit_vector->Set(GetIndex(instruction));
   for (const HloInstruction* input : inputs) {
-    bit_vector->OrWith(GetBitVector(input));
+    if (input != instruction) {
+      bit_vector->OrWith(GetBitVector(input));
+    }
   }
 }
 
@@ -77,28 +79,51 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
   const auto& all = computation->MakeInstructionPostOrder();
   auto result = absl::make_unique<HloReachabilityMap>(all);
-  auto channel_dependency_map = computation->ComputeChannelDependencies();
+  auto channel_group = computation->ComputeChannelDependencies();
 
-  std::vector<HloInstruction*> inputs;
   for (const HloInstruction* hlo : all) {
-    inputs.assign(hlo->operands().begin(), hlo->operands().end());
-    inputs.insert(inputs.end(), hlo->control_predecessors().begin(),
-                  hlo->control_predecessors().end());
+    std::vector<HloInstruction*> inputs;
+    const auto add_input = [&channel_group, &inputs](HloInstruction* input) {
+      inputs.push_back(input);
+      if (input->opcode() == HloOpcode::kAllReduce && input->all_reduce_id()) {
+        auto it = channel_group.find(*input->all_reduce_id());
+        if (it != channel_group.end()) {
+          inputs.insert(inputs.end(), it->second.begin(), it->second.end());
+        }
+      }
+    };
+
+    const auto add_dependencies = [&add_input](const HloInstruction* hlo) {
+      for (HloInstruction* operand : hlo->operands()) {
+        add_input(operand);
+      }
+      for (HloInstruction* predecessor : hlo->control_predecessors()) {
+        add_input(predecessor);
+      }
+    };
+
+    add_dependencies(hlo);
 
     switch (hlo->opcode()) {
       case HloOpcode::kRecvDone: {
-        auto it = channel_dependency_map.find(hlo->channel_id());
-        if (it != channel_dependency_map.end()) {
-          absl::c_copy(it->second, std::back_inserter(inputs));
+        auto it = channel_group.find(hlo->channel_id());
+        if (it != channel_group.end()) {
+          for (HloInstruction* channel : it->second) {
+            if (channel->opcode() == HloOpcode::kSend) {
+              add_input(channel);
+            }
+          }
         }
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = hlo->all_reduce_id();
         if (all_reduce_id) {
-          auto it = channel_dependency_map.find(all_reduce_id.value());
-          if (it != channel_dependency_map.end()) {
-            absl::c_copy(it->second, std::back_inserter(inputs));
+          auto it = channel_group.find(all_reduce_id.value());
+          if (it != channel_group.end()) {
+            for (HloInstruction* all_reduce : it->second) {
+              add_dependencies(all_reduce);
+            }
           }
         }
         break;

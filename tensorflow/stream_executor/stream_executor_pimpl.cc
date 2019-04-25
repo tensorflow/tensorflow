@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
+#include <memory>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -58,34 +59,6 @@ void BlockOnThreadExecutor(port::ThreadPool *executor) {
   port::Notification n;
   executor->Schedule([&n]() { n.Notify(); });
   n.WaitForNotification();
-}
-
-internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
-    PlatformKind platform_kind, const PluginConfig &plugin_config) {
-  // Note: we use this factory-assignment-in-switch pattern instead of just
-  // invoking the callable in case linkage is messed up -- instead of invoking a
-  // nullptr std::function (due to failed registration) we give a nice
-  // LOG(FATAL) message.
-  internal::StreamExecutorFactory factory;
-  switch (platform_kind) {
-    case PlatformKind::kCuda:
-      factory = *internal::MakeCUDAExecutorImplementation();
-      break;
-    case PlatformKind::kOpenCL:
-      factory = *internal::MakeOpenCLExecutorImplementation();
-      break;
-    case PlatformKind::kHost:
-      factory = internal::MakeHostExecutorImplementation;
-      break;
-    default:
-      factory = nullptr;
-  }
-  if (factory == nullptr) {
-    LOG(FATAL)
-        << "cannot create StreamExecutor implementation for platform kind: "
-        << PlatformKindString(platform_kind);
-  }
-  return factory(plugin_config);
 }
 
 std::atomic_int_fast64_t correlation_id_generator(0);
@@ -151,20 +124,6 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
 
 /* static */ mutex StreamExecutor::static_mu_{LINKER_INITIALIZED};
 
-StreamExecutor::StreamExecutor(PlatformKind platform_kind,
-                               const PluginConfig &plugin_config)
-    : platform_(nullptr),
-      implementation_(StreamExecutorImplementationFromPlatformKind(
-          platform_kind, plugin_config)),
-      platform_kind_(platform_kind),
-      device_ordinal_(-1),
-      background_threads_(new port::ThreadPool(
-          port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
-      live_stream_count_(0),
-      tracing_enabled_(false) {
-  CheckPlatformKindIsValid(platform_kind);
-}
-
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64 GetMemoryLimitBytes() {
@@ -188,10 +147,14 @@ StreamExecutor::StreamExecutor(
       memory_limit_bytes_(GetMemoryLimitBytes()) {
   if (port::Lowercase(platform_->Name()) == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
+  } else if (port::Lowercase(platform_->Name()) == "rocm") {
+    platform_kind_ = PlatformKind::kROCm;
   } else if (port::Lowercase(platform_->Name()) == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {
     platform_kind_ = PlatformKind::kHost;
+  } else {
+    platform_kind_ = PlatformKind::kInvalid;
   }
 }
 
@@ -289,7 +252,7 @@ const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
     return *device_description_;
   }
 
-  device_description_.reset(PopulateDeviceDescription());
+  device_description_ = CreateDeviceDescription();
   return *device_description_;
 }
 
@@ -389,7 +352,7 @@ StreamExecutor::createRnnDescriptor(
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
+StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport *dnn_support = AsDnn();
@@ -397,8 +360,23 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
     return port::Status(port::error::UNKNOWN,
                         "Fail to find the dnn implementation.");
   }
-  return dnn_support->createRnnSequenceTensorDescriptor(seq_length, batch_size,
-                                                        data_size, data_type);
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+StreamExecutor::createRnnSequenceTensorDescriptor(
+    int max_seq_length, int batch_size, int data_size,
+    const absl::Span<const int> &seq_lengths, bool time_major,
+    dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, seq_lengths, time_major,
+      data_type);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
@@ -470,6 +448,10 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
 
   result = implementation_->BlockHostUntilDone(stream);
   return result;
+}
+
+port::Status StreamExecutor::GetStatus(Stream *stream) {
+  return implementation_->GetStatus(stream);
 }
 
 void *StreamExecutor::Allocate(uint64 size) {
@@ -783,8 +765,10 @@ bool StreamExecutor::StopTimer(Stream *stream, Timer *timer) {
   return implementation_->StopTimer(stream, timer);
 }
 
-DeviceDescription *StreamExecutor::PopulateDeviceDescription() const {
-  return implementation_->PopulateDeviceDescription();
+std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
+    const {
+  auto desc_status = implementation_->CreateDeviceDescription();
+  return desc_status.ConsumeValueOrDie();
 }
 
 bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
@@ -845,6 +829,10 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
 
   implementation_->UnregisterTraceListener(listener);
   return true;
+}
+
+absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+  return implementation_->GetAllocatorStats();
 }
 
 template <typename TraceCallT, typename... ArgsT>

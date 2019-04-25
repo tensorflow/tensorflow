@@ -1,12 +1,12 @@
 path: "tensorflow.keras.initializers.glorot_uniform"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.init_ops.GlorotUniform\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.VarianceScaling\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.GlorotUniform\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.VarianceScaling\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+    argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "from_config"

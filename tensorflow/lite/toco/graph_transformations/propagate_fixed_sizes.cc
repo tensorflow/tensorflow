@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -718,21 +720,33 @@ void ProcessRangeOperator(Model* model, RangeOperator* op) {
     return;
   }
 
-  CHECK(start_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(limit_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(delta_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
+  const ArrayDataType& start_dtype = start_array.data_type;
+  CHECK(start_dtype == ArrayDataType::kInt32 ||
+        start_dtype == ArrayDataType::kFloat)
+      << "Range op inputs must be int32 or float.";
+  CHECK(limit_array.data_type == start_dtype)
+      << "In Range op, limit tensor must have the same data type as start "
+         "tensor.";
+  CHECK(delta_array.data_type == start_dtype)
+      << "In Range op, delta tensor must have the same data type as start "
+         "tensor.";
   CHECK_EQ(RequiredBufferSizeForShape(start_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(limit_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(delta_array.shape()), 1)
       << "Range op inputs must be scalar.";
-  int size = floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
-                    start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
-                   delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+
+  int size = 0;
+  if (start_dtype == ArrayDataType::kInt32) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+  } else if (start_dtype == ArrayDataType::kFloat) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kFloat>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kFloat>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kFloat>().data[0]);
+  }
 
   // Only set the output shape. Contents are set by ResolveConstantRange.
   CHECK_EQ(op->outputs.size(), 1);
@@ -782,6 +796,97 @@ void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
 
   CHECK_EQ(op->outputs.size(), op->num_split);
   for (const auto& output : op->outputs) {
+    model->GetArray(output).copy_shape(output_shape);
+  }
+}
+
+void ProcessTensorFlowSplitVOperator(Model* model,
+                                     TensorFlowSplitVOperator* op) {
+  CHECK_EQ(op->inputs.size(), 3);
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const Shape& input_shape = input_array.shape();
+
+  // Yield until size_splits is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[1])) {
+    return;
+  }
+  const auto& size_array = model->GetArray(op->inputs[1]);
+  // Yield until size_splits dims have been resolved.
+  if (!size_array.has_shape()) {
+    return;
+  }
+  const Shape& size_shape = size_array.shape();
+
+  CHECK(size_array.data_type == ArrayDataType::kInt32 ||
+        size_array.data_type == ArrayDataType::kInt64)
+      << "size_splits must be int32, int64";
+  CHECK_EQ(size_shape.dimensions_count(), 1) << "size_splits must be 1-D";
+
+  std::vector<int64> size_splits_vector;
+  if (size_array.data_type == ArrayDataType::kInt32) {
+    for (const auto each_size :
+         size_array.GetBuffer<ArrayDataType::kInt32>().data) {
+      size_splits_vector.push_back(each_size);
+    }
+  } else {
+    size_splits_vector = size_array.GetBuffer<ArrayDataType::kInt64>().data;
+  }
+
+  // Yield until axis is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[2])) {
+    return;
+  }
+  const auto& axis_array = model->GetArray(op->inputs[2]);
+  // Yield until axis dims have been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32)
+      << "Axis array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  if (axis < 0) {
+    axis += input_shape.dimensions_count();
+  }
+
+  CHECK_EQ(op->num_split, size_splits_vector.size());
+
+  int64_t minus_one_count = 0, size_splits_sum = 0;
+  for (auto size : size_splits_vector) {
+    if (size == -1) {
+      ++minus_one_count;
+    } else {
+      size_splits_sum += size;
+    }
+  }
+
+  const int input_size = input_shape.dims(axis);
+
+  CHECK_LE(minus_one_count, 1) << "size_splits can contain at most one -1.";
+
+  if (minus_one_count == 1) {
+    CHECK_LE(size_splits_sum, input_size);
+    auto iter =
+        std::find(size_splits_vector.begin(), size_splits_vector.end(), -1);
+    *iter = input_size - size_splits_sum;
+  } else {
+    CHECK_EQ(size_splits_sum, input_size);
+  }
+
+  CHECK_EQ(op->outputs.size(), op->num_split);
+
+  for (int i = 0; i < op->outputs.size(); ++i) {
+    const auto& output = op->outputs[i];
+    Shape output_shape = input_shape;
+    (*output_shape.mutable_dims())[axis] = size_splits_vector.at(i);
     model->GetArray(output).copy_shape(output_shape);
   }
 }
@@ -989,6 +1094,18 @@ void ProcessUnidirectionalSequenceLstmOperator(
 
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -1004,17 +1121,163 @@ void ProcessUnidirectionalSequenceLstmOperator(
     return;
   }
 
-  constexpr int kInputActivationStateTensor = 18;
-  constexpr int kInputCellStateTensor = 19;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
-  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
-
   const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
   const int output_size = output_weights_shape.dims(1);
 
   Shape* output_shape = output_array.mutable_shape();
   output_shape->ReplaceDims({timestamp, batch_size, output_size});
+}
+
+void ProcessUnidirectionalSequenceRnnOperator(
+    Model* model, UnidirectionalSequenceRnnOperator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // Shape already propagated.
+    return;
+  }
+
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  constexpr int kHiddenStateTensor = 4;
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  const auto& bias_array = model->GetArray(op->inputs[3]);
+  // Yield until input dims have been resolved.
+  if (!bias_array.has_shape()) {
+    return;
+  }
+
+  const auto& bias_shape = bias_array.shape();
+  const int output_size = bias_shape.dims(0);
+
+  Shape* output_shape = output_array.mutable_shape();
+  output_shape->ReplaceDims({timestamp, batch_size, output_size});
+}
+
+void ProcessBidirectionalSequenceLstmOperator(
+    Model* model, BidirectionalSequenceLstmOperator* op) {
+  // We assume time major.
+  auto& fw_output_array = model->GetArray(op->outputs[0]);
+  auto& bw_output_array = model->GetArray(op->outputs[1]);
+  if (fw_output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (fw_output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  constexpr int kBwRecurrentToOutputWeightsTensor = 25;
+  const auto& recurrent_to_output_weights_array =
+      model->GetArray(op->inputs[kBwRecurrentToOutputWeightsTensor]);
+  // Yield until input dims have been resolved.
+  if (!recurrent_to_output_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kFwInputActivationStateTensor = 35;
+  constexpr int kFwInputCellStateTensor = 36;
+  constexpr int kBwInputActivationStateTensor = 37;
+  constexpr int kBwInputCellStateTensor = 38;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kFwInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kFwInputCellStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwInputCellStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
+  const int output_size = output_weights_shape.dims(1);
+
+  Shape* fw_output_shape = fw_output_array.mutable_shape();
+  if (op->merge_outputs) {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, 2 * output_size});
+  } else {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+    Shape* bw_output_shape = bw_output_array.mutable_shape();
+    bw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+  }
+}
+
+void ProcessBidirectionalSequenceRnnOperator(
+    Model* model, BidirectionalSequenceRnnOperator* op) {
+  // We assume time major.
+  auto& fw_output_array = model->GetArray(op->outputs[0]);
+  auto& bw_output_array = model->GetArray(op->outputs[1]);
+  if (fw_output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (fw_output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  constexpr int kFwWeightsTensor = 1;
+  const auto& forward_weights_array =
+      model->GetArray(op->inputs[kFwWeightsTensor]);
+  // Yield until input dims have been resolved.
+  if (!forward_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kFwHiddenStateTensor = 4;
+  constexpr int kBwHiddenStateTensor = 8;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kFwHiddenStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kBwHiddenStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = forward_weights_array.shape();
+  const int output_size = output_weights_shape.dims(0);
+
+  Shape* fw_output_shape = fw_output_array.mutable_shape();
+  if (op->merge_outputs) {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, 2 * output_size});
+  } else {
+    fw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+    Shape* bw_output_shape = bw_output_array.mutable_shape();
+    bw_output_shape->ReplaceDims({timestamp, batch_size, output_size});
+  }
 }
 
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
@@ -1160,6 +1423,38 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
   }
 }
 
+void ProcessGatherNdOperator(Model* model, GatherNdOperator* op) {
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  const auto& indices_array = model->GetArray(op->inputs[1]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+
+  // Bail if we already know the output shape.
+  if (output_array.has_shape()) {
+    return;
+  }
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape() || !indices_array.has_shape()) {
+    return;
+  }
+
+  const auto& input_shape = input_array.shape();
+  const auto& indices_shape = indices_array.shape();
+  QCHECK_GE(input_shape.dimensions_count(), 1);
+  QCHECK_GE(indices_shape.dimensions_count(), 1);
+  const int indices_nd =
+      indices_shape.dims(indices_shape.dimensions_count() - 1);
+  QCHECK_LE(indices_nd, input_shape.dimensions_count());
+
+  auto output_dims = output_array.mutable_shape()->mutable_dims();
+  for (int dim = 0; dim < indices_shape.dimensions_count() - 1; ++dim) {
+    output_dims->push_back(indices_shape.dims(dim));
+  }
+  for (int dim = indices_nd; dim < input_shape.dimensions_count(); ++dim) {
+    output_dims->push_back(input_shape.dims(dim));
+  }
+}
+
 void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   const auto& input_values = model->GetArray(op->inputs[0]);
   const auto& input_k = model->GetArray(op->inputs[1]);
@@ -1245,7 +1540,7 @@ void ProcessPadV2Operator(Model* model, PadV2Operator* op) {
   output_array.copy_shape(output_shape);
 }
 
-void ProcessRankOperator(Model* model, RankOperator* op) {
+void ProcessRankOperator(Model* model, TensorFlowRankOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
@@ -1401,8 +1696,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
         start_index);
 
-    int dim_size =
-        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
+    int dim_size = std::ceil(static_cast<float>(stop_index - start_index) /
+                             op->strides[axis]);
 
     CHECK_GT(dim_size, 0)
         << "Output size for an axis must be greater than 0. Axis " << axis
@@ -1435,11 +1730,16 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  for (int i = 0; i < input_dims.size(); ++i) {
+  std::vector<int> squeeze_dims;
+  const int input_num_dims = input_dims.size();
+  for (int i : op->squeeze_dims) {
+    squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
+  }
+  for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] != 1 ||
-        (!op->squeeze_dims.empty() &&
-         std::find(op->squeeze_dims.begin(), op->squeeze_dims.end(), i) ==
-             op->squeeze_dims.end())) {
+        (!squeeze_dims.empty() &&
+         std::find(squeeze_dims.begin(), squeeze_dims.end(), i) ==
+             squeeze_dims.end())) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -1524,14 +1824,37 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
     return;
   }
 
+  const Array& axis_array = model->GetArray(op->inputs[1]);
+  // Yield until input axis array shape has been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
   const std::vector<int>& input_dims = input_array.shape().dims();
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32 ||
+        axis_array.data_type == ArrayDataType::kInt64)
+      << "axis_array must be int32, int64";
+
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int64 axis;
+  if (axis_array.data_type == ArrayDataType::kInt32) {
+    axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  } else {
+    axis = axis_array.GetBuffer<ArrayDataType::kInt64>().data[0];
+  }
+
   std::vector<int> output_dims;
 
-  output_dims.reserve(input_dims.size());
-  for (int i = 0; i < input_dims.size() - 1; ++i) {
-    output_dims.push_back(input_dims[i]);
+  output_dims.reserve(input_dims.size() - 1);
+  for (int i = 0; i < input_dims.size(); ++i) {
+    if (i != axis) {
+      output_dims.push_back(input_dims[i]);
+    }
   }
-  output_dims.push_back(1);
+
   const string& output_name = op->outputs[0];
   auto& output_array = model->GetArray(output_name);
   if (output_array.has_shape()) {
@@ -1691,6 +2014,102 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 }
 
+void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  const auto& padding_matrix = model->GetArray(op->inputs[1]);
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // If output already computed or padding matrix is non
+  // const then return.
+  if (output_array.has_shape() ||
+      !IsConstantParameterArray(*model, op->inputs[1])) {
+    return;
+  }
+  Shape output_shape = input_array.shape();
+  std::vector<int>& dims = *output_shape.mutable_dims();
+
+  std::vector<int64_t> padding;
+  if (padding_matrix.data_type == ArrayDataType::kInt32) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt32>().data;
+    for (auto elem : data) {
+      padding.push_back(static_cast<int64_t>(elem));
+    }
+  } else if (padding_matrix.data_type == ArrayDataType::kInt64) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt64>().data;
+    for (auto elem : data) {
+      padding.push_back(elem);
+    }
+  } else {
+    CHECK(padding_matrix.data_type == ArrayDataType::kInt64 ||
+          padding_matrix.data_type == ArrayDataType::kInt32);
+  }
+  CHECK_EQ(padding_matrix.shape().dimensions_count(), 2);
+  CHECK_EQ(input_array.shape().dimensions_count(),
+           padding_matrix.shape().dims(0));
+  for (int i = 0; i < input_array.shape().dimensions_count(); ++i) {
+    dims[i] += padding[i * 2] + padding[i * 2 + 1];
+  }
+
+  output_array.copy_shape(output_shape);
+}
+
+void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // We have 2 outputs, the shape of the index tensor, is the same size
+  // as the input array. The unique values tensor, is unknown until runtime.
+  CHECK_EQ(op->outputs.size(), 2);
+  auto& idx_output_array = model->GetArray(op->outputs[1]);
+
+  // Yield until input dims have been resolved, or output already computed
+  if (!input_array.has_shape() || idx_output_array.has_shape()) {
+    return;
+  }
+  idx_output_array.copy_shape(input_array.shape());
+}
+
+void ProcessMatrixDiagOperator(Model* model, MatrixDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The input array must have a shape in order to proceed. Also,
+  // bail out if the output shape has already been calculated.
+  if (!input_array.has_shape() || output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+  // Get the input_shape
+  Shape* mutable_shape = input_array.mutable_shape();
+  std::vector<int>* dims = mutable_shape->mutable_dims();
+  int dims_size = dims->size();
+  // Scalars are not allowed.
+  CHECK_GT(dims_size, 0);
+  int last_dim = (*dims)[dims_size - 1];
+  dims->push_back(last_dim);
+  output_array.copy_shape(*mutable_shape);
+}
+
+void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The shape of the input array must be known because that will
+  // be the shape of the output array.
+  if (!input_array.has_shape() || !output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+
+  output_array.copy_shape(input_array.shape());
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -1707,9 +2126,11 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 
   switch (op->type) {
+    case OperatorType::kAbs:
     case OperatorType::kBatchNormalization:
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
+    case OperatorType::kElu:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -1731,16 +2152,23 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
     case OperatorType::kAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kCeil:
     case OperatorType::kExp:
     case OperatorType::kSin:
+    case OperatorType::kCos:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
     case OperatorType::kLogicalOr:
     case OperatorType::kZerosLike:
+    case OperatorType::kReverseV2:
+    case OperatorType::kReverseSequence:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
       ProcessGatherOperator(model, static_cast<GatherOperator*>(op));
+      break;
+    case OperatorType::kGatherNd:
+      ProcessGatherNdOperator(model, static_cast<GatherNdOperator*>(op));
       break;
     case OperatorType::kTopK_V2:
       ProcessTopkV2Operator(model, static_cast<TopKV2Operator*>(op));
@@ -1836,6 +2264,10 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       ProcessTensorFlowSplitOperator(model,
                                      static_cast<TensorFlowSplitOperator*>(op));
       break;
+    case OperatorType::kSplitV:
+      ProcessTensorFlowSplitVOperator(
+          model, static_cast<TensorFlowSplitVOperator*>(op));
+      break;
     case OperatorType::kSqueeze:
       ProcessSqueezeOperator(model, static_cast<SqueezeOperator*>(op));
       break;
@@ -1854,7 +2286,7 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       ProcessRangeOperator(model, static_cast<RangeOperator*>(op));
       break;
     case OperatorType::kRank:
-      ProcessRankOperator(model, static_cast<RankOperator*>(op));
+      ProcessRankOperator(model, static_cast<TensorFlowRankOperator*>(op));
       break;
     case OperatorType::kShape:
       ProcessShapeOperator(model, static_cast<TensorFlowShapeOperator*>(op));
@@ -1880,6 +2312,18 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
     case OperatorType::kUnidirectionalSequenceLstm:
       ProcessUnidirectionalSequenceLstmOperator(
           model, static_cast<UnidirectionalSequenceLstmOperator*>(op));
+      break;
+    case OperatorType::kUnidirectionalSequenceRnn:
+      ProcessUnidirectionalSequenceRnnOperator(
+          model, static_cast<UnidirectionalSequenceRnnOperator*>(op));
+      break;
+    case OperatorType::kBidirectionalSequenceLstm:
+      ProcessBidirectionalSequenceLstmOperator(
+          model, static_cast<BidirectionalSequenceLstmOperator*>(op));
+      break;
+    case OperatorType::kBidirectionalSequenceRnn:
+      ProcessBidirectionalSequenceRnnOperator(
+          model, static_cast<BidirectionalSequenceRnnOperator*>(op));
       break;
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
@@ -1957,6 +2401,28 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       break;
     case OperatorType::kUnpack:
       ProcessUnpackOperator(model, static_cast<UnpackOperator*>(op));
+      break;
+    case OperatorType::kMirrorPad:
+      ProcessMirrorPadOperator(model, static_cast<MirrorPadOperator*>(op));
+      break;
+    case OperatorType::kUnique:
+      ProcessUniqueOperator(model, static_cast<UniqueOperator*>(op));
+      break;
+    case OperatorType::kWhere:
+      // The size of the output can only be known after evaluating the cond
+      // tensor. Ignore shape propagation here and defer that to the
+      // interpreter.
+      break;
+    case OperatorType::kMatrixDiag:
+      ProcessMatrixDiagOperator(model, static_cast<MatrixDiagOperator*>(op));
+      break;
+    case OperatorType::kMatrixSetDiag:
+      ProcessMatrixSetDiagOperator(model,
+                                   static_cast<MatrixSetDiagOperator*>(op));
+      break;
+    case OperatorType::kCTCBeamSearchDecoder:
+      // The sizes of the outputs are only known in runtime based on the input.
+      // Ignore shape progapation here and defer that to the interpreter.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

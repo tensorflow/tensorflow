@@ -236,7 +236,7 @@ cc_library(
         "lib/wildcard.h",
         "lib/x509asn1.h",
     ] + select({
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "lib/vtls/darwinssl.c",
         ],
         "@org_tensorflow//tensorflow:ios": [
@@ -271,7 +271,7 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-fno-constant-cfstrings",
         ],
         "@org_tensorflow//tensorflow:windows": [
@@ -288,7 +288,7 @@ cc_library(
         "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",

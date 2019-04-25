@@ -33,14 +33,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Define tensorflow::string to refer to appropriate platform specific type.
-// TODO(josh11b): Move this into the platform/*/integral_types.h files
-// above, and rename them platform/*/types.h.
-#if defined(PLATFORM_GOOGLE)
-using ::string;
-#else
+// Alias tensorflow::string to std::string.
 using std::string;
-#endif
 
 static const uint8 kuint8max = ((uint8)0xFF);
 static const uint16 kuint16max = ((uint16)0xFFFF);

@@ -24,6 +24,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
@@ -140,40 +141,43 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", a="Bad string")
-      self.assertEqual(str(cm.exception),
-                       "Expected int32 passed to parameter 'a' of op 'Simple', "
-                       "got 'Bad string' of type 'str' instead.")
+      self.assertTrue(
+          "Expected int32 passed to parameter 'a' of op 'Simple', "
+          "got 'Bad string' of type 'str' instead." in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", a=self.Tensor(dtypes.string))
-      self.assertEqual(str(cm.exception),
-                       "Input 'a' of 'Simple' Op has type string "
-                       "that does not match expected type of int32.")
+      self.assertTrue(
+          "Input 'a' of 'Simple' Op has type string "
+          "that does not match expected type of int32." in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", a=6, extra="bogus")
-      self.assertEqual(str(cm.exception),
-                       "apply_op() got unexpected keyword arguments: extra")
+      self.assertTrue(
+          "apply_op() got unexpected keyword arguments: extra"
+          in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", a=6, extra1="bogus", extra2="also_bogus")
-      self.assertEqual(str(cm.exception),
-                       "apply_op() got unexpected keyword arguments: extra1, "
-                       "extra2")
+      self.assertTrue(
+          "apply_op() got unexpected keyword arguments: extra1, "
+          "extra2" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple")
-      self.assertEqual(str(cm.exception), "No argument for input a")
+      self.assertTrue(
+          "No argument for input a" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", wrong=7)
-      self.assertEqual(str(cm.exception), "No argument for input a")
+      self.assertTrue(
+          "No argument for input a" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         self._lib.apply_op("Simple", a={"label": 1})
-      self.assertEqual(str(cm.exception),
-                       "Expected int32 passed to parameter 'a' of op 'Simple', "
-                       "got {'label': 1} of type 'dict' instead.")
+      self.assertTrue(
+          "Expected int32 passed to parameter 'a' of op 'Simple', "
+          "got {'label': 1} of type 'dict' instead." in str(cm.exception))
 
   def testReservedInput(self):
     with ops.Graph().as_default():
@@ -268,19 +272,13 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'T' value { type: DT_STRING } }
         """, out.op.node_def)
 
-      with self.assertRaises(TypeError) as cm:
+      with self.assertRaises(TypeError):
         self._lib.apply_op("Binary", a="left", b=12)
-      self.assertEqual(str(cm.exception),
-                       "Expected string passed to parameter 'b' of op 'Binary',"
-                       " got 12 of type 'int' instead.")
 
-      with self.assertRaises(TypeError) as cm:
+      with self.assertRaises(TypeError):
         self._lib.apply_op("Binary",
                            a=self.Tensor(dtypes.string),
                            b=self.Tensor(dtypes.int32))
-      self.assertEqual(str(cm.exception),
-                       "Input 'b' of 'Binary' Op has type int32 "
-                       "that does not match type string of argument 'a'.")
 
   def testRestrict(self):
     with ops.Graph().as_default():
@@ -465,6 +463,46 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         self._lib.apply_op("AttrFloat", a="bad")
       self.assertEqual(str(cm.exception),
                        "Expected float for argument 'a' not 'bad'.")
+
+  def testAttrFunc(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn(x):
+        return 2 + x
+      op = self._lib.apply_op("FuncAttr", f=fn, name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncAttr' attr { key: 'f'
+                                        value { func { name: 'MyFn' } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        self._lib.apply_op("FuncAttr", f=3)
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
+
+  def testAttrFuncList(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn1(x):
+        return 2 + x
+      @function.Defun(dtypes.int32, dtypes.float32, func_name="MyFn2")
+      def fn2(x, y):
+        return 2 + x, y * 3
+      @function.Defun(dtypes.int32, func_name="MyFn3")
+      def fn3(y):
+        return 2 + y
+      op = self._lib.apply_op("FuncListAttr", f=[fn1, fn2, fn3], name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncListAttr'
+        attr { key: 'f' value { list { func { name: 'MyFn' }
+                                       func { name: 'MyFn2' }
+                                       func { name: 'MyFn3' } } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        self._lib.apply_op("FuncListAttr", f=[fn1, 3, fn2])
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
 
   def testAttrBool(self):
     with ops.Graph().as_default():

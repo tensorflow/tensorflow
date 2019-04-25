@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_UINT8;

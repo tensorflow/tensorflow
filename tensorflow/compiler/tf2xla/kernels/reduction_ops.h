@@ -50,8 +50,8 @@ class XlaReductionOp : public XlaOpKernel {
   // Applies a transformation to the output of the reduction. The desired
   // computation should be added to 'builder'. Argument 'input' is the original
   // input of the reduction; 'reduce_output' is the output of the reduction.
-  // Returns the transformed reduction output, Defaults to returning
-  // 'reduce_output' unchanged.
+  // Returns the transformed reduction output. Defaults to returning
+  // 'reduce_output' converted to the input type.
   virtual xla::XlaOp BuildFinalizer(
       xla::XlaBuilder* builder, const xla::XlaOp& input,
       const xla::XlaOp& reduce_output,

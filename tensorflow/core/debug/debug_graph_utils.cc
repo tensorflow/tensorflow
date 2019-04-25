@@ -299,7 +299,7 @@ Status DebugNodeInserter::CreateCopyNode(
 
   auto builder = NodeDefBuilder(copy_node_name, copy_op_name)
                      .Input(src_node_name, src_output, src_dt)
-                     .Attr("debug_ops_spec", std::move(debug_ops_spec));
+                     .Attr("debug_ops_spec", debug_ops_spec);
 
   if (!builder.Finalize(&node_def).ok()) {
     return Status(

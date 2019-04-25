@@ -104,9 +104,9 @@ class Sharding(object):
       ValueError: The tensor to split was smaller in the split dimension than
         the number of devices to split over.
     """
-    tensor.shape.assert_is_fully_defined()
     shape = tensor.shape.as_list()
-    if shape[split_dimension] < num_devices:
+    if (shape[split_dimension] is not None and
+        shape[split_dimension] < num_devices):
       raise ValueError('Split dimension was smaller than the required number '
                        'of splits: shape=%r, dimension=%r, num_devices=%r' %
                        (shape, split_dimension, num_devices))
@@ -120,9 +120,14 @@ class Sharding(object):
             tile_assignment_dimensions=tile_assignment_dims,
             tile_assignment_devices=range(num_devices)))
 
-  def apply_to_tensor(self, tensor):
-    """Applies this Sharding attribute to `tensor`."""
-    if len(tensor.op.outputs) > 1:
+  def apply_to_tensor(self, tensor, assign_tuple_sharding=False):
+    """Applies this Sharding attribute to `tensor`.
+
+    Args:
+      tensor: A tf.Tensor to split.
+      assign_tuple_sharding: If the sharding type should be a tuple.
+    """
+    if len(tensor.op.outputs) > 1 or assign_tuple_sharding:
       proto = self._get_or_create_tuple_proto(tensor.op)
       # We can't mutate an element of old_proto.tuple_shardings, so create
       # a new proto.
@@ -166,21 +171,30 @@ class Sharding(object):
 #   tensor = xla_sharding.replicate(tensor)
 
 
-def replicate(tensor):
-  Sharding.replicate().apply_to_tensor(tensor)
+def replicate(tensor, assign_tuple_sharding=False):
+  Sharding.replicate().apply_to_tensor(
+      tensor,
+      assign_tuple_sharding=assign_tuple_sharding)
   return tensor
 
 
-def assign_device(tensor, device):
-  Sharding.assign_device(device).apply_to_tensor(tensor)
+def assign_device(tensor, device, assign_tuple_sharding=False):
+  Sharding.assign_device(device).apply_to_tensor(
+      tensor,
+      assign_tuple_sharding=assign_tuple_sharding)
   return tensor
 
 
-def tile(tensor, tile_assignment):
-  Sharding.tile(tile_assignment).apply_to_tensor(tensor)
+def tile(tensor, tile_assignment, assign_tuple_sharding=False):
+  Sharding.tile(tile_assignment).apply_to_tensor(
+      tensor,
+      assign_tuple_sharding=assign_tuple_sharding
+  )
   return tensor
 
 
-def split(tensor, split_dimension, num_devices):
-  Sharding.split(tensor, split_dimension, num_devices).apply_to_tensor(tensor)
+def split(tensor, split_dimension, num_devices, assign_tuple_sharding=False):
+  Sharding.split(tensor, split_dimension, num_devices).apply_to_tensor(
+      tensor,
+      assign_tuple_sharding=assign_tuple_sharding)
   return tensor

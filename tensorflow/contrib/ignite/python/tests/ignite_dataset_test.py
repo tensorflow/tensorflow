@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow import compat
 from tensorflow.contrib.ignite import IgniteDataset
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -65,7 +66,7 @@ class IgniteDatasetTest(test.TestCase):
     self.assertEqual(dtypes.string, dataset.output_types["val"]["NAME"])
     self.assertEqual(dtypes.int64, dataset.output_types["val"]["VAL"])
 
-    it = dataset.make_one_shot_iterator()
+    it = compat.v1.data.make_one_shot_iterator(dataset)
     ne = it.get_next()
 
     with session.Session() as sess:

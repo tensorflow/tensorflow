@@ -41,6 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 ops.NotDifferentiable("DecodeRaw")
+ops.NotDifferentiable("DecodePaddedRaw")
 ops.NotDifferentiable("ParseTensor")
 ops.NotDifferentiable("SerializeTensor")
 ops.NotDifferentiable("StringToNumber")
@@ -1827,8 +1828,93 @@ def _parse_single_sequence_example_raw(serialized,
     return (context_output, feature_list_output)
 
 
+@tf_export("io.decode_raw", v1=[])
+def decode_raw(input_bytes,
+               out_type,
+               little_endian=True,
+               fixed_length=None,
+               name=None):
+  """Convert raw byte strings into tensors.
+
+  Args:
+    input_bytes:
+      Each element of the input Tensor is converted to an array of bytes.
+    out_type:
+      `DType` of the output. Acceptable types are `half`, `float`, `double`,
+      `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
+    little_endian:
+      Whether the `input_bytes` data is in little-endian format. Data will be
+      converted into host byte order if necessary.
+    fixed_length:
+      If set, the first `fixed_length` bytes of each element will be converted.
+      Data will be zero-padded or truncated to the specified length.
+
+      `fixed_length` must be a multiple of the size of `out_type`.
+      `fixed_length` must be specified if the elements of `input_bytes` are of
+      variable length.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` object storing the decoded bytes.
+
+  """
+  if fixed_length is not None:
+    return gen_parsing_ops.decode_padded_raw(
+        input_bytes,
+        fixed_length=fixed_length,
+        out_type=out_type,
+        little_endian=little_endian,
+        name=name)
+  else:
+    return gen_parsing_ops.decode_raw(
+        input_bytes, out_type, little_endian=little_endian, name=name)
+
+
+@tf_export(v1=["decode_raw", "io.decode_raw"])
+@deprecation.deprecated_args(None,
+                             "bytes is deprecated, use input_bytes instead",
+                             "bytes")
+def decode_raw_v1(
+    input_bytes=None,
+    out_type=None,
+    little_endian=True,
+    name=None,
+    bytes=None  # pylint: disable=redefined-builtin
+):
+  """Convert raw byte strings into tensors.
+
+  Args:
+    input_bytes:
+      Each element of the input Tensor is converted to an array of bytes.
+    out_type:
+      `DType` of the output. Acceptable types are `half`, `float`, `double`,
+      `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
+    little_endian:
+      Whether the `input_bytes` data is in little-endian format. Data will be
+      converted into host byte order if necessary.
+    name: A name for the operation (optional).
+    bytes: Deprecated parameter. Use `input_bytes` instead.
+
+  Returns:
+    A `Tensor` object storing the decoded bytes.
+  """
+  input_bytes = deprecation.deprecated_argument_lookup("input_bytes",
+                                                       input_bytes, "bytes",
+                                                       bytes)
+
+  # out_type is a required positional argument in the original API, and had to
+  # be changed to a keyword argument in order to facilitate the transition from
+  # the reserved named `bytes` to `input_bytes`. Ensure it's still set.
+  if out_type is None:
+    raise ValueError(
+        "decode_raw_v1() missing 1 positional argument: 'out_type'")
+
+  return gen_parsing_ops.decode_raw(
+      input_bytes, out_type, little_endian=little_endian, name=name)
+
+
 # Swap `name` and `na_value` for backward compatibility.
-@tf_export("io.decode_csv", v1=["io.decode_csv", "decode_csv"])
+@tf_export(v1=["io.decode_csv", "decode_csv"])
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,
@@ -1862,6 +1948,54 @@ def decode_csv(records,
     na_value: Additional string to recognize as NA/NaN.
     select_cols: Optional sorted list of column indices to select. If specified,
       only this subset of columns will be parsed and returned.
+
+  Returns:
+    A list of `Tensor` objects. Has the same type as `record_defaults`.
+    Each tensor will have the same shape as records.
+
+  Raises:
+    ValueError: If any of the arguments is malformed.
+  """
+  return decode_csv_v2(
+      records, record_defaults,
+      field_delim, use_quote_delim,
+      na_value, select_cols, name
+      )
+
+
+@tf_export("io.decode_csv", v1=[])
+def decode_csv_v2(records,
+                  record_defaults,
+                  field_delim=",",
+                  use_quote_delim=True,
+                  na_value="",
+                  select_cols=None,
+                  name=None):
+  """Convert CSV records to tensors. Each column maps to one tensor.
+
+  RFC 4180 format is expected for the CSV records.
+  (https://tools.ietf.org/html/rfc4180)
+  Note that we allow leading and trailing spaces with int or float field.
+
+  Args:
+    records: A `Tensor` of type `string`.
+      Each string is a record/row in the csv and all records should have
+      the same format.
+    record_defaults: A list of `Tensor` objects with specific types.
+      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
+      One tensor per column of the input record, with either a
+      scalar default value for that column or an empty vector if the column is
+      required.
+    field_delim: An optional `string`. Defaults to `","`.
+      char delimiter to separate fields in a record.
+    use_quote_delim: An optional `bool`. Defaults to `True`.
+      If false, treats double quotation marks as regular
+      characters inside of the string fields (ignoring RFC 4180, Section 2,
+      Bullet 5).
+    na_value: Additional string to recognize as NA/NaN.
+    select_cols: Optional sorted list of column indices to select. If specified,
+      only this subset of columns will be parsed and returned.
+    name: A name for the operation (optional).
 
   Returns:
     A list of `Tensor` objects. Has the same type as `record_defaults`.

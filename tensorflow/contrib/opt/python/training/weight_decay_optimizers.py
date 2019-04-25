@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Base class to make optimizers weight decay ready."""
 from __future__ import absolute_import
 from __future__ import division
@@ -59,16 +58,33 @@ class DecoupledWeightDecayExtension(object):
   Note that this extension decays weights BEFORE applying the update based
   on the gradient, i.e. this extension only has the desired behaviour for
   optimizers which do not depend on the value of'var' in the update step!
+
+  Note: when applying a decay to the learning rate, be sure to manually apply
+  the decay to the `weight_decay` as well. For example:
+
+  ```python
+    schedule =
+    tf.compat.v1.train.piecewise_constant(tf.compat.v1.train.get_global_step(),
+                                           [10000, 15000], [1e-0, 1e-1, 1e-2])
+    lr = 1e-1 * schedule()
+    wd = lambda: 1e-4 * schedule()
+
+    # ...
+
+    optimizer = tf.contrib.opt.MomentumWOptimizer(learning_rate=lr,
+                                                  weight_decay=wd,
+                                                  momentum=0.9,
+                                                  use_nesterov=True)
+  ```
   """
 
   def __init__(self, weight_decay, **kwargs):
     """Construct the extension class that adds weight decay to an optimizer.
 
     Args:
-      weight_decay: A `Tensor` or a floating point value, the factor by which
-        a variable is decayed in the update step.
-      **kwargs: Optional list or tuple or set of `Variable` objects to
-        decay.
+      weight_decay: A `Tensor` or a floating point value, the factor by which a
+        variable is decayed in the update step.
+      **kwargs: Optional list or tuple or set of `Variable` objects to decay.
     """
     self._decay_var_list = None  # is set in minimize or apply_gradients
     self._weight_decay = weight_decay
@@ -76,10 +92,16 @@ class DecoupledWeightDecayExtension(object):
     self._weight_decay_tensor = None
     super(DecoupledWeightDecayExtension, self).__init__(**kwargs)
 
-  def minimize(self, loss, global_step=None, var_list=None,
+  def minimize(self,
+               loss,
+               global_step=None,
+               var_list=None,
                gate_gradients=optimizer.Optimizer.GATE_OP,
-               aggregation_method=None, colocate_gradients_with_ops=False,
-               name=None, grad_loss=None, decay_var_list=None):
+               aggregation_method=None,
+               colocate_gradients_with_ops=False,
+               name=None,
+               grad_loss=None,
+               decay_var_list=None):
     """Add operations to minimize `loss` by updating `var_list` with decay.
 
     This function is the same as Optimizer.minimize except that it allows to
@@ -90,17 +112,17 @@ class DecoupledWeightDecayExtension(object):
 
     Args:
       loss: A `Tensor` containing the value to minimize.
-      global_step: Optional `Variable` to increment by one after the
-        variables have been updated.
+      global_step: Optional `Variable` to increment by one after the variables
+        have been updated.
       var_list: Optional list or tuple of `Variable` objects to update to
-        minimize `loss`.  Defaults to the list of variables collected in
-        the graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
+        minimize `loss`.  Defaults to the list of variables collected in the
+        graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
         `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with
-        the corresponding op.
+      colocate_gradients_with_ops: If True, try colocating gradients with the
+        corresponding op.
       name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       decay_var_list: Optional list of decay variables.
@@ -112,12 +134,19 @@ class DecoupledWeightDecayExtension(object):
     """
     self._decay_var_list = set(decay_var_list) if decay_var_list else False
     return super(DecoupledWeightDecayExtension, self).minimize(
-        loss, global_step=global_step, var_list=var_list,
-        gate_gradients=gate_gradients, aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops, name=name,
+        loss,
+        global_step=global_step,
+        var_list=var_list,
+        gate_gradients=gate_gradients,
+        aggregation_method=aggregation_method,
+        colocate_gradients_with_ops=colocate_gradients_with_ops,
+        name=name,
         grad_loss=grad_loss)
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None,
+  def apply_gradients(self,
+                      grads_and_vars,
+                      global_step=None,
+                      name=None,
                       decay_var_list=None):
     """Apply gradients to variables and decay the variables.
 
@@ -131,10 +160,10 @@ class DecoupledWeightDecayExtension(object):
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
         `compute_gradients()`.
-      global_step: Optional `Variable` to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation.  Default to the
-        name passed to the `Optimizer` constructor.
+      global_step: Optional `Variable` to increment by one after the variables
+        have been updated.
+      name: Optional name for the returned operation.  Default to the name
+        passed to the `Optimizer` constructor.
       decay_var_list: Optional list of decay variables.
 
     Returns:
@@ -173,15 +202,14 @@ class DecoupledWeightDecayExtension(object):
 
   def _resource_apply_dense(self, grad, var):
     with ops.control_dependencies([self._decay_weights_op(var)]):
-      return super(DecoupledWeightDecayExtension, self)._resource_apply_dense(
-          grad, var)
+      return super(DecoupledWeightDecayExtension,
+                   self)._resource_apply_dense(grad, var)
 
   def _apply_sparse(self, grad, var):
     scatter_add = state_ops.scatter_add
     decay_op = self._decay_weights_sparse_op(var, grad.indices, scatter_add)
     with ops.control_dependencies([decay_op]):
-      return super(DecoupledWeightDecayExtension, self)._apply_sparse(
-          grad, var)
+      return super(DecoupledWeightDecayExtension, self)._apply_sparse(grad, var)
 
   def _resource_scatter_add(self, x, i, v, _=None):
     # last argument allows for one overflow argument, to have the same function
@@ -194,8 +222,8 @@ class DecoupledWeightDecayExtension(object):
     scatter_add = self._resource_scatter_add
     decay_op = self._decay_weights_sparse_op(var, indices, scatter_add)
     with ops.control_dependencies([decay_op]):
-      return super(DecoupledWeightDecayExtension, self)._resource_apply_sparse(
-          grad, var, indices)
+      return super(DecoupledWeightDecayExtension,
+                   self)._resource_apply_sparse(grad, var, indices)
 
 
 def extend_with_decoupled_weight_decay(base_optimizer):
@@ -204,7 +232,8 @@ def extend_with_decoupled_weight_decay(base_optimizer):
   Returns an optimizer class. An instance of the returned class computes the
   update step of `base_optimizer` and additionally decays the weights.
   E.g., the class returned by
-  `extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)` is equivalent to
+  `extend_with_decoupled_weight_decay(tf.compat.v1.train.AdamOptimizer)` is
+  equivalent to
   `tf.contrib.opt.AdamWOptimizer`.
 
   The API of the new optimizer class slightly differs from the API of the
@@ -217,7 +246,7 @@ def extend_with_decoupled_weight_decay(base_optimizer):
   Usage example:
   ```python
   # MyAdamW is a new class
-  MyAdamW = extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)
+  MyAdamW = extend_with_decoupled_weight_decay(tf.compat.v1.train.AdamOptimizer)
   # Create a MyAdamW object
   optimizer = MyAdamW(weight_decay=0.001, learning_rate=0.001)
   sess.run(optimizer.minimize(loss, decay_variables=[var1, var2]))
@@ -253,8 +282,8 @@ def extend_with_decoupled_weight_decay(base_optimizer):
     def __init__(self, weight_decay, *args, **kwargs):
       # super delegation is necessary here
       # pylint: disable=useless-super-delegation
-      super(OptimizerWithDecoupledWeightDecay, self).__init__(
-          weight_decay, *args, **kwargs)
+      super(OptimizerWithDecoupledWeightDecay,
+            self).__init__(weight_decay, *args, **kwargs)
       # pylint: enable=useless-super-delegation
 
   return OptimizerWithDecoupledWeightDecay
@@ -279,13 +308,18 @@ class MomentumWOptimizer(DecoupledWeightDecayExtension,
 
   Note that this optimizer can also be instantiated as
   ```python
-  extend_with_weight_decay(tf.train.MomentumOptimizer,
+  extend_with_weight_decay(tf.compat.v1.train.MomentumOptimizer,
                            weight_decay=weight_decay)
   ```
   """
 
-  def __init__(self, weight_decay, learning_rate, momentum,
-               use_locking=False, name="MomentumW", use_nesterov=False):
+  def __init__(self,
+               weight_decay,
+               learning_rate,
+               momentum,
+               use_locking=False,
+               name="MomentumW",
+               use_nesterov=False):
     """Construct a new MomentumW optimizer.
 
     For further information see the documentation of the Momentum Optimizer.
@@ -297,23 +331,25 @@ class MomentumWOptimizer(DecoupledWeightDecayExtension,
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".
-      use_nesterov: If `True` use Nesterov Momentum.
-        See [Sutskever et al., 2013](
-        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
-        This implementation always computes gradients at the value of the
-        variable(s) passed to the optimizer. Using Nesterov Momentum makes the
-        variable(s) track the values called `theta_t + mu*v_t` in the paper.
-
-    @compatibility(eager)
-    When eager execution is enabled, learning_rate, weight_decay and momentum
-    can each be a callable that takes no arguments and returns the actual value
-    to use. This can be useful for changing these values across different
-    invocations of optimizer functions.
-    @end_compatibility
+      use_nesterov: If `True` use Nesterov Momentum. See [Sutskever et al.,
+        2013](
+        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf). This
+          implementation always computes gradients at the value of the
+          variable(s) passed to the optimizer. Using Nesterov Momentum makes the
+          variable(s) track the values called `theta_t + mu*v_t` in the paper.
+          @compatibility(eager) When eager execution is enabled, learning_rate,
+          weight_decay and momentum can each be a callable that takes no
+          arguments and returns the actual value to use. This can be useful for
+          changing these values across different invocations of optimizer
+          functions. @end_compatibility
     """
     super(MomentumWOptimizer, self).__init__(
-        weight_decay, learning_rate=learning_rate, momentum=momentum,
-        use_locking=use_locking, name=name, use_nesterov=use_nesterov)
+        weight_decay,
+        learning_rate=learning_rate,
+        momentum=momentum,
+        use_locking=use_locking,
+        name=name,
+        use_nesterov=use_nesterov)
 
 
 @tf_export("contrib.opt.AdamWOptimizer")
@@ -335,12 +371,19 @@ class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
 
   Note that this optimizer can also be instantiated as
   ```python
-  extend_with_weight_decay(tf.train.AdamOptimizer, weight_decay=weight_decay)
+  extend_with_weight_decay(tf.compat.v1.train.AdamOptimizer,
+  weight_decay=weight_decay)
   ```
   """
 
-  def __init__(self, weight_decay, learning_rate=0.001, beta1=0.9, beta2=0.999,
-               epsilon=1e-8, use_locking=False, name="AdamW"):
+  def __init__(self,
+               weight_decay,
+               learning_rate=0.001,
+               beta1=0.9,
+               beta2=0.999,
+               epsilon=1e-8,
+               use_locking=False,
+               name="AdamW"):
     """Construct a new AdamW optimizer.
 
     For further information see the documentation of the Adam Optimizer.
@@ -348,10 +391,10 @@ class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
     Args:
       weight_decay:  A `Tensor` or a floating point value.  The weight decay.
       learning_rate: A Tensor or a floating point value.  The learning rate.
-      beta1: A float value or a constant float tensor.
-        The exponential decay rate for the 1st moment estimates.
-      beta2: A float value or a constant float tensor.
-        The exponential decay rate for the 2nd moment estimates.
+      beta1: A float value or a constant float tensor. The exponential decay
+        rate for the 1st moment estimates.
+      beta2: A float value or a constant float tensor. The exponential decay
+        rate for the 2nd moment estimates.
       epsilon: A small constant for numerical stability. This epsilon is
         "epsilon hat" in the Kingma and Ba paper (in the formula just before
         Section 2.1), not the epsilon in Algorithm 1 of the paper.
@@ -360,8 +403,13 @@ class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
         Defaults to "Adam".
     """
     super(AdamWOptimizer, self).__init__(
-        weight_decay, learning_rate=learning_rate, beta1=beta1, beta2=beta2,
-        epsilon=epsilon, use_locking=use_locking, name=name)
+        weight_decay,
+        learning_rate=learning_rate,
+        beta1=beta1,
+        beta2=beta2,
+        epsilon=epsilon,
+        use_locking=use_locking,
+        name=name)
 
 
 @tf_export("contrib.opt.ShampooWOptimizer")

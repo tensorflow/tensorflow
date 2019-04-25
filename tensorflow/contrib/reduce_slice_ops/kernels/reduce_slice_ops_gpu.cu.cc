@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -77,10 +77,10 @@ namespace functor {
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \
-      ReduceSliceDeviceKernel##reduceop<T, Index>                              \
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(    \
-              config, indices_width, bound, beginning<T>(), indices.data(),    \
-              data.data(), output.data());                                     \
+      TF_CHECK_OK(CudaLaunchKernel(                                            \
+          ReduceSliceDeviceKernel##reduceop<T, Index>, config.block_count,     \
+          config.thread_per_block, 0, d.stream(), config, indices_width,       \
+          bound, beginning<T>(), indices.data(), data.data(), output.data())); \
     }                                                                          \
   };
 

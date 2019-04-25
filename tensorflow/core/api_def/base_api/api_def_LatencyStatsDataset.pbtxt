@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "LatencyStatsDataset"
-  summary: "Records the latency of producing `input_dataset` elements in a StatsAggregator."
-}

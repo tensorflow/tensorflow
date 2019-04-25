@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -154,6 +155,7 @@ class Conv2DTransposeTest(test.TestCase):
 
     self.assertAllClose(cache_values, value)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [2, 6, 4, 3]
     f_shape = [3, 3, 2, 3]

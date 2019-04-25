@@ -61,8 +61,8 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Assert")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::AssertNext")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -75,6 +75,8 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "AssertNextDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

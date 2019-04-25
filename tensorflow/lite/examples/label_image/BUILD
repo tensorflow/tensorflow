@@ -5,14 +5,13 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
 exports_files(glob([
     "testdata/*.bmp",
 ]))
 
-tf_cc_binary(
+cc_binary(
     name = "label_image",
     srcs = [
         "get_top_n.h",
@@ -45,7 +44,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -63,7 +61,6 @@ cc_test(
     data = [
         "testdata/grace_hopper.bmp",
     ],
-    tags = ["no_oss"],
     deps = [
         ":bitmap_helpers",
         "@com_google_googletest//:gtest",

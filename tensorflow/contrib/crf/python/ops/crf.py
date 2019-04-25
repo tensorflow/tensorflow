@@ -24,7 +24,7 @@ log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(
     unary_scores, gold_tags, sequence_lengths)
 
 loss = tf.reduce_mean(-log_likelihood)
-train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
+train_op = tf.compat.v1.train.GradientDescentOptimizer(0.01).minimize(loss)
 
 # Decoding in Tensorflow.
 viterbi_sequence, viterbi_score = tf.contrib.crf.crf_decode(
@@ -38,12 +38,12 @@ tf_unary_scores, tf_sequence_lengths, tf_transition_params, _ = session.run(
     [unary_scores, sequence_lengths, transition_params, train_op])
 for tf_unary_scores_, tf_sequence_length_ in zip(tf_unary_scores,
                                                  tf_sequence_lengths):
-# Remove padding.
-tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
+    # Remove padding.
+    tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
 
-# Compute the highest score and its tag sequence.
-tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
-    tf_unary_scores_, tf_transition_params)
+    # Compute the highest score and its tag sequence.
+    tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
+        tf_unary_scores_, tf_transition_params)
 """
 
 from __future__ import absolute_import
@@ -283,7 +283,7 @@ def crf_unary_score(tag_indices, sequence_lengths, inputs):
   offsets += array_ops.expand_dims(math_ops.range(max_seq_len) * num_tags, 0)
   # Use int32 or int64 based on tag_indices' dtype.
   if tag_indices.dtype == dtypes.int64:
-    offsets = math_ops.to_int64(offsets)
+    offsets = math_ops.cast(offsets, dtypes.int64)
   flattened_tag_indices = array_ops.reshape(offsets + tag_indices, [-1])
 
   unary_scores = array_ops.reshape(

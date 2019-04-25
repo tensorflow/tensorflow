@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -199,19 +199,17 @@ class XlaTensorBuffer : public TensorBuffer {
  public:
   XlaTensorBuffer(const void* ptr, size_t expected_size, size_t actual_size,
                   Allocator* allocator)
-      : expected_size_(expected_size),
+      : TensorBuffer(const_cast<void*>(ptr)),
+        expected_size_(expected_size),
         actual_size_(actual_size),
-        allocator_(allocator) {
-    data_ = const_cast<void*>(ptr);
-  }
+        allocator_(allocator) {}
 
   ~XlaTensorBuffer() override {
-    if (data_) {
-      allocator_->DeallocateRaw(data_);
+    if (data()) {
+      allocator_->DeallocateRaw(data());
     }
   }
 
-  void* data() const override { return data_; }
   size_t size() const override { return expected_size_; }
 
   TensorBuffer* root_buffer() override { return this; }
@@ -231,7 +229,6 @@ class XlaTensorBuffer : public TensorBuffer {
   }
 
  private:
-  void* data_;
   size_t expected_size_;
   size_t actual_size_;
   Allocator* allocator_;

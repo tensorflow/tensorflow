@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "StatsAggregatorHandle"
-  summary: "Creates a statistics manager resource."
-}

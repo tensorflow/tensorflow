@@ -176,8 +176,9 @@ struct LaunchConv2DBackpropInputOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* in_backprop,
-                  TensorFormat data_format);
+                  int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
+                  Tensor* in_backprop, TensorFormat data_format);
 };
 
 template <typename Device, typename T>
@@ -186,6 +187,7 @@ struct LaunchConv2DBackpropFilterOp {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 
@@ -195,7 +197,8 @@ struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
 
@@ -205,6 +208,7 @@ struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 #endif  // GOOGLE_CUDA
@@ -217,6 +221,8 @@ struct ConvBackpropSpatialDimension {
   int64 output_size;
   int64 stride;
   int64 dilation;
+
+  // Output size after scaling by the stride.
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
@@ -248,7 +254,7 @@ struct ConvBackpropDimensions {
 
 // Common code between implementations of Conv?DBackpropInput and
 // Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
-// sizes/padding for the spatial dimensions.
+// sizes/padding for the spatial dimensions. Does not support explicit padding.
 Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
                                      const TensorShape& input_shape,
                                      const TensorShape& filter_shape,
@@ -257,13 +263,15 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
                                      Padding padding, TensorFormat data_format,
                                      ConvBackpropDimensions* dims);
 
-// The V2 version computes the same outputs with arbitrary dilation rate.
+// The V2 version computes the same outputs with arbitrary dilation rate and
+// supports explicit padding.
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
-    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
+    Padding padding, absl::Span<const int64> explicit_paddings,
+    TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_

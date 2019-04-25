@@ -44,6 +44,9 @@ from tensorflow.python.ops.gen_sparse_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
+from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -185,12 +188,6 @@ def sparse_eye(num_rows,
         dense_shape=[num_rows, num_columns])
 
 
-@tf_export("sparse.concat", "sparse_concat", v1=[])
-def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False,
-                     concat_dim=None, name=None):
-  return sparse_concat(axis, sp_inputs, name, expand_nonconcat_dim, concat_dim)
-
-
 # pylint: disable=protected-access
 @tf_export(v1=["sparse.concat", "sparse_concat"])
 @deprecation.deprecated_endpoints("sparse_concat")
@@ -200,7 +197,8 @@ def sparse_concat(axis,
                   sp_inputs,
                   name=None,
                   expand_nonconcat_dim=False,
-                  concat_dim=None):
+                  concat_dim=None,
+                  expand_nonconcat_dims=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
@@ -289,6 +287,7 @@ def sparse_concat(axis,
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
     concat_dim: The old (deprecated) name for axis.
+    expand_nonconcat_dims: alias for expand_nonconcat_dim
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -296,8 +295,18 @@ def sparse_concat(axis,
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
+  expand_nonconcat_dim = deprecation.deprecated_argument_lookup(
+      "expand_nonconcat_dims", expand_nonconcat_dims,
+      "expand_nonconcat_dim", expand_nonconcat_dim)
+  if expand_nonconcat_dims is not None:
+    expand_nonconcat_dim = expand_nonconcat_dims
   axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
                                                 concat_dim)
+  return sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim, name)
+
+
+@tf_export("sparse.concat", v1=[])
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  # pylint: disable=missing-docstring
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
@@ -307,7 +316,7 @@ def sparse_concat(axis,
   vals = [sp_input.values for sp_input in sp_inputs]
   shapes = [sp_input.dense_shape for sp_input in sp_inputs]
 
-  if expand_nonconcat_dim:
+  if expand_nonconcat_dims:
     max_shape = math_ops.reduce_max(
         array_ops.concat(
             [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
@@ -325,9 +334,15 @@ def sparse_concat(axis,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
+sparse_concat_v2.__doc__ = sparse_concat.__doc__.replace(
+    "    concat_dim: The old (deprecated) name for axis.\n", "")
+
+
 @tf_export(v1=["sparse.add", "sparse_add"])
 @deprecation.deprecated_endpoints("sparse_add")
-def sparse_add(a, b, thresh=0):
+@deprecation.deprecated_args(
+    None, "thresh is deprecated, use threshold instead", "thresh")
+def sparse_add(a, b, threshold=None, thresh=None):
   """Adds two tensors, at least one of each is a `SparseTensor`.
 
   If one `SparseTensor` and one `Tensor` are passed in, returns a `Tensor`.  If
@@ -358,19 +373,21 @@ def sparse_add(a, b, thresh=0):
 
   Then,
 
-      * `thresh == 0` (the default): all 5 index/value pairs will be returned.
-      * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `thresh == 0.21`: .1, 0, and -.2 will vanish.
+  * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+  * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
-    b: The second operand; `SparseTensor` or `Tensor`.  At least one operand
+    b: The second operand; `SparseTensor` or `Tensor`. At least one operand
       must be sparse.
-    thresh: A 0-D `Tensor`.  The magnitude threshold that determines if an
-    output value/index pair takes space.  Its dtype should match that of the
-    values if they are real; if the latter are complex64/complex128, then the
-    dtype should be float32/float64, correspondingly.
+    threshold: An optional 0-D `Tensor` (defaults to `0`). The magnitude
+      threshold that determines if an output value/index pair takes space. Its
+      dtype should match that of the values if they are real; if the latter are
+      complex64/complex128, then the dtype should be float32/float64,
+      correspondingly.
+    thresh: Deprecated alias for `threshold`.
 
   Returns:
     A `SparseTensor` or a `Tensor`, representing the sum.
@@ -378,34 +395,11 @@ def sparse_add(a, b, thresh=0):
   Raises:
     TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
-  sparse_classes = (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)
-  if not any(isinstance(inp, sparse_classes) for inp in [a, b]):
-    raise TypeError("At least one input should be SparseTensor; do you mean to"
-                    " use tf.add()?")
-
-  if all(isinstance(inp, sparse_classes) for inp in [a, b]):
-    a = _convert_to_sparse_tensor(a)
-    b = _convert_to_sparse_tensor(b)
-    thresh = ops.convert_to_tensor(
-        thresh, dtype=a.values.dtype.real_dtype.base_dtype, name="thresh")
-    output_ind, output_val, output_shape = (
-        gen_sparse_ops.sparse_add(a.indices, a.values, a.dense_shape,
-                                  b.indices, b.values, b.dense_shape, thresh))
-
-    # Attempt to get output_shape statically.
-    a.get_shape().assert_is_compatible_with(b.get_shape())
-    static_shape = array_ops.broadcast_static_shape(a.get_shape(),
-                                                    b.get_shape())
-    if static_shape.is_fully_defined():
-      output_shape = static_shape.as_list()
-
-    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
-  else:
-    # swap to make `a` the SparseTensor.
-    if isinstance(b, sparse_classes):
-      a, b = b, a
-    return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
-                                                  a.dense_shape, b)
+  threshold = deprecation.deprecated_argument_lookup("threshold", threshold,
+                                                     "thresh", thresh)
+  if threshold is None:
+    threshold = 0
+  return sparse_add_v2(a, b, threshold)
 
 
 @tf_export("sparse.add", v1=[])
@@ -440,20 +434,20 @@ def sparse_add_v2(a, b, threshold=0):
 
   Then,
 
-      * `threshold == 0` (the default): all 5 index/value pairs will be
-          returned.
-      * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `threshold == 0.21`: .1, 0, and -.2 will vanish.
+  * `threshold == 0` (the default): all 5 index/value pairs will be
+      returned.
+  * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `threshold == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
-    b: The second operand; `SparseTensor` or `Tensor`.  At least one operand
+    b: The second operand; `SparseTensor` or `Tensor`. At least one operand
       must be sparse.
-    threshold: A 0-D `Tensor`.  The magnitude threshold that determines if an
-    output value/index pair takes space.  Its dtype should match that of the
-    values if they are real; if the latter are complex64/complex128, then the
-    dtype should be float32/float64, correspondingly.
+    threshold: A 0-D `Tensor`. The magnitude threshold that determines if an
+      output value/index pair takes space. Its dtype should match that of the
+      values if they are real; if the latter are complex64/complex128, then the
+      dtype should be float32/float64, correspondingly.
 
   Returns:
     A `SparseTensor` or a `Tensor`, representing the sum.
@@ -461,10 +455,35 @@ def sparse_add_v2(a, b, threshold=0):
   Raises:
     TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
-  return sparse_add(
-      a=a,
-      b=b,
-      thresh=threshold)
+  sparse_classes = (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)
+  if not any(isinstance(inp, sparse_classes) for inp in [a, b]):
+    raise TypeError("At least one input should be SparseTensor; do you mean to"
+                    " use tf.add()?")
+
+  if all(isinstance(inp, sparse_classes) for inp in [a, b]):
+    a = _convert_to_sparse_tensor(a)
+    b = _convert_to_sparse_tensor(b)
+    threshold = ops.convert_to_tensor(
+        threshold, dtype=a.values.dtype.real_dtype.base_dtype, name="threshold")
+    output_ind, output_val, output_shape = (
+        gen_sparse_ops.sparse_add(a.indices, a.values, a.dense_shape,
+                                  b.indices, b.values, b.dense_shape,
+                                  threshold))
+
+    # Attempt to get output_shape statically.
+    a.get_shape().assert_is_compatible_with(b.get_shape())
+    static_shape = array_ops.broadcast_static_shape(a.get_shape(),
+                                                    b.get_shape())
+    if static_shape.is_fully_defined():
+      output_shape = static_shape.as_list()
+
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+  else:
+    # swap to make `a` the SparseTensor.
+    if isinstance(b, sparse_classes):
+      a, b = b, a
+    return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
+                                                  a.dense_shape, b)
 
 
 @tf_export("sparse.cross")
@@ -472,20 +491,22 @@ def sparse_cross(inputs, name=None):
   """Generates sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: "a_X_d_X_f"
-    [1, 0]: "b_X_e_X_g"
-    [1, 1]: "c_X_e_X_g"
+
+      shape = [2, 2]
+      [0, 0]: "a_X_d_X_f"
+      [1, 0]: "b_X_e_X_g"
+      [1, 1]: "c_X_e_X_g"
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -505,26 +526,28 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
   """Generates hashed sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: FingerprintCat64(
-                Fingerprint64("f"), FingerprintCat64(
-                    Fingerprint64("d"), Fingerprint64("a")))
-    [1, 0]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("b")))
-    [1, 1]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("c")))
+
+      shape = [2, 2]
+      [0, 0]: FingerprintCat64(
+                  Fingerprint64("f"), FingerprintCat64(
+                      Fingerprint64("d"), Fingerprint64("a")))
+      [1, 0]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("b")))
+      [1, 1]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("c")))
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -578,11 +601,11 @@ def _sparse_cross_internal(inputs,
   internal_type = dtypes.string
   for i in range(len(values)):
     if values[i].dtype != dtypes.string:
-      values[i] = math_ops.to_int64(values[i])
+      values[i] = math_ops.cast(values[i], dtypes.int64)
       internal_type = dtypes.int64
   for i in range(len(dense_inputs)):
     if dense_inputs[i].dtype != dtypes.string:
-      dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
+      dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
       internal_type = dtypes.int64
 
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross(
@@ -794,8 +817,8 @@ def sparse_split(keyword_required=KeywordRequired(),
   Graphically the output tensors are:
 
       output_tensor[0] =
-      [    a ]
-      [b c   ]
+      [    a   ]
+      [b c     ]
 
       output_tensor[1] =
       [ d e  ]
@@ -939,7 +962,7 @@ def sparse_slice(sp_input, start, size, name=None):
                                       output_shape)
 
 
-@tf_export("sparse_to_dense")
+@tf_export(v1=["sparse_to_dense"])
 @deprecation.deprecated(
     None,
     "Create a `tf.sparse.SparseTensor` and use `tf.sparse.to_dense` instead.")
@@ -1081,6 +1104,9 @@ def sparse_reduce_max_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_max(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the max of elements across dimensions of a SparseTensor.
@@ -1129,7 +1155,7 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims:  Deprecated alias for `keepdims`.
 
   Returns:
@@ -1267,6 +1293,9 @@ def sparse_reduce_sum_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
@@ -1302,7 +1331,7 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
@@ -1393,7 +1422,7 @@ def sparse_tensor_to_dense(sp_input,
        [c x x x x]]
 
   Indices must be without repeats.  This is only
-  tested if validate_indices is True.
+  tested if `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.
@@ -1413,7 +1442,7 @@ def sparse_tensor_to_dense(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return sparse_to_dense(
+  return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
       sp_input.dense_shape,
       sp_input.values,
@@ -1756,7 +1785,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
     output_shape_tensor = math_ops.cast(output_shape_tensor, dtypes.int64)
     # For cases when shape is known during graph construction, this catches the
     # error before the sparse_tensor.SparseTensor catches it.
-    output_shape_tensor.get_shape()[0].merge_with(in_shape.get_shape()[0])
+    if output_shape_tensor.get_shape().rank is not None:
+      output_shape_tensor.get_shape().dims[0].merge_with(
+          in_shape.get_shape().dims[0])
 
     output_shape_tensor_const = tensor_util.constant_value(output_shape_tensor)
     # For cases where all shapes are known during graph construction
@@ -2353,7 +2384,7 @@ def sparse_softmax(sp_input, name=None):
   values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
   indices = np.vstack(np.where(values)).astype(np.int64).T
 
-  result = tf.sparse_softmax(tf.SparseTensor(indices, values, shape))
+  result = tf.sparse.softmax(tf.SparseTensor(indices, values, shape))
   # ...returning a 3-D SparseTensor, equivalent to:
   # [?   1.]     [1    ?]
   # [1.  ? ] and [.5  .5]
@@ -2385,7 +2416,7 @@ def sparse_maximum(sp_a, sp_b, name=None):
   ```python
   sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
   sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse_maximum(sp_zero, sp_one).eval()
+  res = tf.sparse.maximum(sp_zero, sp_one).eval()
   # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
   ```
 
@@ -2423,7 +2454,7 @@ def sparse_minimum(sp_a, sp_b, name=None):
   ```python
   sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
   sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse_minimum(sp_zero, sp_one).eval()
+  res = tf.sparse.minimum(sp_zero, sp_one).eval()
   # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
   ```
 
@@ -2664,3 +2695,48 @@ def _take_many_sparse_from_tensors_map(sparse_map_op,
   output_shape.set_shape([rank])
 
   return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
+
+
+class _UnaryMapValueDispatcher(dispatch.OpDispatcher):
+  """OpDispatcher for unary ops that maps base function across sparse values."""
+
+  def __init__(self, original_func):
+    self._original_func = original_func
+    func_name = get_canonical_name_for_symbol(original_func)
+    arg_names = tf_inspect.getfullargspec(original_func)[0]
+    self._x = arg_names[0]
+    original_func.__doc__ = (
+        original_func.__doc__.rstrip() + "\n\n" +
+        ("    If `{x}` is a `SparseTensor`, returns\n"
+         "    `SparseTensor({x}.indices, tf.{func}({x}.values, ...), "
+         "{x}.dense_shape)`").format(x=self._x, func=func_name))
+
+  def handle(self, args, kwargs):
+    if args:
+      x, args = args[0], args[1:]
+    else:
+      kwargs = kwargs.copy()
+      x = kwargs.pop(self._x, None)
+    if isinstance(x, sparse_tensor.SparseTensor):
+      return sparse_tensor.SparseTensor(
+          indices=x.indices,
+          values=self._original_func(x.values, *args, **kwargs),
+          dense_shape=x.dense_shape)
+    else:
+      return self.NOT_SUPPORTED
+
+
+_UNARY_OPS = [
+    # TODO(b/120307967) Add dispatchers for additional TensorFlow ops.
+    math_ops.abs,
+    math_ops.negative,
+    math_ops.sign,
+    math_ops.square,
+    math_ops.sqrt,
+    math_ops.erf,
+    math_ops.tanh,
+    math_ops.bessel_i0e,
+    math_ops.bessel_i1e,
+]
+for unary_op in _UNARY_OPS:
+  _UnaryMapValueDispatcher(unary_op).register(unary_op)

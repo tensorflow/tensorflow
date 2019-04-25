@@ -80,13 +80,13 @@ def _make_experiment_fn(output_dir):
   (x_train, y_train), (x_test,
                        y_test) = tf.keras.datasets.boston_housing.load_data()
 
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+  train_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={"x": x_train},
       y=y_train,
       batch_size=FLAGS.batch_size,
       num_epochs=None,
       shuffle=True)
-  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+  eval_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={"x": x_test}, y=y_test, num_epochs=1, shuffle=False)
 
   feature_columns = [

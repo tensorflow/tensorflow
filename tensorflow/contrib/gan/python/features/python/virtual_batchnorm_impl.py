@@ -52,8 +52,7 @@ def _statistics(x, axes):
 
   Args:
     x: A `Tensor`.
-    axes: Array of ints.  Axes along which to compute mean and
-      variance.
+    axes: Array of ints.  Axes along which to compute mean and variance.
 
   Returns:
     Two `Tensor` objects: `mean` and `square mean`.
@@ -97,10 +96,12 @@ def _validate_init_input_and_get_axis(reference_batch, axis):
 
 def _validate_call_input(tensor_list, batch_dim):
   """Verifies that tensor shapes are compatible, except for `batch_dim`."""
+
   def _get_shape(tensor):
     shape = tensor.shape.as_list()
     del shape[batch_dim]
     return shape
+
   base_shape = tensor_shape.TensorShape(_get_shape(tensor_list[0]))
   for tensor in tensor_list:
     base_shape.assert_is_compatible_with(_get_shape(tensor))
@@ -121,7 +122,8 @@ class VBN(object):
   Note that if `center` or `scale` variables are created, they are shared
   between all calls to this object.
 
-  The `__init__` API is intended to mimic `tf.layers.batch_normalization` as
+  The `__init__` API is intended to mimic
+  `tf.compat.v1.layers.batch_normalization` as
   closely as possible.
   """
 
@@ -157,9 +159,9 @@ class VBN(object):
       epsilon: Small float added to variance to avoid dividing by zero.
       center: If True, add offset of `beta` to normalized tensor. If False,
         `beta` is ignored.
-      scale: If True, multiply by `gamma`. If False, `gamma` is
-        not used. When the next layer is linear (also e.g. `nn.relu`), this can
-        be disabled since the scaling can be done by the next layer.
+      scale: If True, multiply by `gamma`. If False, `gamma` is not used. When
+        the next layer is linear (also e.g. `nn.relu`), this can be disabled
+        since the scaling can be done by the next layer.
       beta_initializer: Initializer for the beta weight.
       gamma_initializer: Initializer for the gamma weight.
       beta_regularizer: Optional regularizer for the beta weight.
@@ -185,8 +187,8 @@ class VBN(object):
     if axis == self._batch_axis:
       raise ValueError('`axis` and `batch_axis` cannot be the same.')
 
-    with variable_scope.variable_scope(name, 'VBN',
-                                       values=[reference_batch]) as self._vs:
+    with variable_scope.variable_scope(
+        name, 'VBN', values=[reference_batch]) as self._vs:
       self._reference_batch = reference_batch
 
       # Calculate important shapes:
@@ -217,14 +219,15 @@ class VBN(object):
       # that can be easily modified by additional examples.
       self._ref_mean, self._ref_mean_squares = _statistics(
           self._reference_batch, reduction_axes)
-      self._ref_variance = (self._ref_mean_squares -
-                            math_ops.square(self._ref_mean))
+      self._ref_variance = (
+          self._ref_mean_squares - math_ops.square(self._ref_mean))
 
       # Virtual batch normalization uses a weighted average between example
       # statistics and the reference batch statistics.
-      ref_batch_size = _static_or_dynamic_batch_size(
-          self._reference_batch, self._batch_axis)
-      self._example_weight = 1. / (math_ops.to_float(ref_batch_size) + 1.)
+      ref_batch_size = _static_or_dynamic_batch_size(self._reference_batch,
+                                                     self._batch_axis)
+      self._example_weight = 1. / (
+          math_ops.cast(ref_batch_size, dtypes.float32) + 1.)
       self._ref_weight = 1. - self._example_weight
 
       # Make the variables, if necessary.
@@ -246,10 +249,11 @@ class VBN(object):
   def _virtual_statistics(self, inputs, reduction_axes):
     """Compute the statistics needed for virtual batch normalization."""
     cur_mean, cur_mean_sq = _statistics(inputs, reduction_axes)
-    vb_mean = (self._example_weight * cur_mean +
-               self._ref_weight * self._ref_mean)
-    vb_mean_sq = (self._example_weight * cur_mean_sq +
-                  self._ref_weight * self._ref_mean_squares)
+    vb_mean = (
+        self._example_weight * cur_mean + self._ref_weight * self._ref_mean)
+    vb_mean_sq = (
+        self._example_weight * cur_mean_sq +
+        self._ref_weight * self._ref_mean_squares)
     return (vb_mean, vb_mean_sq)
 
   def _broadcast(self, v, broadcast_shape=None):
@@ -268,8 +272,7 @@ class VBN(object):
                                     self._broadcast(self._ref_mean),
                                     self._broadcast(self._ref_variance),
                                     self._broadcast(self._beta),
-                                    self._broadcast(self._gamma),
-                                    self._epsilon)
+                                    self._broadcast(self._gamma), self._epsilon)
 
   def __call__(self, inputs):
     """Run virtual batch normalization on inputs.
@@ -298,9 +301,7 @@ class VBN(object):
       b_shape[self._batch_axis] = _static_or_dynamic_batch_size(
           inputs, self._batch_axis)
       return nn.batch_normalization(
-          inputs,
-          self._broadcast(vb_mean, b_shape),
+          inputs, self._broadcast(vb_mean, b_shape),
           self._broadcast(vb_variance, b_shape),
           self._broadcast(self._beta, self._broadcast_shape),
-          self._broadcast(self._gamma, self._broadcast_shape),
-          self._epsilon)
+          self._broadcast(self._gamma, self._broadcast_shape), self._epsilon)

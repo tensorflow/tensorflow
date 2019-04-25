@@ -3,6 +3,7 @@ syntax = "proto3";
 package xrt;
 
 import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 
@@ -46,6 +47,8 @@ message XLAComputationConfig {
   // sent and executed to the set of replica device numbers described in the
   // DeviceAssignment proto.
   DeviceAssignment device_assignment = 6;
+  // The debugging options to be passed to the XLA compilation process.
+  xla.DebugOptions debug_options = 7;
 }
 
 // Options and XLA computation for a compilation.
@@ -56,7 +59,7 @@ message XLAComputation {
 
 // Literal to allocate space for, and transfer to, device memory.
 message XLAAllocation {
-  int32 device_ordinal = 1;
+  reserved 1;
   xla.LiteralProto value = 2;
 }
 
@@ -98,4 +101,8 @@ message XRTExecutionConfig {
   bool release_input_handles = 5;
   // If true, release the handle to the computation after running.
   bool release_compilation_handle = 6;
+  // If set to true, and the result shape is a tuple, then instead of returning
+  // a single tuple allocation the execution will return a vector of
+  // allocations, one for each of the first-level elements of the result tuple.
+  bool return_exploded_tuple = 7;
 }

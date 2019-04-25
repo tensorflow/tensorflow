@@ -32,6 +32,12 @@ namespace xla {
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs);
 
+// Creates a compare HLO instruction and adds it to the computation containing
+// `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
+StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs);
+
 // Creates a pad HLO instruction and adds it to the computation containing
 // `operand` and `padding_value` (`operand` and `padding_value` must be in the
 // same computation).
@@ -82,9 +88,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> MakeBroadcastHlo(
-    HloInstruction* operand, absl::Span<const int64> broadcast_dimensions,
-    absl::Span<const int64> result_shape_bounds);
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 absl::Span<const int64> result_shape_bounds);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
@@ -118,10 +124,21 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
 // Creates a Select HLO instruction and adds it to the computation containing
 // the predicate. The on_true and on_false instructions must also be contained
-// in the same computation.
+// in the same computation. If on_true and on_false are tuples, create a tuple
+// select instead. `pred` is broadcasted up from a scalar if necessary.
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
-                                        HloInstruction* on_false);
+                                        HloInstruction* on_false,
+                                        HloInstruction* derived_from = nullptr);
+
+// Creates a Sort HLO instruction and adds it to the computation containing the
+// operands. All operands must be in the same computation. Also creates a
+// default compare sub-computation which sorts the first operand into ascending
+// order. 'is_stable' specifies whether the sorting should be stable.
+StatusOr<HloInstruction*> MakeSortHlo(
+    const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
+    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
+    HloModule* module);
 
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
 // given values and adds it to the given computation.
@@ -198,9 +215,9 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 // Broadcasts a zero value of type `element_type` into a tensor with element
 // type `element_type` and dimension bounds `broadcast_dimensions`.  The
 // broadcast instruction is emitted into `computation`.
-StatusOr<HloInstruction*> BroadcastZeros(
-    HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> broadcast_dimensions);
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               PrimitiveType element_type,
+                               absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

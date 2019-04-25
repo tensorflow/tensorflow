@@ -52,7 +52,7 @@ class FlatMapDatasetSerializationTest(
       def flat_map_fn(_):
 
         def map_fn(y):
-          return 10 * math_ops.to_int32(y)
+          return 10 * math_ops.cast(y, dtypes.int32)
 
         return dataset_ops.Dataset.range(100).map(map_fn)
 
@@ -68,7 +68,7 @@ class FlatMapDatasetSerializationTest(
 
         @function.Defun(dtypes.int64)
         def defun_fn(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
+          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
         return dataset_ops.Dataset.from_tensor_slices([defun_fn(x)])
 
@@ -94,7 +94,7 @@ class FlatMapDatasetSerializationTest(
 
         def map_fn(x):
           return random_ops.random_uniform(
-              (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+              (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
 
         return dataset_ops.Dataset.range(100).map(map_fn)
 

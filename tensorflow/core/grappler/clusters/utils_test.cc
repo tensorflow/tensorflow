@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -82,12 +83,14 @@ TEST(UtilsTest, GetDeviceInfo) {
 
 #if GOOGLE_CUDA
   // Invalid platform GPU id.
-  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100));
+  TF_ASSERT_OK(
+      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100)));
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
   // Valid platform GPU id.
-  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0));
+  TF_ASSERT_OK(
+      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0)));
   device.id = 1;
   properties = GetDeviceInfo(device);
   EXPECT_EQ("GPU", properties.type());

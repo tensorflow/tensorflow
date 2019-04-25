@@ -33,7 +33,8 @@ to user-specified arguments.
   total_loss = tf.contrib.losses.get_total_loss()
 
   # Define the optimizer:
-  optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
+  optimizer = tf.compat.v1.train.MomentumOptimizer(FLAGS.learning_rate,
+  FLAGS.momentum)
 
   # Create the train_op
   train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
@@ -108,8 +109,8 @@ default update ops or simply add additional update ops to the
      update_ops=my_other_update_ops)
 
   # Use a set of update ops in addition to the default updates:
-  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
-  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
 
   train_op = tf.contrib.training.create_train_op(
      total_loss,
@@ -119,7 +120,7 @@ default update ops or simply add additional update ops to the
   train_op = tf.contrib.training.create_train_op(
      total_loss,
      optimizer,
-     update_ops=tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+     update_ops=tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS))
 
 ******************************************
 * Initializing a model from a checkpoint *
@@ -244,7 +245,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -319,8 +319,10 @@ def clip_gradient_norms(gradients_to_variables, max_norm):
 
 def clip_gradient_norms_fn(max_norm):
   """Returns a `transform_grads_fn` function for gradient clipping."""
+
   def clip_norms(gradients_to_variables):
     return clip_gradient_norms(gradients_to_variables, max_norm)
+
   return clip_norms
 
 
@@ -354,11 +356,11 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
         raise ValueError('Requested multiple of `None` gradient.')
 
       if isinstance(grad, ops.IndexedSlices):
-        tmp = grad.values * constant_op.constant(
+        tmp = grad.values * ops.convert_to_tensor(
             gradient_multipliers[key], dtype=grad.dtype)
         grad = ops.IndexedSlices(tmp, grad.indices, grad.dense_shape)
       else:
-        grad *= constant_op.constant(
+        grad *= ops.convert_to_tensor(
             gradient_multipliers[key], dtype=grad.dtype)
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
@@ -388,10 +390,10 @@ def create_train_op(total_loss,
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
-      it doesn't contain all of the update ops in `tf.GraphKeys.UPDATE_OPS`,
-      a warning will be displayed.
+      it doesn't contain all of the update ops in `tf.GraphKeys.UPDATE_OPS`, a
+      warning will be displayed.
     variables_to_train: an optional list of variables to train. If None, it will
-      default to all tf.trainable_variables().
+      default to all tf.compat.v1.trainable_variables().
     transform_grads_fn: A function which takes a single argument, a list of
       gradient to variable pairs (tuples), performs any requested gradient
       updates, such as gradient clipping or multipliers, and returns the updated
@@ -419,7 +421,7 @@ def create_train_op(total_loss,
     update_ops = set(update_ops)
   if not global_update_ops.issubset(update_ops):
     logging.warning('update_ops in create_train_op does not contain all the '
-                    ' update_ops in GraphKeys.UPDATE_OPS')
+                    'update_ops in GraphKeys.UPDATE_OPS')
 
   # Make sure update_ops are computed before total_loss.
   if update_ops:
@@ -428,12 +430,13 @@ def create_train_op(total_loss,
     total_loss = control_flow_ops.with_dependencies([barrier], total_loss)
 
   if variables_to_train is None:
-    # Default to tf.trainable_variables()
+    # Default to tf.compat.v1.trainable_variables()
     variables_to_train = tf_variables.trainable_variables()
   else:
-    # Make sure that variables_to_train are in tf.trainable_variables()
+    # Make sure that variables_to_train are in
+    # tf.compat.v1.trainable_variables()
     for v in variables_to_train:
-      assert v in tf_variables.trainable_variables()
+      assert v.trainable or v in tf_variables.trainable_variables()
 
   assert variables_to_train
 
@@ -495,11 +498,11 @@ def train(train_op,
     master: The URL of the master.
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
-    scaffold: An tf.train.Scaffold instance.
-    hooks: List of `tf.train.SessionRunHook` callbacks which are run inside the
-      training loop.
-    chief_only_hooks: List of `tf.train.SessionRunHook` instances which are run
-      inside the training loop for the chief trainer only.
+    scaffold: An tf.compat.v1.train.Scaffold instance.
+    hooks: List of `tf.estimator.SessionRunHook` callbacks which are run inside
+      the training loop.
+    chief_only_hooks: List of `tf.estimator.SessionRunHook` instances which are
+      run inside the training loop for the chief trainer only.
     save_checkpoint_secs: The frequency, in seconds, that a checkpoint is saved
       using a default checkpoint saver. If `save_checkpoint_secs` is set to
       `None`, then the default checkpoint saver isn't used.
@@ -507,11 +510,11 @@ def train(train_op,
       summaries are written to disk using a default summary saver. If
       `save_summaries_steps` is set to `None`, then the default summary saver
       isn't used.
-    config: An instance of `tf.ConfigProto`.
-    max_wait_secs: Maximum time workers should wait for the session to
-      become available. This should be kept relatively short to help detect
-      incorrect code, but sometimes may need to be increased if the chief takes
-      a while to start up.
+    config: An instance of `tf.compat.v1.ConfigProto`.
+    max_wait_secs: Maximum time workers should wait for the session to become
+      available. This should be kept relatively short to help detect incorrect
+      code, but sometimes may need to be increased if the chief takes a while to
+      start up.
     run_metadata: A [`RunMetadata`] protocol buffer.
 
   Returns:

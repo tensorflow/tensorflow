@@ -84,6 +84,7 @@ class _RNNCellForTest(rnn_cell_impl.RNNCell):
     return (math_ops.multiply(self._w, input_), state)
 
 
+@test_util.run_v1_only("b/120545219")
 class SessionDebugTestBase(test_util.TensorFlowTestCase):
   """Base class for unit tests of tfdbg running with tf.Session."""
 
@@ -133,7 +134,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     """Run fetches with debugging and obtain DebugDumpDir.
 
     Args:
-      sess: the tf.Session to be used.
+      sess: the tf.compat.v1.Session to be used.
       fetches: fetches of the Session.run().
       feed_dict: feed dict for the Session.run().
       debug_ops: name(s) of the debug ops to be used.

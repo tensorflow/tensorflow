@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/local_master.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -52,8 +53,9 @@ Status GrpcSession::Create(const SessionOptions& options,
   }
   if (!master) {
     SharedGrpcChannelPtr master_channel;
-    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-        options.target.substr(kSchemePrefixLength), &master_channel));
+    TF_RETURN_IF_ERROR(
+        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                               &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
   session->SetRemoteMaster(std::move(master));
@@ -91,6 +93,12 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
+void GrpcSession::SetHandleAndGraphVersion(string handle, int64 graph_version) {
+  mutex_lock l(mu_);
+  handle_ = std::move(handle);
+  current_graph_version_ = graph_version;
+}
+
 Status GrpcSession::Handle(string* out_handle) {
   mutex_lock l(mu_);
   if (handle_.empty()) {
@@ -116,9 +124,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
   if (s.ok()) {
-    mutex_lock l(mu_);
-    swap(handle_, *(resp.mutable_session_handle()));
-    current_graph_version_ = resp.graph_version();
+    SetHandleAndGraphVersion(resp.session_handle(), resp.graph_version());
   }
   return s;
 }
@@ -307,6 +313,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   for (const string& target : target_nodes) {
     req.add_target(target);
   }
+  req.set_request_id(GetUniqueRequestId());
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
   *handle = resp.partial_run_handle();
@@ -384,8 +391,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
   SharedGrpcChannelPtr master_channel;
-  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
-      options.target.substr(kSchemePrefixLength), &master_channel));
+  TF_RETURN_IF_ERROR(
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
+                             /*rpc_options=*/nullptr, &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);
@@ -402,6 +410,7 @@ Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
   MakeCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   *req.mutable_options() = callable_options;
+  req.set_request_id(GetUniqueRequestId());
   MakeCallableResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
@@ -417,6 +426,7 @@ Status GrpcSession::RunCallable(CallableHandle handle,
   RunCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   req.set_handle(handle);
+  req.set_request_id(GetUniqueRequestId());
   for (const Tensor& feed : feed_tensors) {
     feed.AsProtoTensorContent(req.mutable_feed()->Add());
   }

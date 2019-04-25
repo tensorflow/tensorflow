@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -35,7 +36,8 @@ class LinearOperatorZerosTest(
 
   @property
   def _tests_to_skip(self):
-    return ["cholesky", "log_abs_det", "solve", "solve_with_broadcast"]
+    return [
+        "cholesky", "log_abs_det", "inverse", "solve", "solve_with_broadcast"]
 
   @property
   def _operator_build_infos(self):
@@ -73,6 +75,7 @@ class LinearOperatorZerosTest(
       operator = linalg_lib.LinearOperatorZeros(num_rows=2)
       operator.assert_non_singular()
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorZeros(num_rows=2)
@@ -108,6 +111,7 @@ class LinearOperatorZerosTest(
     with self.assertRaisesRegexp(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorZeros(num_rows=2, batch_shape=[-2])
 
+  @test_util.run_deprecated_v1
   def test_non_scalar_num_rows_raises_dynamic(self):
     with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
@@ -116,6 +120,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be a 0-D Tensor"):
         operator.to_dense().eval(feed_dict={num_rows: [2]})
 
+  @test_util.run_deprecated_v1
   def test_negative_num_rows_raises_dynamic(self):
     with self.cached_session():
       n = array_ops.placeholder(dtypes.int32)
@@ -129,6 +134,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be non-negative"):
         operator.to_dense().eval(feed_dict={n: -2})
 
+  @test_util.run_deprecated_v1
   def test_non_1d_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -137,6 +143,7 @@ class LinearOperatorZerosTest(
       with self.assertRaisesOpError("must be a 1-D"):
         operator.to_dense().eval(feed_dict={batch_shape: 2})
 
+  @test_util.run_deprecated_v1
   def test_negative_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -151,6 +158,7 @@ class LinearOperatorZerosTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
+  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)

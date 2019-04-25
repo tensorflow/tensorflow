@@ -48,7 +48,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -56,6 +55,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
     ],
 )

@@ -28,7 +28,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 
-
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
 CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -46,7 +45,6 @@ CUDNN_INPUT_LINEAR_MODE = cudnn_rnn_ops.CUDNN_INPUT_LINEAR_MODE
 CUDNN_INPUT_SKIP_MODE = cudnn_rnn_ops.CUDNN_INPUT_SKIP_MODE
 CUDNN_INPUT_AUTO_MODE = cudnn_rnn_ops.CUDNN_INPUT_AUTO_MODE
 
-
 __all__ = ["CudnnLSTM", "CudnnGRU", "CudnnRNNTanh", "CudnnRNNRelu"]
 
 
@@ -57,7 +55,7 @@ class _CudnnRNN(base_layer.Layer):
   Cudnn RNNs have two major differences from other platform-independent RNNs tf
   provides:
   * Cudnn LSTM and GRU are mathematically different from their tf counterparts.
-    (e.g. `tf.contrib.rnn.LSTMBlockCell` and `tf.nn.rnn_cell.GRUCell`.
+    (e.g. `tf.contrib.rnn.LSTMBlockCell` and `tf.compat.v1.nn.rnn_cell.GRUCell`.
   * Cudnn-trained checkpoints are not directly compatible with tf RNNs:
     * They use a single opaque parameter buffer for the entire (possibly)
       multi-layer multi-directional RNN; Whereas tf RNN weights are per-cell and
@@ -67,7 +65,8 @@ class _CudnnRNN(base_layer.Layer):
       does not have a static shape and is not partitionable. Instead of using
       partitioning to alleviate the PS's traffic load, try building a
       multi-tower model and do gradient aggregation locally within the host
-      before updating the PS. See https://www.tensorflow.org/performance/performance_models#parameter_server_variables
+      before updating the PS. See
+      https://www.tensorflow.org/performance/performance_models#parameter_server_variables
       for a detailed performance guide.
 
   Consequently, if one plans to use Cudnn trained models on both GPU and CPU
@@ -104,15 +103,17 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for unidirectional RNN on, e.g., CPU or mobile.
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda:
+    tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
 
     # NOTE: Even if there's only one layer, the cell needs to be wrapped in
     # MultiRNNCell.
-    cell = tf.nn.rnn_cell.MultiRNNCell(
+    cell = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
       [single_cell() for _ in range(num_layers)])
 
     # Leave the scope arg unset.
-    outputs, final_state = tf.nn.dynamic_rnn(cell, inputs, initial_state, ...)
+    outputs, final_state = tf.compat.v1.nn.dynamic_rnn(cell, inputs,
+    initial_state, ...)
 
     saver = Saver()
 
@@ -124,7 +125,8 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for bidirectional RNN
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda:
+    tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
     cells_fw = [single_cell() for _ in range(num_layers)]
     cells_bw = [single_cell() for _ in range(num_layers)]
 
@@ -171,26 +173,25 @@ class _CudnnRNN(base_layer.Layer):
       num_layers: the number of layers for the RNN model.
       num_units: the number of units within the RNN model.
       input_mode: indicate whether there is a linear projection between the
-          input and the actual computation before the first layer. It can be
-          'linear_input', 'skip_input' or 'auto_select'.
-          'linear_input' (default) always applies a linear projection of input
-          onto RNN hidden state. (standard RNN behavior).
-          'skip_input' is only allowed when input_size == num_units;
-          'auto_select' implies 'skip_input' when input_size == num_units;
-          otherwise, it implies 'linear_input'.
+        input and the actual computation before the first layer. It can be
+        'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+        always applies a linear projection of input onto RNN hidden state.
+        (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+        num_units; 'auto_select' implies 'skip_input' when input_size ==
+        num_units; otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Can be either
-          'unidirectional' or 'bidirectional'
+        'unidirectional' or 'bidirectional'
       dropout: dropout rate, a number between [0, 1]. Dropout is applied between
-          each layer (no dropout is applied for a model with a single layer).
-          When set to 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-          for behavior.
+        each layer (no dropout is applied for a model with a single layer). When
+        set to 0, dropout is disabled.
+      seed: the op seed used for initializing dropout. See
+        `tf.compat.v1.set_random_seed` for behavior.
       dtype: tf.float16, tf.float32 or tf.float64
       kernel_initializer: starting value to initialize the weight.
-      bias_initializer: starting value to initialize the bias
-        (default is all zeros).
-      name: VariableScope for the created subgraph; defaults to class name.
-        This only serves the default scope if later no scope is specified when
+      bias_initializer: starting value to initialize the bias (default is all
+        zeros).
+      name: VariableScope for the created subgraph; defaults to class name. This
+        only serves the default scope if later no scope is specified when
         invoking __call__().
 
     Raises:
@@ -201,8 +202,8 @@ class _CudnnRNN(base_layer.Layer):
     cudnn_rnn_ops.check_input_mode(input_mode)
 
     if dtype not in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      raise ValueError(
-          "Only support float16, float32, float64, provided %s" % dtype)
+      raise ValueError("Only support float16, float32, float64, provided %s" %
+                       dtype)
     # Layer self.dtype is type name, the original DType object is kept here.
     self._plain_dtype = dtype
     self._num_layers = num_layers
@@ -309,6 +310,7 @@ class _CudnnRNN(base_layer.Layer):
     Args:
       input_shape: network input tensor shape, a python list or a TensorShape
         object with 3 dimensions.
+
     Raises:
       ValueError: if input_shape has wrong dimension or unknown 3rd dimension.
     """
@@ -328,9 +330,9 @@ class _CudnnRNN(base_layer.Layer):
     self._set_scope(None)
 
     # Not using base class `add_variable()` since the it calls
-    # `tf.get_variable()` with a callable initializer whereas here with a
-    # tensor. The difference is mandated to support forward-compatibility with
-    # Cudnn.
+    # `tf.compat.v1.get_variable()` with a callable initializer whereas here
+    # with a tensor. The difference is mandated to support forward-compatibility
+    # with Cudnn.
     with vs.variable_scope(
         self._scope,
         reuse=self.built,
@@ -360,8 +362,10 @@ class _CudnnRNN(base_layer.Layer):
       # Initialize opaque params with a tensor with unknown shape, thus couldn't
       # use self.add_variable(name, shape, initializer, ...)
       self.kernel = vs.get_variable(
-          "opaque_kernel", dtype=self._plain_dtype,
-          initializer=opaque_params_t, validate_shape=False)
+          "opaque_kernel",
+          dtype=self._plain_dtype,
+          initializer=opaque_params_t,
+          validate_shape=False)
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
@@ -374,17 +378,38 @@ class _CudnnRNN(base_layer.Layer):
         "This cell does not yet support object-based saving. File a feature "
         "request if this limitation bothers you.")
 
-  def call(self, inputs, initial_state=None, training=True):
+  def call(self,
+           inputs,
+           initial_state=None,
+           sequence_lengths=None,
+           time_major=True,
+           training=True):
     """Runs the forward step for the RNN model.
 
     Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`.
-      initial_state: a tuple of tensor(s) of shape
-        `[num_layers * num_dirs, batch_size, num_units]`. If not provided, use
-        zero initial states. The tuple size is 2 for LSTM and 1 for other RNNs.
+      inputs: `3-D` tensor. If `time_major` is True (default), the Tensor shape
+        is [time_len, batch_size, input_size]. If `time_major` is False, the
+        shape is [batch_size, time_len, input_size].
+      initial_state: a tuple of tensor(s) of shape `[num_layers * num_dirs,
+        batch_size, num_units]` if `time_major` is True (default) or
+        `[batch_size, num_layers * num_dirs, num_units]` if `time_major` is
+        False. If not provided, use zero initial states. The tuple size is 2 for
+        LSTM and 1 for other RNNs.
+      sequence_lengths: an int32 array representing the variable sequence
+        lengths in a batch. The size of the array has to equal the batch_size.
+        If not provided, the same sequence length will be assumed.
+      time_major: The shape format of the `inputs` and `outputs` Tensors. If
+        true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
+        If false, these Tensors must be shaped ['batch_size', 'max_time',
+        'depth']. By default this function accepts input and emits output in
+        time-major form. This param is only effective when 'sequence_lengths' is
+        used.
       training: whether this operation will be used in training or inference.
+
     Returns:
-      output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`.
+      output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`
+        if `time_major` is True (default) or `[batch_size, time_len,
+        num_dirs * num_units]` if `time_major` is False.
         It is a `concat([fwd_output, bak_output], axis=2)`.
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.
@@ -411,6 +436,7 @@ class _CudnnRNN(base_layer.Layer):
       # For model that doesn't take input_c, replace with a dummy tensor.
       c = array_ops.constant([], dtype=dtype)
     outputs, (output_h, output_c) = self._forward(inputs, h, c, self.kernel,
+                                                  sequence_lengths, time_major,
                                                   training)
     if self._rnn_mode == CUDNN_LSTM:
       return outputs, (output_h, output_c)
@@ -430,7 +456,7 @@ class _CudnnRNN(base_layer.Layer):
     """Shapes of Cudnn canonical weight tensors for given layer."""
     if layer < 0 or layer >= self._num_layers:
       raise ValueError("\'layer\' is not valid, got %s, expecting [%d, %d]" %
-                       (layer, 0, self._num_layers-1))
+                       (layer, 0, self._num_layers - 1))
     if not self._input_size:
       raise RuntimeError(
           "%s._canonical_weight_shape invoked before input shape is known" %
@@ -475,7 +501,8 @@ class _CudnnRNN(base_layer.Layer):
           dropout=self._dropout,
           direction=self._direction)
 
-  def _forward(self, inputs, h, c, opaque_params, training):
+  def _forward(self, inputs, h, c, opaque_params, sequence_lengths, time_major,
+               training):
     output, output_h, output_c = cudnn_rnn_ops._cudnn_rnn(  # pylint:disable=protected-access
         inputs,
         h,
@@ -483,6 +510,8 @@ class _CudnnRNN(base_layer.Layer):
         opaque_params,
         training,
         self._rnn_mode,
+        sequence_lengths=sequence_lengths,
+        time_major=time_major,
         input_mode=self._input_mode,
         direction=self._direction,
         dropout=self._dropout,
@@ -510,8 +539,9 @@ class _CudnnRNN(base_layer.Layer):
         direction=self.direction,
         scope=vs.get_variable_scope(),
         name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
-    self._saveable._add_checkpointable_dependencies(  # pylint: disable=protected-access
-        checkpointable=self, dtype=self._plain_dtype)
+    self._saveable._add_trackable_dependencies(  # pylint: disable=protected-access
+        trackable=self,
+        dtype=self._plain_dtype)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 
@@ -528,6 +558,7 @@ class CudnnLSTM(_CudnnRNN):
     [num_layers * num_dirs, batch_size, num_units]
     Args:
       batch_size: an int
+
     Returns:
       a tuple of python arrays.
     """
@@ -549,12 +580,15 @@ class _CudnnRNNNoInputC(_CudnnRNN):
   """Abstract simple CudnnRNN layer without input_c."""
 
   def state_shape(self, batch_size):
-    """Shape of the state of Cudnn RNN cells w/o. input_c.
+    """Shape of the state of Cudnn RNN cells w/o.
+
+    input_c.
 
     Shape is a 1-element tuple,
     [num_layers * num_dirs, batch_size, num_units]
     Args:
       batch_size: an int
+
     Returns:
       a tuple of python arrays.
     """

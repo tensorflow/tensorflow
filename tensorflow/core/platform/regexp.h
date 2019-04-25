@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_REGEXP_H_
 #define TENSORFLOW_PLATFORM_REGEXP_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -23,7 +24,7 @@ limitations under the License.
     defined(GOOGLE_RE2)
 #include "tensorflow/core/platform/google/build_config/re2.h"
 namespace tensorflow {
-typedef ::StringPiece RegexpStringPiece;
+typedef absl::string_view RegexpStringPiece;
 }  // namespace tensorflow
 
 #else

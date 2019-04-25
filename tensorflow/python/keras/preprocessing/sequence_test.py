@@ -97,6 +97,14 @@ class TestSequence(test.TestCase):
     for l in labels:
       self.assertEqual(len(l), 2)
 
+  def test_remove_long_seq(self):
+    a = [[[1, 1]], [[2, 1], [2, 2]], [[3, 1], [3, 2], [3, 3]]]
+
+    new_seq, new_label = keras.preprocessing.sequence._remove_long_seq(
+        maxlen=3, seq=a, label=['a', 'b', ['c', 'd']])
+    self.assertEqual(new_seq, [[[1, 1]], [[2, 1], [2, 2]]])
+    self.assertEqual(new_label, ['a', 'b'])
+
   def test_TimeseriesGenerator(self):
     data = np.array([[i] for i in range(50)])
     targets = np.array([[i] for i in range(50)])

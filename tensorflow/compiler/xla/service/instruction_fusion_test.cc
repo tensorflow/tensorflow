@@ -259,8 +259,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add = f32[4,3]{1,0} add(p0, p0)
     abs1 = f32[4,3]{1,0} abs(add)
     log = f32[4,3]{1,0} log(abs1)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -290,8 +290,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     p0 = f32[4,3]{1,0} parameter(0)
     add1 = f32[4,3]{1,0} add(p0, p0)
     log = f32[4,3]{1,0} log(p0)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -324,8 +324,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     add1 = f32[4,3]{1,0} add(p0, p0)
     add2 = f32[4,3]{1,0} add(add1, add1)
     log = f32[4,3]{1,0} log(add2)
-    token = token[] after-all()
-    send = f32[4,3]{1,0} send(log, token), channel_id=0
+    token0 = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token0), channel_id=0
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)
@@ -392,6 +392,56 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, FuseDiamondGraphsNoDuplication) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[100] parameter(0)
+    p1 = f32[100] parameter(1)
+    add = f32[100] add(p0, p1)
+    slice1 = f32[99] slice(add), slice={[0:99:1]}
+    slice2 = f32[99] slice(add), slice={[1:100:1]}
+    ROOT add2 = f32[99] add(slice1, slice2)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // 'add' would originally need to be duplicated if fused. However after its
+  // two users 'slice1' and 'slice2' are fused into 'add2', 'add' has only one
+  // user and can now be also fused.
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, FuseDiamondGraphsAllowDuplication) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[100] parameter(0)
+    p1 = f32[100] parameter(1)
+    add = f32[100] add(p0, p1)
+    slice1 = f32[99] slice(add), slice={[0:99:1]}
+    slice2 = f32[99] slice(add), slice={[1:100:1]}
+    ROOT add2 = f32[99] add(slice1, slice2)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // 'add' would originally need to be duplicated if fused. However after its
+  // two users 'slice1' and 'slice2' are fused into 'add2', 'add' has only one
+  // user and can now be also fused.
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
 TEST_F(InstructionFusionTest,

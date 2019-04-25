@@ -59,8 +59,6 @@ from tensorflow.contrib.training.python.training.hparam import *
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
-from tensorflow.contrib.training.python.training.tensor_queue_dataset import enqueue_in_queue_dataset
-from tensorflow.contrib.training.python.training.tensor_queue_dataset import prepend_from_queue_and_padded_batch_dataset
 from tensorflow.contrib.training.python.training.training import add_gradients_summaries
 from tensorflow.contrib.training.python.training.training import clip_gradient_norms
 from tensorflow.contrib.training.python.training.training import clip_gradient_norms_fn
@@ -79,7 +77,6 @@ _allowed_symbols = [
     'FeedingQueueRunner', 'get_or_create_eval_step', 'StopAfterNEvalsHook',
     'SummaryAtEndHook', 'wait_for_new_checkpoint', 'add_gradients_summaries',
     'clip_gradient_norms', 'clip_gradient_norms_fn', 'create_train_op',
-    'multiply_gradients', 'enqueue_in_queue_dataset',
-    'prepend_from_queue_and_padded_batch_dataset', 'train']
+    'multiply_gradients', 'train']
 
 remove_undocumented(__name__, _allowed_symbols)

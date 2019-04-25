@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -147,7 +148,7 @@ class SparseConcatTest(test.TestCase):
           self.assertEqual(sp_concat.values.get_shape(), [4])
           self.assertEqual(sp_concat.dense_shape.get_shape(), [2])
 
-          concat_out = sess.run(sp_concat)
+          concat_out = self.evaluate(sp_concat)
 
           self.assertAllEqual(concat_out.indices,
                               [[0, 2], [1, 0], [2, 0], [2, 2]])
@@ -169,7 +170,7 @@ class SparseConcatTest(test.TestCase):
             self.assertEqual(sp_concat.values.get_shape(), [8])
             self.assertEqual(sp_concat.dense_shape.get_shape(), [2])
 
-            concat_out = sess.run(sp_concat)
+            concat_out = self.evaluate(sp_concat)
 
             self.assertAllEqual(concat_out.indices, [[0, 2], [1, 0], [1, 4],
                                                      [2, 0], [2, 2], [2, 3],
@@ -195,7 +196,7 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.values.get_shape(), [7])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [2])
 
-        concat_out = sess.run(sp_concat)
+        concat_out = self.evaluate(sp_concat)
 
         self.assertAllEqual(
             concat_out.indices,
@@ -220,7 +221,7 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.values.get_shape(), [10])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [2])
 
-        concat_out = sess.run(sp_concat)
+        concat_out = self.evaluate(sp_concat)
 
         self.assertAllEqual(concat_out.indices, [[0, 2], [1, 0], [1, 4], [1, 8],
                                                  [2, 0], [2, 2], [2, 3], [2, 6],
@@ -244,7 +245,7 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.values.get_shape(), [8])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [2])
 
-        concat_out = sess.run(sp_concat)
+        concat_out = self.evaluate(sp_concat)
 
         self.assertAllEqual(
             concat_out.indices,
@@ -253,6 +254,7 @@ class SparseConcatTest(test.TestCase):
                             [b"a", b"b", b"e", b"c", b"d", b"f", b"g", b"h"])
         self.assertAllEqual(concat_out.dense_shape, [3, 8])
 
+  @test_util.run_deprecated_v1
   def testMismatchedRank(self):
     with self.session(use_gpu=False):
       sp_a = self._SparseTensor_3x3()
@@ -263,6 +265,7 @@ class SparseConcatTest(test.TestCase):
         with self.assertRaises(ValueError):
           sparse_ops.sparse_concat(concat_dim, [sp_a, sp_e])
 
+  @test_util.run_deprecated_v1
   def testMismatchedRankExpandNonconcatDim(self):
     with self.session(use_gpu=False):
       sp_a = self._SparseTensor_3x3()
@@ -275,6 +278,7 @@ class SparseConcatTest(test.TestCase):
           sparse_ops.sparse_concat(
               concat_dim, [sp_a, sp_e], expand_nonconcat_dim=True)
 
+  @test_util.run_deprecated_v1
   def testMismatchedShapes(self):
     with self.session(use_gpu=False) as sess:
       sp_a = self._SparseTensor_3x3()
@@ -287,7 +291,7 @@ class SparseConcatTest(test.TestCase):
 
         # Shape mismatches can only be caught when the op is run
         with self.assertRaisesOpError("Input shapes must match"):
-          sess.run(sp_concat)
+          self.evaluate(sp_concat)
 
   def testMismatchedShapesExpandNonconcatDim(self):
     with self.session(use_gpu=False) as sess:
@@ -302,8 +306,8 @@ class SparseConcatTest(test.TestCase):
           sp_concat_dim1 = sparse_ops.sparse_concat(
               concat_dim1, [sp_a, sp_b, sp_c, sp_d], expand_nonconcat_dim=True)
 
-          sp_concat_dim0_out = sess.run(sp_concat_dim0)
-          sp_concat_dim1_out = sess.run(sp_concat_dim1)
+          sp_concat_dim0_out = self.evaluate(sp_concat_dim0)
+          sp_concat_dim1_out = self.evaluate(sp_concat_dim1)
 
           self.assertAllEqual(sp_concat_dim0_out.indices,
                               [[0, 2], [1, 0], [2, 0], [2, 2], [4, 1], [5, 0],
@@ -321,6 +325,7 @@ class SparseConcatTest(test.TestCase):
                               [1, 1, 2, 1, 1, 1, 2, 3, 4, 2, 1, 0, 2])
           self.assertAllEqual(sp_concat_dim1_out.dense_shape, [3, 13])
 
+  @test_util.run_deprecated_v1
   def testShapeInferenceUnknownShapes(self):
     with self.session(use_gpu=False):
       sp_inputs = [

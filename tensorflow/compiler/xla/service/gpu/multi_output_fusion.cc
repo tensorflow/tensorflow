@@ -41,62 +41,11 @@ GpuMultiOutputFusion::GpuMultiOutputFusion() : MultiOutputFusion(INT64_MAX) {}
 
 bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                                                      HloInstruction* instr2) {
-  auto get_element_instr =
-      [&](const HloInstruction* instr) -> const HloInstruction* {
-    const HloInstruction* element_instr = instr;
-    if (instr->opcode() == HloOpcode::kFusion) {
-      auto fused_expression_root = instr->fused_expression_root();
-      if (instr->IsMultiOutputFusion()) {
-        // If possible, we want to pick a reduce operand of the fusion root,
-        // because it has the most constraints.
-        for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionToVector(*inst)) {
-            return inst;
-          }
-        }
-        return fused_expression_root->operands()[0];
-      } else {
-        element_instr = fused_expression_root;
-      }
-    }
-    return element_instr;
-  };
-
-  auto get_element_shape = [&](const HloInstruction* element_instr) {
-    // Special handling of kReduce instructions -- the fusion
-    // applies to the first operand.
-    if (IsReductionToVector(*element_instr)) {
-      return element_instr->operand(0)->shape();
-    }
-    return element_instr->shape();
-  };
-
-  // The shapes in all tuple operands should agree, unless it is a reduce.
-  // In that case, the operand of the reduce needs to have the same shape
-  // as the other tuple operands, but also we need to compare the output
-  // shapes of the reduces.
-  auto* element_instr_1 = get_element_instr(instr1);
-  auto* element_instr_2 = get_element_instr(instr2);
-  if (element_instr_1->opcode() == HloOpcode::kReduce &&
-      element_instr_2->opcode() == HloOpcode::kReduce &&
-      !ShapeUtil::Equal(element_instr_1->shape(), element_instr_2->shape())) {
-    return false;
-  }
-  // The elementwise output shapes must be the same (including layout).
-  return ShapeUtil::EqualIgnoringFpPrecision(
-      get_element_shape(element_instr_1), get_element_shape(element_instr_2));
+  return ShapesCompatibleForMultiOutputFusion(*instr1, *instr2);
 }
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
-  // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
-  return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) ||
-          (instr->opcode() == HloOpcode::kFusion &&
-           instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr->IsElementwise());
+  return IsFusibleAsMultiOutputFusionRoot(*instr);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -110,7 +59,7 @@ int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
   }
   int64 profit = 0;
   for (auto instr : instr2->operands()) {
-    if (!IsProfitableOperand(instr) || in_list.count(instr) == 0) {
+    if (!IsProfitableOperand(instr) || !in_list.contains(instr)) {
       continue;
     }
     profit += ShapeUtil::ByteSizeOf(instr->shape());
@@ -135,8 +84,8 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionToVector(*instr2) &&
-       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+      (IsReductionFromOrToContiguousDimensions(*instr2) &&
+       instr1->IsLoopFusion())) {
     return false;
   }
 
@@ -198,14 +147,11 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
-      const bool is_loop_fusion =
-          producer->opcode() == HloOpcode::kFusion &&
-          producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!producer->IsElementwise() && !is_loop_fusion) {
+      if (!producer->IsElementwise() && !producer->IsLoopFusion()) {
         VLOG(3) << producer->name() << " is not a loop fusion.";
         continue;
       }
-      if (!ShapesCompatibleForFusion(producer, consumer)) {
+      if (!ShapesCompatibleForMultiOutputFusion(*producer, *consumer)) {
         VLOG(3) << producer->name() << " has an incompatible shape.";
         continue;
       }

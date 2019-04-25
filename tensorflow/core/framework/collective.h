@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
 class BufRendezvous;
 class CancellationManager;
 class CompleteGroupRequest;
@@ -35,14 +36,22 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
-class Op;
 class Tensor;
 
 // Types of supported collective operations.
 enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
+  GATHER_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
+};
+
+// Some collective op implementations require runtime group configuration from
+// the OpKernel.  Currently, this struct is used to set communicator key for
+// NCCL-based collective implementation.
+struct CollGroupRuntimeDetails {
+  string communicator_key;  // for communicator-based techniques e.g. NCCL
+  string ToString() const;
 };
 
 // Data common to all members of a device group.
@@ -53,6 +62,7 @@ struct CollGroupParams {
   int32 group_size;
   DeviceType device_type;
   int32 num_tasks;  // number of distinct tasks in group
+  CollGroupRuntimeDetails runtime_details;
   string ToString() const;
   CollGroupParams()
       : group_key(0), group_size(0), device_type(DEVICE_CPU), num_tasks(0) {}
@@ -70,6 +80,8 @@ struct CollImplDetails {
   std::vector<std::vector<int>> subdiv_permutations;
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
+  std::vector<int32>
+      dependencies;  // collective instances on which this node depends
 };
 
 // Data common to all members of a collective instance.
@@ -85,6 +97,8 @@ struct CollInstanceParams {
   std::vector<string> task_names;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
+  // Task -> number of devices on that task.
+  std::unordered_map<string, int32> num_devices_per_task;
   // If passed in to GPUOptions in ConfigProto, defines a good ring order for
   // GPUs.  Assumes same GPU configuration at each worker.
   string gpu_ring_order = "";
@@ -269,6 +283,21 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
 
   virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
 
+  // `WaitForDependencies` and `Launched` are used for fine-grained control of
+  // execution order between collective instances.  These functions are intended
+  // to be called in `Run` function of collective implementations, and may be
+  // used to make part, or whole, of the collective execution ordered with
+  // respect to other collective instances.
+  //
+  // `WaitForDependencies` will block until it is safe to continue the callee's
+  // execution, where safety is defined as: ordered with respect to the
+  // collective instances defined in the callee's `wait_for` attribute.
+  virtual void WaitForDependencies(const CollectiveParams& col_params) {}
+  // `Launched` unblocks the dependent collective instances by recording that
+  // this callee device has completed the critical portion of the collective
+  // execution.
+  virtual void Launched(const CollectiveParams& col_params) {}
+
   // Used to designate an invalid group or instance key.
   static int64 kInvalidId;
 
@@ -347,7 +376,8 @@ class CollectiveImplementationInterface {
 
   // Initializes the portions of `col_params` specific to this
   // implementation.  Called exactly once for every Collective instance during
-  // the CollectiveParams resolution process when the graph is first executed.
+  // the CollectiveParams resolution process when the graph is first executed,
+  // at the end of `CompleteInstanceLocal()`.
   // NOTE(ayushd): This is effectively a static function because it modifies the
   // `col_params` passed in and should not manipulate any data members.  However
   // because it is virtual and needs to be implemented by every derived class we
@@ -359,6 +389,13 @@ class CollectiveImplementationInterface {
   // CollectiveContext passed in must outlive the CollectiveImplementation
   // object.
   virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
+
+  // Performs collective implementation specific group initialization.  The
+  // intention is to do group-specific initialization of runtime details for the
+  // collective implementation.  Currently used only to set `communicator_key`
+  // in techniques which use a communicator for distributed collectives (NCCL).
+  virtual Status InitializeCollectiveGroupRuntimeDetails(
+      CollGroupRuntimeDetails* col_group_runtime_details) = 0;
 
   // Processes and moves data according to the logic of this Collective
   // implementation.  Relies on appropriate initialization of op-specific

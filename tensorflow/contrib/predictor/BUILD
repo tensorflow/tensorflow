@@ -42,6 +42,7 @@ py_library(
     name = "saved_model_predictor",
     srcs = ["saved_model_predictor.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//learning/brain/contrib/learn/tpu:__subpackages__"],
     deps = [
         ":base_predictor",
         "//tensorflow/contrib/saved_model:saved_model_py",
@@ -109,6 +110,7 @@ py_test(
     name = "saved_model_predictor_test",
     srcs = ["saved_model_predictor_test.py"],
     data = [":test_export_dir"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -125,6 +127,7 @@ py_test(
     name = "predictor_factories_test",
     srcs = ["predictor_factories_test.py"],
     data = [":test_export_dir"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -136,6 +139,7 @@ py_test(
 py_test(
     name = "core_estimator_predictor_test",
     srcs = ["core_estimator_predictor_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -149,6 +153,7 @@ py_test(
 py_test(
     name = "contrib_estimator_predictor_test",
     srcs = ["contrib_estimator_predictor_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

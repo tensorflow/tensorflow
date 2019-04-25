@@ -19,7 +19,7 @@ op {
   }
   out_arg{
     name: "rt_dense_values"
-    description: "The `inner_values` for the returned `RaggedTensor`."
+    description: "The `flat_values` for the returned `RaggedTensor`."
   }
   summary: <<END
 Returns a `RaggedTensor` containing the specified sequences of numbers.

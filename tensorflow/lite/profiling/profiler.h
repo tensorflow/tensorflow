@@ -153,9 +153,11 @@ class ScopedOperatorProfile {
 
 #define VARNAME_UNIQ(name, ctr) name##ctr
 
-#define SCOPED_OPERATOR_PROFILE(profiler, node_index)    \
-  tflite::profiling::ScopedOperatorProfile VARNAME_UNIQ( \
-      _profile_, __COUNTER__)((profiler), "OpInvoke", (node_index))
+#define SCOPED_TAGGED_OPERATOR_PROFILE(profiler, tag, node_index) \
+  tflite::profiling::ScopedOperatorProfile VARNAME_UNIQ(          \
+      _profile_, __COUNTER__)((profiler), (tag), (node_index))
+#define SCOPED_OPERATOR_PROFILE(profiler, node_index) \
+  SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "OpInvoke", (node_index))
 #else
 
 namespace tflite {
@@ -172,6 +174,7 @@ class Profiler {
 }  // namespace profiling
 }  // namespace tflite
 
+#define SCOPED_TAGGED_OPERATOR_PROFILE(profiler, tag, node_index)
 #define SCOPED_OPERATOR_PROFILE(profiler, node_index)
 
 #endif  // TFLITE_PROFILING_ENABLED

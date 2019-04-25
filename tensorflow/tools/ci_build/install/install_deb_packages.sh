@@ -68,12 +68,6 @@ apt-get install -y --no-install-recommends \
     zip \
     zlib1g-dev
 
-apt-get update && \
-  apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
-  apt-get update && \
-  apt-get install libnvinfer4=4.1.2-1+cuda9.0 && \
-  apt-get install libnvinfer-dev=4.1.2-1+cuda9.0
-
 # populate the database
 updatedb
 

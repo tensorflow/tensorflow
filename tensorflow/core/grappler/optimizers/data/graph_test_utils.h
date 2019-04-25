@@ -56,8 +56,8 @@ NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
                              StringPiece num_parallel_calls_node_name,
                              bool sloppy);
 
-}  // end namespace graph_tests_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_tests_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_TEST_UTILS_H_

@@ -28,9 +28,10 @@ namespace tensorflow {
 // session.
 class RenamedDevice : public Device {
  public:
-  static Device* NewRenamedDevice(const string& new_base, Device* underlying,
-                                  bool owns_underlying,
-                                  bool isolate_session_state);
+  static std::unique_ptr<Device> NewRenamedDevice(const string& new_base,
+                                                  Device* underlying,
+                                                  bool owns_underlying,
+                                                  bool isolate_session_state);
 
   ~RenamedDevice() override;
 
@@ -91,6 +92,13 @@ class RenamedDevice : public Device {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override {
     return underlying_->MakeTensorFromProto(tensor_proto, alloc_attrs, tensor);
+  }
+
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override {
+    underlying_->CopyTensorInSameDevice(input_tensor, output_tensor,
+                                        device_context, std::move(done));
   }
 
   // Below are virtual methods defined on Device

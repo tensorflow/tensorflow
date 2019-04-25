@@ -52,6 +52,9 @@ class HostPlatform : public Platform {
 
   const string& Name() const override;
 
+  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+      int ordinal) const override;
+
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
@@ -31,18 +33,14 @@ from tensorflow.python.platform import test
 class DefinitionInfoTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, source = parser.parse_entity(test_fn)
+    node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file=None,
-        namespace={},
-        arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        source_code=source, source_file=None, future_features=(), namespace={})
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    node = reaching_definitions.resolve(node, entity_info, graphs,
+    node = reaching_definitions.resolve(node, ctx, graphs,
                                         reaching_definitions.Definition)
     return node
 
@@ -84,7 +82,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].test, 1)
@@ -92,6 +90,63 @@ class DefinitionInfoTest(test.TestCase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+
+  def test_try_in_conditional(self):
+
+    def test_fn(a, b):  # pylint:disable=unused-argument
+      a = []
+      if b:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+
+  def test_conditional_in_try_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          if b:
+            a = []
+        except TestException:  # pylint:disable=undefined-variable,unused-variable
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].body[0], ('a', 'b'))
+
+  def test_conditional_in_except_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          pass
+        except TestException as e:  # pylint:disable=undefined-variable,unused-variable
+          if b:
+            a = []
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].handlers[0].body[0], ('a', 'b'))
 
   def test_while(self):
 
@@ -103,7 +158,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].value.args[0], 1)
     self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
@@ -126,7 +181,7 @@ class DefinitionInfoTest(test.TestCase):
       return x, y
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].test, 2)
@@ -151,7 +206,7 @@ class DefinitionInfoTest(test.TestCase):
       return x, y
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].target, 1)
@@ -176,7 +231,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
     def_of_a_in_if = fn_body[1].body[0].targets[0]
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
@@ -200,7 +255,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     parent_return = fn_body[3]
     child_return = fn_body[1].body[1]
@@ -217,7 +272,7 @@ class DefinitionInfoTest(test.TestCase):
         return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].items[0].context_expr.func, 0)
     self.assertHasDefs(fn_body[0].items[0].context_expr.args[0], 1)
@@ -230,7 +285,7 @@ class DefinitionInfoTest(test.TestCase):
       return l
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     creation = fn_body[0].targets[0]
     mutation = fn_body[1].targets[0].value
@@ -249,7 +304,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     first_def = fn_body[0].targets[0]
     second_def = fn_body[1].orelse[0].targets[0]
@@ -268,7 +323,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     use = fn_body[2].value
     self.assertHasDefs(use, 0)
@@ -283,15 +338,33 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
-    param = node.body[0].args.args[0]
+    param = node.args.args[0]
     source = fn_body[0].value.args[0]
     target = fn_body[0].targets[0]
     retval = fn_body[1].value
     self.assertSameDef(param, source)
     self.assertNotSameDef(source, target)
     self.assertSameDef(target, retval)
+
+  def test_comprehension_leaking(self):
+
+    def test_fn(a):
+      all(x for x in a)
+      return x  # pylint:disable=undefined-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    retval = fn_body[1].value
+
+    # Python2 leaks comprehension symbols. Python3 doesn't.
+    if six.PY2:
+      self.assertSameDef(retval, listcomp_target)
+    else:
+      self.assertHasDefs(retval, 0)
 
 
 if __name__ == '__main__':

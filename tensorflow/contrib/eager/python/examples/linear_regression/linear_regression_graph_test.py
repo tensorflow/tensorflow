@@ -36,7 +36,7 @@ class GraphLinearRegressionBenchmark(tf.test.Benchmark):
         noise_level=0.01,
         batch_size=batch_size,
         num_batches=num_batches)
-    iterator = dataset.make_initializable_iterator()
+    iterator = tf.compat.v1.data.make_initializable_iterator(dataset)
     x, y = iterator.get_next()
 
     model = linear_regression.LinearModel()

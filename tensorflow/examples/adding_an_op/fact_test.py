@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.python.framework import test_util
 
 
 class FactTest(tf.test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test(self):
     with self.cached_session():
       print(tf.user_ops.my_fact().eval())

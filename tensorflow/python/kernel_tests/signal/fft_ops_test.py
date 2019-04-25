@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gradient_checker
@@ -109,13 +110,13 @@ class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfIFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -157,6 +158,7 @@ class FFTOpsTest(BaseFFTOpsTest):
     else:
       raise ValueError("invalid rank")
 
+  @test_util.run_deprecated_v1
   def testEmpty(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type in (np.complex64, np.complex128):
@@ -166,6 +168,7 @@ class FFTOpsTest(BaseFFTOpsTest):
             self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
             self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
@@ -194,6 +197,7 @@ class FFTOpsTest(BaseFFTOpsTest):
   #           np.mod(np.arange(np.power(128, dims)), 64).reshape(
   #               (128,) * dims).astype(np.complex64), rank)
 
+  @test_util.run_deprecated_v1
   def testBasicPlaceholder(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
@@ -204,6 +208,7 @@ class FFTOpsTest(BaseFFTOpsTest):
                     (4,) * dims).astype(np_type),
                 rank, use_placeholder=True, rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 5e-6)):
@@ -218,6 +223,7 @@ class FFTOpsTest(BaseFFTOpsTest):
             self._compare(gen((4,) * dims).astype(np_type), rank,
                           rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testRandom1D(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type in (np.complex64, np.complex128):
@@ -240,6 +246,7 @@ class FFTOpsTest(BaseFFTOpsTest):
         for dim in (127, 255, 511, 1023):
           self._compare(gen((dim,)).astype(np_type), 1, rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testError(self):
     for rank in VALID_FFT_RANKS:
       for dims in xrange(0, rank):
@@ -251,6 +258,7 @@ class FFTOpsTest(BaseFFTOpsTest):
             ValueError, "Shape must be .*rank {}.*".format(rank)):
           self._tfIFFT(x, rank)
 
+  @test_util.run_deprecated_v1
   def testGrad_Simple(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.float32, 1e-4), (np.float64, 1e-10)):
@@ -263,6 +271,7 @@ class FFTOpsTest(BaseFFTOpsTest):
             self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
                                    rtol=tol, atol=tol)
 
+  @test_util.run_deprecated_v1
   def testGrad_Random(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
@@ -283,12 +292,14 @@ class RFFTOpsTest(BaseFFTOpsTest):
                                               use_placeholder)
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfIFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -330,6 +341,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
     else:
       raise ValueError("invalid rank")
 
+  @test_util.run_deprecated_v1
   def testEmpty(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -339,6 +351,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((0,) * dims).astype(np.complex64)
           self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -366,6 +379,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                        10).reshape((size,) * (dims - 1) + (inner_dim,))
           self._compareBackward(c2r.astype(np.complex64), rank, (size,) * rank)
 
+  @test_util.run_deprecated_v1
   def testBasicPlaceholder(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -385,6 +399,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 rank, (size,) * rank,
                 use_placeholder=True)
 
+  @test_util.run_deprecated_v1
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
       with spectral_ops_test_util.fft_kernel_label_map():
@@ -427,6 +442,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                   fft_length,
                   use_placeholder=True)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       def gen_real(shape):
@@ -451,6 +467,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
             self._compareBackward(
                 gen_complex(complex_dims), rank, (size,) * rank)
 
+  @test_util.run_deprecated_v1
   def testError(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -497,7 +514,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((5,) * rank).astype(np.float32)
           fft_length = [6] * rank
           with self.cached_session():
-            rfft_fn(x, fft_length).eval()
+            self.evaluate(rfft_fn(x, fft_length))
 
         with self.assertRaisesWithPredicateMatch(
             errors.InvalidArgumentError,
@@ -505,8 +522,9 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((3,) * rank).astype(np.complex64)
           fft_length = [6] * rank
           with self.cached_session():
-            irfft_fn(x, fft_length).eval()
+            self.evaluate(irfft_fn(x, fft_length))
 
+  @test_util.run_deprecated_v1
   def testGrad_Simple(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -521,6 +539,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
             self._checkGradComplex(
                 self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
+  @test_util.run_deprecated_v1
   def testGrad_Random(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:

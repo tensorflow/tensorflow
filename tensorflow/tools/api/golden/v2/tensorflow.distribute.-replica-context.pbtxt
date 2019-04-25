@@ -1,13 +1,9 @@
 path: "tensorflow.distribute.ReplicaContext"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.distribute.ReplicaContext\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContext\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "devices"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "distribution_strategy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -25,6 +21,10 @@ tf_class {
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'strategy\', \'replica_id_in_sync_group\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "all_reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "merge_call"

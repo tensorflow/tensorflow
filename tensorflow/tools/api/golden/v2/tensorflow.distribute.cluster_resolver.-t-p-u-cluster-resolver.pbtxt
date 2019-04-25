@@ -1,0 +1,34 @@
+path: "tensorflow.distribute.cluster_resolver.TPUClusterResolver"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver.TPUClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "environment"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'tpu\', \'zone\', \'project\', \'job_name\', \'coordinator_name\', \'coordinator_address\', \'credentials\', \'service\', \'discovery_url\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'worker\', \'None\', \'None\', \'default\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "cluster_spec"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_job_name"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_master"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "master"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'rpc_layer\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "num_accelerators"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

@@ -14,94 +14,34 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
-                                  const NameAttrList& func,
-                                  std::vector<int>* indices) {
-  FunctionLibraryRuntime::Handle fn_handle;
-  TF_RETURN_IF_ERROR(ctx->function_library()->Instantiate(
-      func.name(), AttrSlice(&func.attr()), &fn_handle));
-  auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
-    Status s = ctx->function_library()->ReleaseHandle(fn_handle);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to release handle: " << s.error_message();
-    }
-  });
-
-  // If the function contains any stateful operations, we conservatively execute
-  // the entire function.
-  if (ctx->function_library()->IsStateful(func.name())) {
-    indices->clear();
-    return Status::OK();
-  }
-
-  const FunctionBody* fn_body =
-      ctx->function_library()->GetFunctionBody(fn_handle);
-  indices->resize(fn_body->ret_nodes.size());
-
-  for (size_t i = 0; i < fn_body->ret_nodes.size(); ++i) {
-    Node* ret_node = fn_body->ret_nodes[i];
-    Node* ret_input_node;
-    TF_RETURN_IF_ERROR(ret_node->input_node(0, &ret_input_node));
-
-    while (ret_input_node->def().op() == "Identity") {
-      TF_RETURN_IF_ERROR(ret_input_node->input_node(0, &ret_input_node));
-    }
-
-    if (ret_input_node->def().op() == FunctionLibraryDefinition::kArgOp) {
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(ret_input_node->def(), "index", &((*indices)[i])));
-    } else {
-      indices->clear();
-      break;
-    }
-  }
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+                  GraphDef* graph_def) {
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  Node* output_node = nullptr;
+  SerializationContext serialization_ctx({});
+  TF_RETURN_IF_ERROR(
+      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
+  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
+  // represents this Dataset.
+  ops::UnaryOp("_Retval", output_node,
+               b.opts()
+                   .WithName("dataset")
+                   .WithAttr("T", DT_VARIANT)
+                   .WithAttr("index", 0));
+  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
   return Status::OK();
-}
-
-std::vector<bool> ComputeMoveVector(const std::vector<int>& indices) {
-  std::map<int, int> last_use;
-  for (size_t i = 0; i < indices.size(); ++i) {
-    last_use[indices[i]] = i;
-  }
-  std::vector<bool> can_move;
-  can_move.resize(indices.size());
-  for (size_t i = 0; i < indices.size(); ++i) {
-    can_move[i] = last_use[indices[i]] == i;
-  }
-  return can_move;
-}
-
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator) {
-  std::vector<Tensor> return_values;
-
-  TF_RETURN_IF_ERROR(
-      captured_func->RunWithBorrowedArgs(ctx, input_element, &return_values));
-
-  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
-        TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-    return errors::InvalidArgument(
-        "Function must return a single scalar of dtype DT_VARIANT.");
-  }
-
-  // Retrieve the dataset that was created in `f`.
-  DatasetBase* returned_dataset;
-  TF_RETURN_IF_ERROR(
-      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
-
-  // Create an iterator for the dataset that was returned by `f`.
-  return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -139,6 +79,145 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   }
 
   return Status::OK();
+}
+
+namespace {
+
+constexpr char kDelimiter[] = "@@";
+
+}  // namespace
+
+VariantTensorDataReader::VariantTensorDataReader(
+    const tensorflow::VariantTensorData* data)
+    : data_(data) {
+  string metadata;
+  data_->get_metadata(&metadata);
+  auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+  for (size_t i = 0; i < keys.size(); ++i) {
+    map_[keys[i]] = i;
+  }
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
+  return ReadTensorInternal(key, val);
+}
+
+bool VariantTensorDataReader::Contains(StringPiece key) {
+  return map_.find(string(key)) != map_.end();
+}
+
+template <typename T>
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]).scalar<T>()();
+  return Status::OK();
+}
+
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
+                                                   Tensor* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]);
+  return Status::OK();
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+                                            const string& val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteTensor(StringPiece key,
+                                            const Tensor& val) {
+  return WriteTensorInternal(key, val);
+}
+
+Status VariantTensorDataWriter::Flush() {
+  string metadata;
+  for (size_t i = 0; i < keys_.size(); ++i) {
+    strings::StrAppend(&metadata, kDelimiter, keys_[i]);
+  }
+  data_->set_metadata(metadata);
+  return Status::OK();
+}
+
+template <typename T>
+Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
+                                                    const T& val) {
+  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+  val_t.scalar<T>()() = val;
+  return WriteTensorInternal(key, val_t);
+}
+
+Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
+                                                    const Tensor& val) {
+  DCHECK_EQ(key.find(kDelimiter), string::npos);
+  keys_.push_back(string(key));
+  *(data_->add_tensors()) = val;
+  return Status::OK();
+}
+
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionLibraryDefinition& to_add) {
+  for (const auto& fn : to_add.ListFunctionNames()) {
+    if (auto found = base->Find(fn)) {
+      if (!OpDefEqual(found->signature(), to_add.Find(fn)->signature())) {
+        return errors::InvalidArgument("Cannot add function '", fn,
+                                       "' because a different function with "
+                                       "the same signature already exists.");
+      }
+      TF_RETURN_IF_ERROR(base->RemoveFunction(fn));
+    }
+  }
+  return base->AddLibrary(to_add);
+}
+
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionDefLibrary& to_add) {
+  for (const auto& fd : to_add.function()) {
+    if (auto found = base->Find(fd.signature().name())) {
+      if (!OpDefEqual(found->signature(), fd.signature())) {
+        return errors::InvalidArgument("Cannot add function '",
+                                       fd.signature().name(),
+                                       "' because a different function with "
+                                       "the same signature already exists.");
+      }
+      TF_RETURN_IF_ERROR(base->RemoveFunction(fd.signature().name()));
+    }
+  }
+  return base->AddLibrary(to_add);
+}
+
+std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
+    std::function<void(std::function<void()>)> runner, int max_parallelism) {
+  return std::bind(
+      [max_parallelism](
+          // Note: `runner` is a const reference to avoid copying it.
+          const std::function<void(std::function<void()>)>& runner,
+          std::function<void()> fn) {
+        std::function<void()> scoped_fn = std::bind(
+            [max_parallelism](const std::function<void()>& fn) {
+              ScopedPerThreadMaxParallelism scope(max_parallelism);
+              fn();
+            },
+            std::move(fn));
+        runner(std::move(scoped_fn));
+      },
+      std::move(runner), std::placeholders::_1);
 }
 
 }  // namespace data

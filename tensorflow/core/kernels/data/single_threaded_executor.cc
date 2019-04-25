@@ -376,8 +376,8 @@ static SingleThreadedExecutorRegistrar registrar;
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  std::unique_ptr<const Graph> graph,
                                  Executor** executor) {
-  std::unique_ptr<SingleThreadedExecutorImpl> impl(
-      new SingleThreadedExecutorImpl(params));
+  std::unique_ptr<SingleThreadedExecutorImpl> impl =
+      absl::make_unique<SingleThreadedExecutorImpl>(params);
   TF_RETURN_IF_ERROR(impl->Initialize(*graph));
   *executor = impl.release();
   return Status::OK();

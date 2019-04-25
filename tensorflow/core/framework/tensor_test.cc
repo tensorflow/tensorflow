@@ -1370,7 +1370,7 @@ TEST(SummarizeValue, STRING) {
   EXPECT_EQ("one two three four five", x.SummarizeValue(16));
   x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
                        {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
+  EXPECT_EQ("[[one two three four five]][[one...]]...", x.SummarizeValue(6));
 }
 
 TEST(SummarizeValue, INT32_PRINT_V2) {
@@ -1423,11 +1423,16 @@ TEST(SummarizeValue, BOOL_PRINT_V2) {
 TEST(SummarizeValue, STRING_PRINT_V2) {
   Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
                               {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("[one two three four five]", x.SummarizeValue(16, true));
-  EXPECT_EQ("[one two three four five]", x.SummarizeValue(-1, true));
-  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+  EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
+            x.SummarizeValue(16, true));
+  EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
+            x.SummarizeValue(-1, true));
+  EXPECT_EQ("[\"one\" \"two\" ... \"four\" \"five\"]",
+            x.SummarizeValue(2, true));
+  x = MkTensor<string>(DT_STRING, TensorShape({2, 2}),
                        {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("[one two three four five one...]", x.SummarizeValue(6, true));
+  EXPECT_EQ("[[\"one\" \"two\"]\n [\"three\" \"four\"]]",
+            x.SummarizeValue(16, true));
 }
 
 void BM_CreateAndDestroy(int iters) {
@@ -1490,6 +1495,27 @@ void BM_CreateAndMoveCtrWithBuf(int iters) {
   }
 }
 BENCHMARK(BM_CreateAndMoveCtrWithBuf);
+
+// Benchmark creating and destroy a host-scalar tensor, using the allocator
+// interface.
+void BM_CreateAndDestroyHostScalarNonOptimized(int iters) {
+  TensorShape shape({});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    a.scalar<float>()() = 37.0;
+  }
+}
+BENCHMARK(BM_CreateAndDestroyHostScalarNonOptimized);
+
+// Benchmark creating and destroy a host-scalar tensor, using the specialized
+// constructor.
+void BM_CreateAndDestroyHostScalarOptimized(int iters) {
+  while (--iters) {
+    Tensor a(37.0);
+  }
+}
+BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
 
 }  // namespace
 }  // namespace tensorflow

@@ -42,14 +42,19 @@ namespace {
 const int kRightMargin = 79;
 
 // Converts:
-//   bazel-out/.../genfiles/(external/YYY/)?XX
+//   bazel-out/.../(bin|genfiles)/(external/YYY/)?XX
 // to: XX.
 string GetPath(const string& dot_h_fname) {
-  auto pos = dot_h_fname.find("/genfiles/");
+  auto pos = dot_h_fname.find("/bin/");
   string result = dot_h_fname;
   if (pos != string::npos) {
     // - 1 account for the terminating null character (\0) in "/genfiles/".
-    result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+    result = dot_h_fname.substr(pos + sizeof("/bin/") - 1);
+  } else {
+    pos = dot_h_fname.find("/genfiles/");
+    if (pos != string::npos) {
+      result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+    }
   }
   if (result.size() > sizeof("external/") &&
       result.compare(0, sizeof("external/") - 1, "external/") == 0) {
@@ -321,6 +326,7 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"tensor", {"TensorProto", true}},
           {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
           {"func", {"NameAttrList", true}},
+          {"list(func)", {"gtl::ArraySlice<NameAttrList>", true}},
       };
 
   auto entry = attr_type_map->find(attr_type);

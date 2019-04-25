@@ -1,11 +1,12 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -25,6 +26,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
@@ -53,8 +55,12 @@ py_library(
         ":core",
         ":def_function",
         ":execute",
+        ":execution_callbacks",
         ":function",
         ":graph_only_ops",
+        ":monitoring",
+        ":profiler",
+        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -81,11 +87,68 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
+        "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "monitoring",
+    srcs = ["monitoring.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "monitoring_test",
+    srcs = ["monitoring_test.py"],
+    additional_deps = [
+        ":monitoring",
+        ":test",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "profiler",
+    srcs = ["profiler.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.py"],
+    additional_deps = [
+        ":profiler",
+        ":test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/core/profiler:protos_all_py",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -105,6 +168,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -126,6 +190,8 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -143,6 +209,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tensorflow",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -157,6 +224,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -172,6 +240,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -189,9 +258,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 5,
-    tags = [
-        "no_windows",
-    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -214,9 +281,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 15,
-    tags = [
-        "no_windows",
-    ],
 )
 
 py_library(
@@ -261,6 +325,17 @@ py_library(
     ],
 )
 
+tf_py_test(
+    name = "execution_callbacks_test",
+    srcs = ["execution_callbacks_test.py"],
+    additional_deps = [
+        ":execution_callbacks",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
@@ -284,6 +359,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -354,12 +430,14 @@ cuda_py_test(
         ":context",
         ":function",
         ":test",
+        ":profiler",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_logged_benchmark(
@@ -367,11 +445,10 @@ tf_py_logged_benchmark(
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
-py_test(
+tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":test",
@@ -394,6 +471,7 @@ cuda_py_test(
         ":test",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -406,22 +484,22 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
-py_test(
+tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":core",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -452,6 +530,7 @@ cuda_py_test(
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -470,7 +549,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -482,15 +561,45 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:framework_ops",
+        "@six_archive//:six",
     ],
 )
 
-py_test(
+tf_py_test(
+    name = "lift_to_graph_test",
+    size = "medium",
+    srcs = ["lift_to_graph_test.py"],
+    additional_deps = [
+        "lift_to_graph",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
-    srcs_version = "PY2AND3",
+    additional_deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "def_function_xla_test",
+    srcs = ["def_function_xla_test.py"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "nomac",
+    ],
     deps = [
         ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -509,17 +618,28 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "wrap_function_test",
     srcs = ["wrap_function_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":wrap_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
     ],
 )

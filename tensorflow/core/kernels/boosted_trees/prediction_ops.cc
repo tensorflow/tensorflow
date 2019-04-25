@@ -48,9 +48,6 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
                                              &num_bucketized_features_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("logits_dimension", &logits_dimension_));
-    OP_REQUIRES(context, logits_dimension_ == 1,
-                errors::InvalidArgument(
-                    "Currently only one dimensional outputs are supported."));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -113,36 +110,45 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
       output_tree_ids.setConstant(latest_tree);
       auto do_work = [&resource, &batch_bucketized_features, &cached_tree_ids,
                       &cached_node_ids, &output_partial_logits,
-                      &output_node_ids, batch_size,
-                      latest_tree](int32 start, int32 end) {
+                      &output_node_ids, latest_tree,
+                      this](int32 start, int32 end) {
         for (int32 i = start; i < end; ++i) {
           int32 tree_id = cached_tree_ids(i);
           int32 node_id = cached_node_ids(i);
-          float partial_tree_logit = 0.0;
+          std::vector<float> partial_tree_logits(logits_dimension_, 0.0);
 
           if (node_id >= 0) {
             // If the tree was pruned, returns the node id into which the
             // current_node_id was pruned, as well the correction of the cached
             // logit prediction.
             resource->GetPostPruneCorrection(tree_id, node_id, &node_id,
-                                             &partial_tree_logit);
+                                             &partial_tree_logits);
             // Logic in the loop adds the cached node value again if it is a
             // leaf. If it is not a leaf anymore we need to subtract the old
             // node's value. The following logic handles both of these cases.
-            partial_tree_logit -= resource->node_value(tree_id, node_id);
+            const auto& node_logits = resource->node_value(tree_id, node_id);
+            if (!node_logits.empty()) {
+              DCHECK_EQ(node_logits.size(), logits_dimension_);
+              for (int32 j = 0; j < logits_dimension_; ++j) {
+                partial_tree_logits[j] -= node_logits[j];
+              }
+            }
           } else {
             // No cache exists, start from the very first node.
             node_id = 0;
           }
-          float partial_all_logit = 0.0;
+          std::vector<float> partial_all_logits(logits_dimension_, 0.0);
           while (true) {
             if (resource->is_leaf(tree_id, node_id)) {
-              partial_tree_logit += resource->node_value(tree_id, node_id);
-
+              const auto& leaf_logits = resource->node_value(tree_id, node_id);
+              DCHECK_EQ(leaf_logits.size(), logits_dimension_);
               // Tree is done
-              partial_all_logit +=
-                  resource->GetTreeWeight(tree_id) * partial_tree_logit;
-              partial_tree_logit = 0.0;
+              const float tree_weight = resource->GetTreeWeight(tree_id);
+              for (int32 j = 0; j < logits_dimension_; ++j) {
+                partial_all_logits[j] +=
+                    tree_weight * (partial_tree_logits[j] + leaf_logits[j]);
+                partial_tree_logits[j] = 0;
+              }
               // Stop if it was the latest tree.
               if (tree_id == latest_tree) {
                 break;
@@ -156,7 +162,9 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
             }
           }
           output_node_ids(i) = node_id;
-          output_partial_logits(i, 0) = partial_all_logit;
+          for (int32 j = 0; j < logits_dimension_; ++j) {
+            output_partial_logits(i, j) = partial_all_logits[j];
+          }
         }
       };
       // 30 is the magic number. The actual value might be a function of (the
@@ -187,9 +195,6 @@ class BoostedTreesPredictOp : public OpKernel {
                                              &num_bucketized_features_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("logits_dimension", &logits_dimension_));
-    OP_REQUIRES(context, logits_dimension_ == 1,
-                errors::InvalidArgument(
-                    "Currently only one dimensional outputs are supported."));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -225,18 +230,20 @@ class BoostedTreesPredictOp : public OpKernel {
     }
 
     const int32 last_tree = resource->num_trees() - 1;
-
     auto do_work = [&resource, &batch_bucketized_features, &output_logits,
-                    batch_size, last_tree](int32 start, int32 end) {
+                    last_tree, this](int32 start, int32 end) {
       for (int32 i = start; i < end; ++i) {
-        float tree_logit = 0.0;
+        std::vector<float> tree_logits(logits_dimension_, 0.0);
         int32 tree_id = 0;
         int32 node_id = 0;
         while (true) {
           if (resource->is_leaf(tree_id, node_id)) {
-            tree_logit += resource->GetTreeWeight(tree_id) *
-                          resource->node_value(tree_id, node_id);
-
+            const float tree_weight = resource->GetTreeWeight(tree_id);
+            const auto& leaf_logits = resource->node_value(tree_id, node_id);
+            DCHECK_EQ(leaf_logits.size(), logits_dimension_);
+            for (int32 j = 0; j < logits_dimension_; ++j) {
+              tree_logits[j] += tree_weight * leaf_logits[j];
+            }
             // Stop if it was the last tree.
             if (tree_id == last_tree) {
               break;
@@ -249,7 +256,9 @@ class BoostedTreesPredictOp : public OpKernel {
                                           batch_bucketized_features);
           }
         }
-        output_logits(i, 0) = tree_logit;
+        for (int32 j = 0; j < logits_dimension_; ++j) {
+          output_logits(i, j) = tree_logits[j];
+        }
       }
     };
     // 10 is the magic number. The actual number might depend on (the number of
@@ -312,7 +321,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     const int batch_size = batch_bucketized_features[0].size();
 
     // We need to get the feature ids used for splitting and the logits after
-    // each split. We will use these to calulate the changes in the prediction
+    // each split. We will use these to calculate the changes in the prediction
     // (contributions) for an arbitrary activation function (done in Python) and
     // attribute them to the associated feature ids. We will store these in
     // a proto below.
@@ -329,13 +338,14 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     // path. Note: feature_ids has one less value than logits_path because the
     // first value of each logit path will be the bias.
     auto do_work = [&resource, &batch_bucketized_features, &output_debug_info,
-                    batch_size, last_tree](int32 start, int32 end) {
+                    last_tree](int32 start, int32 end) {
       for (int32 i = start; i < end; ++i) {
         // Proto to store debug outputs, per example.
         boosted_trees::DebugOutput example_debug_info;
         // Initial bias prediction. E.g., prediction based off training mean.
-        float tree_logit =
-            resource->GetTreeWeight(0) * resource->node_value(0, 0);
+        const auto& tree_logits = resource->node_value(0, 0);
+        DCHECK_EQ(tree_logits.size(), 1);
+        float tree_logit = resource->GetTreeWeight(0) * tree_logits[0];
         example_debug_info.add_logits_path(tree_logit);
         int32 node_id = 0;
         int32 tree_id = 0;
@@ -358,8 +368,9 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
             // Get logit after split.
             node_id = resource->next_node(tree_id, node_id, i,
                                           batch_bucketized_features);
-            tree_logit = resource->GetTreeWeight(tree_id) *
-                         resource->node_value(tree_id, node_id);
+            const auto& tree_logits = resource->node_value(tree_id, node_id);
+            DCHECK_EQ(tree_logits.size(), 1);
+            tree_logit = resource->GetTreeWeight(tree_id) * tree_logits[0];
             // Output logit incorporates sum of leaf logits from prior trees.
             example_debug_info.add_logits_path(tree_logit + past_trees_logit);
           }

@@ -104,5 +104,27 @@ TEST_F(NameUniquerTest, KeepNamesInRandomOrder) {
   EXPECT_EQ("foo.3", uniquer.GetUniqueName("foo.3"));
 }
 
+TEST_F(NameUniquerTest, AvoidKeywords) {
+  NameUniquer uniquer(".");
+
+  EXPECT_EQ("f32_", uniquer.GetUniqueName("f32"));
+  EXPECT_EQ("s64_", uniquer.GetUniqueName("s64"));
+  EXPECT_EQ("pred_", uniquer.GetUniqueName("pred"));
+
+  // Name prefix __xla_ is preserved.
+  EXPECT_NE(uniquer.GetUniqueName("__xla_").find("__xla_"), std::string::npos);
+  // Other form of __ prefixes is not preserved to avoid using name prefixes
+  // reserved by backends.
+  EXPECT_EQ(uniquer.GetUniqueName("__abx").find("__"), std::string::npos);
+
+  // Though a primitive type, "tuple" is not a keyword.
+  EXPECT_EQ("tuple", uniquer.GetUniqueName("tuple"));
+
+  // Keywords are not capitalized.
+  EXPECT_EQ("F32", uniquer.GetUniqueName("F32"));
+  EXPECT_EQ("S32", uniquer.GetUniqueName("S32"));
+  EXPECT_EQ("Pred", uniquer.GetUniqueName("Pred"));
+}
+
 }  // namespace
 }  // namespace xla

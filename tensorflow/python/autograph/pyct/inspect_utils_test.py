@@ -12,14 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for unspect_utils module."""
+"""Tests for inspect_utils module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
+import collections
+import functools
 import imp
+import textwrap
 import types
 import weakref
 
@@ -27,8 +29,14 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct.testing import decorators
+from tensorflow.python.autograph.pyct.testing import future_import_module
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
+
+future_import_module_statements = ('absolute_import', 'division',
+                                   'print_function', 'with_statement')
 
 
 def decorator(f):
@@ -46,7 +54,7 @@ def wrapping_decorator():
     def replacement(*_):
       return None
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       return replacement(*args, **kwargs)
     return wrapper
@@ -94,6 +102,157 @@ def free_factory():
 
 
 class InspectUtilsTest(test.TestCase):
+
+  def test_islambda(self):
+    def test_fn():
+      pass
+
+    self.assertTrue(inspect_utils.islambda(lambda x: x))
+    self.assertFalse(inspect_utils.islambda(test_fn))
+
+  def test_isnamedtuple(self):
+    nt = collections.namedtuple('TestNamedTuple', ['a', 'b'])
+
+    class NotANamedTuple(tuple):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(nt))
+    self.assertFalse(inspect_utils.isnamedtuple(NotANamedTuple))
+
+  def test_isnamedtuple_confounder(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleLike(tuple):
+      _fields = ('a', 'b')
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleLike))
+
+  def test_isnamedtuple_subclass(self):
+    """This test highlights false positives when detecting named tuples."""
+
+    class NamedTupleSubclass(collections.namedtuple('Test', ['a', 'b'])):
+      pass
+
+    self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
+
+  def assertSourceIdentical(self, actual, expected):
+    self.assertEqual(
+        textwrap.dedent(actual).strip(),
+        textwrap.dedent(expected).strip()
+    )
+
+  def test_getimmediatesource_basic(self):
+
+    def test_decorator(f):
+
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return f_wrapper
+
+    expected = """
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_noop_decorator(self):
+
+    def test_decorator(f):
+      return f
+
+    expected = '''
+      @test_decorator
+      def test_fn(a):
+        """Test docstring."""
+        return [a]
+    '''
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper(self):
+
+    def wrapper_decorator(f):
+
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return wrapper
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @wrapper_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper_different_module(self):
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.wrapping_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_decorator_different_module(self):
+
+    expected = textwrap.dedent("""
+      def standalone_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.standalone_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_functional_decorator_different_module(
+      self):
+
+    expected = textwrap.dedent("""
+      def functional_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.functional_decorator()
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
 
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
@@ -150,6 +309,63 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
     self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
 
+  def test_getqualifiedname_efficiency(self):
+    foo = object()
+
+    # We create a densely connected graph consisting of a relatively small
+    # number of modules and hide our symbol in one of them. The path to the
+    # symbol is at least 10, and each node has about 10 neighbors. However,
+    # by skipping visited modules, the search should take much less.
+    ns = {}
+    prev_level = []
+    for i in range(10):
+      current_level = []
+      for j in range(10):
+        mod_name = 'mod_{}_{}'.format(i, j)
+        mod = imp.new_module(mod_name)
+        current_level.append(mod)
+        if i == 9 and j == 9:
+          mod.foo = foo
+      if prev_level:
+        # All modules at level i refer to all modules at level i+1
+        for prev in prev_level:
+          for mod in current_level:
+            prev.__dict__[mod.__name__] = mod
+      else:
+        for mod in current_level:
+          ns[mod.__name__] = mod
+      prev_level = current_level
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
+  def test_getqualifiedname_cycles(self):
+    foo = object()
+
+    # We create a graph of modules that contains circular references. The
+    # search process should avoid them. The searched object is hidden at the
+    # bottom of a path of length roughly 10.
+    ns = {}
+    mods = []
+    for i in range(10):
+      mod = imp.new_module('mod_{}'.format(i))
+      if i == 9:
+        mod.foo = foo
+      # Module i refers to module i+1
+      if mods:
+        mods[-1].__dict__[mod.__name__] = mod
+      else:
+        ns[mod.__name__] = mod
+      # Module i refers to all modules j < i.
+      for prev in mods:
+        mod.__dict__[prev.__name__] = prev
+      mods.append(mod)
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
   def test_getqualifiedname_finds_via_parent_module(self):
     # TODO(mdan): This test is vulnerable to change in the lib module.
     # A better way to forge modules should be found.
@@ -187,16 +403,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -245,16 +461,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        LocalClass)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -268,21 +484,20 @@ class InspectUtilsTest(test.TestCase):
   def test_getmethodclass_weakref_mechanism(self):
     test_obj = TestClass()
 
-    class WeakrefWrapper(object):
-
-      def __init__(self):
-        self.ag_self_weakref__ = weakref.ref(test_obj)
-
     def test_fn(self):
       return self
 
-    bound_method = types.MethodType(test_fn, WeakrefWrapper())
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+    bound_method = types.MethodType(
+        test_fn,
+        function.TfMethodTarget(
+            weakref.ref(test_obj), test_obj.member_function))
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
 
   def test_getmethodclass_no_bool_conversion(self):
 
     tensor = constant_op.constant([1])
-    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
+    self.assertEqual(
+        inspect_utils.getmethodclass(tensor.get_shape), type(tensor))
 
   def test_getdefiningclass(self):
     class Superclass(object):
@@ -316,11 +531,26 @@ class InspectUtilsTest(test.TestCase):
         Superclass)
 
   def test_isbuiltin(self):
-    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(enumerate))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
+  def test_getfutureimports_functions(self):
+    self.assertEqual(inspect_utils.getfutureimports(future_import_module.f),
+                     future_import_module_statements)
+
+  def test_getfutureimports_lambdas(self):
+    self.assertEqual(
+        inspect_utils.getfutureimports(future_import_module.lambda_f),
+        future_import_module_statements)
+
+  def test_getfutureimports_methods(self):
+    self.assertEqual(inspect_utils.getfutureimports(future_import_module.Foo.f),
+                     future_import_module_statements)
 
   def test_super_wrapper_for_dynamic_attrs(self):
 

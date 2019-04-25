@@ -8,6 +8,14 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 py_binary(
     name = "rnn_ptb",
     srcs = ["rnn_ptb.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [":rnn_ptb_lib"],
+)
+
+py_library(
+    name = "rnn_ptb_lib",
+    srcs = ["rnn_ptb.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -21,7 +29,7 @@ cuda_py_test(
     name = "rnn_ptb_test",
     srcs = ["rnn_ptb_test.py"],
     additional_deps = [
-        ":rnn_ptb",
+        ":rnn_ptb_lib",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
@@ -31,8 +39,11 @@ cuda_py_test(
     name = "rnn_ptb_graph_test",
     srcs = ["rnn_ptb_graph_test.py"],
     additional_deps = [
-        ":rnn_ptb",
+        ":rnn_ptb_lib",
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "oss_serial",
     ],
 )

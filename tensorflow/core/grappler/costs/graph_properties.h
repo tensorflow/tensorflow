@@ -27,6 +27,45 @@ namespace tensorflow {
 
 namespace grappler {
 
+// Optional attributes that tell about node output information.
+// We use these side information, if provided, for static shape inference
+// and VirtualScheduler scheduling.
+
+// Switch op attribute as a vector of int that tells which branch the
+// Switch output is taken on every round of execution.
+// Used for scheduling ops after Switch correctly (e.g., While loop).
+ABSL_CONST_INIT const char kOutputSlots[] = "_output_slot_vector";
+
+// Example:
+// Assume a node has two outputs and iterated for three times. Then it has:
+// _execution_count = 3
+// _output_sizes_vector = [2, 2, 2]
+// _output_dtype_vector.size = 6
+// _output_shape_vector.size = 6
+
+// If all the iterations have same output shapes, then
+// _execution_count = 3
+// _same_output_for_iterations = true
+// _output_sizes_vector = [2]
+// _output_dtype_vector.size = 2
+// _output_shape_vector.size = 2
+
+// How many times this node has been executed.
+ABSL_CONST_INIT const char kExecutionCount[] = "_execution_count";
+
+// Records the output sizes for each round of execution.
+ABSL_CONST_INIT const char kOutputSizes[] = "_output_sizes_vector";
+
+// The node has been scheduled multiple times with outputs that have the same
+// shape.
+ABSL_CONST_INIT const char kOutputSame[] = "_same_output_for_iterations";
+
+// Outputs DataType vector.
+ABSL_CONST_INIT const char kOutputTypes[] = "_output_dtype_vector";
+
+// Outputs TensorShapeProto vector.
+ABSL_CONST_INIT const char kOutputShapes[] = "_output_shape_vector";
+
 class SymbolicShapeRefiner;
 class TopoQueue;
 
@@ -46,7 +85,16 @@ class GraphProperties {
   // However, it can help infer shapes in the fanout of fed nodes (even though
   // the correctness of these shapes can't be guaranteed), so in some cases
   // (such as simulation or scheduling) it makes sense of keep these shapes.
-  Status InferStatically(bool assume_valid_feeds);
+  // aggressive_shape_inference option executes nodes on the host to identify
+  // output values when possible and does other aggressive strategies.
+  // Similar to assuming_valid_feeds, this may cause incorrectness in graph
+  // analyses, but is useful for simulation or scheduling.
+  Status InferStatically(bool assume_valid_feeds,
+                         bool aggressive_shape_inference);
+  Status InferStatically(bool assume_valid_feeds) {
+    return InferStatically(assume_valid_feeds,
+                           /*aggressive_shape_inference=*/false);
+  }
   // Infer the shape by running the graph on the specified cluster and recording
   // the shapes of the processed tensors.
   Status InferDynamically(Cluster* cluster);
@@ -102,8 +150,8 @@ class GraphProperties {
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                         const NodeDef* node, bool* new_shapes) const;
+  Status UpdateMerge(SymbolicShapeRefiner* shape_refiner, const NodeDef* node,
+                     bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                             const NodeDef* node, bool* new_shapes);

@@ -364,7 +364,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       params.output_buf = operand_buffers[1];
       break;
     case CudnnConvKind::kForwardActivation: {
-      params.kind = CudnnConvKind::kForwardActivation;
       params.input_shape = &lhs_shape;
       params.filter_shape = &rhs_shape;
       params.output_shape = &conv_result_shape;
@@ -395,32 +394,36 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
                     se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                    se::dnn::ProfileResult* profile_result) {
+                    RunConvOptions options) {
   ScratchBufAllocator scratch_allocator(scratch_buf);
   return RunCudnnConv(conv, operand_buffers, result_buffer, &scratch_allocator,
-                      stream, profile_result);
+                      stream, options);
 }
 
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
                     se::DeviceMemoryBase result_buffer,
                     se::ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    se::dnn::ProfileResult* profile_result) {
+                    RunConvOptions options) {
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
+
+  if (options.algo_override) {
+    params.algorithm = AlgorithmConfig(*options.algo_override);
+  }
 
   PrimitiveType output_primitive_type =
       conv->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
       return RunCudnnConvImpl<Eigen::half>(params, scratch_allocator, stream,
-                                           profile_result);
+                                           options.profile_result);
     case F32:
       return RunCudnnConvImpl<float>(params, scratch_allocator, stream,
-                                     profile_result);
+                                     options.profile_result);
     case F64:
       return RunCudnnConvImpl<double>(params, scratch_allocator, stream,
-                                      profile_result);
+                                      options.profile_result);
     default:
       LOG(FATAL) << ShapeUtil::HumanString(*params.output_shape);
   }

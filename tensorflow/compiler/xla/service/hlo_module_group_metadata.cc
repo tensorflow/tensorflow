@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -45,11 +46,8 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
     case ComputationKind::kWhileBody:
       repr += ":WHILE_BODY";
       break;
-    case ComputationKind::kConditionalTrue:
-      repr += ":CONDITIONAL_TRUE";
-      break;
-    case ComputationKind::kConditionalFalse:
-      repr += ":CONDITIONAL_FALSE";
+    case ComputationKind::kConditionalBranch:
+      repr += absl::StrCat(":CONDITIONAL_BRANCH_", index_);
       break;
     case ComputationKind::kCallFunction:
       repr += ":CALL";
@@ -79,36 +77,36 @@ Status HloModuleGroupMetadata::Build() {
       return Status::OK();
     }
 
-    std::vector<HloComputation*> peers;
-    if (IsChannelInstruction(hlo)) {
-      peers.push_back(PeerComputation(hlo));
-    } else if (hlo->IsCrossModuleAllReduce()) {
-      for (HloInstruction* instr : GetAllReduceGroup(*hlo->all_reduce_id())) {
-        if (instr == hlo) {
-          continue;
+    if (IsChannelInstruction(hlo) || hlo->IsCrossModuleAllReduce()) {
+      std::vector<HloComputation*> peers;
+      if (IsChannelInstruction(hlo)) {
+        peers.push_back(PeerComputation(hlo));
+      } else if (hlo->IsCrossModuleAllReduce()) {
+        for (HloInstruction* instr : GetAllReduceGroup(*hlo->all_reduce_id())) {
+          if (instr == hlo) {
+            continue;
+          }
+          peers.push_back(instr->parent());
         }
-        peers.push_back(instr->parent());
       }
-    }
 
-    // Add the parent computation of this channel (or all-reduce) instruction
-    // and its peer computation(s) (both must be while computations) as
-    // companions.
-    for (HloComputation* peer_computation : peers) {
-      const TrackedInstruction* peer_tracked =
-          GetTrackedInstruction(peer_computation);
-      TF_RET_CHECK(peer_tracked != nullptr)
-          << "Peer instruction is not a possible companion";
-      TF_RET_CHECK(*tracked == *peer_tracked)
-          << "Peer instruction does not match the computation kind";
-      TF_RETURN_IF_ERROR(
-          AddCompanion(tracked->instruction(), peer_tracked->instruction()));
-      tracked_instructions_comms_[tracked->instruction()].push_back(hlo);
-    }
-
-    // Add the parents of companion instructions (they must be all of the same
-    // kind of instructions, opcode wise) as companions.
-    if (IsCompanionInstruction(hlo)) {
+      // Add the parent computation of this channel (or all-reduce) instruction
+      // and its peer computation(s) (both must be while computations) as
+      // companions.
+      for (HloComputation* peer_computation : peers) {
+        const TrackedInstruction* peer_tracked =
+            GetTrackedInstruction(peer_computation);
+        TF_RET_CHECK(peer_tracked != nullptr)
+            << "Peer instruction is not a possible companion";
+        TF_RET_CHECK(*tracked == *peer_tracked)
+            << "Peer instruction does not match the computation kind";
+        TF_RETURN_IF_ERROR(
+            AddCompanion(tracked->instruction(), peer_tracked->instruction()));
+        tracked_instructions_comms_[tracked->instruction()].push_back(hlo);
+      }
+    } else if (IsCompanionInstruction(hlo)) {
+      // Add the parents of companion instructions (they must be all of the same
+      // kind of instructions, opcode wise) as companions.
       for (HloInstruction* companion : Companions(hlo)) {
         const TrackedInstruction* companion_tracked =
             GetTrackedInstruction(companion->parent());
@@ -118,14 +116,16 @@ Status HloModuleGroupMetadata::Build() {
                                         companion_tracked->instruction()));
       }
     }
+
     return Status::OK();
   };
 
   // Visit the computations in postorder so that the companion information grows
   // from inner computations to outer ones.
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
@@ -198,7 +198,7 @@ bool HloModuleGroupMetadata::IsChannelInstruction(
 }
 
 bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
-  return companion_set_index_.count(hlo) > 0;
+  return companion_set_index_.contains(hlo);
 }
 
 bool HloModuleGroupMetadata::InstructionCommunicates(
@@ -306,10 +306,10 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->while_body()] =
           TrackedInstruction(hlo, ComputationKind::kWhileBody);
     } else if (hlo->opcode() == HloOpcode::kConditional) {
-      tracked_instructions_[hlo->true_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
-      tracked_instructions_[hlo->false_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+      for (int b = 0; b < hlo->branch_count(); ++b) {
+        tracked_instructions_[hlo->branch_computation(b)] =
+            TrackedInstruction(hlo, ComputationKind::kConditionalBranch, b);
+      }
     } else if (hlo->opcode() == HloOpcode::kCall) {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
@@ -372,8 +372,9 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   };
 
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (auto* computation : module->computations()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   VLOG(2) << "Created " << channels_.size() << " channels";
@@ -388,9 +389,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
                instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
-
-  if (!ContainsKey(companion_set_index_, instruction1) &&
-      !ContainsKey(companion_set_index_, instruction2)) {
+  if (instruction1 == instruction2) {
+    return Status::OK();
+  } else if (!ContainsKey(companion_set_index_, instruction1) &&
+             !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
         absl::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
@@ -418,7 +420,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
     }
-    companion_sets_.erase(companion_sets_.begin() + index_to_remove);
+    // We can't remove the set from the vector because companion_set_index_
+    // references sets by their index in this vector, so we reset to nullptr
+    // instead.
+    companion_sets_[index_to_remove].reset(nullptr);
   }
   return Status::OK();
 }
@@ -509,7 +514,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
   HloComputation* computation = instruction->parent();
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
-      tracked_instructions_.count(computation) > 0) {
+      tracked_instructions_.contains(computation)) {
     return Status::OK();
   }
   return FailedPrecondition("channel is used in disallowed computation");

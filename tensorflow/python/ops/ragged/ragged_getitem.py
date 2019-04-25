@@ -18,13 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
@@ -39,7 +38,7 @@ def ragged_tensor_getitem(self, key):
   IndexError; (2) use a default value; or (3) skip that value and return a
   tensor with fewer rows than we started with.  Following the guiding
   principles of Python ("In the face of ambiguity, refuse the temptation to
-  guess" <go/pep20>), we simply disallow this operation.
+  guess"), we simply disallow this operation.
 
   Any dimensions added by `array_ops.newaxis` will be ragged if the following
   dimension is ragged.
@@ -136,9 +135,10 @@ def _ragged_getitem(rt_input, key_list):
   # that puts all values in a single row.
   if row_key is array_ops.newaxis:
     inner_rt = _ragged_getitem(rt_input, inner_keys)
-    nsplits = array_ops.shape(inner_rt.row_splits, out_type=dtypes.int64)[0]
-    return ragged_factory_ops.from_row_splits(inner_rt,
-                                              array_ops.stack([0, nsplits - 1]))
+    nsplits = array_ops.shape(inner_rt.row_splits,
+                              out_type=inner_rt.row_splits.dtype)[0]
+    return ragged_tensor.RaggedTensor.from_row_splits(
+        inner_rt, array_ops.stack([0, nsplits - 1]))
 
   # Slicing a range of rows: first slice the outer dimension, and then
   # call `_ragged_getitem_inner_dimensions` to handle the inner keys.
@@ -151,6 +151,27 @@ def _ragged_getitem(rt_input, key_list):
   else:
     starts = rt_input.row_splits[:-1]
     limits = rt_input.row_splits[1:]
+    if context.executing_eagerly():
+      # In python, __getitem__ should throw IndexError for out of bound
+      # indices. This will allow iteration run correctly as python will
+      # translate IndexError into StopIteration for next()/__next__().
+      # Below is an example:
+      #    import tensorflow as tf
+      #    r = tf.ragged.constant([[1., 2.], [3., 4., 5.], [6.]])
+      #    for elem in r:
+      #      print(elem)
+      # In non eager mode, the exception is thrown when session runs
+      # so we don't know if out of bound happens before.
+      # In eager mode, however, it is possible to find out when to
+      # throw out of bound IndexError.
+      # In the following row_key >= len(starts) is checked. In case of
+      # TypeError which happens when row_key is not an integer, the exception
+      # will simply be ignored as it will be processed later anyway.
+      try:
+        if int(row_key) >= len(starts):
+          raise IndexError("Row key {} out of bounds".format(row_key))
+      except (TypeError, ValueError):
+        pass
     row = rt_input.values[starts[row_key]:limits[row_key]]
     return row.__getitem__(inner_keys)
 
@@ -171,7 +192,7 @@ def _slice_ragged_row_dimension(rt_input, row_key):
   # Use row_key to slice the starts & limits.
   new_starts = rt_input.row_splits[:-1][row_key]
   new_limits = rt_input.row_splits[1:][row_key]
-  zero_pad = array_ops.zeros([1], dtypes.int64)
+  zero_pad = array_ops.zeros([1], rt_input.row_splits.dtype)
 
   # If there's no slice step, then we can just select a single continuous
   # span of `ragged.values(rt_input)`.
@@ -184,7 +205,7 @@ def _slice_ragged_row_dimension(rt_input, row_key):
         axis=0)
     values_start = new_splits[0]
     values_limit = new_splits[-1]
-    return ragged_factory_ops.from_row_splits(
+    return ragged_tensor.RaggedTensor.from_row_splits(
         rt_input.values[values_start:values_limit], new_splits - values_start)
 
   # If there is a slice step (aka a strided slice), then use ragged_gather to
@@ -224,8 +245,10 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
   # RaggedTensor that puts each value in its own row.
   if column_key is array_ops.newaxis:
     inner_rt = _ragged_getitem_inner_dimensions(rt_input, key_list[1:])
-    nsplits = array_ops.shape(inner_rt.row_splits, out_type=dtypes.int64)[0]
-    return ragged_factory_ops.from_row_splits(inner_rt, math_ops.range(nsplits))
+    nsplits = array_ops.shape(inner_rt.row_splits,
+                              out_type=inner_rt.row_splits.dtype)[0]
+    return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
+                                                      math_ops.range(nsplits))
 
   # Slicing a range of columns in a ragged inner dimension.  We use a
   # recursive call to process the values, and then assemble a RaggedTensor
@@ -239,7 +262,7 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
     else:
       # Nontrivial slice: use ragged_gather to extract the indicated slice as
       # a new RaggedTensor (inner_rt), and then recursively process its values.
-      # The splits can be taken from ragged.row_splits(inner_rt).
+      # The splits can be taken from inner_rt.row_splits().
       inner_rt_starts = rt_input.row_splits[:-1]
       inner_rt_limits = rt_input.row_splits[1:]
       if column_key.start is not None and column_key.start != 0:
@@ -337,14 +360,15 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
     step = 1
   step = ops.convert_to_tensor(step, name="step")
   if step.dtype.is_integer:
-    step = math_ops.cast(step, dtypes.int64)
+    step = math_ops.cast(step, starts.dtype)
   else:
     raise TypeError("slice strides must be integers or None")
-  value_indices = ragged_math_ops.range(starts, limits, step)
+  value_indices = ragged_math_ops.range(starts, limits, step,
+                                        row_splits_dtype=starts.dtype)
 
   # Use `ragged_gather` or `array_ops.gather` to collect the values.
   if isinstance(values, ragged_tensor.RaggedTensor):
-    gathered_values = ragged_array_ops.gather(
+    gathered_values = ragged_gather_ops.gather(
         params=values, indices=value_indices.values)
   else:
     gathered_values = array_ops.gather(
@@ -362,11 +386,11 @@ def _add_offset_to_ranges(offset, starts, limits):
 
   Args:
     offset: The offset to add.  None, or an int, or a scalar Tensor.
-    starts: 1-D int64 tensor containing start indices.
-    limits: 1-D int64 tensor containing limit indices.
+    starts: 1-D integer tensor containing start indices.
+    limits: 1-D integer tensor containing limit indices.
 
   Returns:
-    A 1-D int64 tensor.
+    A 1-D integer tensor.
   """
 
   def map_positive_offset(offset):
@@ -376,7 +400,7 @@ def _add_offset_to_ranges(offset, starts, limits):
     return math_ops.maximum(limits + offset, starts)
 
   if isinstance(offset, ops.Tensor):
-    offset = math_ops.cast(offset, dtypes.int64)
+    offset = math_ops.cast(offset, starts.dtype)
     return control_flow_ops.cond(offset >= 0,
                                  lambda: map_positive_offset(offset),
                                  lambda: map_negative_offset(offset))

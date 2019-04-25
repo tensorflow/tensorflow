@@ -224,8 +224,8 @@ def MovingAvgQuantize(inputs,
       None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
     scope.set_partitioner(None)
     input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
     if per_channel:
+      input_dim = len(input_shape)
       # Only support quantizing 1-, 2- and 4-dimensional tensors.
       assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
                                       ' scope: %s' % (input_shape, name_prefix))

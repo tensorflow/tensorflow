@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -35,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -44,6 +48,11 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// We remove duplicate control inputs before adding edges to the Graph, so we
+// can skip expensive duplicates check in 'AddControlEdge'.
+static constexpr const bool kDoNotCheckDuplicates = true;
+
 inline bool IsMerge(const NodeDef& node_def) {
   return node_def.op() == "Merge" || node_def.op() == "RefMerge";
 }
@@ -187,6 +196,12 @@ class GraphConstructor {
 
   void Undo();
 
+  // Prints cycles in the graph.
+  void PrintCycles();
+  // Performs DFS starting at `cur_node` and prints any cycles found.
+  void DFS(int cur_node, std::vector<int>* cur_branch,
+           std::vector<bool>* is_on_cur_branch,
+           absl::flat_hash_set<int>* unvisited);
   Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
   Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(const NodeDef& node_def, Node** node);
@@ -263,27 +278,25 @@ class GraphConstructor {
   // Mapping from node name to the index within node_defs_.
   struct NodeInfo {
     explicit NodeInfo(int i) : gdef_index(i), node(nullptr) {}
-    // std::unordered_map<> requires that we have a default constructor.
+    // Containers require that we have a default constructor.
     NodeInfo() : NodeInfo(-1) {}
     int gdef_index;
     Node* node;  // nullptr until the NodeDef is converted to a Node.
   };
-  // TODO(vrv): Profile this data structure to see if we should use an
-  // alternative implementation of std::unordered_map.
-  std::unordered_map<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
+  gtl::FlatMap<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
 
   // Prefixes already used in the GraphDef being imported.
-  std::unordered_set<StringPiece, StringPieceHasher> gdef_prefixes_;
+  gtl::FlatSet<StringPiece, StringPieceHasher> gdef_prefixes_;
 
   // Mapping from node name to the existing node in g_.
-  std::unordered_map<StringPiece, Node*, StringPieceHasher> existing_nodes_;
+  gtl::FlatMap<StringPiece, Node*, StringPieceHasher> existing_nodes_;
 
   // Prefixes already used in the graph.
-  std::unordered_set<StringPiece, StringPieceHasher> existing_prefixes_;
+  gtl::FlatSet<StringPiece, StringPieceHasher> existing_prefixes_;
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.
-  std::unordered_map<string, string> uniquified_names_;
+  gtl::FlatMap<string, string> uniquified_names_;
 
   // Index of NodeDefs in node_defs_ with all inputs already converted. We use a
   // (sorted) set so nodes are created in the order defined in the GraphDef.
@@ -306,6 +319,16 @@ class GraphConstructor {
     string name;
     Node* node;
     int index;
+
+    static bool IsControlInput(const InputInfo& input) {
+      return input.index == Graph::kControlSlot;
+    }
+    static int CompareName(const InputInfo& lhs, const InputInfo& rhs) {
+      return lhs.name < rhs.name;
+    }
+    static bool IsSameName(const InputInfo& lhs, const InputInfo& rhs) {
+      return lhs.name == rhs.name;
+    }
   };
 
   // Used in the conversion from node_defs_ to g_ to represent an edge from
@@ -360,7 +383,7 @@ bool NodeNameInValues(const std::vector<string>& control_dependencies,
 // Adds any prefixes of `node_name` (not including the full name itself) to
 // `prefixes`.
 void AddPrefixes(StringPiece node_name,
-                 std::unordered_set<StringPiece, StringPieceHasher>* prefixes) {
+                 gtl::FlatSet<StringPiece, StringPieceHasher>* prefixes) {
   size_t idx = -1;
   while ((idx = node_name.find('/', idx + 1)) != StringPiece::npos) {
     prefixes->insert(node_name.substr(0, idx));
@@ -478,9 +501,9 @@ Status GraphConstructor::BuildNodeIndex() {
   return Status::OK();
 }
 
-std::unordered_set<string> GetNextIterationNodes(
+gtl::FlatSet<string> GetNextIterationNodes(
     const GraphConstructor::NodeDefSlice& node_defs) {
-  std::unordered_set<string> next_iteration_nodes;
+  gtl::FlatSet<string> next_iteration_nodes;
 
   for (int n = 0; n < node_defs.size(); ++n) {
     const NodeDef& node_def = *node_defs[n];
@@ -496,7 +519,7 @@ Status GraphConstructor::InitFromEdges() {
   const int num_nodes = node_defs_.size();
   pending_count_.reserve(num_nodes);
   outputs_.resize(num_nodes);
-  std::unordered_set<string> next_iteration_nodes_ =
+  gtl::FlatSet<string> next_iteration_nodes_ =
       GetNextIterationNodes(node_defs_);
 
   // Parse the inputs for each node.
@@ -857,7 +880,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     for (int i = 0; i < coloc_values.size(); ++i) {
       StringPiece val(coloc_values[i]);
       if (str_util::ConsumePrefix(&val, kColocationGroupPrefix)) {
-        const auto& name_pair = uniquified_names_.find(string(val));
+        auto name_pair = uniquified_names_.find(string(val));
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
         coloc_values[i] =
@@ -905,6 +928,52 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
   }
   *is_node_mapped = true;
   return Status::OK();
+}
+
+void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
+                           std::vector<bool>* is_on_cur_branch,
+                           absl::flat_hash_set<int>* unvisited) {
+  cur_branch->push_back(cur_node);
+  is_on_cur_branch->at(cur_node) = true;
+  for (auto next_node : outputs_[cur_node]) {
+    if (unvisited->find(next_node) != unvisited->end()) {
+      if (is_on_cur_branch->at(next_node)) {
+        auto iter =
+            std::find(cur_branch->begin(), cur_branch->end(), next_node);
+        LOG(WARNING) << "Cycle detected:";
+        while (iter != cur_branch->end()) {
+          LOG(WARNING) << SummarizeNodeDef(*node_defs_[*iter]);
+          ++iter;
+        }
+        LOG(WARNING) << "End of cycle";
+      } else {
+        DFS(next_node, cur_branch, is_on_cur_branch, unvisited);
+      }
+    }
+  }
+  cur_branch->pop_back();
+  is_on_cur_branch->at(cur_node) = false;
+  unvisited->erase(cur_node);
+}
+
+void GraphConstructor::PrintCycles() {
+  int num_nodes = outputs_.size();
+  absl::flat_hash_set<int> unvisited;
+  for (int i = 0; i < num_nodes; i++) {
+    unvisited.insert(i);
+  }
+  while (!unvisited.empty()) {
+    int cur_node = *unvisited.begin();
+    // Nodes on the current branch of DFS in traversal order. This is used for
+    // printing the nodes in the cycle.
+    std::vector<int> cur_branch;
+    // This is just to make lookups O(1).
+    // is_on_cur_branch[i] ==
+    //   (std::find(cur_branch.start(),
+    //              cur_branch.end(), i) != cur_branch.end())
+    std::vector<bool> is_on_cur_branch(num_nodes, false);
+    DFS(cur_node, &cur_branch, &is_on_cur_branch, &unvisited);
+  }
 }
 
 Status GraphConstructor::Convert() {
@@ -978,33 +1047,33 @@ Status GraphConstructor::Convert() {
     DCHECK_EQ(node_def->input_size(), input_already_exists.size());
     TF_RETURN_IF_ERROR(ValidateColocationConstraints(*node_def));
     for (int i = 0; i < node_def->input_size(); ++i) {
-      TensorId id(ParseTensorName(node_def->input(i)));
+      TensorId tensor_id = ParseTensorName(node_def->input(i));
       Node* src_node;
       int src_index;
 
       if (!input_already_exists[i]) {
         // Locate input in newly-imported nodes
-        auto iter = gdef_nodes_.find(id.first);
-        DCHECK(iter != gdef_nodes_.end()) << id.first;
+        auto iter = gdef_nodes_.find(tensor_id.node());
+        DCHECK(iter != gdef_nodes_.end()) << tensor_id.node();
         src_node = iter->second.node;
-        src_index = id.second;
+        src_index = tensor_id.index();
         if (src_node == nullptr) has_data_back_edge = true;
       } else {
         // Input refers to preexistng node in graph
-        auto iter = existing_nodes_.find(id.first);
-        DCHECK(iter != existing_nodes_.end()) << id.first;
+        auto iter = existing_nodes_.find(tensor_id.node());
+        DCHECK(iter != existing_nodes_.end()) << tensor_id.node();
         src_node = iter->second;
-        src_index = id.second;
+        src_index = tensor_id.index();
       }
 
       if (src_node != nullptr && src_index >= src_node->num_outputs()) {
         return errors::InvalidArgument(
             "Node '", node_def->name(), "': Connecting to invalid output ",
-            id.second, " of source node ", id.first, " which has ",
-            src_node->num_outputs(), " outputs");
+            tensor_id.index(), " of source node ", tensor_id.node(),
+            " which has ", src_node->num_outputs(), " outputs");
       }
 
-      inputs.emplace_back(string(id.first), src_node, src_index);
+      inputs.emplace_back(string(tensor_id.node()), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(*node_def)) {
@@ -1029,6 +1098,15 @@ Status GraphConstructor::Convert() {
     // Use original_node_def so name StringPiece remains valid
     gdef_nodes_[original_node_def.name()].node = node;
 
+    // Remove duplicate control inputs before adding edges to the graph. It
+    // will allow us to skip expensive duplicates check in 'AddControlEdge'.
+    auto first_control = absl::c_find_if(inputs, &InputInfo::IsControlInput);
+    auto first_control_copy = first_control;
+    std::sort(first_control, inputs.end(), &InputInfo::CompareName);
+    inputs.erase(
+        std::unique(first_control_copy, inputs.end(), &InputInfo::IsSameName),
+        inputs.end());
+
     // Add edges from inputs to *node to the graph.
     for (size_t i = 0; i < inputs.size(); ++i) {
       if (inputs[i].node == nullptr) {
@@ -1036,7 +1114,7 @@ Status GraphConstructor::Convert() {
         // are created.
         back_edges_.emplace_back(inputs[i].name, inputs[i].index, node, i);
       } else if (inputs[i].index == Graph::kControlSlot) {
-        g_->AddControlEdge(inputs[i].node, node);
+        g_->AddControlEdge(inputs[i].node, node, kDoNotCheckDuplicates);
       } else {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
       }
@@ -1057,6 +1135,7 @@ Status GraphConstructor::Convert() {
                      << " WITH PENDING COUNT = " << pending_count_[i];
       }
     }
+    PrintCycles();
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
   }
@@ -1069,7 +1148,7 @@ Status GraphConstructor::AddBackEdges() {
   for (auto e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
     if (e.src_index == Graph::kControlSlot) {
-      g_->AddControlEdge(src_node, e.dst_node);
+      g_->AddControlEdge(src_node, e.dst_node, kDoNotCheckDuplicates);
     } else {
       TF_RETURN_IF_ERROR(
           MakeEdge(src_node, e.src_index, e.dst_node, e.dst_index));
@@ -1218,6 +1297,7 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, g->op_registry());
   // TODO(irving): Copy will go away once NodeInfo exists
   std::vector<const NodeDef*> node_defs;
+  node_defs.reserve(nodes.size());
   for (const auto& n : nodes) {
     node_defs.push_back(&n);
   }
@@ -1308,9 +1388,9 @@ void CopyGraph(const Graph& src, Graph* dest) {
   // Copy GraphDef versions
   dest->set_versions(src.versions());
 
-  // Copy the nodes
-  std::unordered_map<const Node*, Node*>
-      node_map;  // "Node in src" -> "Node in *dest"
+  // Copy the nodes.
+  // "Node in src" -> "Node in *dest"
+  gtl::FlatMap<const Node*, Node*> node_map;
   node_map[src.source_node()] = dest->source_node();
   node_map[src.sink_node()] = dest->sink_node();
   for (Node* n : src.op_nodes()) {

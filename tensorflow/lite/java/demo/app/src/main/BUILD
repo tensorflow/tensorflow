@@ -10,7 +10,8 @@ android_binary(
     aapt_version = "aapt",
     assets = [
         "//tensorflow/lite/java/demo/app/src/main/assets:labels_mobilenet_quant_v1_224.txt",
-        "@tflite_mobilenet//:mobilenet_quant_v1_224.tflite",
+        "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",
+        "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],
     assets_dir = "",
     custom_package = "com.example.android.tflitecamerademo",
@@ -25,6 +26,7 @@ android_binary(
     tags = ["manual"],
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
+        "//tensorflow/lite/java:tensorflowlite_gpu",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
         "@androidsdk//com.android.support:support-v13-25.2.0",
         "@androidsdk//com.android.support:support-v4-25.2.0",

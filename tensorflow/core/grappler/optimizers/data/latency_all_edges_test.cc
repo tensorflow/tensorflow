@@ -30,9 +30,9 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
   using test::function::NDef;
   GrapplerItem item;
   NodeDef component_node =
-      NDef("component_nodes", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
+      NDef("component_node", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
   NodeDef from_tensor_node =
-      NDef("from_tensor_nodes", "TensorDataset", {"component_nodes"},
+      NDef("from_tensor_node", "TensorDataset", {"component_node"},
            {{"Toutput_types", {}}, {"output_shapes", {}}});
 
   NodeDef captured_input_node = NDef("captured_input_node", "Const", {},
@@ -57,9 +57,10 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("LatencyStatsDataset", output));
-  std::vector<int> latency_node_indices =
-      graph_utils::FindAllGraphNodesWithOp("LatencyStatsDataset", output);
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ExperimentalLatencyStatsDataset",
+                                              output));
+  std::vector<int> latency_node_indices = graph_utils::FindAllGraphNodesWithOp(
+      "ExperimentalLatencyStatsDataset", output);
   EXPECT_EQ(latency_node_indices.size(), 3);
   std::vector<NodeDef> dataset_nodes = {std::move(from_tensor_node),
                                         std::move(map_node),

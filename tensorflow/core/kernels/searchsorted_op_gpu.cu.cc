@@ -17,15 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/searchsorted_op.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/searchsorted_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -68,10 +67,10 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     CudaLaunchConfig config =
         GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
 
-    UpperBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        UpperBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, stream, sorted_inputs.data(), batch_size,
+        num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }
@@ -88,10 +87,10 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     CudaLaunchConfig config =
         GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
 
-    LowerBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        LowerBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, stream, sorted_inputs.data(), batch_size,
+        num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }

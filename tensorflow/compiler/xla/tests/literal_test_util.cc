@@ -86,7 +86,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::Near(
     const LiteralSlice& expected, const LiteralSlice& actual,
-    const ErrorSpec& error_spec, bool detailed_message) {
+    const ErrorSpec& error_spec, absl::optional<bool> detailed_message) {
   return StatusToAssertion(literal_comparison::Near(
       expected, actual, error_spec, detailed_message, &OnMiscompare));
 }
@@ -97,7 +97,8 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   if (error.has_value()) {
     VLOG(1) << "Expects near";
     return StatusToAssertion(literal_comparison::Near(
-        expected, actual, *error, /*detailed_message=*/false, &OnMiscompare));
+        expected, actual, *error, /*detailed_message=*/absl::nullopt,
+        &OnMiscompare));
   }
   VLOG(1) << "Expects equal";
   return StatusToAssertion(literal_comparison::Equal(expected, actual));

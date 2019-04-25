@@ -50,9 +50,9 @@ class DepthwiseConvolution2DTest
 static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   std::vector<DepthwiseConvolution2DSpec> config_set;
   std::vector<std::vector<int64>> config_options = {
-      {128, 6, 3, 64},  {256, 5, 3, 256},  {256, 5, 2, 144}, {144, 5, 3, 64},
-      {144, 5, 2, 256}, {8, 48, 17, 8},    {128, 20, 6, 64}, {128, 1, 2, 144},
-      {256, 1, 2, 64},  {64, 14, 12, 172}, {16, 9, 4, 16}};
+      {128, 6, 3, 64},  {256, 5, 3, 256}, {256, 5, 2, 144}, {144, 5, 3, 64},
+      {144, 5, 2, 256}, {8, 48, 17, 8},   {128, 20, 6, 64}, {64, 14, 12, 172},
+      {16, 9, 4, 16},   {128, 1, 2, 144}, {256, 1, 2, 64}};
 
   for (auto option : config_options) {
     int64 feature = option[0];
@@ -136,7 +136,7 @@ string BuildHloTextDepthwiseConvolution2D(
   if (spec.activation_dims[1] == 1 && spec.kernel_dims[1] == 2) {
     return absl::StrFormat(
         R"(
-    HloModule TensorFlowDepthwiseConv, is_scheduled=true
+    HloModule TensorFlowDepthwiseConv
 
     ENTRY main {
       activation = %s[%s]{%s} parameter(0)
@@ -161,7 +161,7 @@ string BuildHloTextDepthwiseConvolution2D(
   } else if (spec.stride == -1) {
     return absl::StrFormat(
         R"(
-      HloModule TensorFlowDepthwiseConv, is_scheduled=true
+      HloModule TensorFlowDepthwiseConv
 
       ENTRY main {
         activation = %s[%s]{%s} parameter(0)
@@ -185,7 +185,7 @@ string BuildHloTextDepthwiseConvolution2D(
   } else {
     return absl::StrFormat(
         R"(
-    HloModule TensorFlowDepthwiseConv, is_scheduled=true
+    HloModule TensorFlowDepthwiseConv
 
     ENTRY main {
       activation = %s[%s]{%s} parameter(0)
@@ -215,13 +215,13 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const string hlo_text =
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{0.01, 0.01}, [](HloModule* module) -> Status {
-        BFloat16MixedPrecisionRemoval remover;
-        TF_RETURN_IF_ERROR(remover.Run(module).status());
-        Despecializer despecializer;
-        return despecializer.Run(module).status();
-      }));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
+                            [](HloModule* module) -> Status {
+                              BFloat16MixedPrecisionRemoval remover;
+                              TF_RETURN_IF_ERROR(remover.Run(module).status());
+                              Despecializer despecializer;
+                              return despecializer.Run(module).status();
+                            }));
 }
 
 INSTANTIATE_TEST_CASE_P(

@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
@@ -34,6 +35,7 @@ def pyx_library(
         deps = [],
         py_deps = [],
         srcs = [],
+        testonly = None,
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -75,6 +77,7 @@ def pyx_library(
             # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
             # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
             cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+            testonly = testonly,
             tools = ["@cython//:cython_binary"] + pxd_srcs,
         )
 
@@ -85,8 +88,9 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["//third_party/python_runtime:headers"],
+            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
+            testonly = testonly,
         )
         shared_objects.append(shared_object_name)
 
@@ -97,6 +101,7 @@ def pyx_library(
         deps = py_deps,
         srcs_version = "PY2AND3",
         data = shared_objects,
+        testonly = testonly,
         **kwargs
     )
 
@@ -312,7 +317,7 @@ def tf_proto_library_cc(
         srcs = [],
         has_services = None,
         protodeps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         cc_libs = [],
         cc_stubby_versions = None,
@@ -382,7 +387,7 @@ def tf_proto_library_py(
         srcs = [],
         protodeps = [],
         deps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         srcs_version = "PY2AND3",
         use_grpc_plugin = False):
@@ -428,7 +433,7 @@ def tf_proto_library(
         srcs = [],
         has_services = None,
         protodeps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         cc_libs = [],
         cc_api_version = 2,
@@ -515,6 +520,14 @@ def tf_additional_lib_srcs(exclude = []):
         ], exclude = exclude),
     })
 
+def tf_additional_monitoring_hdrs():
+    return []
+
+def tf_additional_monitoring_srcs():
+    return [
+        "platform/default/monitoring.cc",
+    ]
+
 def tf_additional_minimal_lib_srcs():
     return [
         "platform/default/integral_types.h",
@@ -525,19 +538,13 @@ def tf_additional_proto_hdrs():
     return [
         "platform/default/integral_types.h",
         "platform/default/logging.h",
-        "platform/default/protobuf.h",
     ] + if_windows([
         "platform/windows/integral_types.h",
     ])
 
-def tf_additional_proto_compiler_hdrs():
-    return [
-        "platform/default/protobuf_compiler.h",
-    ]
-
 def tf_additional_proto_srcs():
     return [
-        "platform/default/protobuf.cc",
+        "platform/protobuf.cc",
     ]
 
 def tf_additional_human_readable_json_deps():
@@ -547,13 +554,26 @@ def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
 def tf_protos_all_impl():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return [
+        "//tensorflow/core:autotuning_proto_cc_impl",
+        "//tensorflow/core:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+    ]
 
 def tf_protos_all():
     return if_static(
         extra_deps = tf_protos_all_impl(),
         otherwise = ["//tensorflow/core:protos_all_cc"],
     )
+
+def tf_profiler_all_protos():
+    return ["//tensorflow/core/profiler:protos_all"]
+
+def tf_grpc_service_all():
+    return [
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+    ]
 
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
@@ -565,7 +585,14 @@ def tf_protos_grappler():
     )
 
 def tf_additional_cupti_wrapper_deps():
-    return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
+    return [
+        "//tensorflow/stream_executor/cuda:cupti_stub",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ]
 
 def tf_additional_device_tracer_srcs():
     return ["platform/default/device_tracer.cc"]
@@ -574,10 +601,20 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
-    return []
+    return [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ]
 
 def tf_additional_device_tracer_test_flags():
     return []
+
+def tf_additional_profiler_lib_deps():
+    return [
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ] + if_cuda([
+        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+    ])
 
 def tf_additional_libdevice_data():
     return []
@@ -659,6 +696,8 @@ def tf_additional_cloud_op_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
@@ -666,13 +705,15 @@ def tf_additional_cloud_op_deps():
         ],
     })
 
-# TODO(jart, jhseu): Delete when GCP is default on.
+# TODO(jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
     return select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
@@ -710,6 +751,12 @@ def tf_additional_gdr_lib_defines():
         "//conditions:default": [],
     })
 
+def tf_additional_numa_lib_defines():
+    return select({
+        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//conditions:default": [],
+    })
+
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -725,7 +772,11 @@ def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
         [
             "//tensorflow/stream_executor:cuda_platform",
-            "//tensorflow/core/platform/default/build_config:cuda",
+        ],
+    ) + if_rocm(
+        [
+            "//tensorflow/stream_executor:rocm_platform",
+            "//tensorflow/core/platform/default/build_config:rocm",
         ],
     ) + [
         # TODO(allenl): Split these out into their own shared objects (they are
@@ -738,3 +789,26 @@ def tf_additional_binary_deps():
             "//third_party/mkl:intel_binary_blob",
         ],
     )
+
+def tf_additional_numa_deps():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "@hwloc",
+        ],
+    })
+
+def tf_additional_numa_copts():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "-Ithird_party/hwloc/hwloc-master/include",
+            "-DTENSORFLOW_USE_NUMA",
+        ],
+    })

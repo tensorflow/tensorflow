@@ -25,12 +25,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
-namespace grpc {
-class ServerBuilder;
-class ServerCompletionQueue;
-class Alarm;
-}  // namespace grpc
-
 namespace tensorflow {
 
 class GrpcVerbsService : public AsyncServiceInterface {

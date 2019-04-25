@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/protobuf.h"

@@ -23,82 +23,76 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
+// This file contains routines for rendering HLO computations into a
+// human-readable graphical format.
+//
+// Fundamentally all graphs are rendered using the DOT language, but they can be
+// packaged three different ways:
+//
+//  - as a raw DOT file, which can be rendered using `graphviz`.
+//
+//  - as an HTML file with an embedded DOT file, which can be viewed in a
+//    browser using a version of graphviz compiled to JavaScript
+//
+//  - as a URL hosted somewhere which somehow embeds the DOT file.
+//
+// This last option is not implemented by default, but you can add a plugin to
+// implement it via RegisterGraphToURLRenderer.
+//
+// TODO(jlebar): Rename this file to hlo_graph_renderer.
+
 namespace xla {
-namespace hlo_graph_dumper {
 
-// Abstract interface for classes that render HLO graphs (e.g. DOT graph,
-// tensorflow GraphDef).
-class GraphRendererInterface {
- public:
-  enum GraphKind {
-    DOT_GRAPH,
-    TF_GRAPHDEF,
-  };
-
-  virtual ~GraphRendererInterface() = default;
-
-  // Renders a DOT graph, returning a description of the rendered output
-  // (e.g., a URL)
-  virtual string RenderGraph(const string& graph, GraphKind graph_kind,
-                             const DebugOptions& debug_options) = 0;
+// Different formats that a graph can be packaged as.
+enum class RenderedGraphFormat {
+  kDot,
+  kHtml,
+  kUrl,
 };
 
-// Dump the given HLO module if a dump is requested in its debug options. Based
-// on the debug options, either a graph dump, a text dump or both may be
-// generated. If a graph dump is generated, the description (e.g. an URL) is
-// returned; otherwise an empty string is returned.
-string MaybeDumpHloModule(const HloModule& module, const string& label,
-                          const HloExecutionProfile* profile = nullptr);
+// Renders an HLO module as a human-readable visual graph.
+//
+// Note that this only works well for relatively small graphs (no more than a
+// few hundred nodes).  Beyond that, the dot is usually unrenderable,
+// unreadable, or both.  To view such graphs, use a tool such as
+// interactive_graphviz, which calls RenderNeighborhoodAround to render subsets
+// of a graph.
+StatusOr<string> RenderGraph(
+    const HloComputation& computation, absl::string_view label,
+    const DebugOptions& debug_options, RenderedGraphFormat format,
+    const HloExecutionProfile* hlo_execution_profile = nullptr,
+    bool show_backend_config = false);
 
-// Dumps a graph of the computation and returns a description of the rendered
-// graph (e.g., a URL) based on the renderer. The "best" renderer in the
-// registry is used.
-string DumpGraph(const HloComputation& computation, const string& label,
-                 const DebugOptions& debug_options,
-                 const HloExecutionProfile* hlo_execution_profile = nullptr,
-                 bool show_backend_config = false);
-
-// Like DumpGraph, but renders only nodes "near" the given node in the graph.
+// Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
 // The number of nodes dumped is controlled by the radius parameter, which
 // (roughly) corresponds to the max distance a node may be from the primary node
 // before it's omitted from the graph.
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_backend_config = false);
-
-// Dumps the HloModule::ToString() as a file into the provided directory path
-// suffixed with the provided label.
 //
-// If do_prefix is true, a timestamp will be prepended onto the label to
-// construct a filename in the directory path; otherwise, the label is used
-// as the filename directly.
-void DumpText(const HloModule& module, const string& label,
-              const string& directory_path, bool do_prefix = true);
+// The optional boundary specifies a set of boundary nodes, beyond which nodes
+// will be omitted even if they are within the radius.
+StatusOr<string> RenderNeighborhoodAround(
+    const HloInstruction& node, int radius, RenderedGraphFormat format,
+    bool show_backend_config = false,
+    const absl::flat_hash_set<const HloInstruction*>& boundary = {});
 
-// Graph renderers may be added using a registration mechanism, e.g.:
-// XLA_REGISTER_GRAPH_RENDERER(AGraphRendererClass, 100)
-// The renderer with the highest numeric priority value is used.
+// Renders nodes on any of the paths from `from` to `to`.  If there are more
+// than max_nodes on all paths, restricts to the max_nodes nodes on the shortest
+// paths.
+StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
+                                      const HloInstruction& to, int64 max_nodes,
+                                      RenderedGraphFormat format,
+                                      bool show_backend_config = false);
 
-#define XLA_REGISTER_GRAPH_RENDERER(factory, ...) \
-  XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, __COUNTER__, ##__VA_ARGS__)
+// Registers a function which implements RenderedGraphFormat::kUrl.
+//
+// The input to the function is dot, and the output should be a URL or an error.
+//
+// There can only be one active renderer, and the last call to this function
+// wins.
+void RegisterGraphToURLRenderer(
+    std::function<StatusOr<string>(absl::string_view dot)> renderer);
 
-// Internal implementation details below this point.
-
-// Class that registers a graph renderer.
-class Registrar {
- public:
-  Registrar(GraphRendererInterface* dumper);
-};
-
-#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...)   \
-  static ::xla::hlo_graph_dumper::Registrar                       \
-      XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr)(new factory, \
-                                                     ##__VA_ARGS__)
-
-// __COUNTER__ must go through another macro to be properly expanded
-#define XLA_INTERNAL_REGISTER_GRAPH_RENDERER_NAME(ctr) ___##ctr##__object_
-
-}  // namespace hlo_graph_dumper
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_GRAPH_DUMPER_H_

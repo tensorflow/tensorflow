@@ -104,6 +104,8 @@ py_test(
     srcs = [
         "estimators_test.py",
     ],
+    python_version = "PY2",
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",
@@ -154,13 +156,17 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "large",
+    size = "medium",
     srcs = [
         "head_test.py",
     ],
-    shard_count = 4,
+    python_version = "PY2",
+    shard_count = 10,
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],  # b/63391119
+    tags = [
+        "no_pip_gpu",  # b/63391119
+        "notap",  # b/124520733
+    ],
     deps = [
         ":estimators",
         ":feature_keys",
@@ -168,7 +174,7 @@ py_test(
         ":input_pipeline",
         ":model",
         ":state_management",
-        "//tensorflow/contrib/timeseries/examples:lstm",
+        "//tensorflow/contrib/timeseries/examples:lstm_main_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -210,6 +216,7 @@ py_test(
     srcs = [
         "model_utils_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip_gpu",  # b/63391119
@@ -245,6 +252,7 @@ py_test(
     srcs = [
         "state_management_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -280,6 +288,7 @@ py_library(
         "input_pipeline.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":feature_keys",
         ":model_utils",
@@ -309,6 +318,7 @@ py_test(
     srcs = [
         "input_pipeline_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",  # b/63709811
@@ -360,9 +370,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_keys",
+        ":math_utils",
         ":model",
         ":model_utils",
-        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -384,6 +395,7 @@ py_test(
     srcs = [
         "ar_model_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -437,6 +449,7 @@ py_test(
     srcs = [
         "math_utils_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip_gpu",  # b/63391119

@@ -1,6 +1,9 @@
 # python_sanity_test.py will complain about invalid or missing entries
 # problematic entries can be commented for temporary whitelisting
 tensorflow
+tensorflow/compiler
+tensorflow/compiler/xla
+tensorflow/compiler/xla/service
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
@@ -10,6 +13,7 @@ tensorflow/core/lib
 tensorflow/core/lib/core
 tensorflow/core/profiler
 tensorflow/core/protobuf
+tensorflow/core/protobuf/tpu
 tensorflow/core/util
 tensorflow/examples
 tensorflow/examples/tutorials
@@ -67,8 +71,9 @@ tensorflow/python/summary/writer
 tensorflow/python/tools
 tensorflow/python/tools/api
 tensorflow/python/tools/api/generator
+tensorflow/python/tpu
 tensorflow/python/training
-tensorflow/python/training/checkpointable
+tensorflow/python/training/tracking
 tensorflow/python/user_ops
 tensorflow/python/util
 tensorflow/python/util/protobuf
@@ -114,11 +119,6 @@ tensorflow/contrib/cloud/python/ops
 tensorflow/contrib/cluster_resolver
 tensorflow/contrib/cluster_resolver/python
 tensorflow/contrib/cluster_resolver/python/training
-tensorflow/contrib/coder
-tensorflow/contrib/coder/kernels
-tensorflow/contrib/coder/ops
-tensorflow/contrib/coder/python
-tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
 tensorflow/contrib/constrained_optimization
 tensorflow/contrib/constrained_optimization/python
@@ -434,7 +434,6 @@ tensorflow/contrib/timeseries/python/timeseries/state_space_models
 tensorflow/contrib/tpu
 tensorflow/contrib/tpu/ops
 tensorflow/contrib/tpu/profiler
-tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/python
 tensorflow/contrib/tpu/python/ops
 tensorflow/contrib/tpu/python/profiler

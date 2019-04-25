@@ -81,7 +81,7 @@ class XlaDeviceTest(xla_test.XLATestCase):
     with self.cached_session() as sess:
       with self.test_scope():
         x = gen_control_flow_ops.control_trigger()
-      sess.run(x)
+      self.evaluate(x)
 
 
 if __name__ == "__main__":

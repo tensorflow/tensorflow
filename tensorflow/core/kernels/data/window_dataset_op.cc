@@ -78,8 +78,8 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          Iterator::Params{this, strings::StrCat(prefix, "::Window")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Window")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -96,6 +96,25 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return strings::StrCat("WindowDatasetOp(", window_size_, window_shift_,
                              window_stride_, drop_remainder_, ")::Dataset");
+    }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      int64 cardinality = 0;
+      if (drop_remainder_) {
+        // Compute rest_elements, the number of elements after the last element
+        // of the initial window. If it is negative, we know that the
+        // cardinality is 0. Otherwise, it will be the number of valid shifts
+        // over the rest_elements.
+        int64 rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+        cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
+      } else {
+        cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
+      }
+      return cardinality;
     }
 
    protected:
@@ -155,6 +174,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
               Status status =
                   input_impl_->GetNext(ctx, &element, end_of_sequence);
               if (!*end_of_sequence) {
+                RecordBufferEnqueue(ctx, element);
                 buffer_.emplace_back(std::move(element), status);
               } else {
                 input_impl_.reset();
@@ -192,8 +212,14 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                 input_impl_.reset();
               }
             }
+            for (size_t i = 0; i < buffer_.size(); ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.clear();
           } else {
+            for (size_t i = 0; i < window_shift; ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.erase(buffer_.begin(), buffer_.begin() + window_shift);
           }
         }

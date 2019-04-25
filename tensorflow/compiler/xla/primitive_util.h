@@ -20,11 +20,18 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace primitive_util {
+
+// Returns the count of significand (mantissa) bits for float datatypes.
+// For non-float datatypes, results in a LOG(FATAL).
+int SignificandWidth(PrimitiveType type);
 
 // The number of exponent bits in a BF16 value.
 const int kBFloat16ExponentBits = 8;
@@ -123,6 +130,11 @@ inline PrimitiveType NativeToPrimitiveType<complex64>() {
   return C64;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<complex128>() {
+  return C128;
+}
+
 bool IsFloatingPointType(PrimitiveType type);
 
 bool IsComplexType(PrimitiveType type);
@@ -138,6 +150,8 @@ bool IsArrayType(PrimitiveType primitive_type);
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
+
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
@@ -221,6 +235,22 @@ template <>
 struct PrimitiveTypeToNative<C64> {
   using type = complex64;
 };
+
+template <>
+struct PrimitiveTypeToNative<C128> {
+  using type = complex128;
+};
+
+// Returns the lower-case name of the given primitive type.
+const string& LowercasePrimitiveTypeName(PrimitiveType s);
+
+// Returns the PrimitiveType matching the given name. The given name is expected
+// to be lower-case.
+StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+
+// Returns true if the given name is a primitive type string (lower-case).
+bool IsPrimitiveTypeName(absl::string_view name);
+
 }  // namespace primitive_util
 }  // namespace xla
 

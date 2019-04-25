@@ -17,17 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
-
 #include <assert.h>
 #include <stdio.h>
+
 #include <cmath>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 // msvc does not support unroll. One could try the loop pragma but we need to
@@ -242,13 +242,12 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::Flat output) {
     const auto config = GetCudaLaunchConfig(num_elements, d);
 
-    TruncatedNormalKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            gen, output.data(), num_batches, samples_per_batch, num_elements,
-            means.data(), means.dimension(0) == 1, stddevs.data(),
-            stddevs.dimension(0) == 1, minvals.data(),
-            minvals.dimension(0) == 1, maxvals.data(),
-            maxvals.dimension(0) == 1, kMaxIterations);
+    TF_CHECK_OK(CudaLaunchKernel(
+        TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,
+        0, d.stream(), gen, output.data(), num_batches, samples_per_batch,
+        num_elements, means.data(), means.dimension(0) == 1, stddevs.data(),
+        stddevs.dimension(0) == 1, minvals.data(), minvals.dimension(0) == 1,
+        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations));
   }
 };
 

@@ -64,7 +64,7 @@ constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
-ABSL_DEPRECATED("Use GCS_BLOCK_SIZE_MB instead.")
+ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that disables the GCS block cache for reads.
 // This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
@@ -73,11 +73,11 @@ constexpr char kReadCacheDisabled[] = "GCS_READ_CACHE_DISABLED";
 // The environment variable that overrides the block size for aligned reads from
 // GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
 constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
-constexpr size_t kDefaultBlockSize = 128 * 1024 * 1024;
+constexpr size_t kDefaultBlockSize = 16 * 1024 * 1024;
 // The environment variable that overrides the max size of the LRU cache of
 // blocks read from GCS. Specified in MB.
 constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
-constexpr size_t kDefaultMaxCacheSize = 2 * kDefaultBlockSize;
+constexpr size_t kDefaultMaxCacheSize = kDefaultBlockSize;
 // The environment variable that overrides the maximum staleness of cached file
 // contents. Once any block of a file reaches this staleness, all cached blocks
 // will be evicted on the next read.
@@ -310,6 +310,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
   GcsRandomAccessFile(const string& filename, ReadFn read_fn)
       : filename_(filename), read_fn_(std::move(read_fn)) {}
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   /// The implementation of reads with an LRU block cache. Thread safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -394,6 +399,10 @@ class GcsWritableFile : public WritableFile {
 
   Status Flush() override { return Sync(); }
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("GCSWritableFile does not support Name()");
+  }
+
   Status Sync() override {
     TF_RETURN_IF_ERROR(CheckWritable());
     if (!sync_needed_) {
@@ -404,6 +413,14 @@ class GcsWritableFile : public WritableFile {
       sync_needed_ = false;
     }
     return status;
+  }
+
+  Status Tell(int64* position) override {
+    *position = outfile_.tellp();
+    if (*position == -1) {
+      return errors::Internal("tellp on the internal temporary file failed");
+    }
+    return Status::OK();
   }
 
  private:
@@ -1433,9 +1450,16 @@ Status GcsFileSystem::CreateDir(const string& dirname) {
                      : errors::NotFound("The specified bucket ", dirname,
                                         " was not found.");
   }
+
+  const string dirname_with_slash = MaybeAppendSlash(dirname);
+
+  if (FileExists(dirname_with_slash).ok()) {
+    return errors::AlreadyExists(dirname);
+  }
+
   // Create a zero-length directory marker object.
   std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(MaybeAppendSlash(dirname), &file));
+  TF_RETURN_IF_ERROR(NewWritableFile(dirname_with_slash, &file));
   TF_RETURN_IF_ERROR(file->Close());
   return Status::OK();
 }

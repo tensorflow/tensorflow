@@ -23,7 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.contrib.estimator.python.estimator import early_stopping
+from tensorflow_estimator.python.estimator import early_stopping
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
@@ -31,4 +31,4 @@ early_stopping.__all__ = [
     s for s in dir(early_stopping) if not s.startswith('__')
 ]
 
-from tensorflow_estimator.contrib.estimator.python.estimator.early_stopping import *
+from tensorflow_estimator.python.estimator.early_stopping import *

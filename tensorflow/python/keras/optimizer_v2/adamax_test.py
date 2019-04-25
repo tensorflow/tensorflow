@@ -44,7 +44,7 @@ def adamax_update_numpy(param,
                         epsilon=1e-8):
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = np.maximum(beta2 * v, np.abs(g_t))
-  param_t = param - (alpha / (1 - beta1**t)) * (m_t / (v_t + epsilon))
+  param_t = param - (alpha / (1 - beta1**(t + 1))) * (m_t / (v_t + epsilon))
   return param_t, m_t, v_t
 
 
@@ -61,8 +61,8 @@ def adamax_sparse_update_numpy(param,
   m_t, v_t, param_t = np.copy(m), np.copy(v), np.copy(param)
   m_t_slice = beta1 * m[indices] + (1 - beta1) * g_t
   v_t_slice = np.maximum(beta2 * v[indices], np.abs(g_t))
-  param_t_slice = param[indices] - ((alpha / (1 - beta1**t)) *
-                                    (m_t_slice / (v_t_slice + epsilon)))
+  param_t_slice = param[indices] - (
+      (alpha / (1 - beta1**(t + 1))) * (m_t_slice / (v_t_slice + epsilon)))
   m_t[indices] = m_t_slice
   v_t[indices] = v_t_slice
   param_t[indices] = param_t_slice
@@ -111,8 +111,8 @@ class AdamaxOptimizerTest(test.TestCase):
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
           update.run()
 
           var0_np, m0, v0 = adamax_sparse_update_numpy(
@@ -124,9 +124,11 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testResourceSparse(self):
     self.doTestSparse(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(force_gpu=test.is_gpu_available()):
@@ -134,12 +136,13 @@ class AdamaxOptimizerTest(test.TestCase):
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])
         indices = constant_op.constant([0, 1], dtype=index_dtype)
-        gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
+        g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adamax.Adamax(3.0)
-        minimize_op = optimizer.minimize(gathered_sum, var_list=[var])
+        minimize_op = optimizer.minimize(g_sum, var_list=[var])
         variables.global_variables_initializer().run()
         minimize_op.run()
 
+  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -190,7 +193,8 @@ class AdamaxOptimizerTest(test.TestCase):
         grads1 = constant_op.constant(grads1_np)
 
         opt = adamax.Adamax()
-        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        if not context.executing_eagerly():
+          update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
         if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
@@ -199,18 +203,71 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 3 steps of Adamax
-        for t in range(1, 4):
-          if not context.executing_eagerly():
-            self.evaluate(update)
-          elif t > 1:
-            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-
+        for t in range(3):
           beta_1_power = get_beta_accumulators(opt, dtype)
           self.assertAllCloseAccordingToType(0.9**(t + 1),
                                              self.evaluate(beta_1_power))
+          if not context.executing_eagerly():
+            self.evaluate(update)
+          else:
+            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
+
+          # Validate updated params
+          self.assertAllCloseAccordingToType(
+              var0_np, self.evaluate(var0), rtol=1e-2)
+          self.assertAllCloseAccordingToType(
+              var1_np, self.evaluate(var1), rtol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  def testBasicWithLearningRateDecay(self):
+    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+      with self.session(graph=ops.Graph()):
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+
+        var0 = resource_variable_ops.ResourceVariable(
+            var0_np, name="var0_%d" % i)
+        var1 = resource_variable_ops.ResourceVariable(
+            var1_np, name="var1_%d" % i)
+
+        grads0 = constant_op.constant(grads0_np)
+        grads1 = constant_op.constant(grads1_np)
+
+        learning_rate = 0.001
+        decay = 0.002
+        opt = adamax.Adamax(learning_rate=learning_rate, decay=decay)
+        if not context.executing_eagerly():
+          update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+        if not context.executing_eagerly():
+          self.evaluate(variables.global_variables_initializer())
+          # Fetch params to validate initial values
+          self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+          self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+        # Run 3 steps of Adamax
+        for t in range(3):
+          beta_1_power = get_beta_accumulators(opt, dtype)
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta_1_power))
+          if not context.executing_eagerly():
+            self.evaluate(update)
+          else:
+            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+          lr = learning_rate / (1 + decay * t)
+
+          var0_np, m0, v0 = adamax_update_numpy(
+              var0_np, grads0_np, t, m0, v0, alpha=lr)
+          var1_np, m1, v1 = adamax_update_numpy(
+              var1_np, grads1_np, t, m1, v1, alpha=lr)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0),
@@ -218,6 +275,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1),
                                              rtol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -243,8 +301,8 @@ class AdamaxOptimizerTest(test.TestCase):
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
           update.run()
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
@@ -254,6 +312,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -280,8 +339,8 @@ class AdamaxOptimizerTest(test.TestCase):
         self.assertAllClose([3.0, 4.0], var1.eval())
 
         # Run 3 steps of intertwined Adamax1 and Adamax2.
-        for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
+        for t in range(3):
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
           if t % 2 == 0:
             update1.run()
           else:
@@ -300,9 +359,30 @@ class AdamaxOptimizerTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(1.)
       opt = adamax.Adamax(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, hyper variables, and two unique slot
-      # variables for v1 and v2 respectively.
-      self.assertEqual(9, len(set(opt.variables())))
+      # There should be iteration, and two unique slot variables for v1 and v2.
+      self.assertEqual(5, len(set(opt.variables())))
+
+  def testConstructAdamaxWithLR(self):
+    opt = adamax.Adamax(lr=1.0)
+    opt_2 = adamax.Adamax(learning_rate=0.1, lr=1.0)
+    opt_3 = adamax.Adamax(learning_rate=0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
+
+  def testConstructAdamaxWithEpsilonValues(self):
+    opt = adamax.Adamax(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adamax.Adamax(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

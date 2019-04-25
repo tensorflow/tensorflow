@@ -44,6 +44,7 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(T), tensor.get());
   memcpy(tensor->data.raw, data.data(), data.size() * sizeof(T));
   return tensor;
@@ -62,6 +63,7 @@ UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
 
   DynamicBuffer b;

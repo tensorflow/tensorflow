@@ -30,13 +30,20 @@ namespace tensorflow {
 
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
+Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
+
+  return Status::OK();
+}
+
+Status XlaCpuDeviceFactory::CreateDevices(
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -46,7 +53,13 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
       compile_on_demand
           ? XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested
           : XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  registration.compile_resource_ops = true;
+  registration.cluster_resource_variable_ops_unsafely = true;
+  registration.cluster_stack_ops = false;
+  registration.cluster_tensor_array_ops = true;
+  registration.cluster_stateful_rng_ops = true;
+  registration.cluster_control_trigger = true;
+  registration.elide_assert_and_checknumerics = true;
+  registration.cluster_variant_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_CPU, registration);
 
   static XlaDeviceOpRegistrations* registrations =
@@ -64,7 +77,18 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
   auto device = absl::make_unique<XlaDevice>(session_options, options);
-  devices->push_back(device.release());
+
+  // Setting GpuDeviceInfo because eager runtime relies on the device
+  // context in tensorflow_gpu_device_info(). Also,
+  // tensorflow_gpu_device_info() == nullptr is used as an IsCPU test.
+  // We need XlaCpuDevice to be treated not as CPU because it allocates
+  // XlaTensors, not regular Tensors.
+  Status status = device->UseGpuDeviceInfo();
+  if (!status.ok()) {
+    errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT);
+    return status;
+  }
+  devices->push_back(std::move(device));
   return Status::OK();
 }
 
@@ -72,9 +96,10 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 12> kAllXlaCpuTypes = {
+constexpr std::array<DataType, 14> kAllXlaCpuTypes = {
     {DT_UINT8, DT_QUINT8, DT_INT8, DT_QINT8, DT_INT32, DT_QINT32, DT_INT64,
-     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BOOL,
+     DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_CPU, XlaCompileOp, kAllXlaCpuTypes);

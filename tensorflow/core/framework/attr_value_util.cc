@@ -54,9 +54,7 @@ uint64 TensorProtoHash(const TensorProto& tp) {
   DCHECK(success);
   TensorProto p;
   tensor.AsProtoTensorContent(&p);
-  string s;
-  SerializeToStringDeterministic(p, &s);
-  return Hash64(s);
+  return DeterministicProtoHash64(p);
 }
 
 // Do not create large tensors in memory, compute hash based on TensorProto
@@ -64,12 +62,8 @@ uint64 TensorProtoHash(const TensorProto& tp) {
 // different hash code if they are defined with different TensorProto
 // representations.
 uint64 FastTensorProtoHash(const TensorProto& tp) {
-  string s;
   if (TensorByteSize(tp) > kMaxAttrValueTensorByteSize) {
-    string s;
-    bool success = SerializeToStringDeterministic(tp, &s);
-    DCHECK(success);
-    return Hash64(s);
+    return DeterministicProtoHash64(tp);
   } else {
     return TensorProtoHash(tp);
   }
@@ -95,29 +89,41 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
   TensorProto rhs_tp;
   rhs_t.AsProtoTensorContent(&rhs_tp);
 
-  string lhs_str, rhs_str;
-  SerializeToStringDeterministic(lhs_tp, &lhs_str);
-  SerializeToStringDeterministic(rhs_tp, &rhs_str);
-
-  return lhs_str == rhs_str;
+  return AreSerializedProtosEqual(lhs_tp, rhs_tp);
 }
 
 // Do not construct large tensors in memory, compare equality using TensorProto
 // string representation. Tensors with identical content potentially can have
 // different tensor proto representation.
 bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
-  if (TensorByteSize(lhs) > kMaxAttrValueTensorByteSize ||
-      TensorByteSize(rhs) > kMaxAttrValueTensorByteSize) {
-    string lhs_str, rhs_str;
-    bool success = lhs.AppendToString(&lhs_str);
-    DCHECK(success);
-    success = rhs.AppendToString(&rhs_str);
-    DCHECK(success);
-
-    return lhs_str == rhs_str;
-  } else {
-    return AreTensorProtosEqual(lhs, rhs);
+  // A small TensorProto can expand into a giant Tensor.  So we avoid
+  // conversion to an actual Tensor if we can quickly rule out equality
+  // by comparing the Tensor size since different sized Tensors are definitely
+  // different.
+  const int64 lhs_tensor_bytes = TensorByteSize(lhs);
+  const int64 rhs_tensor_bytes = TensorByteSize(rhs);
+  if (lhs_tensor_bytes != rhs_tensor_bytes) {
+    return false;
   }
+
+  // If the tensor is very large, we'll only compare the proto representation
+  // (even though this may miss some equivalent tensors whose actual tensor
+  // values are the same but which are described by different TensorProtos).
+  if (lhs_tensor_bytes > kMaxAttrValueTensorByteSize) {
+    return AreSerializedProtosEqual(lhs, rhs);
+  }
+
+  // If the TensorProto representation expands into a much bigger Tensor,
+  // we have a fast-path that first compares the protos.
+  const int64 lhs_proto_bytes = lhs.ByteSizeLong();
+  const bool large_expansion =
+      (lhs_proto_bytes < 512 && lhs_tensor_bytes > 4096);
+  if (large_expansion && AreSerializedProtosEqual(lhs, rhs)) {
+    return true;
+  }
+
+  // Fall back to the general code in AreTensorProtosEqual.
+  return AreTensorProtosEqual(lhs, rhs);
 }
 
 using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
@@ -139,9 +145,7 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   }
 
   // If `a` is not a tensor or func, get a hash of serialized string.
-  string s;
-  SerializeToStringDeterministic(a, &s);
-  return Hash64(s);
+  return DeterministicProtoHash64(a);
 }
 
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
@@ -175,10 +179,7 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
 
   // All other fields in AttrValue have deterministic representations.
   // It is safe to compare their serialized strings.
-  string a_str, b_str;
-  SerializeToStringDeterministic(a, &a_str);
-  SerializeToStringDeterministic(b, &b_str);
-  return a_str == b_str;
+  return AreSerializedProtosEqual(a, b);
 }
 
 string SummarizeString(const string& str) {

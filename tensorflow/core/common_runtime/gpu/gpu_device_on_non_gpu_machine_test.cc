@@ -33,7 +33,7 @@ namespace {
 
 TEST(GPUDeviceOnNonGPUMachineTest, CreateGPUDevicesOnNonGPUMachine) {
   SessionOptions opts;
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, "/job:localhost/replica:0/task:0", &devices));
   EXPECT_TRUE(devices.empty());

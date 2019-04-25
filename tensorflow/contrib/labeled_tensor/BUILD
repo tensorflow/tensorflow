@@ -69,6 +69,7 @@ py_test(
     srcs = [
         "python/ops/core_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
@@ -106,6 +107,7 @@ py_test(
     srcs = [
         "python/ops/io_ops_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -136,6 +138,7 @@ py_test(
     srcs = [
         "python/ops/nn_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -155,7 +158,7 @@ py_library(
         ":core",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:numerics",
         "//tensorflow/python:random_ops",
@@ -171,6 +174,7 @@ py_test(
     srcs = [
         "python/ops/ops_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -205,6 +209,7 @@ py_test(
     srcs = [
         "python/ops/sugar_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

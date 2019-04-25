@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
@@ -26,11 +27,19 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
+
+  @classmethod
+  def setUpClass(cls):
+    if tf2.enabled():
+      dataset_ops.Dataset = dataset_ops.DatasetV2
+    else:
+      dataset_ops.Dataset = dataset_ops.DatasetV1
 
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
@@ -45,8 +54,8 @@ class DatasetTestBase(test.TestCase):
     ```python
     # In both graph and eager modes
     dataset = ...
-    nxt = self.getNext(dataset)
-    result = self.evaluate(nxt())
+    get_next = self.getNext(dataset)
+    result = self.evaluate(get_next())
     ```
 
     Args:
@@ -55,38 +64,66 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
     Returns:
-      A callable that returns the next element of `dataset`.
+      A callable that returns the next element of `dataset`. Any `TensorArray`
+      objects `dataset` outputs are stacked.
     """
+    def ta_wrapper(gn):
+      def _wrapper():
+        r = gn()
+        if isinstance(r, tensor_array_ops.TensorArray):
+          return r.stack()
+        else:
+          return r
+      return _wrapper
     if context.executing_eagerly():
-      iterator = dataset.__iter__()
-      return iterator._next_internal  # pylint: disable=protected-access
+      iterator = iter(dataset)
+      return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:
       if requires_initialization:
-        iterator = dataset.make_initializable_iterator()
+        iterator = dataset_ops.make_initializable_iterator(dataset)
         self.evaluate(iterator.initializer)
       else:
-        iterator = dataset.make_one_shot_iterator()
-      return iterator.get_next
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+      get_next = iterator.get_next()
+      return ta_wrapper(lambda: get_next)
 
-  def _compareOutputToExpected(self, result_values, expected_values):
+  def _compareOutputToExpected(self, result_values, expected_values,
+                               assert_items_equal):
+    if assert_items_equal:
+      # TODO(shivaniagrawal): add support for nested elements containing sparse
+      # tensors when needed.
+      self.assertItemsEqual(result_values, expected_values)
+      return
     for i in range(len(result_values)):
-      if sparse_tensor.is_sparse(result_values[i]):
-        self.assertSparseValuesEqual(result_values[i], expected_values[i])
-      else:
-        self.assertAllEqual(result_values[i], expected_values[i])
+      nest.assert_same_structure(result_values[i], expected_values[i])
+      for result_value, expected_value in zip(
+          nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
+        if sparse_tensor.is_sparse(result_value):
+          self.assertSparseValuesEqual(result_value, expected_value)
+        else:
+          self.assertAllEqual(
+              result_value,
+              expected_value,
+              msg=("Result value: {}.  Expected value: {}"
+                   .format(result_value, expected_value)))
 
   def assertDatasetProduces(self,
                             dataset,
                             expected_output=None,
+                            expected_shapes=None,
                             expected_error=None,
                             requires_initialization=False,
-                            num_test_iterations=2):
+                            num_test_iterations=1,
+                            assert_items_equal=False,
+                            expected_error_iter=1):
     """Asserts that a dataset produces the expected output / error.
 
     Args:
       dataset: A dataset to check for the expected output / error.
       expected_output: A list of elements that the dataset is expected to
         produce.
+      expected_shapes: A list of TensorShapes which is expected to match
+        output_shapes of dataset.
       expected_error: A tuple `(type, predicate)` identifying the expected error
         `dataset` should raise. The `type` should match the expected exception
         type, while `predicate` should either be 1) a unary function that inputs
@@ -98,6 +135,10 @@ class DatasetTestBase(test.TestCase):
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
         to 2.
+      assert_items_equal: Tests expected_output has (only) the same elements
+        regardless of order.
+      expected_error_iter: How many times to iterate before expecting an error,
+        if an error is expected.
     """
     self.assertTrue(
         expected_error is not None or expected_output is not None,
@@ -111,8 +152,12 @@ class DatasetTestBase(test.TestCase):
                                                expected_error[1]):
         get_next = self.getNext(
             dataset, requires_initialization=requires_initialization)
-        self.evaluate(get_next())
+        for _ in range(expected_error_iter):
+          self.evaluate(get_next())
       return
+    if expected_shapes:
+      self.assertEqual(expected_shapes,
+                       dataset_ops.get_legacy_output_shapes(dataset))
     self.assertGreater(num_test_iterations, 0)
     for _ in range(num_test_iterations):
       get_next = self.getNext(
@@ -120,7 +165,7 @@ class DatasetTestBase(test.TestCase):
       result = []
       for _ in range(len(expected_output)):
         result.append(self.evaluate(get_next()))
-      self._compareOutputToExpected(result, expected_output)
+      self._compareOutputToExpected(result, expected_output, assert_items_equal)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())
       with self.assertRaises(errors.OutOfRangeError):
@@ -128,12 +173,16 @@ class DatasetTestBase(test.TestCase):
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
-    self.assertEqual(dataset1.output_types, dataset2.output_types)
-    self.assertEqual(dataset1.output_classes, dataset2.output_classes)
-    flattened_types = nest.flatten(dataset1.output_types)
+    self.assertTrue(dataset_ops.get_structure(dataset1).is_compatible_with(
+        dataset_ops.get_structure(dataset2)))
+    self.assertTrue(dataset_ops.get_structure(dataset2).is_compatible_with(
+        dataset_ops.get_structure(dataset1)))
+    flattened_types = nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset1))
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
+
     while True:
       try:
         op1 = self.evaluate(next1())
@@ -160,6 +209,8 @@ class DatasetTestBase(test.TestCase):
                                    exception_class,
                                    replacements=None):
     """Checks that datasets raise the same error on the first get_next call."""
+    if replacements is None:
+      replacements = []
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
     try:

@@ -17,6 +17,10 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
+#ifdef DOTPROD_BENCHMARKS
+#include "testing/base/public/benchmark.h"
+#endif  // DOTPROD_BENCHMARKS
+
 namespace tflite {
 namespace tensor_utils {
 
@@ -143,12 +147,228 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
                                                -1., 3., 7., 3., 23., 3.})));
 }
 
+struct MatrixVectorData {
+  // Contains dense parameters.
+  std::vector<int8_t> matrix;
+
+  // Like matrix, but with about half of the parameters set to zero.
+  // Use this to create golden output for sparse matrix tests.
+  std::vector<int8_t> zeroed_matrix;
+
+  // zeroed_matrix described in sparse form.
+  std::vector<int8_t> sparse_matrix;
+  std::vector<uint8_t> ledger;
+
+  std::vector<int8_t> vectors;
+  std::vector<float> scale_factors;
+  std::vector<float> results;
+
+  int rows;
+  int cols;
+  int batch;
+};
+
+MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
+                                       bool negative = false) {
+  MatrixVectorData data;
+  data.rows = rows;
+  data.cols = cols;
+  data.batch = batch;
+
+  for (int i = 0; i < rows * cols; i++) {
+    int sign = 1;
+    if ((i % 3) == 0 && negative) sign = -1;
+    data.matrix.push_back(sign * (i % 70));
+  }
+  for (int i = 0; i < cols * batch; i++) {
+    int sign = 1;
+    if ((i % 5) == 0 && negative) sign = -1;
+    data.vectors.push_back(sign * (i % 50));
+  }
+  data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
+  data.results.resize(rows * batch, 0);
+
+  data.zeroed_matrix = data.matrix;
+
+  // Make a sparsification ledger.
+  for (int i = 0; i < rows; i++) {
+    int max_chunks = cols / 16;
+    int selected_chunks = (max_chunks / 2);
+    bool row_is_odd = (i % 2) > 0;
+    bool max_chunks_is_odd = (max_chunks % 2) > 0;
+
+    data.ledger.push_back(selected_chunks);
+    if (max_chunks_is_odd && row_is_odd) {
+      selected_chunks++;
+    }
+
+    // In odd rows, use odd chunk indexes.
+    // In even rows, use even chunk indexes.
+    for (int j = 0; j < max_chunks; j++) {
+      const int chunk_start = i * cols + (j * 16);
+      const int chunk_end = i * cols + (j * 16) + 16;
+      if ((j % 2) == (i % 2)) {
+        // Copy this chunk into the sparse matrix.
+        data.ledger.push_back(j);
+        for (int k = chunk_start; k < chunk_end; k++) {
+          data.sparse_matrix.push_back(data.matrix[k]);
+        }
+      } else {
+        // Zero this part out of zeroed_matrix.
+        for (int k = chunk_start; k < chunk_end; k++) {
+          data.zeroed_matrix[k] = 0;
+        }
+      }
+    }
+  }
+  return data;
+}
+
+std::vector<float> TestDotprodMatrixBatchVectorMultiply(int rows, int cols,
+                                                        int batch,
+                                                        bool negative = false) {
+  MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
+
+  // All partial sums in this computation are small enough to fit in the
+  // mantissa of a float, and the scale factors are all integers, so we expect
+  // an exact result.
+  MatrixBatchVectorMultiplyAccumulate(
+      data.matrix.data(), rows, cols, data.vectors.data(),
+      data.scale_factors.data(), batch, &data.results[0], 1);
+  return data.results;
+}
+
+std::vector<float> TestSparseDotprodMatrixBatchVectorMultiply(
+    int rows, int cols, int batch, bool negative = false) {
+  MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
+  SparseMatrixBatchVectorMultiplyAccumulate(
+      data.sparse_matrix.data(), data.ledger.data(), rows, cols,
+      data.vectors.data(), data.scale_factors.data(), batch, &data.results[0],
+      1);
+  return data.results;
+}
+
+TEST(uKernels, DotprodMatrixBatchVectorMultiplyAccumulateTest) {
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 16, 1),
+              testing::ElementsAre(1240, 3160, 5080, 7000));
+
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 32, 2),
+              testing::ElementsAre(10416, 26288, 8490, 23312, 18276, 70756,
+                                   37416, 60916));
+
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 32, 3),
+              testing::ElementsAre(10416, 26288, 8490, 23312, 18276, 70756,
+                                   37416, 60916, 52080, 142704, 55878, 125712));
+
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(8, 1024, 3),
+              testing::ElementsAreArray(
+                  {841094,  853168,  866642,  840286,  860760,  862754,
+                   843678,  872552,  1724476, 1769072, 1747588, 1738844,
+                   1758240, 1742916, 1761612, 1755808, 2506896, 2564262,
+                   2629188, 2515824, 2598390, 2569236, 2537352, 2645118}));
+
+  const bool kNegative = true;
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 64, 1, kNegative),
+              testing::ElementsAre(13696, 6904, 7764, 11806));
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative),
+      testing::ElementsAre(3436, 3522, 1590, 6972, 2516, 20520, 456, 10628));
+}
+
+TEST(uKernels, DotprodMatrixBatchFourVectorMultiplyAccumulateDotprodTest) {
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(2, 16, 4),
+              testing::ElementsAreArray(
+                  {1240, 3160, 6320, 18352, 15240, 45576, 4200, 16232}));
+  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(2, 64, 4),
+              testing::ElementsAreArray({45794, 38948, 88536, 84252, 157626,
+                                         165312, 209864, 246128}));
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(2, 64, 8),
+      testing::ElementsAreArray({45794, 38948, 88536, 84252, 157626, 165312,
+                                 209864, 246128, 219700, 195550, 279684, 278928,
+                                 413616, 445662, 374896, 365952}));
+
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 64, 8),
+      testing::ElementsAreArray(
+          {45794,  38948,  34622,  32816,  88536,  84252,  85008,  90804,
+           157626, 165312, 180558, 203364, 209864, 246128, 236472, 208896,
+           219700, 195550, 184000, 185050, 279684, 278928, 293292, 322776,
+           413616, 445662, 495348, 513674, 374896, 365952, 321168, 296544}));
+
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(16, 1024, 4),
+      testing::ElementsAreArray(
+          {841094,  853168,  866642,  840286,  860760,  862754,  843678,
+           872552,  837586,  851270,  877414,  834188,  863062,  857846,
+           841780,  879054,  1724476, 1769072, 1747588, 1738844, 1758240,
+           1742916, 1761612, 1755808, 1737684, 1750780, 1747356, 1754152,
+           1748348, 1753324, 1743320, 1754316, 2506896, 2564262, 2629188,
+           2515824, 2598390, 2569236, 2537352, 2645118, 2508444, 2571480,
+           2610576, 2510442, 2618208, 2566584, 2544570, 2614536, 3458904,
+           3502688, 3474792, 3505976, 3499360, 3488264, 3485848, 3512832,
+           3500616, 3482520, 3489624, 3469008, 3495992, 3524376, 3465680,
+           3526264}));
+
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 128, 4),
+      testing::ElementsAreArray({87920, 80024, 92288, 103712, 228148, 224820,
+                                 233812, 213124, 271284, 271788, 332772, 328236,
+                                 419328, 431328, 411968, 417248}));
+
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 128, 8),
+      testing::ElementsAreArray(
+          {87920,  80024,  92288,  103712, 228148, 224820, 233812, 213124,
+           271284, 271788, 332772, 328236, 419328, 431328, 411968, 417248,
+           482680, 523840, 560800, 593560, 563940, 609924, 566868, 644772,
+           743708, 857780, 818972, 823284, 708384, 695008, 730912, 872096}));
+
+  const bool kNegative = true;
+  EXPECT_THAT(TestDotprodMatrixBatchVectorMultiply(1, 16, 1, kNegative),
+              testing::ElementsAre(450));
+  EXPECT_THAT(TestDotprodMatrixBatchVectorMultiply(2, 64, 8, kNegative),
+              testing::ElementsAreArray({13696, 6904, 9952, 12368, 22848, 61632,
+                                         40424, 46776, 57630, 38670, 62976,
+                                         49824, 39032, 71988, 60128, 148992}));
+
+  std::vector<float> results =
+      TestDotprodMatrixBatchVectorMultiply(256, 1024, 8);
+  int64_t sum = 0;
+  for (int i = 0; i < results.size(); i++) {
+    sum += static_cast<int64_t>(results[i]);
+  }
+  EXPECT_EQ(7980076336, sum);
+}
+
+TEST(uKernels, DotprodSparseMatrixBatchVectorMultiplyAccumulate) {
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(1, 16, 1),
+              testing::ElementsAre(0));
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(1, 32, 1),
+              testing::ElementsAre(1240));
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(1, 64, 1),
+              testing::ElementsAre(26544));
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(1, 64, 2),
+              testing::ElementsAre(26544, 24344));
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(4, 64, 4),
+              testing::ElementsAreArray(
+                  {26544, 15866, 22140, 11408, 24344, 53248, 42704, 39900,
+                   48000, 94146, 101892, 81876, 87712, 105160, 148304, 75936}));
+
+  const bool kNegative = true;
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(1, 64, 1, kNegative),
+              testing::ElementsAre(8764));
+  EXPECT_THAT(TestSparseDotprodMatrixBatchVectorMultiply(2, 64, 2, kNegative),
+              testing::ElementsAre(8764, 5196, 7204, 11148));
+}
+
 #ifdef __ANDROID__
 TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   // Note we use 29 columns as this exercises all the neon kernel: the
   // 16-block SIMD code, the 8-block postamble, and the leftover postamble.
   const int a_rows = 4, a_cols = 29;
   const int kWeightsPerUint32 = 4;
+  /* clang-format off */
   const float a_float_data[] = {
       /* 1st row */
       1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
@@ -174,126 +394,18 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   SymmetricQuantizeFloats(a_float_data, a_rows * a_cols, a_int8_data, &a_min,
                           &a_max, &scaling_factor_a);
   const int8_t expected_a_int8_data[] = {
-      /* 1st row */
-      5,
-      10,
-      15,
-      20,
-      25,
-      30,
-      35,
-      40,
-      44,
-      45,
-      50,
-      54,
-      59,
-      64,
-      68,
-      73,
-      77,
-      82,
-      86,
-      91,
-      95,
-      100,
-      104,
-      109,
-      113,
-      118,
-      122,
-      127,
-      0,
-      /* 2nd row */
-      -5,
-      -10,
-      -15,
-      -20,
-      -25,
-      -30,
-      -35,
-      -40,
-      -44,
-      -45,
-      -50,
-      -54,
-      -59,
-      -64,
-      -68,
-      -73,
-      -77,
-      -82,
-      -86,
-      -91,
-      -95,
-      -100,
-      -104,
-      -109,
-      -113,
-      -118,
-      -122,
-      -127,
-      0,
-      /* 3rd row */
-      5,
-      -10,
-      15,
-      -20,
-      25,
-      -30,
-      35,
-      -40,
-      44,
-      -45,
-      50,
-      -54,
-      59,
-      -64,
-      68,
-      -73,
-      77,
-      -82,
-      86,
-      -91,
-      95,
-      -100,
-      104,
-      -109,
-      113,
-      -118,
-      122,
-      -127,
-      0,
-      /* 4th row */
-      -5,
-      10,
-      -15,
-      20,
-      -25,
-      30,
-      -35,
-      40,
-      -44,
-      45,
-      -50,
-      54,
-      -59,
-      64,
-      -68,
-      73,
-      -77,
-      82,
-      -86,
-      91,
-      -95,
-      100,
-      -104,
-      109,
-      -113,
-      118,
-      -122,
-      127,
-      0,
+    /* 1st row */
+    5, 10, 15, 20, 25, 30, 35, 40, 44, 45, 50, 54, 59, 64, 68, 73, 77, 82, 86,
+    91, 95, 100, 104, 109, 113, 118, 122, 127, 0,
+    /* 2nd row */
+    -5, -10, -15, -20, -25, -30, -35, -40, -44, -45, -50, -54, -59, -64, -68,
+    -73, -77, -82, -86, -91, -95, -100, -104, -109, -113, -118, -122, -127, 0,
+    /* 3rd row */
+    5, -10, 15, -20, 25, -30, 35, -40, 44, -45, 50, -54, 59, -64, 68, -73, 77,
+    -82, 86, -91, 95, -100, 104, -109, 113, -118, 122, -127, 0,
+    /* 4th row */
+    -5, 10, -15, 20, -25, 30, -35, 40, -44, 45, -50, 54, -59, 64, -68, 73, -77,
+    82, -86, 91, -95, 100, -104, 109, -113, 118, -122, 127, 0,
   };
   for (int i = 0; i < a_rows * a_cols; ++i) {
     EXPECT_EQ(expected_a_int8_data[i], a_int8_data[i]);
@@ -301,66 +413,14 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
 
   const int b_rows = 29, b_cols = 1, batches = 2;
   const float b_float_data[] = {
-      /* batch 1 */
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      -1.0,
-      1.0,
-      /* batch 2 */
-      2.5,
-      -2.1,
-      3.0,
-      -1.3,
-      1.3,
-      -1.1,
-      2.0,
-      -1.7,
-      1.9,
-      -1.5,
-      0.5,
-      -0.7,
-      0.8,
-      -0.3,
-      2.8,
-      -2.8,
-      1.1,
-      -2.3,
-      1.9,
-      -1.9,
-      2.1,
-      -0.5,
-      2.4,
-      -0.1,
-      1.0,
-      -2.5,
-      0.7,
-      -1.9,
-      0.2,
+    /* batch 1 */
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    1.0,
+    /* batch 2 */
+    2.5, -2.1, 3.0, -1.3, 1.3, -1.1, 2.0, -1.7, 1.9, -1.5, 0.5, -0.7, 0.8, -0.3,
+    2.8, -2.8, 1.1, -2.3, 1.9, -1.9, 2.1, -0.5, 2.4, -0.1, 1.0, -2.5, 0.7, -1.9,
+    0.2,
   };
 
   // Quantized values of B:
@@ -374,67 +434,15 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
                           &scaling_factor_b[1]);
 
   const int8_t expected_b_int8_data[] = {
-      /* batch 1 */
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      -127,
-      127,
-      /* batch 2 */
-      106,
-      -89,
-      127,
-      -55,
-      55,
-      -47,
-      85,
-      -72,
-      80,
-      -64,
-      21,
-      -30,
-      34,
-      -13,
-      119,
-      -119,
-      47,
-      -97,
-      80,
-      -80,
-      89,
-      -21,
-      102,
-      -4,
-      42,
-      -106,
-      30,
-      -80,
-      8,
+    /* batch 1 */
+    127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127,
+    127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127,
+    127,
+    /* batch 2 */
+    106, -89, 127, -55, 55, -47, 85, -72, 80, -64, 21, -30, 34, -13, 119, -119,
+    47, -97, 80, -80, 89, -21, 102, -4, 42, -106, 30, -80, 8,
   };
+  /* clang-format on */
   for (int i = 0; i < b_rows * b_cols * batches; ++i) {
     EXPECT_EQ(expected_b_int8_data[i], b_int8_data[i]);
   }
@@ -465,6 +473,176 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   }
 
   aligned_free(a_int8_data);
+}
+#endif  // __ANDROID__
+
+TEST(uKernels, SparseMatrixBatchVectorMultiplyAccumulateTest) {
+  const int kRow = 4;
+  const int kCol = 48;
+  const int kBatch = 2;
+  /* clang-format off */
+  float matrix[kRow * kCol] = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38,
+      39.39, 40.40, 41.41, 42.42, 43.43, 44.44, 0, 0, 0, 0,
+      /* 2nd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24,
+      -25.25, -26.26, -27.27, -28.28, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0,
+      /* 3rd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25,
+      -26.26, 27.27, -28.28, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -33.33, 34.34, -35.35, 36.36, -37.37,
+      38.38, -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0, 0, 0, 0};
+
+  // BCSR format of the above matrix.
+  float matrix_values[] = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38, 39.39,
+      40.40, 41.41, 42.42, 43.43, 44.44, 0, 0, 0, 0,
+      /* 2nd row */
+      -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24, -25.25,
+      -26.26, -27.27, -28.28, 0, 0.0, 0.0, 0.0,
+      /* 3rd row */
+      17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25, -26.26,
+      27.27, -28.28, 0, 0.0, 0.0, 0.0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, -33.33, 34.34, -35.35, 36.36, -37.37, 38.38,
+      -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0, 0, 0, 0};
+  uint8_t ledger[] = {
+      2, 0,  2,  // 1st row
+      1, 1,      // 2nd row
+      1, 1,      // 3rd row
+      2, 0,  2   // 4th row
+  };
+
+  float vector[kBatch * kCol] = {
+    /* 1st batch */
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+    /* 2nd batch */
+    2.5, 0.0, -2.1, 0.0, 3.0, 0.0, -1.3, 0.0, 1.3, 0.0, -1.1, 0.0, 2.0, 0.0,
+    -1.7, 0.0, 1.9, 0.0, -1.5, 0.0, 0.5, 0.0, -0.7, 0.0, 0.8, 0.0, -0.3, 0.0,
+    2.8, 0.0, -2.8, 0.0, 1.1, -2.3, 1.9, -1.9, 2.1, -0.5, 2.4, -0.1, 1.0, -2.5,
+    0.7, -1.9, 0.2, 0.0, 0.1, 0.2,
+  };
+  /* clang-format on */
+
+  std::vector<float> dense_output(kRow * kBatch, 0.0);
+  MatrixBatchVectorMultiplyAccumulate(matrix, kRow, kCol, vector, kBatch,
+                                      dense_output.data(), /*result_stride=*/1);
+
+  EXPECT_THAT(dense_output, ElementsAreArray(ArrayFloatNear(
+                                {-13.69, 6.06001, 272.7, -608.03, -9.66602,
+                                 -10.201, 10.201, -713.897949},
+                                1e-4)));
+
+  std::vector<float> sparse_output(kRow * kBatch, 0.0);
+  SparseMatrixBatchVectorMultiplyAccumulate(
+      matrix_values, ledger, kRow, kCol, vector, kBatch, sparse_output.data(),
+      /*result_stride=*/1);
+
+  EXPECT_THAT(sparse_output,
+              ElementsAreArray(ArrayFloatNear(dense_output, 1e-4)));
+}
+
+#ifdef __ANDROID__
+TEST(uKernels,
+     SparseMatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
+  const int kRow = 4;
+  const int kCol = 48;
+  const int kBatch = 2;
+  /* clang-format off */
+  const int8_t quantized_matrix[] = {
+      /* 1st row */
+      3, 6, 9, 13, 16, 19, 22, 25, 28, 29, 32, 35, 38, 40, 43, 46, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 98, 101, 104, 107, 110, 113, 115,
+      118, 121, 124, 127, 0, 0, 0, 0,
+      /* 2nd row */
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -49, -52, -55, -58, -61,
+      -64, -66, -69, -72, -75, -78, -81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0,
+      /* 3rd row */
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, -52, 55, -58, 61, -64,
+      66, -69, 72, -75, 78, -81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0,
+      /* 4th row */
+      -3, 6, -9, 13, -16, 19, -22, 25, -28, 29, -32, 35, -38, 40, -43, 46, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -95, 98, -101, 104, -107, 110,
+      -113, 115, -118, 121, -124, 127, 0, 0, 0, 0,
+  };
+  const int8_t quantized_matrix_values[] = {
+      /* 1st row */
+      3, 6, 9, 13, 16, 19, 22, 25, 28, 29, 32, 35, 38, 40, 43, 46, 95, 98, 101,
+      104, 107, 110, 113, 115, 118, 121, 124, 127, 0, 0, 0, 0,
+      /* 2nd row */
+      -49, -52, -55, -58, -61, -64, -66, -69, -72, -75, -78, -81, 0, 0, 0, 0,
+      /* 3rd row */
+      49, -52, 55, -58, 61, -64, 66, -69, 72, -75, 78, -81, 0, 0, 0, 0,
+      /* 4th row */
+      -3, 6, -9, 13, -16, 19, -22, 25, -28, 29, -32, 35, -38, 40, -43, 46, -95,
+      98, -101, 104, -107, 110, -113, 115, -118, 121, -124, 127, 0, 0, 0, 0,
+  };
+  uint8_t ledger[] = {
+      2, 0,  2,  // 1st row
+      1, 1,      // 2nd row
+      1, 1,      // 3rd row
+      2, 0,  2   // 4th row
+  };
+
+  float matrix_scaling_factor = 0.349921;
+
+  const int8_t quantized_vector[] = {
+      /* 1st batch */
+      127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127,
+      -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127,
+      127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127,
+      -127, 127, -127, 127, -127, 127, -127, 127, -127,
+      /* 2nd batch */
+      106, 0, -89, 0, 127, 0, -55, 0, 55, 0, -47, 0, 85, 0, -72, 0, 80, 0,
+      -64, 0, 21, 0, -30, 0, 34, 0, -13, 0, 119, 0, -119, 0, 47, -97, 80, -80,
+      89, -21, 102, -4, 42, -106, 30, -80, 8, 1, 2, 3,
+  };
+  float vector_scaling_factor[2] = {0.00787402, 0.023622};
+
+  /* clang-format on */
+  float result_scaling_factor[2] = {
+      matrix_scaling_factor * vector_scaling_factor[0],
+      matrix_scaling_factor * vector_scaling_factor[1],
+  };
+  std::vector<float> dense_output(kRow * kBatch, 0.0);
+  MatrixBatchVectorMultiplyAccumulate(quantized_matrix, kRow, kCol,
+                                      quantized_vector, result_scaling_factor,
+                                      kBatch, dense_output.data(),
+                                      /*result_stride=*/1);
+
+  EXPECT_THAT(dense_output,
+              ElementsAreArray(ArrayFloatNear(
+                  {-13.646927, 6.298582, 272.938538, -607.813110, -6.637464,
+                   -9.381721, 9.381721, -713.845642})));
+
+  std::vector<float> sparse_output(kRow * kBatch, 0.0);
+  SparseMatrixBatchVectorMultiplyAccumulate(
+      quantized_matrix_values, ledger, kRow, kCol, quantized_vector,
+      result_scaling_factor, kBatch, sparse_output.data(),
+      /*result_stride=*/1);
+
+  EXPECT_THAT(sparse_output,
+              ElementsAreArray(ArrayFloatNear(
+                  {-13.646927, 6.298582, 272.938538, -607.813110, -6.637464,
+                   -9.381721, 9.381721, -713.845642})));
 }
 #endif  // __ANDROID__
 
@@ -804,3 +982,109 @@ TEST(uKernels, MeanStddevNormalizationSmallValue) {
 
 }  // namespace tensor_utils
 }  // namespace tflite
+
+#ifdef DOTPROD_BENCHMARKS
+
+// Compile with --copt="-DGOOGLE_COMMANDLINEFLAGS_FULL_API=1" and
+// --copt="-DDOTPROD_BENCHMARKS"
+// Run with --benchmarks=all
+void BM_DotprodBatchOneMultiply(benchmark::State& state) {
+  const int rows = state.range(0);
+  const int cols = state.range(1);
+  const int batch = state.range(2);
+
+  tflite::tensor_utils::MatrixVectorData data =
+      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  for (auto _ : state) {
+    for (int i = 0; i < batch; i++) {
+      tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+          data.matrix.data(), data.rows, data.cols,
+          data.vectors.data() + (data.cols * i), data.scale_factors.data(), 1,
+          &data.results[0], 1);
+      testing::DoNotOptimize(data.results[2]);
+    }
+  }
+}
+BENCHMARK(BM_DotprodBatchOneMultiply)
+    ->Args({16, 16, 1})
+    ->Args({16, 16, 4})
+    ->Args({32, 32, 1})
+    ->Args({32, 32, 4})
+    ->Args({64, 64, 1})
+    ->Args({64, 64, 4})
+    ->Args({128, 128, 1})
+    ->Args({128, 128, 4})
+    ->Args({992, 992, 1})
+    ->Args({992, 992, 8})
+    ->Args({1024, 1024, 1})
+    ->Args({1024, 1024, 4})
+    ->Args({1024, 1024, 8})
+    ->Args({640, 2048, 1})
+    ->Args({640, 2048, 4})
+    ->Args({640, 2048, 8})
+    ->Args({2048, 2048, 1})
+    ->Args({2048, 2048, 8});
+
+void BM_DotprodBatchFourMultiply(benchmark::State& state) {
+  const int rows = state.range(0);
+  const int cols = state.range(1);
+  const int batch = state.range(2);
+
+  tflite::tensor_utils::MatrixVectorData data =
+      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  for (auto _ : state) {
+    tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        data.matrix.data(), data.rows, data.cols, data.vectors.data(),
+        data.scale_factors.data(), data.batch, &data.results[0], 1);
+    testing::DoNotOptimize(data.results[2]);
+  }
+}
+BENCHMARK(BM_DotprodBatchFourMultiply)
+    ->Args({16, 16, 4})
+    ->Args({32, 32, 4})
+    ->Args({64, 64, 4})
+    ->Args({64, 256, 64})
+    ->Args({64, 256, 256})
+    ->Args({64, 256, 1024})
+    ->Args({64, 256, 12544})
+    ->Args({128, 128, 4})
+    ->Args({640, 640, 4})
+    ->Args({992, 992, 8})
+    ->Args({1024, 1024, 4})
+    ->Args({1024, 1024, 8})
+    ->Args({1024, 1024, 256})
+    ->Args({640, 2048, 4})
+    ->Args({640, 2048, 8})
+    ->Args({2048, 2048, 4})
+    ->Args({2048, 2048, 8});
+
+void BM_DotprodSparseMultiply(benchmark::State& state) {
+  const int rows = state.range(0);
+  const int cols = state.range(1);
+  const int batch = state.range(2);
+
+  tflite::tensor_utils::MatrixVectorData data =
+      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  for (auto _ : state) {
+    tflite::tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
+        data.sparse_matrix.data(), data.ledger.data(), data.rows, data.cols,
+        data.vectors.data(), data.scale_factors.data(), data.batch,
+        &data.results[0], 1);
+    testing::DoNotOptimize(data.results[2]);
+  }
+}
+BENCHMARK(BM_DotprodSparseMultiply)
+    ->Args({128, 128, 1})
+    ->Args({128, 128, 4})
+    ->Args({640, 640, 4})
+    ->Args({992, 992, 8})
+    ->Args({1024, 1024, 1})
+    ->Args({1024, 1024, 4})
+    ->Args({1024, 1024, 8})
+    ->Args({640, 2048, 1})
+    ->Args({640, 2048, 4})
+    ->Args({640, 2048, 8})
+    ->Args({2048, 2048, 1})
+    ->Args({2048, 2048, 8});
+
+#endif  // DOTPROD_BENCHMARKS

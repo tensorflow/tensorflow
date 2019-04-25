@@ -23,6 +23,7 @@ import os.path
 import numpy as np
 
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -40,10 +41,11 @@ class DecodeImageOpTest(test.TestCase):
       bmp0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(bmp0)
       image1 = image_ops.decode_bmp(bmp0)
-      bmp0, image0, image1 = sess.run([bmp0, image0, image1])
+      bmp0, image0, image1 = self.evaluate([bmp0, image0, image1])
       self.assertEqual(len(bmp0), 4194)
       self.assertAllEqual(image0, image1)
 
+  @test_util.run_deprecated_v1
   def testGif(self):
     # Read some real GIFs
     path = os.path.join(prefix_path, "gif", "testdata", "scan.gif")
@@ -56,7 +58,7 @@ class DecodeImageOpTest(test.TestCase):
       gif0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(gif0)
       image1 = image_ops.decode_gif(gif0)
-      gif0, image0, image1 = sess.run([gif0, image0, image1])
+      gif0, image0, image1 = self.evaluate([gif0, image0, image1])
 
       self.assertEqual(image0.shape, shape)
       self.assertAllEqual(image0, image1)
@@ -78,6 +80,7 @@ class DecodeImageOpTest(test.TestCase):
         with self.assertRaises(errors_impl.InvalidArgumentError):
           self.evaluate(bad_channels)
 
+  @test_util.run_deprecated_v1
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
@@ -85,7 +88,7 @@ class DecodeImageOpTest(test.TestCase):
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(jpeg0)
       image1 = image_ops.decode_jpeg(jpeg0)
-      jpeg0, image0, image1 = sess.run([jpeg0, image0, image1])
+      jpeg0, image0, image1 = self.evaluate([jpeg0, image0, image1])
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertAllEqual(image0, image1)
@@ -104,10 +107,11 @@ class DecodeImageOpTest(test.TestCase):
           png0 = io_ops.read_file(path)
           image0 = image_ops.decode_image(png0, channels=channels)
           image1 = image_ops.decode_png(png0, channels=channels)
-          png0, image0, image1 = sess.run([png0, image0, image1])
+          png0, image0, image1 = self.evaluate([png0, image0, image1])
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           self.assertAllEqual(image0, image1)
 
+  @test_util.run_deprecated_v1
   def testInvalidBytes(self):
     image_bytes = b"ThisIsNotAnImage!"
     decode = image_ops.decode_image(image_bytes)

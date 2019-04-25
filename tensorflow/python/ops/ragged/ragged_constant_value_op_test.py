@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.constant_value."""
+"""Tests for ragged_factory_ops.constant_value."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,11 +22,14 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
                                 parameterized.TestCase):
 
   @parameterized.parameters(
@@ -61,6 +64,27 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
           ragged_rank=1,
           inner_shape=(2,),
           expected_shape=(3, None, 2)),
+      # 3-dimensional tensors with numpy arrays
+      dict(
+          pylist=[[[1, 2], np.array([3, np.array(4)])],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          expected_shape=(3, None, None)),
+      dict(
+          pylist=[[[1, 2], np.array([3, np.array(4)])],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          ragged_rank=1,
+          expected_shape=(3, None, 2)),
+      dict(
+          pylist=[[[1, 2], np.array([3, np.array(4)])],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          inner_shape=(2,),
+          expected_shape=(3, None, 2)),
+      dict(
+          pylist=[[[1, 2], np.array([3, np.array(4)])],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          ragged_rank=1,
+          inner_shape=(2,),
+          expected_shape=(3, None, 2)),
       #=========================================================================
       # 4-dimensional tensors.
       dict(
@@ -82,13 +106,22 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                   [[[2, 4], [6, 8]], [[1, 5], [7, 9]]]],
           inner_shape=(2, 2),
           expected_shape=(2, None, 2, 2)),
+      # 4-dimensional tensors with numpy arrays
+      dict(
+          pylist=np.array([[[np.array([1, 2]), [3, 4]], [[5, 6], [7, 8]]],
+                           np.array([[[2, 4], [6, 8]], [[1, 5], [7, 9]]])]),
+          expected_shape=(2, None, None, None)),
 
       #=========================================================================
       # Empty tensors (no scalar values) w/ default ragged_rank and inner_shape
       dict(pylist=[], expected_shape=(0,)),
-      dict(pylist=[[], [], []], expected_shape=(3, None)),
+      dict(pylist=[[], [], np.array([])], expected_shape=(3, None)),
       dict(
           pylist=[[[], []], [], [[], [[]]]],
+          expected_shape=(3, None, None, None)),
+      dict(
+          pylist=np.array([np.array([[], []]),
+                           np.array([]), [[], [[]]]]),
           expected_shape=(3, None, None, None)),
 
       #=========================================================================
@@ -109,6 +142,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       dict(pylist=[[], [], []], ragged_rank=2, expected_shape=(3, None, None)),
       dict(pylist=[], inner_shape=(0,), expected_shape=(0,)),
       dict(pylist=[[]], inner_shape=(1, 0), expected_shape=(1, 0)),
+      dict(
+          pylist=np.array([]),
+          ragged_rank=1,
+          inner_shape=(100, 20),
+          expected_shape=(0, None, 100, 20)),
 
       #=========================================================================
       # default/inferred dtypes.
@@ -123,6 +161,9 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       dict(pylist=[[1, 2], [3.], [4, 5, 6]], expected_dtype=np.float64),
       dict(pylist=[[b'a', b'b'], [b'c']], expected_dtype=np.dtype('S1')),
       dict(pylist=[[True]], expected_dtype=np.bool),
+      dict(
+          pylist=[np.array([1, 2]), np.array([3.]), [4, 5, 6]],
+          expected_dtype=np.float64),
 
       #=========================================================================
       # explicit dtypes
@@ -144,10 +185,12 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                        inner_shape=None,
                        expected_shape=None,
                        expected_dtype=None):
-    """Tests that `ragged_value(pylist).tolist() == pylist`."""
-    rt = ragged.constant_value(
+    """Tests that `ragged_value(pylist).to_list() == pylist`."""
+    rt = ragged_factory_ops.constant_value(
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
-
+    # Normalize the pylist, i.e., convert all np.arrays to list.
+    # E.g., [np.array((1,2))] --> [[1,2]]
+    pylist = self._normalize_pylist(pylist)
     # If dtype was explicitly specified, check it.
     if dtype is not None:
       self.assertEqual(rt.dtype, dtype)
@@ -156,15 +199,15 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
 
     # If ragged_rank was explicitly specified, check it.
     if ragged_rank is not None:
-      if isinstance(rt, ragged.RaggedTensorValue):
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
         self.assertEqual(rt.ragged_rank, ragged_rank)
       else:
         self.assertEqual(0, ragged_rank)
 
     # If inner_shape was explicitly specified, check it.
     if inner_shape is not None:
-      if isinstance(rt, ragged.RaggedTensorValue):
-        self.assertEqual(rt.inner_values.shape[1:], inner_shape)
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
+        self.assertEqual(rt.flat_values.shape[1:], inner_shape)
       else:
         self.assertEqual(rt.shape, inner_shape)
 
@@ -172,7 +215,10 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(tuple(rt.shape), expected_shape)
 
     if rt.shape:
-      self.assertEqual(rt.tolist(), pylist)
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
+        self.assertEqual(rt.to_list(), pylist)
+      else:
+        self.assertEqual(rt.tolist(), pylist)
       if expected_shape is not None:
         self.assertEqual(rt.shape, expected_shape)
     else:
@@ -186,6 +232,12 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
           ragged_rank=1,
           exception=ValueError,
           message='Invalid pylist=12: incompatible with ragged_rank=1'),
+      dict(
+          pylist=np.array(12),
+          ragged_rank=1,
+          exception=ValueError,
+          message='Invalid pylist=array\\(12\\): incompatible with '
+          'ragged_rank=1'),
       dict(
           pylist=12,
           inner_shape=(1,),
@@ -252,11 +304,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                             inner_shape=None,
                             exception=None,
                             message=None):
-    """Tests that `ragged.constant_value()` raises an expected exception."""
+    """Tests that `constant_value()` raises an expected exception."""
     self.assertRaisesRegexp(
         exception,
         message,
-        ragged.constant_value,
+        ragged_factory_ops.constant_value,
         pylist,
         dtype=dtype,
         ragged_rank=ragged_rank,

@@ -27,6 +27,7 @@ from tensorflow.python.platform import test
 
 class ZeroDivisionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testZeros(self):
     with test_util.use_gpu():
       for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:
@@ -50,8 +51,10 @@ class ZeroDivisionTest(test.TestCase):
             # means 32 bits set, so we allow 0xffffffff as well.  This isn't
             # very portable, so we may need to expand this list if other GPUs
             # do different things.
+            #
+            # XLA constant folds integer division by zero to 1.
             self.assertTrue(test.is_gpu_available())
-            self.assertIn(result, (-1, 0xff, 0xffffffff))
+            self.assertIn(result, (-1, 1, 0xff, 0xffffffff))
 
 
 if __name__ == '__main__':

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/map_and_filter_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -55,8 +56,9 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
   }
 
   // Optional attrs.
-  for (auto key : {"use_inter_op_parallelism", "sloppy"}) {
-    if (const auto* attr = gtl::FindOrNull(map_node.attr(), key)) {
+  for (auto key :
+       {"use_inter_op_parallelism", "sloppy", "preserve_cardinality"}) {
+    if (gtl::FindOrNull(map_node.attr(), key)) {
       graph_utils::CopyAttribute(key, map_node, &fused_node);
     }
   }
@@ -91,8 +93,10 @@ NodeDef MakeFilterByLastComponentNode(const NodeDef& fused_map_node,
 
 }  // namespace
 
-Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   // TODO(prazek): We might have some problems with performance if we copy
@@ -100,7 +104,7 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
   *output = sorted_old_graph;
 
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {
@@ -154,16 +158,18 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* filter_by_component = graph.AddNode(
         MakeFilterByLastComponentNode(*fused_maps, *filter_node, &graph));
 
-    graph.UpdateFanouts(filter_node->name(), filter_by_component->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(filter_node->name(), filter_by_component->name()));
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
     // TODO(prazek): we could also remove functions from library if they are not
     // used anymore.
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(filter_node->name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -175,5 +181,5 @@ void MapAndFilterFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndFilterFusion, "map_and_filter_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

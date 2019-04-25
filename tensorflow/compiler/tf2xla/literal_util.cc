@@ -77,7 +77,7 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
 
 Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
                                Tensor* host_tensor) {
-  TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&
+  TF_RET_CHECK(literal.shape().IsArray() &&
                xla::ShapeUtil::ElementsIn(literal.shape()) ==
                    host_tensor->NumElements());
   xla::PrimitiveType primitive_type;

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -131,6 +132,20 @@ class BackpropTest(test.TestCase):
     dx, dy = t.gradient([xx, yy], [x, y])
     self.assertAllEqual(dx, 2.0)
     self.assertAllEqual(dy, 3.0)
+
+  def testCustomGradientEmptyError(self):
+
+    @custom_gradient.custom_gradient
+    def identity(x):
+      def grad(_):
+        return []  # This return value is wrong!
+      return x, grad
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as t:
+      y = identity(x)
+    with self.assertRaises(ValueError):
+      t.gradient(y, [x])
 
   def testOutputGradUsedInComputation(self):
     with backprop.GradientTape() as t:
@@ -270,6 +285,38 @@ class BackpropTest(test.TestCase):
       z = y * y
     self.assertAllEqual(t.gradient([x, y, z], [x, y]), [1.0, 11.0])
 
+  def testTapeGradientStringTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+    x = constant_op.constant(3.0)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(s)
+    grads = t.gradient(s, x)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientStringSourceAndTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(s)
+    grads = t.gradient(s, s)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientWithMultiTargetMultiSourceIncludeString(self):
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(5.0)
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(y)
+      t.watch(s)
+      z = y * y
+    grads = t.gradient([x, y, z, s], [x, y, s])
+    self.assertAllEqual(grads[:2], [1.0, 11.0])
+    self.assertEqual(grads[2], None)
+
   def testTapeNoOpOnVariableIsIdentity(self):
     v0 = resource_variable_ops.ResourceVariable(1.0)
     with backprop.GradientTape() as t:
@@ -321,6 +368,16 @@ class BackpropTest(test.TestCase):
       t.reset()
       loss += v * v
     self.assertAllEqual(t.gradient(loss, v), 2.0)
+
+  def testPythonMax(self):
+    x = [resource_variable_ops.ResourceVariable(2.),
+         resource_variable_ops.ResourceVariable(3.),
+         resource_variable_ops.ResourceVariable(5.)]
+    with backprop.GradientTape() as t:
+      f = max(x)
+    grad = t.gradient(f, x)
+    self.assertAllEqual(self.evaluate(f), 5.)
+    self.assertAllEqual(self.evaluate(grad), [None, None, 1.0])
 
   def testAutomaticWatchedVariables(self):
     with backprop.GradientTape() as t:
@@ -481,11 +538,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(argmax)
     self.assertAllEqual(grad([0.0])[0], None)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def fn(x):
       with context.device('/gpu:0'):
         b = constant_op.constant(2.0)
@@ -497,10 +552,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPUImplicitGrad(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPU found')
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(
           constant_op.constant(1.0), name='v')
@@ -523,11 +577,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyGPU2CPU2GPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def f(a, b):
       return a.cpu() + b.cpu()
 
@@ -642,12 +694,11 @@ class BackpropTest(test.TestCase):
     with backprop.GradientTape() as g:
       x = variables.Variable([3.0])
       y = variables.Variable([2.0])
-    with self.assertRaisesRegexp(
-        ValueError,
-        'GradientTape.gradient is not supported for variable targets.'):
-      g.gradient(x, y)
+    grad = g.gradient(x, y)
+    self.assertAllEqual(grad, None)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testGradientTapeWithCond(self):
     x = constant_op.constant(3.0)
 
@@ -669,6 +720,7 @@ class BackpropTest(test.TestCase):
       self.assertEqual(self.evaluate(dy), 6.0)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testGradientTapeWithWhileLoop(self):
     i = constant_op.constant(1)
     x = constant_op.constant(2.)
@@ -704,6 +756,7 @@ class BackpropTest(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testPersistentTape(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -800,6 +853,20 @@ class BackpropTest(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
+  def testUnconnectedGradientsVariablesZeros(self):
+    x = resource_variable_ops.ResourceVariable(
+        constant_op.constant(1., shape=[2, 2]))
+    self.evaluate(x.initializer)
+    y = resource_variable_ops.ResourceVariable(constant_op.constant(3.))
+    self.evaluate(y.initializer)
+    with backprop.GradientTape() as g:
+      g.watch([x, y])
+      z = y * 2
+    dz_dx = g.gradient(z, x, unconnected_gradients='zero')
+    self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(dz_dx))
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
   def testUnknownUnconnectedGradientsValueGiven(self):
     x = constant_op.constant(1.0)
     y = constant_op.constant(1.0)
@@ -856,11 +923,9 @@ class BackpropTest(test.TestCase):
     self.assertEqual(1, len(grads))
     self.assertAllEqual(grads[0], x)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyCPU2GPU2CPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # forward: a (cpu->gpu) -> add (gpu) -> c (gpu->cpu) -> add (cpu) -> e (cpu)
     # back: e (cpu) -> add (cpu) -> c (cpu->gpu) -> add (gpu) -> grad (gpu->cpu)
     def f(a, b):
@@ -1042,6 +1107,46 @@ class BackpropTest(test.TestCase):
     grad, var = grads_and_vars[0]
     self.assertAllEqual(7, grad)
     self.assertAllEqual(x, var)
+
+  def testJacobianCustomGradient(self):
+
+    class MyCallable(object):
+
+      def __init__(self):
+        self.a = variables.Variable(1.)
+        self.b = variables.Variable(2.)
+        self.c = variables.Variable(3.)
+
+      def __call__(self, x):
+        return self.a * x * x + self.b * x + self.c
+
+    @def_function.function
+    def call(c, x):
+
+      @custom_gradient.custom_gradient
+      def _call():
+        y = c(x)
+
+        def grad(dy, variables=None):  # pylint: disable=redefined-outer-name
+          with backprop.GradientTape(persistent=True) as g:
+            g.watch(variables)
+            y = c(x)
+          grad_vars = [
+              2 * math_ops.reduce_sum(dy * g.jacobian(y, v)) for v in variables
+          ]
+          del g
+          return (), grad_vars
+
+        return y, grad
+
+      return _call()
+
+    c = MyCallable()
+    x = constant_op.constant([1., 2., 3.])
+    with backprop.GradientTape(persistent=True) as g:
+      g.watch([c.a, c.b, c.c])
+      y = call(c, x)
+    self.assertAllEqual(g.gradient(y, x), None)
 
   @test_util.assert_no_new_tensors
   def testCustomGradient(self):
@@ -1227,7 +1332,6 @@ class BackpropTest(test.TestCase):
       self.assertAllEqual(da[0], tf_da[0].eval())
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class JacobianTest(test.TestCase):
 
   def _jacobian(self, experimental_use_pfor):
@@ -1243,16 +1347,19 @@ class JacobianTest(test.TestCase):
     answer = [array_ops.diag(2 * x * y), array_ops.diag(x * x)]
     return jacobian, answer
 
+  @test_util.run_v1_only('b/120545219')
   def testPfor(self):
     jacobian, answer = self._jacobian(experimental_use_pfor=True)
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testWhileLoop(self):
     jacobian, answer = self._jacobian(experimental_use_pfor=False)
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testPforDefun(self):
 
     @function.defun
@@ -1263,6 +1370,7 @@ class JacobianTest(test.TestCase):
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testWhileLoopDefun(self):
 
     @function.defun
@@ -1273,6 +1381,7 @@ class JacobianTest(test.TestCase):
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testPersistentTape(self):
     if not context.executing_eagerly():
       return
@@ -1283,6 +1392,7 @@ class JacobianTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'persistent'):
       g.jacobian(y, x, experimental_use_pfor=False)
 
+  @test_util.run_v1_only('b/120545219')
   def testPforException(self):
     var = variables.Variable([1.])
 
@@ -1302,6 +1412,134 @@ class JacobianTest(test.TestCase):
       y = op(x)
     with self.assertRaisesRegexp(ValueError, 'No converter'):
       g.jacobian(y, x, experimental_use_pfor=True)
+
+  @test_util.run_v1_only('b/120545219')
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      y = math_ops.matmul(x, x)
+    self.assertAllClose(g.jacobian(y, x, parallel_iterations=2),
+                        g.jacobian(y, x, parallel_iterations=3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nested_jacobian(self):
+    if context.executing_eagerly():
+      # TODO(agarwal): b/128842926
+      self.skipTest('Conversion of function calls not implemented yet.')
+    x = array_ops.ones((10, 2))
+    with backprop.GradientTape(persistent=False) as g:
+      g.watch(x)
+      with backprop.GradientTape(persistent=False) as gg:
+        gg.watch(x)
+        y = math_ops.reduce_sum(math_ops.square(x))
+      dy_x = gg.jacobian(y, x)
+    dy_xx = g.batch_jacobian(dy_x, x)
+    dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
+    self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BatchJacobianTest(test.TestCase):
+
+  def _batch_jacobian(self, experimental_use_pfor):
+    persistent = context.executing_eagerly and not experimental_use_pfor
+    with backprop.GradientTape(persistent=persistent) as g:
+      x = constant_op.constant([[1., 2.], [3., 4.]])
+      y = constant_op.constant([[3., 4.], [5., 6.]])
+      g.watch(x)
+      z = x * x * y
+    batch_jacobian = g.batch_jacobian(
+        z, x, experimental_use_pfor=experimental_use_pfor)
+    answer = array_ops.stack([array_ops.diag(2 * x[0] * y[0]),
+                              array_ops.diag(2 * x[1] * y[1])])
+    return batch_jacobian, answer
+
+  def testPfor(self):
+    batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=True)
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testWhileLoop(self):
+    batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=False)
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testPforDefun(self):
+
+    @function.defun
+    def _f():
+      return self._batch_jacobian(experimental_use_pfor=True)
+
+    batch_jacobian, answer = _f()
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testWhileLoopDefun(self):
+
+    @function.defun
+    def _f():
+      return self._batch_jacobian(experimental_use_pfor=False)
+
+    batch_jacobian, answer = _f()
+    self.assertAllEqual(answer, batch_jacobian)
+
+  def testPersistentTape(self):
+    if not context.executing_eagerly():
+      return
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([[1.0, 2.0]])
+      g.watch(x)
+      y = x * x
+    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+      g.batch_jacobian(y, x, experimental_use_pfor=False)
+
+  def testBadShape(self):
+    x = random_ops.random_uniform([2, 3])
+    with backprop.GradientTape() as g:
+      y = array_ops.concat([x, x], axis=0)
+    with self.assertRaisesRegexp(ValueError, 'Need first dimension'):
+      g.batch_jacobian(y, x)
+
+  def testBadInputRank(self):
+    x = random_ops.random_uniform([2])
+    with backprop.GradientTape() as g:
+      y = random_ops.random_uniform([2, 2])
+    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+      g.batch_jacobian(y, x)
+
+  def testBadOutputRank(self):
+    x = random_ops.random_uniform([2, 2])
+    with backprop.GradientTape() as g:
+      y = random_ops.random_uniform([2])
+    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+      g.batch_jacobian(y, x)
+
+  def testPforException(self):
+    var = variables.Variable([1.])
+
+    @custom_gradient.custom_gradient
+    def op(x):
+      def grad(_):
+        # Note that we perform a stateful operation here that will not be
+        # compatible with parallel for construct.
+        with ops.control_dependencies(
+            [var.assign(random_ops.random_uniform([1]))]):
+          return constant_op.constant(1.)
+      return x, grad
+
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([[1.], [2.]])
+      g.watch(x)
+      y = op(x)
+    with self.assertRaisesRegexp(ValueError, 'No converter'):
+      g.batch_jacobian(y, x, experimental_use_pfor=True)
+
+  def test_parallel_iterations(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[1., 2], [3, 4]])
+      g.watch(x)
+      w = constant_op.constant([[1., 2, 3, 4], [5, 6, 7, 8]])
+      y = math_ops.matmul(x, w)
+    self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
+                        g.batch_jacobian(y, x, parallel_iterations=3))
 
 if __name__ == '__main__':
   test.main()

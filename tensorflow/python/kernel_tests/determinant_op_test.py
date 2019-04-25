@@ -133,6 +133,7 @@ class DeterminantOpTest(test.TestCase):
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])
     self._compareDeterminant(huge_matrix)
 
+  @test_util.run_v1_only("b/120545219")
   def testNonSquareMatrix(self):
     # When the determinant of a non-square matrix is attempted we should return
     # an error
@@ -140,6 +141,7 @@ class DeterminantOpTest(test.TestCase):
       linalg_ops.matrix_determinant(
           np.array([[1., 2., 3.], [3., 5., 4.]]).astype(np.float32))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to the determinant should be a 2-dimensional tensor.
     tensor1 = constant_op.constant([1., 2.])
@@ -150,13 +152,14 @@ class DeterminantOpTest(test.TestCase):
     self._compareDeterminant(np.empty([0, 2, 2]))
     self._compareDeterminant(np.empty([2, 0, 0]))
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       det1 = linalg_ops.matrix_determinant(matrix1)
       det2 = linalg_ops.matrix_determinant(matrix2)
-      det1_val, det2_val = sess.run([det1, det2])
+      det1_val, det2_val = self.evaluate([det1, det2])
       self.assertEqual(det1_val, det2_val)
 
 

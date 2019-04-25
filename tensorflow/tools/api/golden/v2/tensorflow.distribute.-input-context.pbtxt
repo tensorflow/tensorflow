@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.InputContext"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.distribute.InputContext\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputContext\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "input_pipeline_id"

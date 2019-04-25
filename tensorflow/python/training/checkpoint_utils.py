@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -29,8 +30,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -106,7 +106,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
   Values are not loaded immediately, but when the initializer is run
-  (typically by running a `tf.global_variables_initializer` op).
+  (typically by running a `tf.compat.v1.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -139,15 +139,15 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   #  -- name='old_scope_2/var3', shape=[100, 100]
 
   # Create new model's variables
-  with tf.variable_scope('new_scope_1'):
-    var1 = tf.get_variable('var1', shape=[20, 2],
-                           initializer=tf.zeros_initializer())
-  with tf.variable_scope('new_scope_2'):
-    var2 = tf.get_variable('var2', shape=[50, 4],
-                           initializer=tf.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_1'):
+    var1 = tf.compat.v1.get_variable('var1', shape=[20, 2],
+                           initializer=tf.compat.v1.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_2'):
+    var2 = tf.compat.v1.get_variable('var2', shape=[50, 4],
+                           initializer=tf.compat.v1.zeros_initializer())
     # Partition into 5 variables along the first axis.
-    var3 = tf.get_variable(name='var3', shape=[100, 100],
-                           initializer=tf.zeros_initializer(),
+    var3 = tf.compat.v1.get_variable(name='var3', shape=[100, 100],
+                           initializer=tf.compat.v1.zeros_initializer(),
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.
@@ -180,19 +180,20 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       (in default graph).
 
   Raises:
-    tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
-    ValueError: If missing variables in current graph.
+    ValueError: If missing variables in current graph, or if missing
+      checkpoints or tensors in checkpoints.
   """
+  init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
+      ckpt_dir_or_file, assignment_map)
   if distribution_strategy_context.get_cross_replica_context():
-    _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
+    init_from_checkpoint_fn(None)
   else:
     distribution_strategy_context.get_replica_context().merge_call(
-        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
+        init_from_checkpoint_fn)
 
 
-def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
+def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """See `init_from_checkpoint` for documentation."""
-
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
@@ -311,10 +312,10 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
 
-    names_to_saveables = saver.BaseSaverBuilder.OpListToDict([variable])
+    names_to_saveables = saveable_object_util.op_list_to_dict([variable])
     saveable_objects = []
     for name, op in names_to_saveables.items():
-      for s in saver.BaseSaverBuilder.SaveableObjectsForOp(op, name):
+      for s in saveable_object_util.saveable_objects_for_op(op, name):
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.
@@ -361,7 +362,6 @@ def _set_variable_or_list_initializer(variable_or_list, ckpt_file,
 def _is_variable(x):
   return (isinstance(x, variables.Variable) or
           resource_variable_ops.is_resource_variable(x))
-
 
 def _collect_partitioned_variable(name, all_vars):
   """Returns list of `tf.Variable` that comprise the partitioned variable."""

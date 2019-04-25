@@ -53,8 +53,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::NonSerializable")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::NonSerializable")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -74,6 +74,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       return errors::Unimplemented(DebugString(), "::AsGraphDefInternal");
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {

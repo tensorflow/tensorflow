@@ -41,6 +41,17 @@ cc_library(
     copts = common_copts,
 )
 
+cc_test(
+    name = "time_test",
+    srcs = ["time_test.cc"],
+    copts = common_copts,
+    deps = [
+        ":time",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
@@ -58,12 +69,10 @@ cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
     copts = common_copts,
-    tags = ["no_oss"],
     deps = [
         ":profile_summarizer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",

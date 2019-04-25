@@ -861,7 +861,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Update.
     auto update = ConvertElementType(Broadcast(out0, {2}), F32);
     // Starts = iteration * 2;
-    auto starts = Reshape(Mul(iteration, ConstantR0<int32>(&builder, 2)), {1});
+    auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
     auto out1 = DynamicUpdateSlice(input, update, starts);
 
@@ -901,7 +901,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
 // Per backend the values generated can be different as the different backends
 // use different random number generators.
 // TODO(b/32240857): Extend test to verify outputs.
-XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithPrngScalarResult)) {
+XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto v6s32 = ShapeUtil::MakeShape(S32, {6});
 
   // Create a computation for the condition: repeat for count iterations.
@@ -1146,7 +1146,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
 // while (f(result).get<0>()) {
 //   result = result + 1;
 // }
-XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithCallInsideCondition)) {
+XLA_TEST_F(WhileTest, WhileWithCallInsideCondition) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -1299,9 +1299,9 @@ void BM_WhileLoop(int num_iters) {
     auto one = ConstantR0<float>(&builder, 1.0);
     auto update = Broadcast(one, {1, 1024, 1024});
     // Starts = iteration * 2;
-    auto starts = ConstantR1<int32>(&builder, {0, 0, 0});
+    auto zero = ConstantR0<int32>(&builder, 0);
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {zero, zero, zero});
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }

@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -94,28 +95,28 @@ class CondWithManyIntermediatesBenchmark(test.Benchmark):
               iters=self.NUM_ITERS)
 
   def benchmark_cond_v1_defun(self):
-    old_val = control_flow_ops.ENABLE_COND_V2
-    control_flow_ops.ENABLE_COND_V2 = False
+    old_val = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
     self._benchmark_defun()
-    control_flow_ops.ENABLE_COND_V2 = old_val
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = old_val
 
   def benchmark_cond_v2_defun(self):
-    old_val = control_flow_ops.ENABLE_COND_V2
-    control_flow_ops.ENABLE_COND_V2 = True
+    old_val = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     self._benchmark_defun()
-    control_flow_ops.ENABLE_COND_V2 = old_val
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = old_val
 
   def benchmark_cond_v1_graph(self):
-    old_val = control_flow_ops.ENABLE_COND_V2
-    control_flow_ops.ENABLE_COND_V2 = False
+    old_val = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
     self._benchmark_graph()
-    control_flow_ops.ENABLE_COND_V2 = old_val
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = old_val
 
   def benchmark_cond_v2_graph(self):
-    old_val = control_flow_ops.ENABLE_COND_V2
-    control_flow_ops.ENABLE_COND_V2 = True
+    old_val = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     self._benchmark_graph()
-    control_flow_ops.ENABLE_COND_V2 = old_val
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = old_val
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

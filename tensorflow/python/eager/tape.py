@@ -27,8 +27,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 # distribution_strategy_context.
 # TODO(b/117329403): Remove this circular dependency.
 distribution_strategy_context = LazyLoader(
-    "distribute_lib", globals(),
-    "tensorflow.python.training."
+    "distribution_strategy_context", globals(),
+    "tensorflow.python.distribute."
     "distribution_strategy_context")
 
 
@@ -61,11 +61,12 @@ def watch(tape, tensor):
 
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
-  strategy = distribution_strategy_context.get_distribution_strategy()
-  if distribution_strategy_context.get_replica_context():
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
 
@@ -76,12 +77,36 @@ def variable_accessed(variable):
   Args:
     variable: variable to be watched.
   """
-  strategy = distribution_strategy_context.get_distribution_strategy()
-  if distribution_strategy_context.get_replica_context():
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
+
+
+def variables_accessed(variables):
+  """Notifies all tapes in the stack that variables have been accessed.
+
+  Only trainable variables are marked as accessed.
+
+  Args:
+    variables: iterable of variables to mark as accessed.
+  """
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context())
+  accessed = []
+  if context:
+    accessed = [strategy.extended.value_container(variable)
+                for variable in variables if variable.trainable]
+  else:
+    for variable in variables:
+      if variable.trainable:
+        accessed.extend(strategy.experimental_local_results(variable))
+
+  for var in accessed:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -50,7 +51,7 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(indices, value.indices)
         self.assertAllEqual(values, value.values)
         self.assertAllEqual(shape, value.dense_shape)
-        sess_run_value = sess.run(sp)
+        sess_run_value = self.evaluate(sp)
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
@@ -66,16 +67,17 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
             sparse_tensor.SparseTensorValue([[0]], [0], [1])))
 
   def testConsumers(self):
-    sp = sparse_tensor.SparseTensor([[0, 0], [1, 2]], [1.0, 3.0], [3, 4])
-    w = ops.convert_to_tensor(np.ones([4, 1], np.float32))
-    out = sparse_ops.sparse_tensor_dense_matmul(sp, w)
-    self.assertEqual(len(sp.consumers()), 1)
-    self.assertEqual(sp.consumers()[0], out.op)
+    with context.graph_mode():
+      sp = sparse_tensor.SparseTensor([[0, 0], [1, 2]], [1.0, 3.0], [3, 4])
+      w = ops.convert_to_tensor(np.ones([4, 1], np.float32))
+      out = sparse_ops.sparse_tensor_dense_matmul(sp, w)
+      self.assertEqual(len(sp.consumers()), 1)
+      self.assertEqual(sp.consumers()[0], out.op)
 
-    dense = sparse_ops.sparse_tensor_to_dense(sp)
-    self.assertEqual(len(sp.consumers()), 2)
-    self.assertTrue(dense.op in sp.consumers())
-    self.assertTrue(out.op in sp.consumers())
+      dense = sparse_ops.sparse_tensor_to_dense(sp)
+      self.assertEqual(len(sp.consumers()), 2)
+      self.assertIn(dense.op, sp.consumers())
+      self.assertIn(out.op, sp.consumers())
 
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
@@ -87,6 +89,7 @@ class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
           value)
       self.assertAllEqual(value, self.evaluate(from_value))
 
+  @test_util.run_deprecated_v1
   def test_convert_sparse(self):
     with self.cached_session():
       indices = [[0, 1], [1, 0]]

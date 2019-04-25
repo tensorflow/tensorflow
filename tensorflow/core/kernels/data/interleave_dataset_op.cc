@@ -32,7 +32,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   explicit InterleaveDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "f", /*params=*/{},
+                                                 &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -58,25 +59,23 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("block_length must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
-    *output =
-        new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,
-                    block_length, output_types_, output_shapes_);
+    *output = new Dataset(ctx, input, std::move(captured_func), cycle_length,
+                          block_length, output_types_, output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
             int64 block_length, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          func_(func),
           captured_func_(std::move(captured_func)),
           cycle_length_(cycle_length),
           block_length_(block_length),
@@ -89,8 +88,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Interleave")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Interleave")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -108,25 +107,18 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
       Node* block_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
@@ -149,7 +141,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -195,7 +188,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             if (!end_of_input_) {
               TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                   ctx, args_list_[cycle_index_], cycle_index_,
-                  dataset()->captured_func_.get(), prefix(),
+                  *instantiated_captured_func_, prefix(),
                   &current_elements_[cycle_index_]));
               ++num_open_;
             }
@@ -286,7 +279,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                   &args_list_[idx][i]));
             }
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
+                ctx, args_list_[idx], idx, *instantiated_captured_func_,
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
                 RestoreInput(ctx, reader, current_elements_[idx]));
@@ -306,10 +299,10 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       int64 block_index_ GUARDED_BY(mu_) = 0;
       bool end_of_input_ GUARDED_BY(mu_) = false;
       size_t num_open_ GUARDED_BY(mu_) = 0;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const int64 cycle_length_;
     const int64 block_length_;
@@ -320,7 +313,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),
