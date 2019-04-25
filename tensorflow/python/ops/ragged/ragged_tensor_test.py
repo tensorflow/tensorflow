@@ -181,7 +181,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     rt_value = ragged_tensor_value.RaggedTensorValue(values, splits)
     self.assertEqual(rt_value.row_splits.dtype, np.int64)
     self.assertEqual(rt_value.shape, (5, None))
-    self.assertEqual(len(rt_value.nested_row_splits), 1)
+    self.assertLen(rt_value.nested_row_splits, 1)
     self.assertAllEqual(splits, rt_value.row_splits)
     self.assertAllEqual(values, rt_value.values)
     self.assertAllEqual(splits, rt_value.nested_row_splits[0])
@@ -193,7 +193,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
         row_splits=splits2)
     self.assertEqual(rt_value.row_splits.dtype, np.int64)
     self.assertEqual(rt_value.shape, (2, None, None))
-    self.assertEqual(len(rt_value.nested_row_splits), 2)
+    self.assertLen(rt_value.nested_row_splits, 2)
     self.assertAllEqual(splits2, rt_value.row_splits)
     self.assertAllEqual(splits, rt_value.values.row_splits)
     self.assertAllEqual(splits2, rt_value.nested_row_splits[0])
@@ -1078,15 +1078,17 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     values = [b'a', b'b', b'c', b'd', b'e', b'f', b'g']
     row_splits = [0, 2, 5, 6, 6, 7]
     rt = RaggedTensor.from_row_splits(values, row_splits)
+    splits_type = 'int64'
     if context.executing_eagerly():
       expected_str = '<tf.RaggedTensor {}>'.format([[b'a', b'b'],
                                                     [b'c', b'd', b'e'], [b'f'],
                                                     [], [b'g']])
       expected_repr = (
           'tf.RaggedTensor(values=tf.Tensor([{}], shape=(7,), dtype=string), '
-          'row_splits=tf.Tensor([{}], shape=(6,), dtype=int64))'.format(
+          'row_splits=tf.Tensor([{}], shape=(6,), dtype={}))'.format(
               ' '.join(repr(x) for x in values),
-              ' '.join(repr(x) for x in row_splits)))
+              ' '.join(repr(x) for x in row_splits),
+              splits_type))
       self.assertEqual(str(rt), expected_str)
       self.assertEqual(repr(rt), expected_repr)
     else:
@@ -1094,7 +1096,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
           'tf.RaggedTensor(values=Tensor("RaggedFromRowSplits/values:0", '
           'shape=(7,), dtype=string), row_splits='
           'Tensor("RaggedFromRowSplits/row_splits:0", '
-          'shape=(6,), dtype=int64))')
+          'shape=(6,), dtype={}))').format(splits_type)
       self.assertEqual(repr(rt), expected_repr)
       self.assertEqual(str(rt), expected_repr)
 
@@ -1145,7 +1147,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     rt2 = ragged_factory_ops.constant([[[], [1, 2]], [[3]]])
     with self.test_session() as session:
       result = session.run({'rt1': rt1, 'rt2': rt2})
-      self.assertCountEqual(sorted(result.keys()), ['rt1', 'rt2'])
+      self.assertCountEqual(result.keys(), ['rt1', 'rt2'])
       self.assertEqual(result['rt1'].to_list(), [[1, 2, 3], [4]])
       self.assertEqual(result['rt2'].to_list(), [[[], [1, 2]], [[3]]])
 
@@ -1166,15 +1168,10 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     rt2_feed_val = ragged_factory_ops.constant_value([[[], [1, 2]], [[3]]])
 
     with self.test_session() as session:
-      result = session.run({
-          'rt1': rt1,
-          'rt2': rt2
-      },
-                           feed_dict={
-                               rt1: rt1_feed_val,
-                               rt2: rt2_feed_val
-                           })
-      self.assertCountEqual(sorted(result.keys()), ['rt1', 'rt2'])
+      fetches = {'rt1': rt1, 'rt2': rt2}
+      feeds = {rt1: rt1_feed_val, rt2: rt2_feed_val}
+      result = session.run(fetches, feed_dict=feeds)
+      self.assertCountEqual(result.keys(), ['rt1', 'rt2'])
       self.assertEqual(result['rt1'].to_list(), [[1, 2, 3], [4]])
       self.assertEqual(result['rt2'].to_list(), [[[], [1, 2]], [[3]]])
 

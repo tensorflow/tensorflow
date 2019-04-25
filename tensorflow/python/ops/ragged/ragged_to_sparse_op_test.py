@@ -191,7 +191,6 @@ class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase):
 
     g1, g2 = gradients_impl.gradients(st.values,
                                       [rt1.flat_values, rt2.flat_values])
-    print(g1, g2)
     self.assertRaggedEqual(g1, [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0]])
     self.assertRaggedEqual(g2, [[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]])
 

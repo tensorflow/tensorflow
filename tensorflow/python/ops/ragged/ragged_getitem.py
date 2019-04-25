@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -136,7 +135,8 @@ def _ragged_getitem(rt_input, key_list):
   # that puts all values in a single row.
   if row_key is array_ops.newaxis:
     inner_rt = _ragged_getitem(rt_input, inner_keys)
-    nsplits = array_ops.shape(inner_rt.row_splits, out_type=dtypes.int64)[0]
+    nsplits = array_ops.shape(inner_rt.row_splits,
+                              out_type=inner_rt.row_splits.dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(
         inner_rt, array_ops.stack([0, nsplits - 1]))
 
@@ -192,7 +192,7 @@ def _slice_ragged_row_dimension(rt_input, row_key):
   # Use row_key to slice the starts & limits.
   new_starts = rt_input.row_splits[:-1][row_key]
   new_limits = rt_input.row_splits[1:][row_key]
-  zero_pad = array_ops.zeros([1], dtypes.int64)
+  zero_pad = array_ops.zeros([1], rt_input.row_splits.dtype)
 
   # If there's no slice step, then we can just select a single continuous
   # span of `ragged.values(rt_input)`.
@@ -245,7 +245,8 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
   # RaggedTensor that puts each value in its own row.
   if column_key is array_ops.newaxis:
     inner_rt = _ragged_getitem_inner_dimensions(rt_input, key_list[1:])
-    nsplits = array_ops.shape(inner_rt.row_splits, out_type=dtypes.int64)[0]
+    nsplits = array_ops.shape(inner_rt.row_splits,
+                              out_type=inner_rt.row_splits.dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
                                                       math_ops.range(nsplits))
 
@@ -359,10 +360,11 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
     step = 1
   step = ops.convert_to_tensor(step, name="step")
   if step.dtype.is_integer:
-    step = math_ops.cast(step, dtypes.int64)
+    step = math_ops.cast(step, starts.dtype)
   else:
     raise TypeError("slice strides must be integers or None")
-  value_indices = ragged_math_ops.range(starts, limits, step)
+  value_indices = ragged_math_ops.range(starts, limits, step,
+                                        row_splits_dtype=starts.dtype)
 
   # Use `ragged_gather` or `array_ops.gather` to collect the values.
   if isinstance(values, ragged_tensor.RaggedTensor):
@@ -384,11 +386,11 @@ def _add_offset_to_ranges(offset, starts, limits):
 
   Args:
     offset: The offset to add.  None, or an int, or a scalar Tensor.
-    starts: 1-D int64 tensor containing start indices.
-    limits: 1-D int64 tensor containing limit indices.
+    starts: 1-D integer tensor containing start indices.
+    limits: 1-D integer tensor containing limit indices.
 
   Returns:
-    A 1-D int64 tensor.
+    A 1-D integer tensor.
   """
 
   def map_positive_offset(offset):
@@ -398,7 +400,7 @@ def _add_offset_to_ranges(offset, starts, limits):
     return math_ops.maximum(limits + offset, starts)
 
   if isinstance(offset, ops.Tensor):
-    offset = math_ops.cast(offset, dtypes.int64)
+    offset = math_ops.cast(offset, starts.dtype)
     return control_flow_ops.cond(offset >= 0,
                                  lambda: map_positive_offset(offset),
                                  lambda: map_negative_offset(offset))

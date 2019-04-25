@@ -128,6 +128,7 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         elif not _is_convertible_to_tensor(elt):
           return self.NOT_SUPPORTED
       if found_ragged:
+        x = ragged_tensor.match_row_splits_dtypes(*x)
         nested_splits_lists = [
             elt.nested_row_splits for elt in x if ragged_tensor.is_ragged(elt)
         ]
@@ -198,6 +199,9 @@ class BinaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         y = ops.convert_to_tensor(y, name=self._y, preferred_dtype=x.dtype)
     except (TypeError, ValueError):
       return self.NOT_SUPPORTED
+
+    if x_is_ragged and y_is_ragged:
+      x, y = ragged_tensor.match_row_splits_dtypes(x, y)
 
     if ((x_is_ragged and y_is_ragged) or
         (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
@@ -270,16 +274,6 @@ class RaggedDispatcher(dispatch.OpDispatcher):
         elif not _is_convertible_to_tensor(arg):
           return False
     return found_ragged
-
-
-def ragged_dispatch(original_op, tensor_args):
-
-  def decorator(ragged_op):
-    dispatch.RaggedDispatcher(original_op, ragged_op,
-                              tensor_args).register(original_op)
-    return ragged_op
-
-  return decorator
 
 
 _UNARY_ELEMENTWISE_OPS = [

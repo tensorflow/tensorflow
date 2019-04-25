@@ -34,7 +34,8 @@ from tensorflow.python.util.tf_export import tf_export
 # Op to construct a constant RaggedTensor from a nested Python list.
 #===============================================================================
 @tf_export("ragged.constant")
-def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
+def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
+             name=None, row_splits_dtype=dtypes.int64):
   """Constructs a constant RaggedTensor from a nested Python list.
 
   Example:
@@ -65,6 +66,8 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
       is not specified.  If `ragged_rank` is specified, then a default is chosen
       based on the contents of `pylist`.
     name: A name prefix for the returned tensor (optional).
+    row_splits_dtype: data type for the constructed `RaggedTensor`'s row_splits.
+      One of `tf.int32` or `tf.int64`.
 
   Returns:
     A potentially ragged tensor with rank `K` and the specified `ragged_rank`,
@@ -74,14 +77,19 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
+  def _ragged_factory(values, row_splits):
+    row_splits = constant_op.constant(row_splits, dtype=row_splits_dtype)
+    return ragged_tensor.RaggedTensor.from_row_splits(values, row_splits)
+
   with ops.name_scope(name, "RaggedConstant"):
-    return _constant_value(ragged_tensor.RaggedTensor.from_row_splits,
+    return _constant_value(_ragged_factory,
                            constant_op.constant, pylist, dtype, ragged_rank,
                            inner_shape)
 
 
 @tf_export(v1=["ragged.constant_value"])
-def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None):
+def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
+                   row_splits_dtype="int64"):
   """Constructs a RaggedTensorValue from a nested Python list.
 
   Warning: This function returns a `RaggedTensorValue`, not a `RaggedTensor`.
@@ -114,18 +122,20 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None):
       values in the returned `RaggedTensorValue`.  Defaults to `()` if
       `ragged_rank` is not specified.  If `ragged_rank` is specified, then a
       default is chosen based on the contents of `pylist`.
+    row_splits_dtype: data type for the constructed `RaggedTensorValue`'s
+      row_splits.  One of `numpy.int32` or `numpy.int64`.
 
   Returns:
-    A `RaggedTensorValue` or `numpy.array` with rank `K` and the specified
+    A `tf.RaggedTensorValue` or `numpy.array` with rank `K` and the specified
     `ragged_rank`, containing the values from `pylist`.
 
   Raises:
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
-
+  row_splits_dtype = dtypes.as_dtype(row_splits_dtype).as_numpy_dtype
   def _ragged_factory(values, row_splits):
-    row_splits = np.array(row_splits, dtype=np.int64)
+    row_splits = np.array(row_splits, dtype=row_splits_dtype)
     return ragged_tensor_value.RaggedTensorValue(values, row_splits)
 
   def _inner_factory(pylist, dtype, shape, name=None):  # pylint: disable=unused-argument

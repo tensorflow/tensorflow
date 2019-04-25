@@ -31,13 +31,14 @@ Status RaggedTensorFromVariantShapeFn(InferenceContext* c);
 //==============================================================================
 
 REGISTER_OP("RaggedTensorToSparse")
-    .Input("rt_nested_splits: RAGGED_RANK * int64")
+    .Input("rt_nested_splits: RAGGED_RANK * Tsplits")
     .Input("rt_dense_values: T")
     .Output("sparse_indices: int64")
     .Output("sparse_values: T")
     .Output("sparse_dense_shape: int64")
     .Attr("RAGGED_RANK: int >= 1")
     .Attr("T: type")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .SetShapeFn(RaggedTensorToSparseShapeFn);
 
 REGISTER_OP("RaggedTensorToVariant")

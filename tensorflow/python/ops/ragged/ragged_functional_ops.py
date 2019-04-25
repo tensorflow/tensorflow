@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util.tf_export import tf_export
@@ -71,6 +74,17 @@ def map_flat_values(op, *args, **kwargs):
   inner_kwargs = _replace_ragged_with_flat_values(kwargs, nested_splits_lists)
   if not nested_splits_lists:
     return op(*args, **kwargs)
+
+  split_dtypes = set(splits[0].dtype for splits in nested_splits_lists)
+  if len(split_dtypes) > 1:
+    if not ragged_config.auto_cast_partition_dtype():
+      raise ValueError("Input RaggedTensors have mismatched row_splits dtypes; "
+                       "use RaggedTensor.with_row_splits_dtype() to convert "
+                       "them to compatible dtypes.")
+
+    nested_splits_lists = [
+        [math_ops.cast(s, dtypes.int64) for s in nested_splits]  # pylint: disable=g-complex-comprehension
+        for nested_splits in nested_splits_lists]
 
   with ops.control_dependencies(
       ragged_util.assert_splits_match(nested_splits_lists)):
