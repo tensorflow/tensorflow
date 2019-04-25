@@ -234,7 +234,7 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
-        // resources are pushed into elems later when processing resource
+        // Resources are pushed into elems later when processing resource
         // arguments. This is correct as long as the input and output resources
         // are in the same order. In the case of functionalized while body,
         // this property is guaranteed since a corresponding output is always

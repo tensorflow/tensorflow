@@ -209,7 +209,7 @@ Status BuildLoopBody(const Graph& graph, Frame* frame,
     } else {
       // Argument is loop-varying.
       if (dtype == DT_RESOURCE) {
-        // DT_RESOURCE arguments should always be loop-invariant in the graph
+        // DT_RESOURCE arguments should always be loop-invariant in the graphs
         // generated from TF.
         return errors::Unimplemented("Loop-varying DT_RESOURCE Enter node ",
                                      arg.enter->name(), " is currently not",
