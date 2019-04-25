@@ -23,12 +23,14 @@ class BatchDatasetOpTest : public DatasetOpsTestBase {
  protected:
   // Creates a new `BatchDataset` op kernel.
   Status CreateBatchDatasetOpKernel(
-      const DataTypeVector& output_types,
+      bool parallel_copy, const DataTypeVector& output_types,
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
     NodeDef node_def = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "batch_size", "drop_remainder"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        {{"parallel_copy", parallel_copy},
+         {"output_types", output_types},
+         {"output_shapes", output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
     return Status::OK();
   }
@@ -54,6 +56,7 @@ struct TestCase {
   RangeDatasetParam range_dataset_param;
   Tensor batch_size;
   Tensor drop_remainder;
+  bool parallel_copy;
   std::vector<Tensor> expected_outputs;
   DataTypeVector expected_output_dtypes;
   std::vector<PartialTensorShape> expected_output_shapes;
@@ -70,6 +73,7 @@ TestCase TestCase1() {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
       /*drop_remainder*/
       DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+      /*parallel_copy*/ true,
       /*expected_outputs*/
       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
@@ -90,6 +94,7 @@ TestCase TestCase2() {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
       /*drop_remainder*/
       DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
+      /*parallel_copy*/ false,
       /*expected_outputs*/
       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
@@ -109,6 +114,7 @@ TestCase TestCase3() {
           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
           /*drop_remainder*/
           DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ false,
           /*expected_outputs*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
@@ -129,6 +135,7 @@ TestCase TestCase4() {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
       /*drop_remainder*/
       DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
+      /*parallel_copy*/ true,
       /*expected_outputs*/
       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
@@ -147,6 +154,7 @@ TestCase TestCase5() {
           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
           /*drop_remainder*/
           DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
+          /*parallel_copy*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({12})},
@@ -162,6 +170,7 @@ TestCase TestCase6() {
           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
           /*drop_remainder*/
           DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ true,
           /*expected_outputs*/
           {DatasetOpsTestBase::CreateTensor<int64>(
               TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
@@ -179,6 +188,7 @@ TestCase TestCase7() {
           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
           /*drop_remainder*/
           DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({4})},
@@ -193,6 +203,7 @@ TestCase InvalidBatchSizeTestCase() {
           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
           /*drop_remainder*/
           DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({3})},
@@ -211,9 +222,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, GetNext) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -264,9 +275,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -298,9 +309,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -332,9 +343,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -367,9 +378,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -402,9 +413,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -436,9 +447,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -475,9 +486,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -517,9 +528,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -559,9 +570,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -600,9 +611,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
 
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
@@ -678,9 +689,9 @@ TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
   TestCase test_case = InvalidBatchSizeTestCase();
   std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(test_case.expected_output_dtypes,
-                                          test_case.expected_output_shapes,
-                                          &batch_dataset_kernel));
+  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
+      test_case.parallel_copy, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &batch_dataset_kernel));
   DatasetBase* range_dataset;
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.range_dataset_param.start, test_case.range_dataset_param.end,
