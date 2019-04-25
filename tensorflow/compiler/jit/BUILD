@@ -20,10 +20,7 @@ package(
     ],
 )
 
-# NB! Removing the cc_header_only_library import breaks the OSS build since
-# copybara injects some build rules that use it.
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 

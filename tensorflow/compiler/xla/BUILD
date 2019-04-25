@@ -18,9 +18,7 @@ package_group(
     ],
 )
 
-# Required for open-source build.
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")  # @unused
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
