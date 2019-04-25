@@ -41,7 +41,9 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
   // Turn on the Philox algorithm for the CPU and GPU backends only.
   if (device_type_string == DEVICE_GPU_XLA_JIT ||
       device_type_string == DEVICE_CPU_XLA_JIT) {
-    return xla::PhiloxBitGenerator;
+    return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/true);
+    };
   }
 
   return xla::ThreeFryBitGenerator;
