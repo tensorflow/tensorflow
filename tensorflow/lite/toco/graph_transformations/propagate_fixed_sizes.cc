@@ -2420,6 +2420,10 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
       ProcessMatrixSetDiagOperator(model,
                                    static_cast<MatrixSetDiagOperator*>(op));
       break;
+    case OperatorType::kCTCBeamSearchDecoder:
+      // The sizes of the outputs are only known in runtime based on the input.
+      // Ignore shape progapation here and defer that to the interpreter.
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);
