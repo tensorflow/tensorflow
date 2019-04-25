@@ -1972,8 +1972,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 
 // TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we
 // can only use asymmetric padding in convolutions with 5.1.3+.
-#if IS_TRT_VERSION_GE(5, 1, 3, 0)
-#else
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // Handle asymmetric padding.
@@ -2787,8 +2786,7 @@ Status ConvertPool(OpConverterParams* params) {
   }
 
 // TensorRT 5.1 added support for asymmetric padding.
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-#else
+#if !IS_TRT_VERSION_GE(5, 1, 0, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
