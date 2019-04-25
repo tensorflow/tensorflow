@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "AdditiveAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "AlphaDropout"
     mtype: "<type \'type\'>"
   }

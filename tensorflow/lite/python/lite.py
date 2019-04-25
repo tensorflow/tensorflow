@@ -24,9 +24,11 @@ from six import PY3
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell  # pylint: disable=unused-import
+from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_supported_ops  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
@@ -47,9 +49,9 @@ from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_te
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
-from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
 from tensorflow.python.eager import function as _function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
@@ -72,6 +74,14 @@ class Optimize(enum.Enum):
 
   Some optimizations may come at the cost of accuracy.
   """
+
+  # Default optimization strategy.
+  #
+  # Converter will do its best to improve size and latency based on the
+  # information provided.
+  # Enhanced optimizations can be gained by providing a representative_dataset.
+  # Currently this is recommended, and is equivalent to the modes below.
+  DEFAULT = "DEFAULT"
 
   # Optimize for size.
   #
@@ -108,7 +118,7 @@ class RepresentativeDataset(object):
   converted floating point model.
   """
 
-  def __init__(self, input_gen, output_gen=None):
+  def __init__(self, input_gen):
     """Creates a representative dataset.
 
     Args:
@@ -116,14 +126,8 @@ class RepresentativeDataset(object):
         for the model. This must be a callable object that returns an object
         that supports the `iter()` protocol (e.g. a generator function). The
         elements generated must have same type and shape as inputs to the model.
-      output_gen: (optional) an output generator that can be used to generate
-        output samples for the model. This must be a callable object that
-        returns an object that supports the `iter()` protocol (e.g. a generator
-        function). The elements generated must have same type and shape as
-        outputs to the model. (default None)
     """
     self.input_gen = input_gen
-    self.output_gen = output_gen
 
 
 @_tf_export("lite.TargetSpec")
@@ -157,12 +161,7 @@ class TFLiteConverterV2(object):
     target_spec: Experimental flag, subject to change. Specification of target
       device.
     optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. The converter applies the
-      optimizations by giving priority to the optimizations specified earlier in
-      the list. E.g. `[optimize.OPTIMIZE_FOR_SIZE,
-      optimize.OPTIMIZE_FOR_LATENCY]` requires the converter to do both size and
-      latency optimizations giving priority to size optimizations over latency
-      optimizations.
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
@@ -325,19 +324,21 @@ class TFLiteConverterV2(object):
 
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError("`representative_dataset` must be an instance of "
-                        "`RepresentativeDataset`")
+        self.representative_dataset = RepresentativeDataset(
+            self.representative_dataset)
       if self.representative_dataset.input_gen is None:
         raise ValueError(
-            "Provide an input generator for `representative_dataset`")
+            "Provide an input generator for representative_dataset")
 
     # TODO(shashishekhar): For now use optimizations order is ignored.
     # Both size and latency optimizations decide whether to apply post
     # training optimizations.
     post_training_optimize = bool(
         len(
-            set(self.optimizations)
-            & set([Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE])))
+            set(self.optimizations).intersection([
+                Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+                Optimize.DEFAULT
+            ])))
     # Do weights only quantization if there is no dataset for calibration.
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))
@@ -359,7 +360,8 @@ class TFLiteConverterV2(object):
     if self.representative_dataset and post_training_optimize:
       calibrate_quantize = _calibrator.Calibrator(result)
       result = calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen)
+          self.representative_dataset.input_gen, constants.FLOAT,
+          constants.FLOAT)
 
     return result
 
@@ -420,7 +422,7 @@ class TFLiteConverter(object):
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
     post_training_quantize: deprecated, please specify
-     `[optimize.OPTIMIZE_FOR_SIZE]` for `optimizations` instead. Boolean
+     `[Optimize.DEFAULT]` for `optimizations` instead. Boolean
      indicating whether to quantize the weights of the converted float model.
      Model size will be reduced and there will be latency improvements
      (at the cost of accuracy). (default False)
@@ -433,13 +435,8 @@ class TFLiteConverter(object):
     target_ops: Experimental flag, subject to change. Set of OpsSet
       options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
-    optimizations: Experimental flag, subject to change, A list of
-      optimizations to apply when converting the model. The converter applies
-      the optimizations by giving priority to the optimizations specified
-      earlier in the list. E.g.
-      `[optimize.OPTIMIZE_FOR_SIZE, optimize.OPTIMIZE_FOR_LATENCY]` requires
-      the converter to do both size and latency optimizations giving priority
-      to size optimizations over latency optimizations.
+    optimizations: Experimental flag, subject to change. A list of optimizations
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
@@ -694,6 +691,26 @@ class TFLiteConverter(object):
     Returns:
       TFLiteConverter class.
     """
+    # Handles Keras when Eager mode is enabled.
+    if context.executing_eagerly():
+      if input_arrays or output_arrays:
+        raise ValueError("`input_arrays` and `output_arrays` are unsupported "
+                         "with Eager mode. If your model requires any of these "
+                         "parameters, please use disable_eager_execution().")
+
+      _keras.backend.set_learning_phase(False)
+      keras_model = _keras.models.load_model(model_file, custom_objects)
+
+      function = _saving_utils.trace_model_call(keras_model)
+      concrete_func = function.get_concrete_function()
+
+      frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
+          concrete_func)
+      _set_tensor_shapes(frozen_func.inputs, input_shapes)
+      return cls(frozen_func.graph.as_graph_def(), frozen_func.inputs,
+                 frozen_func.outputs)
+
+    # Handles Keras when Eager mode is disabled.
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
     keras_model = _keras.models.load_model(model_file, custom_objects)
@@ -717,11 +734,10 @@ class TFLiteConverter(object):
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    "please use optimizations=[Optimize.DEFAULT]"
                     " instead." % name)
       if value:
-        # Use OPTIMIZE_FOR_SIZE for post training for now.
-        self.optimizations = [Optimize.OPTIMIZE_FOR_SIZE]
+        self.optimizations = [Optimize.DEFAULT]
       else:
         self.optimizations = []
       return
@@ -730,9 +746,9 @@ class TFLiteConverter(object):
   def __getattribute__(self, name):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    "please use optimizations=[Optimize.DEFAULT]"
                     " instead." % name)
-      return Optimize.OPTIMIZE_FOR_SIZE in set(self.optimizations)
+      return Optimize.DEFAULT in set(self.optimizations)
     return object.__getattribute__(self, name)
 
   def convert(self):
@@ -782,16 +798,18 @@ class TFLiteConverter(object):
       quantized_stats = None
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError(
-            "representative_dataset must be an instance of "
-            "RepresentativeDataset")
+        self.representative_dataset = RepresentativeDataset(
+            self.representative_dataset)
       if self.representative_dataset.input_gen is None:
         raise ValueError(
             "Provide an input generator for representative_dataset")
 
     post_training_optimize = bool(
-        len(set(self.optimizations) & set([Optimize.OPTIMIZE_FOR_LATENCY,
-                                           Optimize.OPTIMIZE_FOR_SIZE])))
+        len(
+            set(self.optimizations).intersection([
+                Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+                Optimize.DEFAULT
+            ])))
     # Do weights only quantization if there is no dataset for calibration.
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))

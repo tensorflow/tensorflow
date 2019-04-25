@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
+    textual_hdrs = ["cuda_runtime_10_0.inc"],
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [
@@ -345,6 +346,28 @@ cc_library(
     textual_hdrs = ["cupti_10_0.inc"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cupti_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+cc_library(
+    name = "cusolver_stub",
+    srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
+    textual_hdrs = ["cusolver_dense_10_0.inc"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+cc_library(
+    name = "cusparse_stub",
+    srcs = if_cuda_is_configured(["cusparse_stub.cc"]),
+    textual_hdrs = glob(["cusparse_*.inc"]),
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),

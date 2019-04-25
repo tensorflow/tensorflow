@@ -74,17 +74,20 @@ class SimpleBiasTest(
       # Make sure Session is cleared at the start of each run.
       keras.backend._SESSION.session = None
 
-      x = ops.convert_to_tensor([[0.], [1.], [2.], [0.], [1.], [2.]])
-      y = ops.convert_to_tensor([[0.5], [2.], [3.5], [0.5], [2.], [3.5]])
+      x = ops.convert_to_tensor([[0.], [1.], [2.], [0.], [1.], [2.], [0.],
+                                 [1.]])
+      y = ops.convert_to_tensor([[0.5], [2.], [3.5], [0.5], [2.], [3.5], [0.5],
+                                 [2.]])
       ds = dataset_ops.Dataset.from_tensor_slices((x, y))
-      ds = ds.batch(6)
+      ds = ds.batch(8)
       model = keras.Sequential([Bias(input_shape=(1,))])
       model.compile(
           keras.optimizer_v2.gradient_descent.SGD(0.1), 'mae', metrics=['mae'])
       history = model.fit(ds, epochs=5)
-      self.assertAllClose(history.history['loss'], [1., 0.9, 0.8, 0.7, 0.6])
+      self.assertAllClose(history.history['loss'],
+                          [0.9375, 0.8375, 0.7375, 0.6375, 0.5375])
       self.assertAllClose(history.history['mean_absolute_error'],
-                          [1., 0.9, 0.8, 0.7, 0.6])
+                          [0.9375, 0.8375, 0.7375, 0.6375, 0.5375])
 
       results = {'training': history.history}
       if results_without_ds:
@@ -146,9 +149,7 @@ def make_lstm_model(initial_weights=None):
 
 
 def make_embedding_model(initial_weights=None):
-  # TODO(b/130231718): Remove batch_size here.
-  inputs = keras.layers.Input(
-      batch_size=64 // get_num_workers(), shape=(1,), dtype='int32')
+  inputs = keras.layers.Input(shape=(1,), dtype='int32')
   embeddings = keras.layers.Embedding(100, 5)(inputs)
   outputs = keras.layers.Dense(1, activation='softmax')(embeddings)
   model = keras.Model(inputs, outputs)
@@ -177,7 +178,7 @@ class ModelCorrectnessTest(
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           make_model=[make_image_model, make_embedding_model],
-          required_gpus=[0])) # TODO(b/130299192): Enable for 1 gpu case.
+          required_gpus=[0, 1]))
   def test_correctness(self, strategy_cls, make_model):
 
     def _worker_fn(initial_weights=None, results_without_ds=None):

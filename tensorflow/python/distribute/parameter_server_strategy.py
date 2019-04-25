@@ -81,9 +81,9 @@ class ParameterServerStrategy(distribute_lib.Strategy):
   variables.
 
   2) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
-  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
-  possibly create conflicts of device assignment.
+  `tf.compat.v1.colocate_with`) under the strategy's scope. For colocating
+  variables, use `strategy.extended.colocate_vars_with` instead. Colocation of
+  ops will possibly create conflicts of device assignment.
   """
 
   def __init__(self, cluster_resolver=None):
@@ -281,6 +281,10 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
+
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,

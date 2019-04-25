@@ -26,6 +26,7 @@ import weakref
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
@@ -47,6 +48,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
@@ -155,6 +157,18 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     x = ops.IndexedSlices(values, indices, dense_shape)
     tensor = ops.convert_to_tensor(x, name="tensor")
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
+
+  @test_util.run_gpu_only
+  def testEagerCopy(self):
+    with context.eager_mode():
+      var = variables.Variable([[0.0], [0.0], [0.0], [0.0]], name="tensor")
+      with backprop.GradientTape() as tape:
+        a = array_ops.gather(array_ops.gather(var, [0, 1]), [0, 1])
+        b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
+        r = special_math_ops.einsum("ij,ij->i", a, b)
+      g = tape.gradient(r, [var])[0]
+      values = g.values if isinstance(g, ops.IndexedSlices) else g
+      self.assertAllEqual(values.get_shape(), [4, 1])
 
   @test_util.run_deprecated_v1
   def testNegation(self):
@@ -3056,7 +3070,7 @@ class _TupleTensor(composite_tensor.CompositeTensor):
     return self._components
 
   @classmethod
-  def _from_components(cls, components):
+  def _from_components(cls, components, metadata):
     return cls(*components)
 
   def _shape_invariant_to_components(self, shape=None):

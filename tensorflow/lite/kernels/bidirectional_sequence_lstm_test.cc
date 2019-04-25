@@ -472,17 +472,15 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -637,17 +635,15 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -801,17 +797,15 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -962,17 +956,15 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
@@ -1115,17 +1107,15 @@ TEST(LSTMOpTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
@@ -1268,17 +1258,15 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights(
@@ -1974,14 +1962,14 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
           {n_batch, n_cell},    // cell_state tensor
 
           {n_batch, sequence_length, 0},  // aux_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_input tensor
-          {n_cell, 0},                    // aux_fw_input_to_forget tensor
-          {n_cell, 0},                    // aux_fw_input_to_cell tensor
-          {n_cell, 0},                    // aux_fw_input_to_output tensor
-          {n_cell, 0},                    // aux_bw_input_to_input tensor
-          {n_cell, 0},                    // aux_bw_input_to_forget tensor
-          {n_cell, 0},                    // aux_bw_input_to_cell tensor
-          {n_cell, 0},                    // aux_bw_input_to_output tensor
+          {0},                            // aux_fw_input_to_input tensor
+          {0},                            // aux_fw_input_to_forget tensor
+          {0},                            // aux_fw_input_to_cell tensor
+          {0},                            // aux_fw_input_to_output tensor
+          {0},                            // aux_bw_input_to_input tensor
+          {0},                            // aux_bw_input_to_forget tensor
+          {0},                            // aux_bw_input_to_cell tensor
+          {0},                            // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights(
@@ -2678,17 +2666,15 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
-          // TODO(b/121134029): Update tests so tensor shapes after state tensor
-          // are used. They are currently ignored by test_util.
           {sequence_length, n_batch, n_input},  // aux_input tensor
-          {n_cell, 0},                          // aux_fw_input_to_input tensor
-          {n_cell, 0},                          // aux_fw_input_to_forget tensor
-          {n_cell, 0},                          // aux_fw_input_to_cell tensor
-          {n_cell, 0},                          // aux_fw_input_to_output tensor
-          {n_cell, 0},                          // aux_bw_input_to_input tensor
-          {n_cell, 0},                          // aux_bw_input_to_forget tensor
-          {n_cell, 0},                          // aux_bw_input_to_cell tensor
-          {n_cell, 0},                          // aux_bw_input_to_output tensor
+          {n_cell, n_input},                    // aux_fw_input_to_input tensor
+          {n_cell, n_input},                    // aux_fw_input_to_forget tensor
+          {n_cell, n_input},                    // aux_fw_input_to_cell tensor
+          {n_cell, n_input},                    // aux_fw_input_to_output tensor
+          {n_cell, n_input},                    // aux_bw_input_to_input tensor
+          {n_cell, n_input},                    // aux_bw_input_to_forget tensor
+          {n_cell, n_input},                    // aux_bw_input_to_cell tensor
+          {n_cell, n_input},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,

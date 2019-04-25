@@ -115,7 +115,7 @@ def get_configs_from_feature_columns(feature_columns):
 
   Returns:
     A tuple of dicts, the first maps tables to their config, the second maps
-    features to tables, and the third maps features to weight key names.
+    features to their config, and the third maps features to weight key names.
   """
 
   allowed = (tpu_fc._TPUEmbeddingColumn, tpu_fc._TPUSharedEmbeddingColumn)  # pylint: disable=protected-access
@@ -127,17 +127,18 @@ def get_configs_from_feature_columns(feature_columns):
               type(column), allowed))
 
   table_to_config = {}
-  feature_to_table = {}
+  feature_to_config = {}
   feature_to_weight_key_name = {}
   for column in feature_columns:
     feature_name = column.get_feature_key_name()
     table_name = _get_table_name_from_embedding_var_name(
         column.get_embedding_var_name())
-    if feature_name in feature_to_table:
+    if feature_name in feature_to_config:
       raise ValueError(
           'Feature column {} is used with multiple embeddings and this is '
           'not supported.'.format(feature_name))
-    feature_to_table[feature_name] = table_name
+    feature_to_config[feature_name] = tpu_embedding.FeatureConfig(
+        table_id=table_name)
     feature_to_weight_key_name[feature_name] = column.get_weight_key_name()
     vocabulary_size, dimension = column.get_embedding_table_size()
     table_to_config[table_name] = tpu_embedding.TableConfig(
@@ -146,7 +147,7 @@ def get_configs_from_feature_columns(feature_columns):
         initializer=column.get_initializer(),
         combiner=column.get_combiner())
 
-  return table_to_config, feature_to_table, feature_to_weight_key_name
+  return table_to_config, feature_to_config, feature_to_weight_key_name
 
 
 class EmbeddingConfigSpec(
@@ -238,7 +239,7 @@ class EmbeddingConfig(object):
     self._num_cores = num_cores
     self._run_config = run_config
 
-    (self._table_to_config_dict, self._feature_to_table_dict,
+    (self._table_to_config_dict, self._feature_to_config_dict,
      self.feature_to_weight_key_name_dict) = (
          get_configs_from_feature_columns(
              embedding_config_spec.feature_columns))
@@ -286,7 +287,7 @@ class EmbeddingConfig(object):
       cluster_def = None
     tpu_embedding_ = tpu_embedding.TPUEmbedding(
         self._table_to_config_dict,
-        self._feature_to_table_dict,
+        self._feature_to_config_dict,
         batch_size,
         tpu_embedding_mode,
         master,
@@ -310,7 +311,7 @@ def split_inputs(ctx, features, labels):
     tpu_embedding_ = ctx.embedding_config.tpu_embedding
     feature_to_weight_key_name_dict = (
         ctx.embedding_config.feature_to_weight_key_name_dict)
-    for feature_key in tpu_embedding_.feature_to_table_dict:
+    for feature_key in tpu_embedding_.feature_to_config_dict:
       sparse_feature = _get_sparse_feature_from_feature(feature_key, features)
       weight_key_name = feature_to_weight_key_name_dict[feature_key]
       if isinstance(sparse_feature, sparse_tensor.SparseTensor):

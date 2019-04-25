@@ -73,6 +73,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
@@ -156,6 +157,17 @@ py_test(
 )
 
 py_library(
+    name = "wrap_toco",
+    srcs = [
+        "wrap_toco.py",
+    ],
+    deps = [
+        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "lite_constants",
     srcs = ["lite_constants.py"],
     srcs_version = "PY2AND3",
@@ -173,9 +185,9 @@ py_library(
     deps = [
         ":lite_constants",
         ":util",
+        ":wrap_toco",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
-        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",

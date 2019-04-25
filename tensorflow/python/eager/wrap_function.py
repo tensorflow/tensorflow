@@ -246,12 +246,12 @@ class WrappedGraph(object):
 
   ```
   def add_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v + x
 
   def increment_var_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v.assign_add(x)
 
@@ -293,9 +293,10 @@ class WrappedGraph(object):
     """Wraps a TF 1.X function and returns an eager-compatible function.
 
     All functions wrapped in the same `WrappedGraph` will have access to the
-    same graph (`tf.get_default_graph` to get the graph object within a
-    function, or `WrappedGraph.graph` to get the graph outside a function).
-    Variables created within the function will be added to the `variables` list.
+    same graph (`tf.compat.v1.get_default_graph` to get the graph object
+    within a function, or `WrappedGraph.graph` to get the graph outside a
+    function). Variables created within the function will be added to the
+    `variables` list.
 
     Function inputs: All inputs to the function must be tensors (nested ok),
     with their shapes and dtypes defined in the `signature` argument.

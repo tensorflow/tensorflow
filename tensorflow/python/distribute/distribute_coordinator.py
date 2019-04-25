@@ -128,7 +128,7 @@ class _WorkerContext(object):
         replicated training.
       task_id: an integer indicating id of the corresponding task. It can be
         None if it is local training or in-graph replicated training.
-      session_config: an optional `tf.ConfigProto` object.
+      session_config: an optional `tf.compat.v1.ConfigProto` object.
       rpc_layer: optional string specifying the RPC protocol for communication
         with worker masters. If None or empty, hosts in the `cluster_spec` will
         be used directly.
@@ -578,11 +578,11 @@ def run_standard_tensorflow_server(session_config=None):
   "grpc".
 
   Args:
-    session_config: an optional `tf.ConfigProto` object. Users can pass in
-      the session config object to configure server-local devices.
+    session_config: an optional `tf.compat.v1.ConfigProto` object. Users can
+      pass in the session config object to configure server-local devices.
 
   Returns:
-    a `tf.train.Server` object which has already been started.
+    a `tf.distribute.Server` object which has already been started.
 
   Raises:
     ValueError: if the "TF_CONFIG" environment is not complete.
@@ -736,8 +736,8 @@ def run_distribute_coordinator(worker_fn,
       in a cluster. If not set or empty, fall back to local training.
     task_type: the current task type, optional if this is a client.
     task_id: the current task id, optional if this is a client.
-    session_config: an optional `tf.ConfigProto` object which will be passed
-      to `strategy`'s `configure` method and used to create a session.
+    session_config: an optional `tf.compat.v1.ConfigProto` object which will be
+      passed to `strategy`'s `configure` method and used to create a session.
     rpc_layer: optional string, the protocol for RPC, e.g. "grpc".
 
   Raises:

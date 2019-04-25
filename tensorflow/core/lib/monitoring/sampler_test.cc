@@ -112,6 +112,15 @@ TEST(ExponentialSamplerTest, ExponentialBucketBoundaries) {
   EqHistograms(expected, cell->value());
 }
 
+TEST(ExponentialSamplerTest, SameName) {
+  auto* same_sampler = Sampler<1>::New({"/tensorflow/test/sampler_with_labels",
+                                        "Sampler with one label.", "MyLabel"},
+                                       Buckets::Explicit({10.0, 20.0}));
+  EXPECT_TRUE(sampler_with_labels->GetStatus().ok());
+  EXPECT_FALSE(same_sampler->GetStatus().ok());
+  delete same_sampler;
+}
+
 }  // namespace
 }  // namespace monitoring
 }  // namespace tensorflow

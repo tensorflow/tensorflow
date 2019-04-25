@@ -1711,6 +1711,10 @@ xla_test(
     srcs = ["multi_device_all_reduce_test.cc"],
     backends = ["gpu"],
     tags = [
+        # This test is tagged "manual" because it requires multiple GPUs, and
+        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
+        # unless they're also tagged "guitar".
+        "guitar",
         "manual",
         "multi_gpu",
         "no_oss",

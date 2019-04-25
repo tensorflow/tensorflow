@@ -737,7 +737,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(
           logdir, max_queue=1, flush_millis=999999).as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         self.assertEqual(1, get_total())
@@ -769,7 +769,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
           logdir, max_queue=999999, flush_millis=999999)
       with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
-        # Note: First tf.Event is always file_version.
+        # Note: First tf.compat.v1.Event is always file_version.
         self.assertEqual(1, get_total())
         summary_ops.write('tag', 1, step=0)
         summary_ops.write('tag', 1, step=0)

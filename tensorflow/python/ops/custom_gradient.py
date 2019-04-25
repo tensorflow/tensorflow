@@ -89,7 +89,7 @@ def custom_gradient(f):
 
   ```python
   def log1pexp(x):
-    return tf.log(1 + tf.exp(x))
+    return tf.math.log(1 + tf.exp(x))
   ```
 
   Due to numerical instability, the gradient this function evaluated at x=100 is
@@ -110,7 +110,7 @@ def custom_gradient(f):
     e = tf.exp(x)
     def grad(dy):
       return dy * (1 - 1 / (1 + e))
-    return tf.log(1 + e), grad
+    return tf.math.log(1 + e), grad
   ```
 
   With this definition, the gradient at x=100 will be correctly evaluated as

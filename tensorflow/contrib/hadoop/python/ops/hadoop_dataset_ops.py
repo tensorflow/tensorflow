@@ -44,7 +44,7 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.contrib.hadoop.SequenceFileDataset("/foo/bar.seq")
     # Prints the (key, value) pairs inside a hadoop sequence file.

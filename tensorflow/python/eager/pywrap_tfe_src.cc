@@ -16,8 +16,6 @@ limitations under the License.
 #include <cstring>
 #include <thread>
 
-#include "tensorflow/python/eager/pywrap_tfe.h"
-
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
@@ -35,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -1872,33 +1871,25 @@ bool CheckInputsOk(PyObject* seq, int start_index,
   return true;
 }
 
-PyObject* MaybeGetDType(PyObject* item) {
-  if (EagerTensor_CheckExact(item)) {
-    tensorflow::Safe_PyObjectPtr py_dtype(
-        PyObject_GetAttrString(item, "dtype"));
-    return PyObject_GetAttrString(py_dtype.get(), "_type_enum");
+tensorflow::DataType MaybeGetDType(PyObject* item) {
+  if (EagerTensor_CheckExact(item) || CheckResourceVariable(item)) {
+    return FastTensorDtype(item);
   }
 
-  if (CheckResourceVariable(item)) {
-    tensorflow::Safe_PyObjectPtr py_dtype(
-        PyObject_GetAttrString(item, "_dtype"));
-    return PyObject_GetAttrString(py_dtype.get(), "_type_enum");
-  }
-
-  return nullptr;
+  return tensorflow::DT_INVALID;
 }
 
-PyObject* MaybeGetDTypeForAttr(const string& attr,
-                               FastPathOpExecInfo* op_exec_info) {
+tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
+                                          FastPathOpExecInfo* op_exec_info) {
   auto cached_it = op_exec_info->cached_dtypes.find(attr);
   if (cached_it != op_exec_info->cached_dtypes.end()) {
-    return GetPythonObjectFromInt(cached_it->second);
+    return cached_it->second;
   }
 
   auto it = op_exec_info->attr_to_inputs_map->find(attr);
   if (it == op_exec_info->attr_to_inputs_map->end()) {
     // No other inputs - this should never happen.
-    Py_RETURN_NONE;
+    return tensorflow::DT_INVALID;
   }
 
   for (const auto& input_info : it->second) {
@@ -1908,17 +1899,17 @@ PyObject* MaybeGetDTypeForAttr(const string& attr,
       tensorflow::Safe_PyObjectPtr fast_item(
           PySequence_Fast(item, "Unable to allocate"));
       for (int i = 0; i < PySequence_Fast_GET_SIZE(fast_item.get()); i++) {
-        auto* dtype =
+        auto dtype =
             MaybeGetDType(PySequence_Fast_GET_ITEM(fast_item.get(), i));
-        if (dtype != nullptr) return dtype;
+        if (dtype != tensorflow::DT_INVALID) return dtype;
       }
     } else {
-      auto* dtype = MaybeGetDType(item);
-      if (dtype != nullptr) return dtype;
+      auto dtype = MaybeGetDType(item);
+      if (dtype != tensorflow::DT_INVALID) return dtype;
     }
   }
 
-  Py_RETURN_NONE;
+  return tensorflow::DT_INVALID;
 }
 
 // TODO(agarwal): use an automatic mechanism for handling None arguments to
@@ -2310,9 +2301,9 @@ bool ConvertToTensor(
     const FastPathOpExecInfo& op_exec_info, PyObject* input,
     tensorflow::Safe_PyObjectPtr* output_handle,
     // This gets a hint for this particular input.
-    const std::function<PyObject*()>& dtype_hint_getter,
+    const std::function<tensorflow::DataType()>& dtype_hint_getter,
     // This sets the dtype after conversion is complete.
-    const std::function<void(const TF_DataType& dtype)>& dtype_setter,
+    const std::function<void(const tensorflow::DataType dtype)>& dtype_setter,
     TF_Status* status) {
   if (EagerTensor_CheckExact(input)) {
     Py_INCREF(input);
@@ -2323,28 +2314,18 @@ bool ConvertToTensor(
   }
 
   // The hint comes from a supposedly similarly typed tensor.
-  tensorflow::Safe_PyObjectPtr dtype_hint(dtype_hint_getter());
-  if (PyErr_Occurred()) {
-    return false;
-  }
+  tensorflow::DataType dtype_hint = dtype_hint_getter();
 
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(input, dtype_hint.get())));
+          tensorflow::ConvertToEagerTensor(input, dtype_hint)));
   if (handle == nullptr) {
     return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
   int desired_dtype = -1;
-  if (dtype_hint.get() != Py_None) {
-    if (!ParseTypeValue("", dtype_hint.get(), status, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype_hint.get())->tp_name)
-                          .c_str());
-      return false;
-    }
+  if (dtype_hint != tensorflow::DT_INVALID) {
+    desired_dtype = static_cast<int>(dtype_hint);
   }
 
   // Maybe cast to the desired type. This is intended to match python
@@ -2372,7 +2353,7 @@ bool ConvertToTensor(
   }
 
   output_handle->reset(EagerTensorFromHandle(handle.release()));
-  dtype_setter(output_dtype);
+  dtype_setter(static_cast<tensorflow::DataType>(output_dtype));
 
   return true;
 }
@@ -2394,13 +2375,12 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
           *op_exec_info, input, &py_eager_tensor,
           [&]() {
             if (input_arg.type() != tensorflow::DataType::DT_INVALID) {
-              return GetPythonObjectFromInt(input_arg.type());
+              return input_arg.type();
             }
             return MaybeGetDTypeForAttr(input_arg.type_attr(), op_exec_info);
           },
-          [&](const TF_DataType dtype) {
-            op_exec_info->cached_dtypes[input_arg.type_attr()] =
-                static_cast<tensorflow::DataType>(dtype);
+          [&](const tensorflow::DataType dtype) {
+            op_exec_info->cached_dtypes[input_arg.type_attr()] = dtype;
           },
           status)) {
     return false;
@@ -2737,8 +2717,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
         if (!ConvertToTensor(
                 op_exec_info, py_input, &py_eager_tensor,
-                []() { Py_RETURN_NONE; }, [](const TF_DataType& dtype) {},
-                status)) {
+                []() { return tensorflow::DT_INVALID; },
+                [](const tensorflow::DataType dtype) {}, status)) {
           return nullptr;
         }
 

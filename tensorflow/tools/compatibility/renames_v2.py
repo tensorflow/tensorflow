@@ -116,7 +116,7 @@ renames = {
     'tf.SessionLog':
         'tf.compat.v1.SessionLog',
     'tf.SparseConditionalAccumulator':
-        'tf.sparse.SparseConditionalAccumulator',
+        'tf.compat.v1.SparseConditionalAccumulator',
     'tf.SparseFeature':
         'tf.io.SparseFeature',
     'tf.SparseTensorValue':
@@ -345,6 +345,16 @@ renames = {
         'tf.compat.v1.estimator.inputs.numpy_input_fn',
     'tf.estimator.inputs.pandas_input_fn':
         'tf.compat.v1.estimator.inputs.pandas_input_fn',
+    'tf.estimator.tpu.InputPipelineConfig':
+        'tf.compat.v1.estimator.tpu.InputPipelineConfig',
+    'tf.estimator.tpu.RunConfig':
+        'tf.compat.v1.estimator.tpu.RunConfig',
+    'tf.estimator.tpu.TPUConfig':
+        'tf.compat.v1.estimator.tpu.TPUConfig',
+    'tf.estimator.tpu.TPUEstimator':
+        'tf.compat.v1.estimator.tpu.TPUEstimator',
+    'tf.estimator.tpu.TPUEstimatorSpec':
+        'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -373,6 +383,10 @@ renames = {
         'tf.signal.fft3d',
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
+    'tf.floor_div':
+        'tf.math.floordiv',
+    'tf.floormod':
+        'tf.math.floormod',
     'tf.floordiv':
         'tf.math.floordiv',
     'tf.get_collection':
@@ -431,12 +445,14 @@ renames = {
         'tf.compat.v1.image.resize_bicubic',
     'tf.image.resize_bilinear':
         'tf.compat.v1.image.resize_bilinear',
+    'tf.image.resize_image_with_crop_or_pad':
+        'tf.image.resize_with_crop_or_pad',
     'tf.image.resize_image_with_pad':
         'tf.compat.v1.image.resize_image_with_pad',
     'tf.image.resize_nearest_neighbor':
         'tf.compat.v1.image.resize_nearest_neighbor',
     'tf.image.transpose_image':
-        'tf.compat.v1.image.transpose_image',
+        'tf.image.transpose',
     'tf.initialize_all_tables':
         'tf.compat.v1.initialize_all_tables',
     'tf.initialize_all_variables':
@@ -593,6 +609,8 @@ renames = {
         'tf.compat.v1.lite.constants.TFLITE',
     'tf.lite.experimental.convert_op_hints_to_stubs':
         'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.get_potentially_supported_ops':
+        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
     'tf.lite.experimental.nn.TFLiteLSTMCell':
         'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
     'tf.lite.experimental.nn.TfLiteRNNCell':
@@ -795,6 +813,8 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mod':
+        'tf.math.mod',
     'tf.model_variables':
         'tf.compat.v1.model_variables',
     'tf.moving_average_variables':
@@ -867,6 +887,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':
@@ -917,6 +939,8 @@ renames = {
         'tf.compat.v1.ragged.RaggedTensorValue',
     'tf.ragged.constant_value':
         'tf.compat.v1.ragged.constant_value',
+    'tf.ragged.placeholder':
+        'tf.compat.v1.ragged.placeholder',
     'tf.random.get_seed':
         'tf.compat.v1.random.get_seed',
     'tf.random.set_random_seed':
@@ -1115,6 +1139,8 @@ renames = {
         'tf.sets.union',
     'tf.space_to_depth':
         'tf.compat.v1.space_to_depth',
+    'tf.sparse.SparseConditionalAccumulator':
+        'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge':
@@ -1275,6 +1301,28 @@ renames = {
         'tf.compat.v1.to_int32',
     'tf.to_int64':
         'tf.compat.v1.to_int64',
+    'tf.tpu.CrossShardOptimizer':
+        'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.batch_parallel':
+        'tf.compat.v1.tpu.batch_parallel',
+    'tf.tpu.bfloat16_scope':
+        'tf.compat.v1.tpu.bfloat16_scope',
+    'tf.tpu.core':
+        'tf.compat.v1.tpu.core',
+    'tf.tpu.cross_replica_sum':
+        'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.initialize_system':
+        'tf.compat.v1.tpu.initialize_system',
+    'tf.tpu.outside_compilation':
+        'tf.compat.v1.tpu.outside_compilation',
+    'tf.tpu.replicate':
+        'tf.compat.v1.tpu.replicate',
+    'tf.tpu.rewrite':
+        'tf.compat.v1.tpu.rewrite',
+    'tf.tpu.shard':
+        'tf.compat.v1.tpu.shard',
+    'tf.tpu.shutdown_system':
+        'tf.compat.v1.tpu.shutdown_system',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':
@@ -1387,6 +1435,8 @@ renames = {
         'tf.compat.v1.train.create_global_step',
     'tf.train.do_quantize_training_on_graphdef':
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
+    'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

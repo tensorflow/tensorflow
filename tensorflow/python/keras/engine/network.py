@@ -150,6 +150,8 @@ class Network(base_layer.Layer):
       # Subclassed network
       self._init_subclassed_network(**kwargs)
 
+    tf_utils.assert_no_legacy_layers(self.layers)
+
   # Several Network methods have "no_automatic_dependency_tracking"
   # annotations. Since Network does automatic dependency tracking on attribute
   # assignment, including for common data structures such as lists, by default
@@ -313,8 +315,8 @@ class Network(base_layer.Layer):
         output_tensors=self._nested_outputs)
 
     # Build self.input_names and self.output_names.
+    self._set_output_names()
     self.input_names = []
-    self.output_names = []
     self._feed_input_names = []
     self._feed_inputs = []
     self._feed_input_shapes = []
@@ -324,8 +326,25 @@ class Network(base_layer.Layer):
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
         self._feed_inputs.append(layer.input)
+
+  def _set_output_names(self):
+    """Assigns unique names to the Network's outputs.
+
+    Output layers with multiple output tensors would otherwise lead to duplicate
+    names in self.output_names.
+    """
+    uniquified = []
+    output_names = set()
+    prefix_count = {}
     for layer in self._output_layers:
-      self.output_names.append(layer.name)
+      proposal = layer.name
+      while proposal in output_names:
+        existing_count = prefix_count.get(layer.name, 1)
+        proposal = '{}_{}'.format(layer.name, existing_count)
+        prefix_count[layer.name] = existing_count + 1
+      output_names.add(proposal)
+      uniquified.append(proposal)
+    self.output_names = uniquified
 
   @trackable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None, dynamic=False):
@@ -391,14 +410,20 @@ class Network(base_layer.Layer):
     """Add Trackable dependencies on a list of Layers."""
     weight_layer_index = 0
     for layer_index, layer in enumerate(layers):
-      if layer.weights:
-        # Keep a separate index for layers which have weights. This allows users
-        # to insert Layers without weights anywhere in the network without
-        # breaking checkpoints.
-        self._track_trackable(
-            layer, name='layer_with_weights-%d' % weight_layer_index,
-            overwrite=True)
-        weight_layer_index += 1
+      try:
+        if layer.weights:
+          # Keep a separate index for layers which have weights. This allows
+          # users to insert Layers without weights anywhere in the network
+          # without breaking checkpoints.
+          self._track_trackable(
+              layer, name='layer_with_weights-%d' % weight_layer_index,
+              overwrite=True)
+          weight_layer_index += 1
+      except ValueError:
+        # The layer might have weights, but may not be built yet. We just treat
+        # it as layer without weight.
+        pass
+
       # Even if it doesn't have weights, we should still track everything in
       # case it has/will have Trackable dependencies.
       self._track_trackable(
@@ -457,36 +482,19 @@ class Network(base_layer.Layer):
           state_updates += layer.updates
     return state_updates
 
-  def get_weights(self):
-    """Retrieves the weights of the model.
+  @property
+  def weights(self):
+    """Returns the list of all layer variables/weights.
 
     Returns:
-        A flat list of Numpy arrays.
+      A list of variables.
     """
+    self._assert_weights_created()
     weights = []
-    for layer in self.layers:
+    for layer in self._layers:
       weights += layer.weights
     weights += (self._trainable_weights + self._non_trainable_weights)
-    return backend.batch_get_value(weights)
-
-  def set_weights(self, weights):
-    """Sets the weights of the model.
-
-    Arguments:
-        weights: A list of Numpy arrays with shapes and types matching
-            the output of `model.get_weights()`.
-    """
-    tuples = []
-    for layer in self.layers:
-      num_param = len(layer.weights)
-      layer_weights = weights[:num_param]
-      for sw, w in zip(layer.weights, layer_weights):
-        tuples.append((sw, w))
-      weights = weights[num_param:]
-    for sw, w in zip(self._trainable_weights + self._non_trainable_weights,
-                     weights):
-      tuples.append((sw, w))
-    backend.batch_set_value(tuples)
+    return weights
 
   def compute_mask(self, inputs, mask):
     if not self._is_graph_network:
@@ -536,38 +544,6 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  def _get_unfiltered_updates(self, check_trainable=True):
-    if check_trainable and not self.trainable and not self.stateful:
-      return []
-    updates = []
-    for layer in self.layers:
-      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
-    updates += list(self._updates)
-    return updates
-
-  @property
-  def _unfiltered_losses(self):
-    losses = []
-
-    # If any eager losses are present, we assume the model to be part of an
-    # eager training loop (either a custom one or the one used when
-    # `run_eagerly=True`), and so we always return just the eager losses in that
-    # case.
-    if self._eager_losses:
-      losses.extend(self._eager_losses)
-    else:
-      losses.extend(self._losses)
-    for regularizer in self._callable_losses:
-      loss_tensor = regularizer()
-      if loss_tensor is not None:
-        losses.append(loss_tensor)
-    for layer in self.layers:
-      if isinstance(layer, Network):
-        losses += layer._unfiltered_losses
-      else:
-        losses += layer.losses
-    return losses
-
   @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
@@ -576,134 +552,8 @@ class Network(base_layer.Layer):
       layer._clear_losses()
 
   @property
-  def updates(self):
-    """Retrieves the network's updates.
-
-    Will only include updates that are either
-    unconditional, or conditional on inputs to this model
-    (e.g. will not include updates that were created by layers of this model
-    outside of the model).
-
-    When the network has no registered inputs, all updates are returned.
-
-    Effectively, `network.updates` behaves like `layer.updates`.
-
-    Concrete example:
-
-    ```python
-      bn = keras.layers.BatchNormalization()
-      x1 = keras.layers.Input(shape=(10,))
-      _ = bn(x1)  # This creates 2 updates.
-
-      x2 = keras.layers.Input(shape=(10,))
-      y2 = bn(x2)  # This creates 2 more updates.
-
-      # The BN layer has now 4 updates.
-      self.assertEqual(len(bn.updates), 4)
-
-      # Let's create a model from x2 to y2.
-      model = keras.models.Model(x2, y2)
-
-      # The model does not list all updates from its underlying layers,
-      # but only the updates that are relevant to it. Updates created by layers
-      # outside of the model are discarded.
-      self.assertEqual(len(model.updates), 2)
-
-      # If you keep calling the model, you append to its updates, just like
-      # what happens for a layer.
-      x3 = keras.layers.Input(shape=(10,))
-      y3 = model(x3)
-      self.assertEqual(len(model.updates), 4)
-
-      # But if you call the inner BN layer independently, you don't affect
-      # the model's updates.
-      x4 = keras.layers.Input(shape=(10,))
-      _ = bn(x4)
-      self.assertEqual(len(model.updates), 4)
-    ```
-
-    Returns:
-        A list of update ops.
-    """
-
-    updates = self._get_unfiltered_updates(check_trainable=True)
-
-    # `updates` might contain irrelevant updates, so it needs to be filtered
-    # with respect to inputs the model has been called on.
-    relevant_inputs = []
-    for i in range(0, len(self._inbound_nodes)):
-      inputs = self.get_input_at(i)
-      if isinstance(inputs, list):
-        relevant_inputs += inputs
-      else:
-        relevant_inputs.append(inputs)
-    if not relevant_inputs:
-      return list(set(updates))
-
-    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
-    relevant_conditional_updates = [x for x in updates if x in reachable]
-    unconditional_updates = [
-        x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
-    # A layer could be used multiple times in a nested structure,
-    # so the updates list must be de-duped.
-    return list(set(relevant_conditional_updates + unconditional_updates))
-
-  @property
-  def losses(self):
-    """Retrieves the network's losses.
-
-    Will only include losses that are either
-    unconditional, or conditional on inputs to this model
-    (e.g. will not include losses that depend on tensors
-    that aren't inputs to this model).
-
-    When the network has no registered inputs, all losses are returned.
-
-    Returns:
-        A list of loss tensors.
-    """
-    losses = self._unfiltered_losses
-
-    if context.executing_eagerly():
-      return losses
-
-    # TODO(kaftan/fchollet): Clean this up / make it obsolete.
-    # This is a super ugly, confusing check necessary to
-    # handle the case where we are executing in a function graph in eager mode
-    # but the model was constructed symbolically in a separate graph scope.
-    # We need to capture the losses created in the current graph function,
-    # and filter out the incorrect loss tensors created when symbolically
-    # building the graph.
-    # We have to use this check because the code after it that checks
-    # for reachable inputs only captures the part of the model that was
-    # built symbolically, and captures the wrong tensors from a different
-    # func graph (causing a crash later on when trying to execute the
-    # graph function)
-    if ops.executing_eagerly_outside_functions():
-      return [
-          loss for loss in losses
-          if getattr(loss, 'graph', None) == ops.get_default_graph()
-      ]
-
-    relevant_inputs = []
-    for i in range(0, len(self._inbound_nodes)):
-      inputs = self.get_input_at(i)
-      if isinstance(inputs, list):
-        relevant_inputs += inputs
-      else:
-        relevant_inputs.append(inputs)
-    if not relevant_inputs:
-      return losses
-
-    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
-    relevant_conditional_losses = [x for x in losses if x in reachable]
-    unconditional_losses = [
-        x for x in losses if x._unconditional_loss]  # pylint: disable=protected-access
-    return list(set(
-        relevant_conditional_losses + unconditional_losses + self._losses))
-
-  @property
   def trainable_weights(self):
+    self._assert_weights_created()
     return trackable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
@@ -711,6 +561,7 @@ class Network(base_layer.Layer):
 
   @property
   def non_trainable_weights(self):
+    self._assert_weights_created()
     return trackable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
@@ -1015,8 +866,11 @@ class Network(base_layer.Layer):
                                                 computed_tensors)
             kwargs.setdefault('mask', computed_masks)
 
-          # Compute outputs.
-          output_tensors = layer(computed_tensors, **kwargs)
+          # Compute outputs. Use `Layer`s `__call__` rather than user-overridden
+          # `__call__` so that users can write layers that accept Tensors as
+          # keyword arguments in their `__call__`.
+          output_tensors = base_layer.Layer.__call__(layer, computed_tensors,
+                                                     **kwargs)
 
           # Update tensor_dict.
           for x, y in zip(
@@ -1210,9 +1064,8 @@ class Network(base_layer.Layer):
         # Preserve compatibility with older configs.
         flat_input_tensors = nest.flatten(input_tensors)
         if len(flat_input_tensors) == 1:
-          layer(flat_input_tensors[0], **kwargs)
-        else:
-          layer(input_tensors, **kwargs)
+          input_tensors = flat_input_tensors[0]
+        base_layer.Layer.__call__(layer, input_tensors, **kwargs)
 
     def process_layer(layer_data):
       """Deserializes a layer, then call it on appropriate inputs.
@@ -1378,6 +1231,7 @@ class Network(base_layer.Layer):
             format.
         ValueError: For invalid/unknown format arguments.
     """
+    self._assert_weights_created()
     filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
@@ -1511,6 +1365,7 @@ class Network(base_layer.Layer):
           'Unable to load weights saved in HDF5 format into a subclassed '
           'Model which has not created its variables yet. Call the Model '
           'first, then load the weights.')
+    self._assert_weights_created()
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
@@ -1683,6 +1538,7 @@ class Network(base_layer.Layer):
       ValueError: If the layers depend on `Input`s not found in this Model.
     """
     layers = nest.flatten(layers)
+    tf_utils.assert_no_legacy_layers(layers)
     node_to_depth = {}
     for depth, nodes in self._nodes_by_depth.items():
       node_to_depth.update({node: depth for node in nodes})
@@ -1740,6 +1596,32 @@ class Network(base_layer.Layer):
       self._layers_by_depth[depth].append(layer)
       self._layers.append(layer)
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
+  def _assert_weights_created(self):
+    """Asserts that all the weights for the network have been created.
+
+    For a non-dynamic network, the weights must already be created after the
+    layer has been called. For a dynamic network, the exact list of weights can
+    never be known for certain since it may change at any time during execution.
+
+    We run this check right before accessing weights or getting the Numpy value
+    for the current weights. Otherwise, if the layer has never been called,
+    the user would just get an empty list, which is misleading.
+
+    Raises:
+      ValueError: if the weights of the network has not yet been created.
+    """
+    if self.dynamic:
+      return
+    if (not self._is_graph_network and
+        'build' in self.__class__.__dict__ and
+        not self.built):
+      # For any model that has customized build() method but hasn't
+      # been invoked yet, this will cover both sequential and subclass model.
+      raise ValueError('Weights for model %s have not yet been created. '
+                       'Weights are created when the Model is first called on '
+                       'inputs or `build()` is called with an `input_shape`.' %
+                       self.name)
 
 
 def _is_hdf5_filepath(filepath):

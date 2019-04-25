@@ -507,20 +507,17 @@ class RunManyGraphs {
   Call* get(int index) { return &calls_[index]; }
 
   // When the index-th call is done, updates the overall status.
-  void WhenDone(int index, const std::string& worker_name, const Status& s) {
+  void WhenDone(int index, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
     auto resp = get(index)->resp.get();
     if (resp->status_code() != error::Code::OK) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
-      ReportBadStatus(Status(resp->status_code(),
-                             strings::StrCat("From ", worker_name, ":\n",
-                                             resp->status_error_message())));
+      ReportBadStatus(
+          Status(resp->status_code(), resp->status_error_message()));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
-      ReportBadStatus(Status(
-          s.code(),
-          strings::StrCat("From ", worker_name, ":\n", s.error_message())));
+      ReportBadStatus(s);
     }
     pending_.DecrementCount();
   }
@@ -534,9 +531,7 @@ class RunManyGraphs {
 
   Status status() const {
     mutex_lock l(mu_);
-    // Concat status objects in this StatusGroup to get the aggregated status,
-    // as each status in status_group_ is already summarized status.
-    return status_group_.as_concatenated_status();
+    return status_group_.as_status();
   }
 
  private:
@@ -691,9 +686,9 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     const Part& part = partitions_[i];
     RunManyGraphs::Call* call = calls.get(i);
     TRACEPRINTF("Partition %d %s", i, part.name.c_str());
-    part.worker->RunGraphAsync(&call->opts, call->req.get(), call->resp.get(),
-                               std::bind(&RunManyGraphs::WhenDone, &calls, i,
-                                         part.name, std::placeholders::_1));
+    part.worker->RunGraphAsync(
+        &call->opts, call->req.get(), call->resp.get(),
+        std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));
   }
 
   // Waits for the RunGraph calls.

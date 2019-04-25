@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
 class BufRendezvous;
 class CancellationManager;
 class CompleteGroupRequest;
@@ -35,7 +36,6 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
-class Op;
 class Tensor;
 
 // Types of supported collective operations.

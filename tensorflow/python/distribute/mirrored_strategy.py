@@ -429,7 +429,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   The multi-worker version will be added in the future.
 
   Args:
-    devices: a list of device strings.
+    devices: a list of device strings.  If `None`, all available GPUs are used.
+    If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, nccl will be use by default.
   """
@@ -521,9 +522,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         self._device_map, worker_devices)
 
     if len(workers) > 1:
-      self._inferred_cross_device_ops = (
-          cross_device_ops_lib.MultiWorkerAllReduce(
-              workers, _infer_num_gpus_per_worker(devices)))
+      if not isinstance(self._cross_device_ops,
+                        cross_device_ops_lib.MultiWorkerAllReduce):
+        raise ValueError(
+            "In-graph multi-worker training with `MirroredStrategy` is not "
+            "supported.")
+      self._inferred_cross_device_ops = self._cross_device_ops
     else:
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
@@ -596,6 +600,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
+
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(

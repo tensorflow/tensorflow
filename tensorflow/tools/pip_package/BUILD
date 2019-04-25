@@ -11,6 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load(
@@ -59,6 +60,9 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/examples/saved_model/integration_tests:mnist_util",
+    "//tensorflow/examples/saved_model/integration_tests:util",
+    "//tensorflow/examples/speech_commands:test_lib",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
@@ -68,6 +72,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python:loss_scale",
+    "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
@@ -91,6 +97,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
+    "//tensorflow/tools/common:public_api",
+    "//tensorflow/tools/common:test_module1",
+    "//tensorflow/tools/docs:doc_generator_visitor",
+    "//tensorflow/tools/docs:generate_lib",
+    "//tensorflow/tools/docs:parser",
+    "//tensorflow/tools/docs:py_guide_parser",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
@@ -147,11 +159,6 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
-        "@absl_py//absl:LICENSE",
-        "@absl_py//absl/logging:LICENSE",
-        "@absl_py//absl/flags:LICENSE",
-        "@absl_py//absl/testing:LICENSE",
-        "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
@@ -172,6 +179,7 @@ filegroup(
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
+        "@kissfft//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -226,6 +234,15 @@ filegroup(
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
     ]) + if_not_system_lib(
+        "absl_py",
+        [
+            "@absl_py//absl:LICENSE",
+            "@absl_py//absl/logging:LICENSE",
+            "@absl_py//absl/flags:LICENSE",
+            "@absl_py//absl/testing:LICENSE",
+            "@absl_py//absl/third_party/unittest3_backport:LICENSE",
+        ],
+    ) + if_not_system_lib(
         "grpc",
         [
             "@grpc//:LICENSE",
@@ -236,6 +253,8 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.TXT",
     ]) + tf_additional_license_deps(),
 )
 

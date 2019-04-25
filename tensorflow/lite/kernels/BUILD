@@ -80,15 +80,31 @@ cc_test(
 )
 
 cc_library(
-    name = "gemm_support",
+    name = "cpu_backend_context",
     srcs = [
-        "gemm_support.cc",
+        "cpu_backend_context.cc",
     ],
     hdrs = [
-        "gemm_support.h",
+        "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":op_macros",
+        "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_support",
+    srcs = [
+        "cpu_backend_support.cc",
+    ],
+    hdrs = [
+        "cpu_backend_support.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",
@@ -252,8 +268,8 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
+        ":cpu_backend_support",
         ":eigen_support",
-        ":gemm_support",
         ":kernel_util",
         ":lstm_eval",
         ":op_macros",
@@ -281,6 +297,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
     ],

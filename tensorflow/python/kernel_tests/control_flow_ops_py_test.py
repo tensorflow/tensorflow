@@ -2776,7 +2776,6 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(self.evaluate(fn()), 32.)
 
-  @test_util.disable_xla("b/128643381")
   def testWhileGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2797,7 +2796,6 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
-  @test_util.disable_xla("b/128643461")
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
 
     @def_function.function
@@ -2848,7 +2846,6 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
-  @test_util.disable_xla("b/128639858")
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -3043,7 +3040,6 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(foo()), 9.0)
 
-  @test_util.disable_xla("b/128643398")
   def testNestedResourceAccess(self):
     var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
 

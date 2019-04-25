@@ -118,6 +118,8 @@ class Node {
   explicit Node(Args args)
       : id_(args.id), name_(args.name), output_(args.output.get()) {}
 
+  virtual ~Node() {}
+
   // Increments the bytes buffered by the given delta.
   void add_buffered_bytes(int64 delta) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);

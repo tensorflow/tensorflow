@@ -68,7 +68,7 @@ class Backend(object):
     """Allocates buffers and populates them with `pyvals`."""
     return [
         self.buffer_from_pyval(pyval, device)
-        for pyval, device in zip(pyvals_and_devices)
+        for pyval, device in pyvals_and_devices
     ]
 
   @abc.abstractmethod
@@ -113,11 +113,10 @@ class LocalBackend(Backend):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.LocalShapedBuffer.FromPython(pyval, self.client, device)
+    return _xla.PyLocalBuffer.FromPython(pyval, self.client, device)
 
   def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.LocalShapedBuffer.FromPythonValues(pyvals_and_devices,
-                                                   self.client)
+    return _xla.PyLocalBuffer.FromPythonValues(pyvals_and_devices, self.client)
 
   def delete_buffer(self, c_buffer):
     c_buffer.Delete()
@@ -348,9 +347,6 @@ class Buffer(object):
 
   def is_deleted(self):
     return self.c_buffer is None
-
-  def __del__(self):
-    self.delete()
 
 
 # TODO(phawkins): Alias for backward compatibility. Remove after JAX drops

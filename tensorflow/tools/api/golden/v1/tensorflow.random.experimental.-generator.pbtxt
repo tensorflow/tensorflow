@@ -9,6 +9,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "key"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "state"
     mtype: "<type \'property\'>"
   }
@@ -31,6 +35,10 @@ tf_class {
   member_method {
     name: "reset"
     argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "skip"
+    argspec: "args=[\'self\', \'delta\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "split"

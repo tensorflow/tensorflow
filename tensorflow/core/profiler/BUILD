@@ -67,3 +67,12 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "//tensorflow/core/profiler/internal:mobile_srcs",
+        "//tensorflow/core/profiler/lib:mobile_srcs",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -1154,8 +1154,8 @@ def choose_the_best(devices, session_config=None):
 
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.
-    session_config: a `tf.ConfigProto` or `None`. If `None`, it will make
-      decision based on all local devices.
+    session_config: a `tf.compat.v1.ConfigProto` or `None`. If `None`, it will
+      make decision based on all local devices.
 
   Returns:
     A subclass of `CrossDeviceOps`.

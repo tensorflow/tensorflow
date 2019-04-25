@@ -63,11 +63,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -93,7 +93,9 @@ Status NewThreadPoolFromThreadPoolOptions(
     VLOG(1) << "Direct session inter op parallelism threads for pool "
             << pool_number << ": " << num_threads;
     *pool = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
     *owned = true;
     return Status::OK();
   }
@@ -108,7 +110,9 @@ Status NewThreadPoolFromThreadPoolOptions(
   if (mvalue->second == nullptr) {
     mvalue->first = thread_pool_options.num_threads();
     mvalue->second = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
   } else {
     if (mvalue->first != thread_pool_options.num_threads()) {
       return errors::InvalidArgument(
@@ -525,18 +529,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-  std::unique_ptr<DeviceTracer> tracer;
+  std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer = CreateDeviceTracer();
-    // tracer may be NULL on platforms without accelerators.
-    if (tracer) {
-      Status s = tracer->Start();
-      if (!s.ok()) {
-        run_state.executors_done.Notify();
-        delete barrier;
-        return s;
-      }
-    }
+    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -632,9 +627,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-  if (tracer) {
-    TF_RETURN_IF_ERROR(tracer->Stop());
-    TF_RETURN_IF_ERROR(tracer->Collect(run_state.collector.get()));
+  if (profiler_session) {
+    TF_RETURN_IF_ERROR(profiler_session->CollectData(run_metadata));
   }
 
   {

@@ -61,8 +61,8 @@ class _CheckpointRestoreCoordinator(object):
     """Specify the checkpoint being loaded.
 
     Args:
-      object_graph_proto: The TrackableObjectGraph protocol buffer
-        associated with this checkpoint.
+      object_graph_proto: The TrackableObjectGraph protocol buffer associated
+        with this checkpoint.
       save_path: A string, the path to the checkpoint, as returned by
         `tf.train.latest_checkpoint`.
       save_path_tensor: A string `Tensor` which contains or will be fed the save
@@ -142,12 +142,10 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = pywrap_tensorflow.NewCheckpointReader(
-        self.save_path_string)
+    reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
     for saveable in python_saveables:
       spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore(
-          [reader.get_tensor(name) for name in spec_names])
+      saveable.python_restore([reader.get_tensor(name) for name in spec_names])
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables:
@@ -205,14 +203,13 @@ class _NameBasedRestoreCoordinator(object):
           # whether it's optional to restore it. If it's optional we don't need
           # to make assertions fail.
           if not saveable_factory("").optional_restore:
-            self.unused_attributes.setdefault(trackable, []).append(
-                attribute_name)
+            self.unused_attributes.setdefault(trackable,
+                                              []).append(attribute_name)
           continue
       else:
         saveable = saveable_factory
       names_to_saveables = saveable_object_util.op_list_to_dict(
-          [saveable],
-          convert_variable_to_tensor=False)
+          [saveable], convert_variable_to_tensor=False)
       for name, op in names_to_saveables.items():
         for saveable_object in saveable_object_util.saveable_objects_for_op(
             op=op, name=name):
@@ -224,8 +221,7 @@ class _NameBasedRestoreCoordinator(object):
     # run_restore_ops/initialize_or_restore on the status object for name-based
     # checkpoints.
     assert context.executing_eagerly()
-    for saveable in self.globally_named_object_attributes(
-        trackable):
+    for saveable in self.globally_named_object_attributes(trackable):
       restored_tensors = []
       tensor_missing = False
       for spec in saveable.specs:
@@ -248,14 +244,18 @@ class _NameBasedRestoreCoordinator(object):
         # Ignores values missing from the checkpoint, as with object-based
         # restore. Status assertions can be used to check exact matches,
         # although it's unlikely to ever happen for name-based checkpoints.
-        saveable.restore(restored_tensors=restored_tensors,
-                         restored_shapes=None)
+        saveable.restore(
+            restored_tensors=restored_tensors, restored_shapes=None)
 
 
 # TODO(allenl): If this ends up in a public API, consider adding LINT.IfChange
 # or consolidating the implementation with get_variable.
-def _default_getter(name, shape, dtype, initializer=None,
-                    partition_info=None, **kwargs):
+def _default_getter(name,
+                    shape,
+                    dtype,
+                    initializer=None,
+                    partition_info=None,
+                    **kwargs):
   """A pared-down version of get_variable which does not reuse variables."""
   dtype = dtypes.as_dtype(dtype)
   shape_object = tensor_shape.as_shape(shape)
@@ -263,7 +263,9 @@ def _default_getter(name, shape, dtype, initializer=None,
     if initializer is None:
       initializer, initializing_from_value = (
           variable_scope._get_default_variable_store()._get_default_initializer(  # pylint: disable=protected-access
-              name=name, shape=shape_object, dtype=dtype))
+              name=name,
+              shape=shape_object,
+              dtype=dtype))
     else:
       initializing_from_value = not callable(initializer)
     # Same logic as get_variable
@@ -276,24 +278,33 @@ def _default_getter(name, shape, dtype, initializer=None,
       # Instantiate initializer if provided initializer is a type object.
       if isinstance(initializer, type(init_ops.Initializer)):
         initializer = initializer(dtype=dtype)
+
       def initial_value():
         return initializer(
             shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+
     return variables.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
         use_resource=True,
-        **kwargs
-    )
+        **kwargs)
 
 
-def add_variable(trackable, name, shape=None, dtype=dtypes.float32,
-                 initializer=None):
+def add_variable(trackable,
+                 name,
+                 shape=None,
+                 dtype=dtypes.float32,
+                 initializer=None,
+                 trainable=True):
   """Add a variable to a Trackable with no scope influence."""
   return trackable._add_variable_with_custom_getter(  # pylint: disable=protected-access
-      name=name, shape=shape, dtype=dtype,
-      initializer=initializer, getter=_default_getter)
+      name=name,
+      shape=shape,
+      dtype=dtype,
+      initializer=initializer,
+      getter=_default_getter,
+      trainable=trainable)
 
 
 def object_metadata(save_path):
@@ -313,6 +324,7 @@ def object_metadata(save_path):
   Args:
     save_path: The path to the checkpoint, as returned by `save` or
       `tf.train.latest_checkpoint`.
+
   Returns:
     A parsed `tf.contrib.checkpoint.TrackableObjectGraph` protocol buffer.
   Raises:
@@ -320,16 +332,14 @@ def object_metadata(save_path):
   """
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
   try:
-    object_graph_string = reader.get_tensor(
-        base.OBJECT_GRAPH_PROTO_KEY)
+    object_graph_string = reader.get_tensor(base.OBJECT_GRAPH_PROTO_KEY)
   except errors_impl.NotFoundError:
     raise ValueError(
         ('The specified checkpoint "%s" does not appear to be object-based (it '
          'is missing the key "%s"). Likely it was created with a name-based '
-         'saver and does not contain an object dependency graph.') % (
-             save_path, base.OBJECT_GRAPH_PROTO_KEY))
-  object_graph_proto = (
-      trackable_object_graph_pb2.TrackableObjectGraph())
+         "saver and does not contain an object dependency graph.") %
+        (save_path, base.OBJECT_GRAPH_PROTO_KEY))
+  object_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   return object_graph_proto
 
@@ -343,8 +353,8 @@ def list_objects(root_trackable):
   (i.e. if they would be saved with a checkpoint).
 
   Args:
-    root_trackable: A `Trackable` object whose dependencies should be
-      flattened.
+    root_trackable: A `Trackable` object whose dependencies should be flattened.
+
   Returns:
     A flat list of objects.
   """
@@ -362,12 +372,16 @@ def gather_initializers(root_trackable):
 
   Args:
     root_trackable: A `Trackable` object to gather initializers for.
+
   Returns:
     A list of initialization ops.
   """
   trackable_objects = list_objects(root_trackable)
-  return [c.initializer for c in trackable_objects
-          if hasattr(c, "initializer") and c.initializer is not None]
+  return [
+      c.initializer
+      for c in trackable_objects
+      if hasattr(c, "initializer") and c.initializer is not None
+  ]
 
 
 @tf_contextlib.contextmanager
@@ -380,7 +394,7 @@ def capture_dependencies(template):
   object to add dependencies on variables created in a block of code which is
   not aware of object-based saving (and instead uses variable names
   heavily). This is how `Template` objects add dependencies on variables and
-  sub-`Template`s. Where possible, use `tf.make_template` directly.
+  sub-`Template`s. Where possible, use `tf.compat.v1.make_template` directly.
 
   Args:
     template: The `Template` object to register dependencies with.
@@ -390,8 +404,11 @@ def capture_dependencies(template):
   """
   name_prefix = template.variable_scope.name
 
-  def _trackable_custom_creator(next_creator, name, initial_value,
-                                trackable_parent=None, **kwargs):
+  def _trackable_custom_creator(next_creator,
+                                name,
+                                initial_value,
+                                trackable_parent=None,
+                                **kwargs):
     """A variable creation hook which adds Trackable dependencies.
 
     Set for example during a `Template`'s first wrapped function
@@ -415,21 +432,20 @@ def capture_dependencies(template):
       initial_value: See `variable_scope.variable_creator_scope`. Taken
         explicitly so the argument can be re-named and used with
         `Trackable._add_variable_with_custom_getter`.
-      trackable_parent: If not None, a more deeply nested trackable
-        object and its name prefix which were passed to `capture_dependencies`
-        to add a dependency on (rather than depending on the variable directly).
+      trackable_parent: If not None, a more deeply nested trackable object and
+        its name prefix which were passed to `capture_dependencies` to add a
+        dependency on (rather than depending on the variable directly).
       **kwargs: Passed through to the next creator.
 
     Returns:
       The output of `next_creator`: the fetched/created variable object.
     """
+
     def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
       inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
       # we don't want to propagate.
-      return next_creator(
-          initial_value=initializer,
-          name=name,
-          **inner_kwargs)
+      return next_creator(initial_value=initializer, name=name, **inner_kwargs)
+
     if name is not None and name.startswith(name_prefix):
       scope_stripped_name = name[len(name_prefix) + 1:]
       if not trackable_parent:
@@ -450,8 +466,10 @@ def capture_dependencies(template):
             name=parent_name_prefix[len(name_prefix) + 1:],
             overwrite=True)
     return next_creator(
-        name=name, initial_value=initial_value,
-        trackable_parent=(template, name_prefix), **kwargs)
+        name=name,
+        initial_value=initial_value,
+        trackable_parent=(template, name_prefix),
+        **kwargs)
 
   with variable_scope.variable_creator_scope(_trackable_custom_creator):
     yield
@@ -490,9 +508,8 @@ def streaming_restore(status, session=None):
   """When graph building, runs restore ops as soon as they come in.
 
   Args:
-    status: A _LoadStatus objects from an object-based saver's
-      restore(). Streaming restore from name-based checkpoints is not currently
-      supported.
+    status: A _LoadStatus objects from an object-based saver's restore().
+      Streaming restore from name-based checkpoints is not currently supported.
     session: A session to run new restore ops in.
   """
   if context.executing_eagerly():
@@ -553,13 +570,13 @@ class CheckpointLoadStatus(_LoadStatus):
     if self._checkpoint.slot_restorations:
       # Sanity check; this collection should be clear if everything has been
       # restored.
-      raise AssertionError("Unresolved slot restorations: %s" % (
-          self._checkpoint.slot_restorations,))
+      raise AssertionError("Unresolved slot restorations: %s" %
+                           (self._checkpoint.slot_restorations,))
     if self._checkpoint.unused_attributes:
       raise AssertionError(
           ("Unused attributes in these objects (the attributes exist in the "
-           "checkpoint but not in the objects): %s") % (
-               list(self._checkpoint.unused_attributes.items()),))
+           "checkpoint but not in the objects): %s") %
+          (list(self._checkpoint.unused_attributes.items()),))
     return self
 
   def assert_existing_objects_matched(self):
@@ -581,10 +598,10 @@ class CheckpointLoadStatus(_LoadStatus):
     """
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
-      if (trackable is not None
-          and trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
-        raise AssertionError(
-            "Object not assigned a value from checkpoint: %s" % (node,))
+      if (trackable is not None and
+          trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
+        raise AssertionError("Object not assigned a value from checkpoint: %s" %
+                             (node,))
     for trackable_object in self._graph_view.list_objects():
       # Remove data structures that do not contain any variables from
       # restoration checks.
@@ -594,14 +611,14 @@ class CheckpointLoadStatus(_LoadStatus):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
-        object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects)
-        - object_identity.ObjectIdentitySet(
+        object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects) -
+        object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "
-           "due to changes in the Python program: %s")
-          % (list(unused_python_objects),))
+           "due to changes in the Python program: %s") %
+          (list(unused_python_objects),))
     return self
 
   def assert_nontrivial_match(self):
@@ -610,8 +627,7 @@ class CheckpointLoadStatus(_LoadStatus):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
-          object_identity.ObjectIdentitySet(
-              self._checkpoint.all_python_objects)
+          object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects)
           - object_identity.ObjectIdentitySet(
               self._checkpoint.object_by_proto_id.values()))
       if unused_python_objects:
@@ -622,8 +638,8 @@ class CheckpointLoadStatus(_LoadStatus):
              "checkpointed value: %s") % (list(unused_python_objects),))
       else:
         raise AssertionError(
-            "Nothing to load. No dependencies have been added to %s yet." % (
-                self._graph_view.root,))
+            "Nothing to load. No dependencies have been added to %s yet." %
+            (self._graph_view.root,))
     return self
 
   def run_restore_ops(self, session=None):
@@ -760,8 +776,8 @@ class NameBasedSaverStatus(_LoadStatus):
     unused_attributes = dict(self._checkpoint.unused_attributes)
     if unused_attributes:
       raise AssertionError(
-          "Some objects had attributes which were not restored: %s"
-          % (unused_attributes,))
+          "Some objects had attributes which were not restored: %s" %
+          (unused_attributes,))
     for trackable in self._graph_view.list_objects():
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
@@ -799,12 +815,11 @@ class NameBasedSaverStatus(_LoadStatus):
         continue
       # pylint: enable=protected-access
       saveable_objects.extend(
-          self._checkpoint.globally_named_object_attributes(
-              trackable))
+          self._checkpoint.globally_named_object_attributes(trackable))
     return saveable_objects
 
   def run_restore_ops(self, session=None):
-    """Load the name-based training checkpoint using a new `tf.train.Saver`."""
+    """Load the name-based checkpoint using a new `tf.compat.v1.train.Saver`."""
     if context.executing_eagerly():
       return  # Nothing to do, variables are restored on creation.
     if session is None:
@@ -840,7 +855,8 @@ class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
   See `Trackable` for details of dependency management. `Saver` wraps
-  `tf.train.Saver` for saving, including extra information about the graph of
+  `tf.compat.v1.train.Saver` for saving, including extra information about the
+  graph of
   dependencies between Python objects. When restoring, it uses this information
   about the save-time dependency graph to more robustly match objects with their
   checkpointed values. When executing eagerly, it supports restoring variables
@@ -851,7 +867,8 @@ class TrackableSaver(object):
   checkpoint was written. To avoid breaking existing checkpoints when modifying
   a class, dependency names (the names of attributes to which `Trackable`
   objects are assigned) may not change. These names are local to objects, in
-  contrast to the `Variable.name`-based save/restore from `tf.train.Saver`, and
+  contrast to the `Variable.name`-based save/restore from
+  `tf.compat.v1.train.Saver`, and
   so allow additional program transformations.
   """
 
@@ -877,8 +894,7 @@ class TrackableSaver(object):
     self._restore_op_cache = {}
     self._graph_view = graph_view
 
-  def _gather_saveables(
-      self, object_graph_tensor=None):
+  def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     (named_saveable_objects, graph_proto,
      feed_additions) = self._graph_view.serialize_object_graph()
@@ -892,14 +908,12 @@ class TrackableSaver(object):
     assert base.OBJECT_GRAPH_PROTO_KEY not in named_saveable_objects
     named_saveable_objects.append(
         base.NoRestoreSaveable(
-            tensor=object_graph_tensor,
-            name=base.OBJECT_GRAPH_PROTO_KEY))
+            tensor=object_graph_tensor, name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects, graph_proto, feed_additions
 
-  def _save_cached_when_graph_building(
-      self,
-      file_prefix,
-      object_graph_tensor=None):
+  def _save_cached_when_graph_building(self,
+                                       file_prefix,
+                                       object_graph_tensor=None):
     """Create or retrieve save ops.
 
     Args:
@@ -921,8 +935,7 @@ class TrackableSaver(object):
         # save() is called so they pick up new Tensors passed to their
         # constructors. That means the Saver needs to be copied with a new
         # var_list.
-        or context.executing_eagerly()
-        or ops.inside_function()):
+        or context.executing_eagerly() or ops.inside_function()):
       saver = functional_saver.MultiDeviceSaver(named_saveable_objects)
       save_op = saver.save(file_prefix)
       with ops.device("/cpu:0"):
@@ -954,8 +967,8 @@ class TrackableSaver(object):
       The full path to the checkpoint.
     """
     feed_dict = {}
-    use_session = (not context.executing_eagerly()
-                   and not ops.inside_function())
+    use_session = (not context.executing_eagerly() and
+                   not ops.inside_function())
     if checkpoint_number:
       file_prefix = "%s-%d" % (file_prefix, checkpoint_number)
     if use_session:
@@ -976,8 +989,7 @@ class TrackableSaver(object):
 
     file_io.recursive_create_dir(os.path.dirname(file_prefix))
     save_path, new_feed_additions = self._save_cached_when_graph_building(
-        file_prefix=file_prefix_tensor,
-        object_graph_tensor=object_graph_tensor)
+        file_prefix=file_prefix_tensor, object_graph_tensor=object_graph_tensor)
     if new_feed_additions:
       feed_dict.update(new_feed_additions)
     if not use_session:
@@ -1024,7 +1036,7 @@ class TrackableSaver(object):
     If the checkpoint has not been consumed completely, then the list of restore
     ops will grow as more objects are added to the dependency graph.
 
-    Name-based `tf.train.Saver` checkpoints can be loaded using this
+    Name-based `tf.compat.v1.train.Saver` checkpoints can be loaded using this
     method. There is no deferred loading, and names are used to match
     variables. No restore ops are created/run until `run_restore_ops()` or
     `initialize_or_restore()` are called on the returned status object, even
@@ -1035,9 +1047,9 @@ class TrackableSaver(object):
       save_path: The path to the checkpoint, as returned by `save` or
         `tf.train.latest_checkpoint`. If None (as when there is no latest
         checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency
-        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
-        names are used to match variables.
+        object which may run initializers for objects in the dependency graph.
+        If the checkpoint was written by the name-based
+        `tf.compat.v1.train.Saver`, names are used to match variables.
 
     Returns:
       A load status object, which can be used to make assertions about the
@@ -1057,8 +1069,7 @@ class TrackableSaver(object):
     else:
       dtype_map = reader.get_variable_to_dtype_map()
     try:
-      object_graph_string = reader.get_tensor(
-          base.OBJECT_GRAPH_PROTO_KEY)
+      object_graph_string = reader.get_tensor(base.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError:
       # The object graph proto does not exist in this checkpoint. Try the
       # name-based compatibility mode.
@@ -1069,8 +1080,7 @@ class TrackableSaver(object):
           # pylint: disable=protected-access
           existing_trackable._maybe_initialize_trackable()
           existing_trackable._name_based_restores.add(restore_coordinator)
-          existing_trackable._name_based_attribute_restore(
-              restore_coordinator)
+          existing_trackable._name_based_attribute_restore(restore_coordinator)
           # pylint: enable=protected-access
       return NameBasedSaverStatus(
           restore_coordinator, graph_view=self._graph_view)
@@ -1085,8 +1095,7 @@ class TrackableSaver(object):
       with ops.device("/cpu:0"):
         file_prefix_tensor = constant_op.constant(save_path)
       file_prefix_feed_dict = None
-    object_graph_proto = (
-        trackable_object_graph_pb2.TrackableObjectGraph())
+    object_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
     object_graph_proto.ParseFromString(object_graph_string)
     checkpoint = _CheckpointRestoreCoordinator(
         object_graph_proto=object_graph_proto,
@@ -1094,8 +1103,8 @@ class TrackableSaver(object):
         save_path_tensor=file_prefix_tensor,
         restore_op_cache=self._restore_op_cache,
         graph_view=self._graph_view)
-    base.CheckpointPosition(checkpoint=checkpoint, proto_id=0).restore(
-        self._graph_view.root)
+    base.CheckpointPosition(
+        checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
     load_status = CheckpointLoadStatus(
         checkpoint,
         graph_view=self._graph_view,
@@ -1104,7 +1113,7 @@ class TrackableSaver(object):
 
 
 def frozen_saver(root_trackable):
-  """Creates a static `tf.train.Saver` from a trackable object.
+  """Creates a static `tf.compat.v1.train.Saver` from a trackable object.
 
   The returned `Saver` saves object-based checkpoints, but these checkpoints
   will no longer reflect structural changes to the object graph, only changes to
@@ -1135,9 +1144,9 @@ def saver_with_op_caching(obj):
     saveables_cache = None
   else:
     saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
-  return TrackableSaver(graph_view_lib.ObjectGraphView(
-      weakref.ref(obj),
-      saveables_cache=saveables_cache))
+  return TrackableSaver(
+      graph_view_lib.ObjectGraphView(
+          weakref.ref(obj), saveables_cache=saveables_cache))
 
 
 # Mentions graph building / Sessions. The v2 version is below.
@@ -1146,7 +1155,7 @@ class CheckpointV1(tracking.AutoTrackable):
   """Groups trackable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
-  that contain trackable state, such as `tf.train.Optimizer`
+  that contain trackable state, such as `tf.compat.v1.train.Optimizer`
   implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
   `tf.keras.Model` implementations. It saves these values with a checkpoint, and
   maintains a `save_counter` for numbering checkpoints.
@@ -1164,7 +1173,7 @@ class CheckpointV1(tracking.AutoTrackable):
   status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
   train_op = optimizer.minimize( ... )
   status.assert_consumed()  # Optional sanity checks.
-  with tf.Session() as session:
+  with tf.compat.v1.Session() as session:
     # Use the Session to restore variables, or initialize them if
     # tf.train.latest_checkpoint returned None.
     status.initialize_or_restore(session)
@@ -1179,7 +1188,7 @@ class CheckpointV1(tracking.AutoTrackable):
   import tensorflow as tf
   import os
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   checkpoint_directory = "/tmp/training_checkpoints"
   checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -1193,13 +1202,14 @@ class CheckpointV1(tracking.AutoTrackable):
   ```
 
   `Checkpoint.save` and `Checkpoint.restore` write and read object-based
-  checkpoints, in contrast to `tf.train.Saver` which writes and reads
+  checkpoints, in contrast to `tf.compat.v1.train.Saver` which writes and reads
   `variable.name` based checkpoints. Object-based checkpointing saves a graph of
   dependencies between Python objects (`Layer`s, `Optimizer`s, `Variable`s,
   etc.) with named edges, and this graph is used to match variables when
   restoring a checkpoint. It can be more robust to changes in the Python
   program, and helps to support restore-on-create for variables when executing
-  eagerly. Prefer `tf.train.Checkpoint` over `tf.train.Saver` for new code.
+  eagerly. Prefer `tf.train.Checkpoint` over `tf.compat.v1.train.Saver` for new
+  code.
 
   `Checkpoint` objects have dependencies on the objects passed as keyword
   arguments to their constructors, and each dependency is given a name that is
@@ -1244,6 +1254,7 @@ class CheckpointV1(tracking.AutoTrackable):
     Args:
       **kwargs: Keyword arguments are set as attributes of this object, and are
         saved with the checkpoint. Values must be trackable objects.
+
     Raises:
       ValueError: If objects in `kwargs` are not trackable.
     """
@@ -1269,8 +1280,12 @@ class CheckpointV1(tracking.AutoTrackable):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
-            add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+            add_variable(
+                self,
+                name="save_counter",
+                initializer=0,
+                dtype=dtypes.int64,
+                trainable=False))
 
   def write(self, file_prefix, session=None):
     """Writes a training checkpoint.
@@ -1294,9 +1309,7 @@ class CheckpointV1(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    output = self._saver.save(
-        file_prefix=file_prefix,
-        session=session)
+    output = self._saver.save(file_prefix=file_prefix, session=session)
     if tensor_util.is_tensor(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
@@ -1370,8 +1383,8 @@ class CheckpointV1(tracking.AutoTrackable):
       checkpoint_number = session.run(self._save_assign_op)
     else:
       checkpoint_number = assign_op.numpy()
-    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
-                           session=session)
+    file_path = self.write(
+        "%s-%d" % (file_prefix, checkpoint_number), session=session)
     checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
@@ -1417,7 +1430,7 @@ class CheckpointV1(tracking.AutoTrackable):
     If the checkpoint has not been consumed completely, then the list of restore
     ops will grow as more objects are added to the dependency graph.
 
-    Name-based `tf.train.Saver` checkpoints can be loaded using this
+    Name-based `tf.compat.v1.train.Saver` checkpoints can be loaded using this
     method. Names are used to match variables. No restore ops are created/run
     until `run_restore_ops()` or `initialize_or_restore()` are called on the
     returned status object when graph building, but there is restore-on-creation
@@ -1428,9 +1441,9 @@ class CheckpointV1(tracking.AutoTrackable):
       save_path: The path to the checkpoint, as returned by `save` or
         `tf.train.latest_checkpoint`. If None (as when there is no latest
         checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency
-        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
-        names are used to match variables.
+        object which may run initializers for objects in the dependency graph.
+        If the checkpoint was written by the name-based
+        `tf.compat.v1.train.Saver`, names are used to match variables.
 
     Returns:
       A load status object, which can be used to make assertions about the
@@ -1453,7 +1466,8 @@ class CheckpointV1(tracking.AutoTrackable):
           built, and so has not created any variables, will pass this assertion
           but fail `assert_consumed`. Useful when loading part of a larger
           checkpoint into a new Python program, e.g. a training checkpoint with
-          a `tf.train.Optimizer` was saved but only the state required for
+          a `tf.compat.v1.train.Optimizer` was saved but only the state required
+          for
           inference is being loaded. This method returns the status object, and
           so may be chained with `initialize_or_restore` or `run_restore_ops`.
 
@@ -1488,7 +1502,7 @@ class Checkpoint(tracking.AutoTrackable):
   """Groups trackable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
-  that contain trackable state, such as `tf.train.Optimizer`
+  that contain trackable state, such as `tf.keras.optimizers.Optimizer`
   implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
   `tf.keras.Model` implementations. It saves these values with a checkpoint, and
   maintains a `save_counter` for numbering checkpoints.
@@ -1511,7 +1525,8 @@ class Checkpoint(tracking.AutoTrackable):
   ```
 
   `Checkpoint.save` and `Checkpoint.restore` write and read object-based
-  checkpoints, in contrast to TensorFlow 1.x's `tf.train.Saver` which writes and
+  checkpoints, in contrast to TensorFlow 1.x's `tf.compat.v1.train.Saver` which
+  writes and
   reads `variable.name` based checkpoints. Object-based checkpointing saves a
   graph of dependencies between Python objects (`Layer`s, `Optimizer`s,
   `Variable`s, etc.) with named edges, and this graph is used to match variables
@@ -1561,6 +1576,7 @@ class Checkpoint(tracking.AutoTrackable):
     Args:
       **kwargs: Keyword arguments are set as attributes of this object, and are
         saved with the checkpoint. Values must be trackable objects.
+
     Raises:
       ValueError: If objects in `kwargs` are not trackable.
     """
@@ -1586,8 +1602,12 @@ class Checkpoint(tracking.AutoTrackable):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
-            add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+            add_variable(
+                self,
+                name="save_counter",
+                initializer=0,
+                dtype=dtypes.int64,
+                trainable=False))
 
   def write(self, file_prefix):
     """Writes a training checkpoint.
@@ -1608,8 +1628,7 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    output = self._saver.save(
-        file_prefix=file_prefix)
+    output = self._saver.save(file_prefix=file_prefix)
     if tensor_util.is_tensor(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
@@ -1711,7 +1730,8 @@ class Checkpoint(tracking.AutoTrackable):
     were not found in the checkpoint, or if any checkpointed values do not have
     a matching Python object.
 
-    Name-based `tf.train.Saver` checkpoints from TensorFlow 1.x can be loaded
+    Name-based `tf.compat.v1.train.Saver` checkpoints from TensorFlow 1.x can be
+    loaded
     using this method. Names are used to match variables. Re-encode name-based
     checkpoints using `tf.train.Checkpoint.save` as soon as possible.
 
@@ -1719,9 +1739,9 @@ class Checkpoint(tracking.AutoTrackable):
       save_path: The path to the checkpoint, as returned by `save` or
         `tf.train.latest_checkpoint`. If None (as when there is no latest
         checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency
-        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
-        names are used to match variables.
+        object which may run initializers for objects in the dependency graph.
+        If the checkpoint was written by the name-based
+        `tf.compat.v1.train.Saver`, names are used to match variables.
 
     Returns:
       A load status object, which can be used to make assertions about the
@@ -1744,7 +1764,8 @@ class Checkpoint(tracking.AutoTrackable):
           built, and so has not created any variables, will pass this assertion
           but fail `assert_consumed`. Useful when loading part of a larger
           checkpoint into a new Python program, e.g. a training checkpoint with
-          a `tf.train.Optimizer` was saved but only the state required for
+          a `tf.compat.v1.train.Optimizer` was saved but only the state required
+          for
           inference is being loaded. This method returns the status object, and
           so may be chained with other assertions.
 

@@ -188,6 +188,7 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python:distribute",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -337,7 +338,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops/losses:loss_reduction",
     ],
 )
 
@@ -687,6 +688,19 @@ tf_py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
+)
+
+tf_py_test(
+    name = "subclassed_layers_test",
+    size = "medium",
+    srcs = ["layers/subclassed_layers_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

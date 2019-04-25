@@ -3318,7 +3318,7 @@ class UniqueNodes {
     uint64 sig = ComputeSignature(*node);
     std::vector<NodeDef*>& candidates = rep_[sig];
     for (auto& candidate : candidates) {
-      if (SameNode(*candidate, *node)) {
+      if ((candidate == node) || SameNode(*candidate, *node)) {
         return candidate;
       }
     }

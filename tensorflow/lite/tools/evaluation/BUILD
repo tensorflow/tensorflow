@@ -40,7 +40,14 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-    ],
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:gl_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(

@@ -172,13 +172,16 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
+        "optimized/integer_ops/depthwise_conv.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/softmax.h",
         "optimized/optimized_ops.h",
@@ -195,6 +198,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -213,6 +217,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
@@ -222,6 +227,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
@@ -233,6 +239,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,

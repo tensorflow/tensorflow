@@ -21,11 +21,13 @@ from __future__ import print_function
 import collections
 import functools
 import os
+import sys
 import tempfile
 import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -35,7 +37,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training as training_lib
+from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
@@ -43,6 +49,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -65,8 +72,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # point w.r.t. saving/restoring, ideally after 2nd saving.
     for _ in range(cycles):
       path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      save.save(to_save, path, signatures)
-      loaded = load.load(path)
+      # If available, we'll run the save and restore preferring the GPU. This
+      # just makes sure we aren't throwing errors and have enough
+      # device("CPU") blocks to satisfy the placer.
+      with test_util.use_gpu():
+        save.save(to_save, path, signatures)
+        loaded = load.load(path)
       to_save = loaded
     return loaded
 
@@ -89,6 +100,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(imported.v1.trainable)
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertFalse(imported.v2.trainable)
+
+  def test_variables_name(self, cycles):
+    root = tracking.AutoTrackable()
+    # Test 2 variables with same name: should work as the checkpoint
+    # is based on object name and not on variable name.
+    root.v1 = variables.Variable(1., trainable=True, name="v1")
+    root.v2 = variables.Variable(2., trainable=False, name="v1")
+    imported = self.cycle(root, cycles)
+    self.assertEqual(imported.v1.numpy(), 1.0)
+    self.assertEqual(imported.v2.numpy(), 2.0)
+    self.assertEqual(imported.v1.name, root.v1.name)
+    self.assertEqual(imported.v2.name, root.v2.name)
+    with variable_scope.variable_scope("foo"):
+      imported = self.cycle(root, cycles)
+      self.assertTrue(imported.v1.name.startswith("foo/"))
+      self.assertTrue(imported.v2.name.startswith("foo/"))
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
@@ -1269,6 +1296,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
 
+  def test_partial_bind_only_first_argument(self, cycles):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3. Only then we get some more "
+                    "advanced inspection of partials where this is allowed.")
+
+    def f(x, y):
+      return x + y
+
+    partial_func = functools.partial(f, x=5)
+    tf_func = def_function.function(partial_func)
+
+    root = tracking.AutoTrackable()
+    root.f = tf_func
+    self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(y=constant_op.constant(9)), 14)
+
   def test_partial_with_passed_fn_as_default(self, cycles):
 
     def f(x, y):
@@ -1315,6 +1360,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
             b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
     obj = tracking.AutoTrackable()
     obj.__call__ = f
+    if sys.version_info.major == 3 and sys.version_info.minor < 5:
+      # TODO(allenl): figure out why this doesn't work in Python3.4
+      self.skipTest("Not working in Python 3.4")
     imported = self.cycle(obj, cycles)
     self.assertAllClose(3.,
                         imported(NamedTupleType(a=constant_op.constant(1.),
@@ -1395,6 +1443,32 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
 
+  def test_captured_dataset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    root = self.cycle(root, cycles)
+    self.assertEqual(
+        3 * (1 + 4 + 9 + 16),
+        root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1421,6 +1495,48 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded = self.cycle(model, cycles)
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
+
+  def test_multi_output_layer(self, cycles):
+
+    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(base_layer.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name="out")(inp)
+    model = training_lib.Model(inp, out)
+    loaded = self.cycle(model, cycles)
+    self.assertAllClose(
+        dict(out=2., out_1=3.),
+        loaded.signatures["serving_default"](constant_op.constant(1.)))
+
+  def test_model_with_custom_function_attached(self, cycles):
+    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
+
+    @def_function.function
+    def _use_sequential(x):
+      return root.model.call(x)
+
+    root.model.traced_call = _use_sequential
+
+    original = root.model.traced_call(array_ops.zeros([1, 1])).numpy()
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(
+        original,
+        root.model.traced_call(array_ops.zeros([1, 1])).numpy())
+
+  def test_functional_model_with_conv(self, cycles):
+    x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
+    conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
+    model = training_lib.Model([x], conved)
+    model_input = array_ops.ones((1, 10, 10, 3))
+    initial_output = model.predict([model_input])
+    model = self.cycle(model, cycles)
+    self.assertAllClose(
+        [initial_output],
+        list(model.signatures["serving_default"](model_input).values()))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

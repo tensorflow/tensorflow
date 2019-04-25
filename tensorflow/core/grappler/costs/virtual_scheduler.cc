@@ -769,7 +769,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     string node_description = GetOpDescription(op_context.op_info);
     op_counts_[node_description] += 1;
     op_costs_[node_description] =
-        std::make_pair(node_costs.execution_time.asMicroSeconds().count(),
+        std::make_pair(total_node_costs.execution_time.asMicroSeconds().count(),
                        !node_costs.inaccurate);
   }
 
