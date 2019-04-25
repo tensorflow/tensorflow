@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -23,17 +24,6 @@ limitations under the License.
 namespace toco {
 
 namespace {
-
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator& op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == &op) {
-      break;
-    }
-  }
-  return it;
-}
 
 bool ValidateSourceOp(const Model& model, const string& array_name,
                       OperatorType op_type, Operator** source_op) {
@@ -290,18 +280,36 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
               concat_temp_array_name, activ_temp_array_name,
               LogName(*lstm_cell_op));
 
-  DeleteOpAndArrays(model, final_output_mul);
-  DeleteOpAndArrays(model, state_output_tanh);
-  DeleteOpAndArrays(model, fc_output_sig);
-  DeleteOpAndArrays(model, state_combine_add);
-  DeleteOpAndArrays(model, state_forget_mul);
-  DeleteOpAndArrays(model, state_remember_mul);
-  DeleteOpAndArrays(model, state_forget_sig);
-  DeleteOpAndArrays(model, state_info_tanh);
-  DeleteOpAndArrays(model, state_remember_sig);
-  DeleteOpAndArrays(model, fc_output_split);
-  DeleteOpAndArrays(model, fully_connected);
-  DeleteOpAndArrays(model, concat_inputs);
+  // Delete arrays and operators replaced by the LSTM cell operator. Order is
+  // important - DeleteArrayIfUnused() only succeeds if dependent operators
+  // have been removed first. Start at the output and work towards the input.
+  model->operators.erase(FindOp(*model, final_output_mul));
+  DeleteArrayIfUnused(state_output_tanh->outputs[0], model);
+  DeleteArrayIfUnused(fc_output_sig->outputs[0], model);
+  model->operators.erase(FindOp(*model, state_output_tanh));
+  model->operators.erase(FindOp(*model, fc_output_sig));
+  model->operators.erase(FindOp(*model, state_combine_add));
+  DeleteArrayIfUnused(state_forget_mul->outputs[0], model);
+  DeleteArrayIfUnused(state_remember_mul->outputs[0], model);
+  model->operators.erase(FindOp(*model, state_forget_mul));
+  model->operators.erase(FindOp(*model, state_remember_mul));
+  DeleteArrayIfUnused(state_forget_sig->outputs[0], model);
+  DeleteArrayIfUnused(state_info_tanh->outputs[0], model);
+  DeleteArrayIfUnused(state_remember_sig->outputs[0], model);
+  model->operators.erase(FindOp(*model, state_forget_sig));
+  model->operators.erase(FindOp(*model, state_info_tanh));
+  model->operators.erase(FindOp(*model, state_remember_sig));
+  DeleteArrayIfUnused(fc_output_split->outputs[0], model);
+  DeleteArrayIfUnused(fc_output_split->outputs[1], model);
+  DeleteArrayIfUnused(fc_output_split->outputs[2], model);
+  DeleteArrayIfUnused(fc_output_split->outputs[3], model);
+  string dims_array = fc_output_split->inputs[0];
+  model->operators.erase(FindOp(*model, fc_output_split));
+  DeleteArrayIfUnused(dims_array, model);
+  DeleteArrayIfUnused(fully_connected->outputs[0], model);
+  model->operators.erase(FindOp(*model, fully_connected));
+  DeleteArrayIfUnused(concat_inputs->outputs[0], model);
+  model->operators.erase(FindOp(*model, concat_inputs));
 
   *modified = true;
   return ::tensorflow::Status::OK();
