@@ -154,7 +154,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   }
   StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
                                               int64 byte_size) override {
-    CHECK(total_byte_size_ == 0)
+    DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
     int64 allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
@@ -822,6 +822,9 @@ class FusedBatchNormOpV3 : public OpKernel {
                                                      &saved_maybe_inv_var));
 
     if (!is_training_) {
+      // V3 operation requires a reserved space to store and reuse some
+      // intermediate results for fast kernel computation. This space is only
+      // used in training.
       Tensor* dummy_reserve_space = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(5, {}, &dummy_reserve_space));
@@ -837,14 +840,16 @@ class FusedBatchNormOpV3 : public OpKernel {
         tensor_format_, &reserve_space_allocator, &workspace_allocator,
         is_training_);
 #else
-    Tensor* dummy_reserve_space = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(5, {}, &dummy_reserve_space));
+    if (is_training_) {
+      Tensor* dummy_reserve_space = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(5, {}, &dummy_reserve_space));
+    }
     functor::FusedBatchNorm<Device, T, U>()(
         context, x, scale, offset, estimated_mean, estimated_variance, epsilon_,
         y, batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
         tensor_format_, nullptr, nullptr, is_training_);
-#endif
+#endif // CUDNN_VERSION >= 7402
   }
 
  private:
@@ -1057,13 +1062,12 @@ class FusedBatchNormGradOpV3 : public OpKernel {
           context, y_backprop, x, scale, saved_mean_or_pop_mean,
           saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
           offset_backprop, nullptr, nullptr, tensor_format_);
-#endif
+#endif // CUDNN_VERSION >= 7402
     } else {
       // Necessary layout conversion is currently done in python.
-      CHECK(tensor_format_ == FORMAT_NHWC)
+      DCHECK(tensor_format_ == FORMAT_NHWC)
           << "The implementation of FusedBatchNormGrad with is_training=False "
-             "only support "
-          << "NHWC tensor format for now.";
+             "only support NHWC tensor format for now.";
       Tensor scratch1, scratch2;
       OP_REQUIRES_OK(context,
                      context->allocate_temp(DataTypeToEnum<U>::value,
