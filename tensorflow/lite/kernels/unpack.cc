@@ -66,7 +66,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* output = GetOutput(context, node, i);
     TF_LITE_ENSURE_EQ(context, output->type, input->type);
     // Guarantee input/output quantization params match as we do not support
-    // unpacking quantized tensors.
+    // rescaling of unpacked quantized tensors.
     TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       output->params.zero_point);
     TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
