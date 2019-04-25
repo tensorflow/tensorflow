@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/slice_delaying.h"
+#include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include "absl/types/optional.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -24,22 +25,18 @@ namespace xla {
 
 namespace {
 
-class SliceDelayer {
+class SliceSinkerImpl {
  public:
   // Returns whether the instruction has been visited. The visited instruction
   // has been grouped in a true user group with its peers and it should not be
   // grouped in another true user group.
   bool IsVisited(const HloInstruction* instruction) const;
 
-  // Returns whether the slices are delayed successfully.
-  StatusOr<bool> MergeWithPeers(const HloInstruction* inst);
-
- private:
   // Collects true operands of inst. The inst's operands should all be slices,
   // and the true operands are the operands of slices. Returns true operand
   // vector if all true operands are found, or return an empty vector.
-  StatusOr<std::vector<HloInstruction*>> GetTrueOperands(
-      const HloInstruction* inst);
+  absl::optional<std::vector<HloInstruction*>>
+  FindSourceOperandsOfSlicesForElementwiseOperation(const HloInstruction* inst);
 
   // Collects the true user group included inst. The slice from true operand is
   // operand-slice. The true user's operands are all operand-slices.
@@ -52,20 +49,15 @@ class SliceDelayer {
   // Returns an empty vector if the cost of change is more than the profit.
   // Additionally, records the user which has been visited in a true user group,
   // and skips it in later traverse.
-  StatusOr<std::vector<HloInstruction*>> GetTrueUsers(
+  absl::optional<std::vector<HloInstruction*>> FindPeerElementwiseOperations(
       const HloInstruction* inst,
       const std::vector<HloInstruction*>& operands);
 
-  // Generates the new user with the whole tensor and slices its output instead
-  // of the true users with sliced tensor.
-  // Records the stale true users and their operand-slices to prepare removing.
-  void GenerateNewOp(const std::vector<HloInstruction*>& operands,
-      const std::vector<HloInstruction*>& users);
-
+ private:
   absl::flat_hash_set<const HloInstruction*> visited_;
 };
 
-// Computes the cost of implimentation of delaying slice, and returns whether
+// Computes the cost of implimentation of sinking slice, and returns whether
 // it should be changed.
 bool ShouldReplace(const std::vector<HloInstruction*>& operands,
     const std::vector<HloInstruction*>& users) {
@@ -82,53 +74,42 @@ bool ShouldReplace(const std::vector<HloInstruction*>& operands,
   return sum >= xla::ShapeUtil::ElementsIn(operands[0]->shape());
 }
 
+// Generates the new user with the whole tensor and slices its output instead
+// of the true users with sliced tensor.
+// Records the stale true users and their operand-slices to prepare removing.
+void SinkSlices(const std::vector<HloInstruction*>& operands,
+    const std::vector<HloInstruction*>& users) {
+  // Generates new user.
+  const Shape shape = operands[0]->shape();
+  PrimitiveType element_type = users[0]->shape().element_type();
+  Shape new_shape = ShapeUtil::ChangeElementType(shape, element_type);
+
+  HloComputation* computation = users[0]->parent();
+  auto new_user = computation->AddInstruction(
+      users[0]->CloneWithNewOperands(new_shape, operands));
+  VLOG(10) << "Add NewUser: " << new_user->ToString();
+
+  // Replaces the true users with new user and its user-slices.
+  for (HloInstruction* user : users) {
+    const HloInstruction* operand_slice = user->operand(0);
+    // Generates user slices of new user.
+    auto user_slice = computation->AddInstruction(
+        operand_slice->CloneWithNewOperands(user->shape(), {new_user}));
+    VLOG(10) << "Add NewSlice: " << user_slice->ToString()
+             << " Replace: " << user->ToString();
+    // Replaces true users with user slices.
+    user->ReplaceAllUsesWith(user_slice);
+  }
+}
+
 }  // namespace
 
-bool SliceDelayer::IsVisited(const HloInstruction* instruction) const {
+bool SliceSinkerImpl::IsVisited(const HloInstruction* instruction) const {
   return visited_.contains(instruction);
 }
 
-// =================================Before======================================
-//
-//       +--true-operand---+         <operands>
-//       |                 |
-//       v                 v
-// operand-slice     operand-slice   <bundled-slices>
-//       |                 |
-//       v                 v
-//   true-user         true-user     <users>
-//
-// ==================================After======================================
-//
-//          true-operand
-//               |
-//               v
-//       +----new-user-----+
-//       |                 |
-//       v                 v
-//   user-slice       user-slice     <bundled-slices>
-//
-StatusOr<bool> SliceDelayer::MergeWithPeers(const HloInstruction* inst) {
-  // Collects true operands of inst.
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> operands,
-                      GetTrueOperands(inst));
-  if (operands.empty()) {
-    return false;
-  }
-
-  // Collects true users grouped togather with inst.
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> users,
-                      GetTrueUsers(inst, operands));
-  if (users.empty()) {
-    return false;
-  }
-
-  // Change HLO graph.
-  GenerateNewOp(operands, users);
-  return true;
-}
-
-StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
+absl::optional<std::vector<HloInstruction*>>
+ SliceSinkerImpl::FindSourceOperandsOfSlicesForElementwiseOperation(
     const HloInstruction* inst) {
   std::vector<HloInstruction*> operands;
   // Check operand:
@@ -138,8 +119,7 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
     if (operand_slice->opcode() != HloOpcode::kSlice) {
       // If the operand is not operand-slice, returns empty vector.
       visited_.insert(inst);
-      operands.clear();
-      return operands;
+      return absl::nullopt;
     }
     // The operand-slice's operand is a true operand.
     HloInstruction* operand = operand_slice->mutable_operand(0);
@@ -149,7 +129,7 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
   // No true operands found. returns empty vector.
   if (operands.empty()) {
     visited_.insert(inst);
-    return operands;
+    return absl::nullopt;
   }
 
   // Check operands:
@@ -157,10 +137,9 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
   const Shape shape = operands[0]->shape();
   for (const HloInstruction* operand : operands) {
     // Only support element-wise now
-    if (!ShapeUtil::Compatible(operand->shape(), shape)) {
+    if (!ShapeUtil::CompatibleIgnoringElementType(operand->shape(), shape)) {
       visited_.insert(inst);
-      operands.clear();
-      return operands;
+      return absl::nullopt;
     }
   }
   // Inst's operand-slices should be sliced from the same location of true
@@ -171,16 +150,15 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueOperands(
         operand0->slice_limits() != operand->slice_limits() ||
         operand0->slice_strides() != operand->slice_strides()) {
       visited_.insert(inst);
-      operands.clear();
-      return operands;
+      return absl::nullopt;
     }
   }
-
   // Returns all true operands of inst.
   return operands;
 }
 
-StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueUsers(
+absl::optional<std::vector<HloInstruction*>>
+SliceSinkerImpl::FindPeerElementwiseOperations(
     const HloInstruction* inst,
     const std::vector<HloInstruction*>& operands) {
   std::vector<HloInstruction*> users;
@@ -202,7 +180,6 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueUsers(
           user->operand_count() != inst->operand_count()) {
         continue;
       }
-
       // Checks operand-slices:
       bool isTrueUser = true;
       for (int64 j = 0; j < operands.size(); ++j) {
@@ -232,37 +209,36 @@ StatusOr<std::vector<HloInstruction*>> SliceDelayer::GetTrueUsers(
 
   // Calculates the costs. If cost is more than profit, returns empty vector.
   if (!ShouldReplace(operands, users)) {
-    users.clear();
+    return absl::nullopt;
   }
+
   return users;
 }
 
-void SliceDelayer::GenerateNewOp(const std::vector<HloInstruction*>& operands,
-    const std::vector<HloInstruction*>& users) {
-  // Generates new user.
-  const Shape shape = operands[0]->shape();
-  HloComputation* computation = users[0]->parent();
-  auto new_user = computation->AddInstruction(
-      users[0]->CloneWithNewOperands(shape, operands));
-  VLOG(10) << "Add NewUser: " << new_user->ToString();
-
-  // Replaces the true users with new user and its user-slices.
-  for (HloInstruction* user : users) {
-    const HloInstruction* operand_slice = user->operand(0);
-    // Generates user slices of new user.
-    auto user_slice = computation->AddInstruction(
-        operand_slice->CloneWithNewOperands(user->shape(), {new_user}));
-    VLOG(10) << "Add NewSlice: " << user_slice->ToString()
-             << " Replace: " << user->ToString();
-    // Replaces true users with user slices.
-    user->ReplaceAllUsesWith(user_slice);
-  }
-}
-
-StatusOr<bool> SliceDelaying::Run(HloModule* module) {
+// =================================Before======================================
+//
+//       +--true-operand---+         <operands>
+//       |                 |
+//       v                 v
+// operand-slice     operand-slice   <bundled-slices>
+//       |                 |
+//       v                 v
+//   true-user         true-user     <users>
+//
+// ==================================After======================================
+//
+//          true-operand
+//               |
+//               v
+//       +----new-user-----+
+//       |                 |
+//       v                 v
+//   user-slice       user-slice     <bundled-slices>
+//
+StatusOr<bool> SliceSinker::Run(HloModule* module) {
   VLOG(3) << "Run Pass: " << name();
-  VLOG(10) << "before: " << name() << "\n" << module->ToString();
-  SliceDelayer slice_delayer;
+  VLOG(10) << "before: " << name() << " " << module->ToString();
+  SliceSinkerImpl impl;
   bool changed = false;
 
   for (HloComputation* computation : module->computations()) {
@@ -270,18 +246,30 @@ StatusOr<bool> SliceDelaying::Run(HloModule* module) {
         computation->MakeInstructionPostOrder()) {
       // Skips the visited instruction and tries merge elementwise instruction
       // with its peers.
-      if (!slice_delayer.IsVisited(instruction) &&
-          instruction->IsElementwise() && instruction->operand_count() != 0) {
-        // TODO(xinan): Supports more non-elementwise instructions.
-        VLOG(10) << "Merge inst: " << instruction->ToString();
-        TF_ASSIGN_OR_RETURN(bool success,
-                            slice_delayer.MergeWithPeers(instruction));
-        changed |= success;
+      // TODO(xinan): Supports more non-elementwise instructions.
+      if (impl.IsVisited(instruction) ||
+          !instruction->IsElementwise() || instruction->operand_count() == 0) {
+        continue;
       }
+      VLOG(10) << "Merge inst: " << instruction->ToString();
+      absl::optional<std::vector<HloInstruction*>> source_operands_of_slices =
+          impl.FindSourceOperandsOfSlicesForElementwiseOperation(instruction);
+      if (!source_operands_of_slices.has_value()) {
+        continue;
+      }
+      absl::optional<std::vector<HloInstruction*>> peer_elementwise_operations =
+          impl.FindPeerElementwiseOperations(instruction,
+                                             source_operands_of_slices.value());
+      if (!peer_elementwise_operations.has_value()) {
+        continue;
+      }
+      SinkSlices(source_operands_of_slices.value(),
+                      peer_elementwise_operations.value());
+      changed = true;
     }
   }
 
-  VLOG(10) << "after: " << name() << "\n" <<  module->ToString();
+  VLOG(10) << "after: " << name() << " " <<  module->ToString();
   return changed;
 }
 

@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_DELAYING_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_DELAYING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_SINKER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_SINKER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
-// An HLO pass that delay slice instruction to merge the same operations
+// An HLO pass that sink slice instructions to merge the same operations
 // togather.
-class SliceDelaying: public HloModulePass {
+class SliceSinker: public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "slice-delaying"; }
+  tensorflow::StringPiece name() const override { return "slice-sinker"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_DELAYING_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SLICE_SINKER_H_

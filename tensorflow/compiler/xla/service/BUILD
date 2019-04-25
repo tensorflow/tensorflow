@@ -4009,25 +4009,28 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "slice_delaying",
-    srcs = ["slice_delaying.cc"],
-    hdrs = ["slice_delaying.h"],
+    name = "slice_sinker",
+    srcs = ["slice_sinker.cc"],
+    hdrs = ["slice_sinker.h"],
     deps = [
         ":hlo",
         ":hlo_pass",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
 tf_cc_test(
-    name = "slice_delaying_test",
-    srcs = ["slice_delaying_test.cc"],
+    name = "slice_sinker_test",
+    srcs = ["slice_sinker_test.cc"],
     deps = [
+        ":slice_sinker",
         ":hlo",
-        ":slice_delaying",
         ":hlo_dce",
+        ":hlo_parser",
         ":hlo_pass",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
