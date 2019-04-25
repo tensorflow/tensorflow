@@ -74,15 +74,15 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
 
 cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
-print("tf.VERSION = %s" % tf.VERSION)
-print("tf.GIT_VERSION = %s" % tf.GIT_VERSION)
-print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
+print("tf.version.VERSION = %s" % tf.version.VERSION)
+print("tf.version.GIT_VERSION = %s" % tf.version.GIT_VERSION)
+print("tf.version.COMPILER_VERSION = %s" % tf.version.COMPILER_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
 ${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 
 {
   grep libcudnn.so /tmp/loadedlibs

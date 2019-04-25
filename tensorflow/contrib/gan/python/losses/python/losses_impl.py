@@ -36,7 +36,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -50,7 +49,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.losses import util
 from tensorflow.python.summary import summary
-
 
 __all__ = [
     'acgan_discriminator_loss',
@@ -95,19 +93,19 @@ def wasserstein_generator_loss(
       the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add detailed summaries for the loss.
 
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  with ops.name_scope(scope, 'generator_wasserstein_loss', (
-      discriminator_gen_outputs, weights)) as scope:
+  with ops.name_scope(scope, 'generator_wasserstein_loss',
+                      (discriminator_gen_outputs, weights)) as scope:
     discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
 
-    loss = - discriminator_gen_outputs
-    loss = losses.compute_weighted_loss(
-        loss, weights, scope, loss_collection, reduction)
+    loss = -discriminator_gen_outputs
+    loss = losses.compute_weighted_loss(loss, weights, scope, loss_collection,
+                                        reduction)
 
     if add_summaries:
       summary.scalar('generator_wass_loss', loss)
@@ -140,25 +138,31 @@ def wasserstein_discriminator_loss(
       `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  with ops.name_scope(scope, 'discriminator_wasserstein_loss', (
-      discriminator_real_outputs, discriminator_gen_outputs, real_weights,
-      generated_weights)) as scope:
+  with ops.name_scope(scope, 'discriminator_wasserstein_loss',
+                      (discriminator_real_outputs, discriminator_gen_outputs,
+                       real_weights, generated_weights)) as scope:
     discriminator_real_outputs = _to_float(discriminator_real_outputs)
     discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 
     loss_on_generated = losses.compute_weighted_loss(
-        discriminator_gen_outputs, generated_weights, scope,
-        loss_collection=None, reduction=reduction)
+        discriminator_gen_outputs,
+        generated_weights,
+        scope,
+        loss_collection=None,
+        reduction=reduction)
     loss_on_real = losses.compute_weighted_loss(
-        discriminator_real_outputs, real_weights, scope, loss_collection=None,
+        discriminator_real_outputs,
+        real_weights,
+        scope,
+        loss_collection=None,
         reduction=reduction)
     loss = loss_on_generated - loss_on_real
     util.add_loss(loss, loss_collection)
@@ -173,17 +177,16 @@ def wasserstein_discriminator_loss(
 
 # ACGAN losses from `Conditional Image Synthesis With Auxiliary Classifier GANs`
 # (https://arxiv.org/abs/1610.09585).
-def acgan_discriminator_loss(
-    discriminator_real_classification_logits,
-    discriminator_gen_classification_logits,
-    one_hot_labels,
-    label_smoothing=0.0,
-    real_weights=1.0,
-    generated_weights=1.0,
-    scope=None,
-    loss_collection=ops.GraphKeys.LOSSES,
-    reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
-    add_summaries=False):
+def acgan_discriminator_loss(discriminator_real_classification_logits,
+                             discriminator_gen_classification_logits,
+                             one_hot_labels,
+                             label_smoothing=0.0,
+                             real_weights=1.0,
+                             generated_weights=1.0,
+                             scope=None,
+                             loss_collection=ops.GraphKeys.LOSSES,
+                             reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+                             add_summaries=False):
   """ACGAN loss for the discriminator.
 
   The ACGAN loss adds a classification loss to the conditional discriminator.
@@ -212,7 +215,7 @@ def acgan_discriminator_loss(
       `discriminator_gen_classification_logits`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -226,13 +229,20 @@ def acgan_discriminator_loss(
       (discriminator_real_classification_logits,
        discriminator_gen_classification_logits, one_hot_labels)) as scope:
     loss_on_generated = losses.softmax_cross_entropy(
-        one_hot_labels, discriminator_gen_classification_logits,
-        weights=generated_weights, scope=scope, loss_collection=None,
+        one_hot_labels,
+        discriminator_gen_classification_logits,
+        weights=generated_weights,
+        scope=scope,
+        loss_collection=None,
         reduction=reduction)
     loss_on_real = losses.softmax_cross_entropy(
-        one_hot_labels, discriminator_real_classification_logits,
-        weights=real_weights, label_smoothing=label_smoothing, scope=scope,
-        loss_collection=None, reduction=reduction)
+        one_hot_labels,
+        discriminator_real_classification_logits,
+        weights=real_weights,
+        label_smoothing=label_smoothing,
+        scope=scope,
+        loss_collection=None,
+        reduction=reduction)
     loss = loss_on_generated + loss_on_real
     util.add_loss(loss, loss_collection)
 
@@ -244,14 +254,13 @@ def acgan_discriminator_loss(
   return loss
 
 
-def acgan_generator_loss(
-    discriminator_gen_classification_logits,
-    one_hot_labels,
-    weights=1.0,
-    scope=None,
-    loss_collection=ops.GraphKeys.LOSSES,
-    reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
-    add_summaries=False):
+def acgan_generator_loss(discriminator_gen_classification_logits,
+                         one_hot_labels,
+                         weights=1.0,
+                         scope=None,
+                         loss_collection=ops.GraphKeys.LOSSES,
+                         reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+                         add_summaries=False):
   """ACGAN loss for the generator.
 
   The ACGAN loss adds a classification loss to the conditional discriminator.
@@ -273,7 +282,7 @@ def acgan_generator_loss(
       either `1`, or the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -287,8 +296,11 @@ def acgan_generator_loss(
       scope, 'acgan_generator_loss',
       (discriminator_gen_classification_logits, one_hot_labels)) as scope:
     loss = losses.softmax_cross_entropy(
-        one_hot_labels, discriminator_gen_classification_logits,
-        weights=weights, scope=scope, loss_collection=loss_collection,
+        one_hot_labels,
+        discriminator_gen_classification_logits,
+        weights=weights,
+        scope=scope,
+        loss_collection=loss_collection,
         reduction=reduction)
 
     if add_summaries:
@@ -323,8 +335,8 @@ def wasserstein_gradient_penalty(
   Args:
     real_data: Real data.
     generated_data: Output of the generator.
-    generator_inputs: Exact argument to pass to the generator, which is used
-      as optional conditioning to the discriminator.
+    generator_inputs: Exact argument to pass to the generator, which is used as
+      optional conditioning to the discriminator.
     discriminator_fn: A discriminator function that conforms to TF-GAN API.
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
@@ -334,12 +346,12 @@ def wasserstein_gradient_penalty(
     one_sided: If `True`, penalty proposed in https://arxiv.org/abs/1709.08894
       is used. Defaults to `False`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `real_data` and `generated_data`, and must be broadcastable to
-      them (i.e., all dimensions must be either `1`, or the same as the
-      corresponding dimension).
+      `real_data` and `generated_data`, and must be broadcastable to them (i.e.,
+      all dimensions must be either `1`, or the same as the corresponding
+      dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -366,8 +378,10 @@ def wasserstein_gradient_penalty(
 
     with ops.name_scope(None):  # Clear scope so update ops are added properly.
       # Reuse variables if variables already exists.
-      with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
-                                         reuse=variable_scope.AUTO_REUSE):
+      with variable_scope.variable_scope(
+          discriminator_scope,
+          'gpenalty_dscope',
+          reuse=variable_scope.AUTO_REUSE):
         disc_interpolates = discriminator_fn(interpolates, generator_inputs)
 
     if isinstance(disc_interpolates, tuple):
@@ -379,8 +393,8 @@ def wasserstein_gradient_penalty(
         math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
     # Propagate shape information, if possible.
     if isinstance(batch_size, int):
-      gradient_squares.set_shape([
-          batch_size] + gradient_squares.shape.as_list()[1:])
+      gradient_squares.set_shape([batch_size] +
+                                 gradient_squares.shape.as_list()[1:])
     # For numerical stability, add epsilon to the sum before taking the square
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
@@ -389,8 +403,11 @@ def wasserstein_gradient_penalty(
       penalties = math_ops.maximum(0., penalties)
     penalties_squared = math_ops.square(penalties)
     penalty = losses.compute_weighted_loss(
-        penalties_squared, weights, scope=scope,
-        loss_collection=loss_collection, reduction=reduction)
+        penalties_squared,
+        weights,
+        scope=scope,
+        loss_collection=loss_collection,
+        reduction=reduction)
 
     if add_summaries:
       summary.scalar('gradient_penalty_loss', penalty)
@@ -437,26 +454,34 @@ def minimax_discriminator_loss(
     generated_weights: Same as `real_weights`, but for `generated_data`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  with ops.name_scope(scope, 'discriminator_minimax_loss', (
-      discriminator_real_outputs, discriminator_gen_outputs, real_weights,
-      generated_weights, label_smoothing)) as scope:
+  with ops.name_scope(
+      scope, 'discriminator_minimax_loss',
+      (discriminator_real_outputs, discriminator_gen_outputs, real_weights,
+       generated_weights, label_smoothing)) as scope:
 
     # -log((1 - label_smoothing) - sigmoid(D(x)))
     loss_on_real = losses.sigmoid_cross_entropy(
         array_ops.ones_like(discriminator_real_outputs),
-        discriminator_real_outputs, real_weights, label_smoothing, scope,
-        loss_collection=None, reduction=reduction)
+        discriminator_real_outputs,
+        real_weights,
+        label_smoothing,
+        scope,
+        loss_collection=None,
+        reduction=reduction)
     # -log(- sigmoid(D(G(x))))
     loss_on_generated = losses.sigmoid_cross_entropy(
         array_ops.zeros_like(discriminator_gen_outputs),
-        discriminator_gen_outputs, generated_weights, scope=scope,
-        loss_collection=None, reduction=reduction)
+        discriminator_gen_outputs,
+        generated_weights,
+        scope=scope,
+        loss_collection=None,
+        reduction=reduction)
 
     loss = loss_on_real + loss_on_generated
     util.add_loss(loss, loss_collection)
@@ -469,14 +494,13 @@ def minimax_discriminator_loss(
   return loss
 
 
-def minimax_generator_loss(
-    discriminator_gen_outputs,
-    label_smoothing=0.0,
-    weights=1.0,
-    scope=None,
-    loss_collection=ops.GraphKeys.LOSSES,
-    reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
-    add_summaries=False):
+def minimax_generator_loss(discriminator_gen_outputs,
+                           label_smoothing=0.0,
+                           weights=1.0,
+                           scope=None,
+                           loss_collection=ops.GraphKeys.LOSSES,
+                           reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+                           add_summaries=False):
   """Original minimax generator loss for GANs.
 
   Note that the authors don't recommend using this loss. A more practically
@@ -499,17 +523,23 @@ def minimax_generator_loss(
       the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
   with ops.name_scope(scope, 'generator_minimax_loss') as scope:
-    loss = - minimax_discriminator_loss(
+    loss = -minimax_discriminator_loss(
         array_ops.ones_like(discriminator_gen_outputs),
-        discriminator_gen_outputs, label_smoothing, weights, weights, scope,
-        loss_collection, reduction, add_summaries=False)
+        discriminator_gen_outputs,
+        label_smoothing,
+        weights,
+        weights,
+        scope,
+        loss_collection,
+        reduction,
+        add_summaries=False)
 
   if add_summaries:
     summary.scalar('generator_minimax_loss', loss)
@@ -547,32 +577,26 @@ def modified_discriminator_loss(
       `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  return minimax_discriminator_loss(
-      discriminator_real_outputs,
-      discriminator_gen_outputs,
-      label_smoothing,
-      real_weights,
-      generated_weights,
-      scope or 'discriminator_modified_loss',
-      loss_collection,
-      reduction,
-      add_summaries)
+  return minimax_discriminator_loss(discriminator_real_outputs,
+                                    discriminator_gen_outputs, label_smoothing,
+                                    real_weights, generated_weights, scope or
+                                    'discriminator_modified_loss',
+                                    loss_collection, reduction, add_summaries)
 
 
-def modified_generator_loss(
-    discriminator_gen_outputs,
-    label_smoothing=0.0,
-    weights=1.0,
-    scope=None,
-    loss_collection=ops.GraphKeys.LOSSES,
-    reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
-    add_summaries=False):
+def modified_generator_loss(discriminator_gen_outputs,
+                            label_smoothing=0.0,
+                            weights=1.0,
+                            scope=None,
+                            loss_collection=ops.GraphKeys.LOSSES,
+                            reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+                            add_summaries=False):
   """Modified generator loss for GANs.
 
   L = -log(sigmoid(D(G(z))))
@@ -593,7 +617,7 @@ def modified_generator_loss(
       dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -644,7 +668,7 @@ def least_squares_generator_loss(
       the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -653,10 +677,10 @@ def least_squares_generator_loss(
   with ops.name_scope(scope, 'lsq_generator_loss',
                       (discriminator_gen_outputs, real_label)) as scope:
     discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
-    loss = math_ops.squared_difference(
-        discriminator_gen_outputs, real_label) / 2.0
-    loss = losses.compute_weighted_loss(
-        loss, weights, scope, loss_collection, reduction)
+    loss = math_ops.squared_difference(discriminator_gen_outputs,
+                                       real_label) / 2.0
+    loss = losses.compute_weighted_loss(loss, weights, scope, loss_collection,
+                                        reduction)
 
   if add_summaries:
     summary.scalar('generator_lsq_loss', loss)
@@ -699,7 +723,7 @@ def least_squares_discriminator_loss(
       `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
@@ -712,16 +736,22 @@ def least_squares_discriminator_loss(
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 
-    real_losses = math_ops.squared_difference(
-        discriminator_real_outputs, real_label) / 2.0
-    fake_losses = math_ops.squared_difference(
-        discriminator_gen_outputs, fake_label) / 2.0
+    real_losses = math_ops.squared_difference(discriminator_real_outputs,
+                                              real_label) / 2.0
+    fake_losses = math_ops.squared_difference(discriminator_gen_outputs,
+                                              fake_label) / 2.0
 
     loss_on_real = losses.compute_weighted_loss(
-        real_losses, real_weights, scope, loss_collection=None,
+        real_losses,
+        real_weights,
+        scope,
+        loss_collection=None,
         reduction=reduction)
     loss_on_generated = losses.compute_weighted_loss(
-        fake_losses, generated_weights, scope, loss_collection=None,
+        fake_losses,
+        generated_weights,
+        scope,
+        loss_collection=None,
         reduction=reduction)
 
     loss = loss_on_real + loss_on_generated
@@ -745,7 +775,7 @@ def _validate_distributions(distributions):
     raise ValueError('`distributions` must be a list or tuple. Instead, '
                      'found %s.' % type(distributions))
   for x in distributions:
-    # We used to check with `isinstance(x, tf.distributions.Distribution)`.
+    # We used to check with `isinstance(x, tf.compat.v1.distributions.Distribution)`.
     # However, distributions have migrated to `tfp.distributions.Distribution`,
     # which is a new code repo, so we can't check this way anymore until
     # TF-GAN is migrated to a new repo as well.
@@ -755,15 +785,15 @@ def _validate_distributions(distributions):
                        'Instead, found %s.' % type(x))
 
 
-def _validate_information_penalty_inputs(
-    structured_generator_inputs, predicted_distributions):
+def _validate_information_penalty_inputs(structured_generator_inputs,
+                                         predicted_distributions):
   """Validate input to `mutual_information_penalty`."""
   _validate_distributions(predicted_distributions)
   if len(structured_generator_inputs) != len(predicted_distributions):
-    raise ValueError('`structured_generator_inputs` length %i must be the same '
-                     'as `predicted_distributions` length %i.' % (
-                         len(structured_generator_inputs),
-                         len(predicted_distributions)))
+    raise ValueError(
+        '`structured_generator_inputs` length %i must be the same '
+        'as `predicted_distributions` length %i.' %
+        (len(structured_generator_inputs), len(predicted_distributions)))
 
 
 def mutual_information_penalty(
@@ -789,21 +819,26 @@ def mutual_information_penalty(
       `structured_generator_inputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
-    reduction: A `tf.losses.Reduction` to apply to loss.
+    reduction: A `tf.compat.v1.losses.Reduction` to apply to loss.
     add_summaries: Whether or not to add summaries for the loss.
 
   Returns:
     A scalar Tensor representing the mutual information loss.
   """
-  _validate_information_penalty_inputs(
-      structured_generator_inputs, predicted_distributions)
+  _validate_information_penalty_inputs(structured_generator_inputs,
+                                       predicted_distributions)
 
   with ops.name_scope(scope, 'mutual_information_loss') as scope:
     # Calculate the negative log-likelihood of the reconstructed noise.
-    log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
-                 zip(predicted_distributions, structured_generator_inputs)]
+    log_probs = [
+        math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in zip(
+            predicted_distributions, structured_generator_inputs)
+    ]
     loss = -1 * losses.compute_weighted_loss(
-        log_probs, weights, scope, loss_collection=loss_collection,
+        log_probs,
+        weights,
+        scope,
+        loss_collection=loss_collection,
         reduction=reduction)
 
     if add_summaries:
@@ -828,10 +863,11 @@ def _numerically_stable_global_norm(tensor_list):
   if all(x is None for x in tensor_list):
     return 0.0
 
-  list_max = math_ops.reduce_max([math_ops.reduce_max(math_ops.abs(x)) for x in
-                                  tensor_list if x is not None])
-  return list_max * clip_ops.global_norm([x / list_max for x in tensor_list
-                                          if x is not None])
+  list_max = math_ops.reduce_max([
+      math_ops.reduce_max(math_ops.abs(x)) for x in tensor_list if x is not None
+  ])
+  return list_max * clip_ops.global_norm(
+      [x / list_max for x in tensor_list if x is not None])
 
 
 def _used_weight(weights_list):
@@ -879,9 +915,9 @@ def combine_adversarial_loss(main_loss,
       adversarial loss. Exactly one of this and `gradient_ratio` must be
       non-None.
     gradient_ratio: If not `None`, the ratio of the magnitude of the gradients.
-      Specifically,
-        gradient_ratio = grad_mag(main_loss) / grad_mag(adversarial_loss)
-      Exactly one of this and `weight_factor` must be non-None.
+      Specifically, gradient_ratio = grad_mag(main_loss) /
+      grad_mag(adversarial_loss) Exactly one of this and `weight_factor` must be
+      non-None.
     gradient_ratio_epsilon: An epsilon to add to the adversarial loss
       coefficient denominator, to avoid division-by-zero.
     variables: List of variables to calculate gradients with respect to. If not
@@ -900,8 +936,8 @@ def combine_adversarial_loss(main_loss,
   if variables is None:
     variables = contrib_variables_lib.get_trainable_variables()
 
-  with ops.name_scope(scope, 'adversarial_loss',
-                      values=[main_loss, adversarial_loss]):
+  with ops.name_scope(
+      scope, 'adversarial_loss', values=[main_loss, adversarial_loss]):
     # Compute gradients if we will need them.
     if gradient_summaries or gradient_ratio is not None:
       main_loss_grad_mag = _numerically_stable_global_norm(
@@ -923,15 +959,15 @@ def combine_adversarial_loss(main_loss,
     if _used_weight((weight_factor, gradient_ratio)) == 0:
       final_loss = main_loss
     elif weight_factor is not None:
-      final_loss = (main_loss +
-                    array_ops.stop_gradient(weight_factor) * adversarial_loss)
+      final_loss = (
+          main_loss + array_ops.stop_gradient(weight_factor) * adversarial_loss)
     elif gradient_ratio is not None:
       grad_mag_ratio = main_loss_grad_mag / (
           adv_loss_grad_mag + gradient_ratio_epsilon)
       adv_coeff = grad_mag_ratio / gradient_ratio
       summary.scalar('adversarial_coefficient', adv_coeff)
-      final_loss = (main_loss +
-                    array_ops.stop_gradient(adv_coeff) * adversarial_loss)
+      final_loss = (
+          main_loss + array_ops.stop_gradient(adv_coeff) * adversarial_loss)
 
   return final_loss
 

@@ -28,6 +28,7 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -1188,7 +1189,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1199,7 +1200,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1210,7 +1211,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
@@ -1226,7 +1227,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1247,7 +1248,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
@@ -1263,7 +1264,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
@@ -2269,7 +2270,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
     else:
       return False
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
@@ -2307,7 +2308,9 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         newshape = self.evaluate(yshape)
         self.assertAllEqual(single_shape, newshape)
 
+  # half_pixel_centers unsupported in ResizeBilinear
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/127616992")
   def testTensorArguments(self):
     img_shape = [1, 6, 4, 1]
     single_shape = [6, 4, 1]
@@ -2389,6 +2392,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
+  # half_pixel_centers not supported by XLA
+  @test_util.disable_xla("b/127616992")
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum
@@ -2416,7 +2421,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         if method in self.INTERPOLATING_METHODS:
           self.assertAllClose(resized, img_np, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2448,7 +2453,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeUp(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2507,7 +2512,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-04)
 
-  @test_util.disable_xla("TODO(jflynn): Figure out why this fails.")
+  # XLA doesn't implement half_pixel_centers
+  @test_util.disable_xla("b/127616992")
   def testLegacyBicubicMethodsMatchNewMethods(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2562,7 +2568,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -2767,7 +2773,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     else:
       return False
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
@@ -2884,7 +2890,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum
@@ -2911,7 +2917,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2943,7 +2949,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -3069,7 +3075,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -3342,6 +3348,8 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     self._assertReturns(x, x_shape, y, y_shape)
 
 
+# half_pixel_centers not supported by XLA
+@test_util.disable_all_xla("b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -3405,7 +3413,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -3413,7 +3420,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
@@ -3876,6 +3882,43 @@ class JpegTest(test_util.TensorFlowTestCase):
       [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
       # Cmyk jpeg image has 4 channels.
       self.assertEqual(image_shape.tolist(), [256, 128, 4])
+
+  def testRandomJpegQuality(self):
+    # Previous implementation of random_jpeg_quality had a bug.
+    # This unit test tests the fixed version, but due to forward compatibility
+    # this test can only be done when fixed version is used.
+    if compat.forward_compatible(2019, 4, 4):
+      # Test jpeg quality dynamic randomization.
+      with ops.Graph().as_default(), self.test_session():
+        np.random.seed(7)
+        path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+        jpeg = io_ops.read_file(path)
+        image = image_ops.decode_jpeg(jpeg)
+        random_jpeg_image = image_ops.random_jpeg_quality(image, 40, 100)
+        with self.cached_session(use_gpu=True) as sess:
+          # Test randomization.
+          random_jpeg_images = [sess.run(random_jpeg_image) for _ in range(5)]
+          are_images_equal = []
+          for i in range(1, len(random_jpeg_images)):
+            # Most of them should be different if randomization is occurring
+            # correctly.
+            are_images_equal.append(
+                np.array_equal(random_jpeg_images[0], random_jpeg_images[i]))
+          self.assertFalse(all(are_images_equal))
+
+  def testAdjustJpegQuality(self):
+    # Test if image_ops.adjust_jpeg_quality works when jpeq quality
+    # is an int (not tensor) for backward compatibility.
+    with ops.Graph().as_default(), self.test_session():
+      np.random.seed(7)
+      jpeg_quality = np.random.randint(40, 100)
+      path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+      jpeg = io_ops.read_file(path)
+      image = image_ops.decode_jpeg(jpeg)
+      adjust_jpeg_quality_image = image_ops.adjust_jpeg_quality(
+          image, jpeg_quality)
+      with self.cached_session(use_gpu=True) as sess:
+        sess.run(adjust_jpeg_quality_image)
 
 
 class PngTest(test_util.TensorFlowTestCase):
@@ -4636,7 +4679,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
     expected = self._ssim[np.triu_indices(3)]
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    ssim = image_ops.ssim(*ph, max_val=1.0)
+    ssim = image_ops.ssim(
+        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [ssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4650,8 +4694,14 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = np.concatenate(img1)
     img2 = np.concatenate(img2)
 
-    ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 1.0)
+    ssim = image_ops.ssim(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4663,7 +4713,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
-    ssim = image_ops.ssim(img1, img2, 1.0)
+    ssim = image_ops.ssim(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4677,8 +4728,14 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = img1.reshape((1, 16, 16, 1))
     img2 = img2.reshape((1, 16, 16, 1))
 
-    ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 255)
+    ssim = image_ops.ssim(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        255,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertLess(ssim.eval(), 0)
 
@@ -4688,10 +4745,12 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 16, 16, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim(img1, img2, 255)
+    ssim_uint8 = image_ops.ssim(
+        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
-    ssim_float32 = image_ops.ssim(img1, img2, 1.0)
+    ssim_float32 = image_ops.ssim(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
@@ -4734,7 +4793,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     expected = self._msssim[np.triu_indices(3)]
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    msssim = image_ops.ssim_multiscale(*ph, max_val=1.0)
+    msssim = image_ops.ssim_multiscale(
+        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [msssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4747,8 +4807,14 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
     scalar = constant_op.constant(1.0, dtype=dtypes.float32)
     scaled_ph = [x * scalar for x in ph]
-    msssim = image_ops.ssim_multiscale(*scaled_ph, max_val=1.0,
-                                       power_factors=(1, 1, 1, 1, 1))
+    msssim = image_ops.ssim_multiscale(
+        *scaled_ph,
+        max_val=1.0,
+        power_factors=(1, 1, 1, 1, 1),
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     grads = gradients.gradients(msssim, scalar)
     with self.cached_session(use_gpu=True) as sess:
       np_grads = sess.run(grads, feed_dict={ph[0]: img[0], ph[1]: img[1]})
@@ -4763,8 +4829,14 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img1 = np.concatenate(img1)
     img2 = np.concatenate(img2)
 
-    msssim = image_ops.ssim_multiscale(constant_op.constant(img1),
-                                       constant_op.constant(img2), 1.0)
+    msssim = image_ops.ssim_multiscale(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(msssim), 1e-4)
 
@@ -4777,7 +4849,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
-    score_tensor = image_ops.ssim_multiscale(img1, img2, 1.0)
+    score_tensor = image_ops.ssim_multiscale(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
@@ -4795,8 +4868,11 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
                 np.full_like(img1, fill_value=255)]
 
       images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
-      msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
-                    for x, y in itertools.combinations(images, 2)]
+      msssim_ops = [
+          image_ops.ssim_multiscale(
+              x, y, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+          for x, y in itertools.combinations(images, 2)
+      ]
       msssim = self.evaluate(msssim_ops)
       msssim = np.squeeze(msssim)
 
@@ -4809,10 +4885,12 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 180, 240, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim_multiscale(img1, img2, 255)
+    ssim_uint8 = image_ops.ssim_multiscale(
+        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
-    ssim_float32 = image_ops.ssim_multiscale(img1, img2, 1.0)
+    ssim_float32 = image_ops.ssim_multiscale(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)

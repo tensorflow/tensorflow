@@ -92,6 +92,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
@@ -99,6 +100,9 @@ from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
+from tensorflow.python.tpu import bfloat16 as _
+from tensorflow.python.tpu import tpu as _
+from tensorflow.python.tpu import tpu_optimizer as _
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
@@ -142,6 +146,10 @@ from tensorflow.python.framework.ops import enable_eager_execution
 # the namespace management system (API decorators).
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+
+# XLA JIT compiler APIs.
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

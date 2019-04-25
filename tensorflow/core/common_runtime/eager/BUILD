@@ -224,6 +224,7 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
@@ -275,4 +276,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*_test.cc"],
+    ),
 )

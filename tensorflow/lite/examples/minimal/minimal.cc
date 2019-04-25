@@ -37,7 +37,7 @@ using namespace tflite;
   }
 
 int main(int argc, char* argv[]) {
-  if(argc != 2) {
+  if (argc != 2) {
     fprintf(stderr, "minimal <tflite model>\n");
     return 1;
   }

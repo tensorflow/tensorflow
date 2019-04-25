@@ -1,0 +1,11 @@
+licenses(["notice"])  # MIT
+
+filegroup(
+    name = "LICENSE",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "kiss_fftr_16",
+    visibility = ["//visibility:public"],
+)

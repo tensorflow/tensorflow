@@ -115,11 +115,15 @@ Status GpuExecutable::ExecuteThunks(
     // since we expect it to be an expensive call?
     absl::optional<ScopedAnnotation> op_annotation;
     if (top_level_annotation.IsEnabled()) {
-      op_annotation.emplace(
-          thunk->hlo_instruction() != nullptr
-              ? thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical())
-              : "<unknown>",
-          "XLA op");
+      if (thunk->hlo_instruction()) {
+        auto hlo = thunk->hlo_instruction();
+        op_annotation.emplace(
+            thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
+            absl::StrCat("#tf_op=", hlo->metadata().op_name(),
+                         ",hlo_op=", hlo->name(), "#"));
+      } else {
+        op_annotation.emplace("<unknown>", "XLA op");
+      }
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
@@ -130,13 +134,6 @@ Status GpuExecutable::ExecuteThunks(
 
     for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
-
-    // If this thunk is about to autotune then wait for all currently executing
-    // thunks to finish.  This reduces noise and thus the probability of
-    // choosing a suboptimal algorithm.
-    if (thunk->WillAutotuneKernel(stream)) {
-      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
     VLOG(2) << "Executing the thunk for "

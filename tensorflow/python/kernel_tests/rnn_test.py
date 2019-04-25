@@ -723,7 +723,7 @@ def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = rnn_cell_impl.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,
@@ -856,7 +856,7 @@ def _half_seq_len_vs_unroll_half_rnn_benchmark(inputs_list_t, sequence_length):
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = rnn_cell_impl.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,
@@ -922,7 +922,7 @@ def _concat_state_vs_tuple_state_rnn_benchmark(inputs_list_t, sequence_length,
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=state_is_tuple)
-  outputs, final_state = rnn_cell_impl.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,

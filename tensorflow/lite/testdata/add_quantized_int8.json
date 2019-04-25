@@ -1,0 +1,123 @@
+{
+  version: 3,
+  operator_codes: [
+    {
+    }
+  ],
+  subgraphs: [
+    {
+      tensors: [
+        {
+          shape: [
+            1,
+            8,
+            8,
+            3
+          ],
+          name: "add",
+          quantization: {
+            min: [
+              0.0
+            ],
+            max: [
+              1.0
+            ],
+            scale: [
+              0.003922
+            ],
+            zero_point: [
+              0
+            ]
+          }
+        },
+        {
+          shape: [
+            1,
+            8,
+            8,
+            3
+          ],
+          type: "INT8",
+          name: "input",
+          quantization: {
+            min: [
+              0.0
+            ],
+            max: [
+              1.0
+            ],
+            scale: [
+              0.003922
+            ],
+            zero_point: [
+              0
+            ]
+          }
+        },
+        {
+          shape: [
+            1,
+            8,
+            8,
+            3
+          ],
+          type: "INT8",
+          name: "output",
+          quantization: {
+            min: [
+              0.0
+            ],
+            max: [
+              1.0
+            ],
+            scale: [
+              0.003922
+            ],
+            zero_point: [
+              0
+            ]
+          }
+        }
+      ],
+      inputs: [
+        1
+      ],
+      outputs: [
+        2
+      ],
+      operators: [
+        {
+          inputs: [
+            1,
+            1
+          ],
+          outputs: [
+            0
+          ],
+          builtin_options_type: "AddOptions",
+          builtin_options: {
+          }
+        },
+        {
+          inputs: [
+            0,
+            1
+          ],
+          outputs: [
+            2
+          ],
+          builtin_options_type: "AddOptions",
+          builtin_options: {
+          }
+        }
+      ]
+    }
+  ],
+  buffers: [
+    {
+      data: [
+
+      ]
+    }
+  ]
+}

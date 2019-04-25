@@ -27,7 +27,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/concat_lib_gpu.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 
 namespace tensorflow {
 namespace {
@@ -38,14 +38,14 @@ void ConcatGPUCall(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs_flat,
     typename TTypes<T, 2>::Tensor* output_flat) {
-  CudaDeviceArrayOnHost<const T*> input_ptrs(c, inputs_flat.size());
+  GpuDeviceArrayOnHost<const T*> input_ptrs(c, inputs_flat.size());
   OP_REQUIRES_OK(c, input_ptrs.Init());
   for (int i = 0; i < inputs_flat.size(); ++i) {
     input_ptrs.Set(i, inputs_flat[i]->data());
   }
   OP_REQUIRES_OK(c, input_ptrs.Finalize());
 
-  CudaDeviceArrayOnHost<IntType> output_scan(c, inputs_flat.size() + 1);
+  GpuDeviceArrayOnHost<IntType> output_scan(c, inputs_flat.size() + 1);
   OP_REQUIRES_OK(c, output_scan.Init());
   IntType scan = 0;
   output_scan.Set(0, scan);

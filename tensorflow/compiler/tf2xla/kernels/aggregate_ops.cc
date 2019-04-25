@@ -58,6 +58,7 @@ class AddNOp : public XlaOpKernel {
         xla::XlaOp push_index;
         OP_REQUIRES_OK(ctx, GetTensorListPushIndex(ctx->Input(0), &push_index));
         OP_REQUIRES_OK(ctx, BuildTensorList(sum, push_index, &sum));
+        ctx->SetTensorListOutput(0, sum);
         break;
       }
       default:
@@ -65,9 +66,8 @@ class AddNOp : public XlaOpKernel {
         for (int i = 1; i < ctx->num_inputs(); ++i) {
           sum = xla::Add(sum, ctx->Input(i));
         }
+        ctx->SetOutput(0, sum);
     }
-
-    ctx->SetOutput(0, sum);
   }
 
  private:

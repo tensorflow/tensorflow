@@ -36,7 +36,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.TfLiteRNNCell")
+@tf_export(v1=["lite.experimental.nn.TfLiteRNNCell"])
 class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
   """The most basic RNN cell.
 
@@ -107,7 +107,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     input_depth = inputs_shape[-1]
 
     def add_variable_wrapped(name, shape, initializer, index):
-      var = self.add_variable(name, shape=shape, initializer=initializer)
+      var = self.add_weight(name, shape=shape, initializer=initializer)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
 
@@ -156,7 +156,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     return dict(itertools.chain(base_config.items(), config.items()))
 
 
-@tf_export("lite.experimental.nn.TFLiteLSTMCell")
+@tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])
 class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -308,7 +308,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     bias_shape = [self._num_units]
 
     def add_variable_wrapped(name, shape, initializer, index, partitioner):
-      var = self.add_variable(
+      var = self.add_weight(
           name, shape=shape, initializer=initializer, partitioner=partitioner)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
@@ -436,9 +436,9 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
         aggregate="first",
         index_override=18)
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.shape.with_rank(2)[1]
     if input_size.value is None:
-      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+      raise ValueError("Could not infer input size from inputs.shape[-1]")
 
     inputs_and_m_prev = array_ops.concat([inputs, m_prev], axis=1)
 

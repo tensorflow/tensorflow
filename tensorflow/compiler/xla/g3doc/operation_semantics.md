@@ -303,6 +303,37 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
+## BroadcastInDim
+
+See also
+[`XlaBuilder::BroadcastInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Expands the size and rank of an array by duplicating the data in the array.
+
+<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+
+| Arguments              | Type                | Semantics                     |
+| ---------------------- | ------------------- | ----------------------------- |
+| `operand`              | `XlaOp`             | The array to duplicate        |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
+
+Similar to Broadcast, but allows adding dimensions anywhere and expanding
+existing dimensions with size 1.
+
+The `operand` is broadcast to the shape described by `out_dim_size`.
+`broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
+target shape, i.e. the i'th dimension of the operand is mapped to the
+broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
+`operand` must have size 1 or be the same size as the dimension in in the output
+shape they are mapped to. The remaining dimensions are filled with dimensions of
+size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
+dimensions to reach the output shape. The semantics are described in detail on
+the [broadcasting page](broadcasting.md).
+
 ## Call
 
 See also
@@ -897,11 +928,11 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot`    | matrix [m x n]        | matrix-matrix           |
 : matrix [k x n]          :                       : multiplication          :
 
-The operation performs sum of products over the last dimension of `lhs` and the
-one-before-last dimension of `rhs`. These are the "contracted" dimensions. The
-contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
-it can be used to perform dot products between vectors, vector/matrix
-multiplications or matrix/matrix multiplications.
+The operation performs sum of products over the second dimension of `lhs` (or
+the first if it has rank 1) and the first dimension of `rhs`. These are the
+"contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
+the same size. In practice, it can be used to perform dot products between
+vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
 ## DotGeneral
 
@@ -1237,6 +1268,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`PopulationCount(operand)`</b> Computes the number of bits set in each
+element of `operand`.
+
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
@@ -1254,6 +1288,59 @@ Arguments | Type    | Semantics
 
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+
+## Fft
+
+The XLA FFT operation implements the forward and inverse Fourier Transforms for
+real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
+supported, except on TPU, where only a single axis is supported (please file a
+github issue if you require higher order).
+
+See also
+[`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+| Arguments    | Type                | Semantics                |
+| ------------ | ------------------- | ------------------------ |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
+| `fft_type`   | `FftType`           | See the table below.     |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
+
+| `FftType` | Semantics                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
+
+#### Multidimensional FFT
+
+When more than 1 `fft_length` is provided, this is equivalent to applying a
+cascade of FFT operations to each of the innermost axes. Note that for the
+real->complex and complex->real cases, the innermost axis transform is
+(effectively) performed first (RFFT; last for IRFFT), which is why the innermost
+axis is the one which changes size. Other axis transforms will then be
+complex->complex.
+
+#### Implementation details
+
+CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 
 ## Gather
 
@@ -1663,15 +1750,15 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type                  | Semantics
-------------- | --------------------- | ---------------------------------------
-`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
-`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
-`computation` | `XlaComputation`      | computation of type
-              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
-`dimensions`  | `int64` array         | unordered array of dimensions to reduce
+| Arguments     | Type                  | Semantics                            |
+| ------------- | --------------------- | ------------------------------------ |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N, T_0, ..., T_N ->` `Collate(T_0, ..., T_N)`. |
+| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
 
 Where:
+
 * N is required to be greater or equal to 1.
 * All input arrays must have the same dimensions.
 * If `N = 1`, `Collate(T)` is `T`.
@@ -1681,10 +1768,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may be inserted
+The rank of each returned array is `rank(operand) - len(dimensions)`. The
+initial value used for every reduction is `init_value`, and it may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, 0 for addition). The applied
+identity of the reduction function (for example, `0` for addition). The applied
 `computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1695,10 +1782,10 @@ Some reduction functions like addition are not strictly associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA reductions.
+incorrect or unpredictable results in XLA.
 
 As an example, when reducing across one dimension in a single 1D array with
-values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
 then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
@@ -1777,16 +1864,27 @@ preserved in the output, but some dimensions may get assigned new numbers (since
 the rank changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
-the 1D array `| 20 28 36 |`.
+the 1D array `[20, 28, 36]`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
-When `N > 1`, reduce function application is slightly more complex, as it is
-applied simultaneously to all inputs. For example, consider the following
-reduction function, which can be used to compute the max and the argmax of a a
-1-D array in parallel:
+### Variadic Reduce
 
-```
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. The operands are supplied to the
+computation in the following order:
+
+*   Running reduced value for the first operand
+*   ...
+*   Running reduced value for the N'th operand
+*   Input value for the first operand
+*   ...
+*   Input value for the N'th operand
+
+For example, consider the following reduction function, which can be used to
+compute the max and the argmax of a 1-D array in parallel:
+
+```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
   if value >= argmax:
@@ -1798,6 +1896,7 @@ f(max, argmax, value, index):
 For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
 `I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
 input dimension is equivalent to the following recursive application:
+
 ```
 f_0 = f(I_V, I_K, V_0, K_0)
 f_1 = f(f_0.first, f_0.second, V_1, K_1)

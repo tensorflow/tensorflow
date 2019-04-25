@@ -330,8 +330,6 @@ class DirectSession : public Session {
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;
-  // Schedules 'c' for execution on pool.
-  void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 
   std::vector<std::unique_ptr<FunctionInfo>> functions_
       GUARDED_BY(executor_lock_);
@@ -390,7 +388,7 @@ class DirectSession : public Session {
   std::atomic<int64> edge_name_counter_ = {0};
   std::atomic<int64> handle_name_counter_ = {0};
 
-  // For generating step ids that are unique across this sessions.
+  // For generating step ids that are unique among all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.

@@ -23,6 +23,11 @@ import operator
 import sys
 
 import six
+try:
+  import wrapt
+except ImportError:
+  # Fall back to the build-time dependency if the system package is not available.
+  from .....third_party import wrapt
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -118,24 +123,42 @@ def sticky_attribute_assignment(trackable, name, value):
   return value
 
 
+class _UntrackableError(ValueError):
+
+  def __init__(self, value):  # pylint: disable=super-init-not-called
+    self._value = value
+
+  def __str__(self):
+    return (("Only trackable objects (such as Layers or Optimizers) may be "
+             "stored in a List object. Got %s, which does not inherit from "
+             "Trackable.") % (self._value,))
+
+
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 
   def __init__(self):
-    self.trainable = True
-    self._extra_variables = []
+    # Attributes prefixed with "_self_" for compatibility with
+    # wrapt.ObjectProxy.
+    self._self_trainable = True
+    self._self_extra_variables = []
+
+  @property
+  def trainable(self):
+    return self._self_trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._self_trainable = value
 
   def _track_value(self, value, name):
     """Add a dependency on `value`."""
     value = sticky_attribute_assignment(
         trackable=self, value=value, name=name)
     if isinstance(value, variables.Variable):
-      self._extra_variables.append(value)
+      self._self_extra_variables.append(value)
     if not isinstance(value, base.Trackable):
-      raise ValueError(
-          ("Only trackable objects (such as Layers or Optimizers) may be "
-           "stored in a List object. Got %s, which does not inherit from "
-           "Trackable.") % (value,))
+      raise _UntrackableError(value)
     if hasattr(value, "_use_resource_variables"):
       # In subclassed models, legacy layers (tf.layers) must always use
       # resource variables.
@@ -169,14 +192,14 @@ class TrackableDataStructure(base.Trackable):
     return layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
-        extra_variables=self._extra_variables)
+        extra_variables=self._self_extra_variables)
 
   @property
   def non_trainable_weights(self):
     return layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
-        extra_variables=self._extra_variables)
+        extra_variables=self._self_extra_variables)
 
   @property
   def weights(self):
@@ -287,6 +310,7 @@ class List(TrackableDataStructure, collections.Sequence):
 
   @property
   def _values(self):
+    """Collect values for TrackableDataStructure."""
     return self
 
   def append(self, value):
@@ -345,6 +369,8 @@ class List(TrackableDataStructure, collections.Sequence):
 
 
 # TODO(tomhennigan) Update to collections.UserList?
+# TODO(allenl): Try switching this to wrapt.ObjectProxy again when we drop
+# Python 3.4 support (may still be tricky).
 class _ListWrapper(List, collections.MutableSequence,
                    # Shadowed, but there for isinstance checks.
                    list):
@@ -444,7 +470,7 @@ class _ListWrapper(List, collections.MutableSequence,
 
     if isinstance(key, slice):
       # Note: this is quite inefficient, but the list API supports a broad range
-      # of slice setters (e.g. truncate, extend, replace) and immitating this
+      # of slice setters (e.g. truncate, extend, replace) and imitating this
       # for a range of Python versions is non-trivial.
       storage_copy = list(self._storage)
       self._storage[key] = value
@@ -480,6 +506,15 @@ class _ListWrapper(List, collections.MutableSequence,
     self._check_external_modification()
     super(_ListWrapper, self).extend(values)
     self._update_snapshot()
+
+  def __imul__(self, y):
+    if y <= 0:
+      self._self_non_append_mutation = True
+      self._storage *= y
+      return self
+
+    # Relies on super() calling append, which updates the snapshot.
+    return super(_ListWrapper, self).__imul__(y)
 
   def __eq__(self, other):
     return self._storage == getattr(other, "_storage", other)
@@ -570,6 +605,7 @@ class Mapping(TrackableDataStructure, collections.Mapping):
 
   @property
   def _values(self):
+    """Collect values for TrackableDataStructure."""
     # Sort items deterministically by key
     ordered = list(zip(*sorted(self.items(), key=lambda it: it[0])))
     if ordered:
@@ -610,19 +646,7 @@ class Mapping(TrackableDataStructure, collections.Mapping):
     return iter(self._storage)
 
 
-# Unlike _ListWrapper, having _DictWrapper inherit from dict and pass isinstance
-# checks seems infeasible. CPython will not call Python methods/properties on
-# dictionary subclasses when running e.g. {}.update(dict_subclass), and instead
-# collects elements directly from dict_subclass's C structs. So subclassing dict
-# implies that the storage has to be "self" (i.e. the C structs for the object
-# must be updated correctly), but we also need that storage to be the wrapped
-# dictionary to avoid synchronization bugs (un-tracked external modifications
-# should still show up when the dict is accessed through the wrapper). Monkey
-# patching all of the "wrapped" dict's methods instead of creating a wrapper
-# object is an option, but not a very attractive one (replacing methods without
-# creating reference cycles is difficult, and then dicts would need to be
-# special cased everywhere as being trackable).
-class _DictWrapper(Mapping, collections.MutableMapping):
+class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   """Wraps built-in dicts to support restore-on-create for variables.
 
   _DictWrapper is to Mapping as _ListWrapper is to List. Unlike Mapping,
@@ -631,49 +655,68 @@ class _DictWrapper(Mapping, collections.MutableMapping):
   _DictWrapper will raise an exception on save.
   """
 
-  def __new__(cls, *args):
-    if len(args) == 1 and isinstance(args[0], dict):
-      return super(_DictWrapper, cls).__new__(cls)
-    else:
-      # Allow construction from a sequence, e.g. for nest.pack_sequence_as. In
-      # this case there's nothing to wrap, so we make a normal dictionary. Also
-      # allows constructing empty instances of the _DictWrapper type, as Session
-      # is wont to do (and again there's nothing to wrap, so a normal dictionary
-      # makes more sense).
-      return dict(*args)
-
-  def __init__(self, wrapped_dict):
-    self._non_string_key = False
-    self._non_append_mutation = False
-    self._external_modification = False
-    super(_DictWrapper, self).__init__(wrapped_dict)
+  def __init__(self, wrapped_dict=None):
+    if wrapped_dict is None:
+      # Allow zero-argument construction, e.g. from session.run's re-wrapping.
+      wrapped_dict = {}
+    if not isinstance(wrapped_dict, collections.Mapping):
+      # Allow construction from a sequence, e.g. from nest.pack_sequence_as.
+      wrapped_dict = dict(wrapped_dict)
+    wrapt.ObjectProxy.__init__(self, wrapped_dict)
+    TrackableDataStructure.__init__(self)
+    self._self_non_string_key = False
+    self._self_non_append_mutation = False
+    self._self_external_modification = False
+    self.__wrapped__.update(
+        {key: self._track_value(
+            value, name=self._name_element(key))
+         for key, value in self.__wrapped__.items()})
     self._update_snapshot()
+
+  def __getattribute__(self, name):
+    if (hasattr(type(self), name)
+        and isinstance(getattr(type(self), name), property)):
+      # Bypass ObjectProxy for properties. Whether this workaround is necessary
+      # appears to depend on the Python version but not the wrapt version: 3.4
+      # in particular seems to look up properties on the wrapped object instead
+      # of the wrapper without this logic.
+      return object.__getattribute__(self, name)
+    else:
+      return super(_DictWrapper, self).__getattribute__(name)
+
+  def copy(self):
+    return copy.copy(self)
 
   # pylint: disable=protected-access
   def __copy__(self):
-    copied = super(_DictWrapper, self).__copy__()
-    copied._non_append_mutation = self._non_append_mutation
-    copied._external_modification = self._external_modification
-    copied._non_string_key = self._non_string_key
+    copied = _DictWrapper(copy.copy(self.__wrapped__))
+    copied._self_non_append_mutation = self._self_non_append_mutation
+    copied._self_external_modification = self._self_external_modification
+    copied._self_non_string_key = self._self_non_string_key
     return copied
 
   def __deepcopy__(self, memo):
-    copied = super(_DictWrapper, self).__deepcopy__(memo)
-    copied._non_append_mutation = self._non_append_mutation
-    copied._external_modification = self._external_modification
-    copied._non_string_key = self._non_string_key
+    copied = _DictWrapper(copy.deepcopy(self.__wrapped__, memo))
+    copied._self_non_append_mutation = self._self_non_append_mutation
+    copied._self_external_modification = self._self_external_modification
+    copied._self_non_string_key = self._self_non_string_key
     return copied
   # pylint: enable=protected-access
 
-  def _make_storage(self, wrapped_dict):
-    """Re-use the wrapped dict for storage (to force them to be in sync)."""
-    return wrapped_dict
+  @property
+  def _values(self):
+    """Collect values for TrackableDataStructure."""
+    # Sort items deterministically by key
+    ordered = list(zip(*sorted(self.items(), key=lambda it: it[0])))
+    if ordered:
+      return ordered[1]
+    return []
 
   @property
   def _checkpoint_dependencies(self):
     """Check that the object is saveable before listing its dependencies."""
-    self._check_external_modification()
-    if self._non_string_key:
+    self._check_self_external_modification()
+    if self._self_non_string_key:
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
           "automatically on attribute assignment). The wrapped dictionary "
@@ -682,7 +725,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
           "checkpointed, wrap it in a tf.contrib.checkpoint.NoDependency "
           "object; it will be automatically un-wrapped and subsequently "
           "ignored." % (self,))
-    if self._non_append_mutation:
+    if self._self_non_append_mutation:
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
           "automatically on attribute assignment). A key mapping to a "
@@ -691,7 +734,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
           "dictionary checkpointed, wrap it in a "
           "tf.contrib.checkpoint.NoDependency object; it will be automatically "
           "un-wrapped and subsequently ignored." % (self,))
-    if self._external_modification:
+    if self._self_external_modification:
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
           "automatically on attribute assignment). The wrapped dictionary was "
@@ -701,30 +744,30 @@ class _DictWrapper(Mapping, collections.MutableMapping):
           "dictionary checkpointed, wrap it in a "
           "tf.contrib.checkpoint.NoDependency object; it will be automatically "
           "un-wrapped and subsequently ignored." % (
-              self, self, self._last_wrapped_dict_snapshot))
+              self, self, self._self_last_wrapped_dict_snapshot))
     assert not self._dirty  # Any reason for dirtiness should have an exception.
     return super(_DictWrapper, self)._checkpoint_dependencies
 
   @property
   def _dirty(self):
     """Check if there has already been a mutation which prevents saving."""
-    return (self._external_modification
-            or self._non_append_mutation
-            or self._non_string_key)
+    return (self._self_external_modification
+            or self._self_non_append_mutation
+            or self._self_non_string_key)
 
-  def _check_external_modification(self):
+  def _check_self_external_modification(self):
     """Checks for any changes to the wrapped dict not through the wrapper."""
     if self._dirty:
       return
-    if self != self._last_wrapped_dict_snapshot:
-      self._external_modification = True
-      self._last_wrapped_dict_snapshot = None
+    if self != self._self_last_wrapped_dict_snapshot:
+      self._self_external_modification = True
+      self._self_last_wrapped_dict_snapshot = None
 
   def _update_snapshot(self):
     """Acknowledges tracked changes to the wrapped dict."""
     if self._dirty:
       return
-    self._last_wrapped_dict_snapshot = dict(self)
+    self._self_last_wrapped_dict_snapshot = dict(self)
 
   def _track_value(self, value, name):
     """Allows storage of non-trackable objects."""
@@ -739,7 +782,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
       if not (string_key or no_dependency):
         # A non-string key maps to a trackable value. This data structure
         # is not saveable.
-        self._non_string_key = True
+        self._self_non_string_key = True
       return value
     except ValueError:
       # Even if this value isn't trackable, we need to make sure
@@ -748,15 +791,13 @@ class _DictWrapper(Mapping, collections.MutableMapping):
           trackable=self, value=value, name=name)
 
   def _name_element(self, key):
-    """Don't throw errors for non-string keys."""
-    if isinstance(key, six.string_types):
-      return super(_DictWrapper, self)._name_element(key)
-    else:
-      return key
+    """Tells TrackableDataStructure to use keys as names as-is."""
+    return key
 
   def __setitem__(self, key, value):
     """Allow any modifications, but possibly mark the wrapper as unsaveable."""
-    self._check_external_modification()
+    self._check_self_external_modification()
+    self._maybe_initialize_trackable()
     no_dep = isinstance(value, NoDependency)
     if isinstance(key, six.string_types):
       existing_dependency = self._lookup_dependency(key)
@@ -768,9 +809,9 @@ class _DictWrapper(Mapping, collections.MutableMapping):
         # Non-string keys are OK as long as we have no reason to add a
         # dependency on the value (either because the value is not
         # trackable, or because it was wrapped in a NoDependency object).
-        self._non_string_key = True
-    if key in self._storage:
-      previous_value = self._storage[key]
+        self._self_non_string_key = True
+    if key in self.__wrapped__:
+      previous_value = self.__wrapped__[key]
       if previous_value is not value:
         if ((not no_dep and isinstance(value, base.Trackable))
             # We don't want to just check that the existing object is
@@ -780,32 +821,34 @@ class _DictWrapper(Mapping, collections.MutableMapping):
           # A trackable object was replaced under the same key; this means
           # that restoring would be error-prone, so we'll throw an exception on
           # save.
-          self._non_append_mutation = True
-    self._storage[key] = value
+          self._self_non_append_mutation = True
+    self.__wrapped__[key] = value
 
     self._update_snapshot()
 
   def __delitem__(self, key):
-    self._check_external_modification()
+    self._check_self_external_modification()
     existing_value = self[key]
     if isinstance(existing_value, base.Trackable):
       # Deleting tracked trackable values means restoring is problematic,
       # so we'll throw an exception on save.
-      self._non_append_mutation = True
-    del self._storage[key]
+      self._self_non_append_mutation = True
+    del self.__wrapped__[key]
     self._update_snapshot()
 
   def __repr__(self):
-    return "DictWrapper(%s)" % (repr(self._storage),)
+    return "DictWrapper(%s)" % (repr(self.__wrapped__),)
 
   def __hash__(self):
     raise TypeError("unhashable type: 'DictWrapper'")
 
   def __eq__(self, other):
-    return self._storage == getattr(other, "_storage", other)
+    # Override the TrackableDataStructure "== -> is" forwarding and go back to
+    # the wrapt implementation.
+    return self.__wrapped__ == other
 
   def update(self, *args, **kwargs):
-    for key, value in dict(*args, **kwargs).items():
+    for key, value in six.iteritems(dict(*args, **kwargs)):
       self[key] = value
 
   def _list_functions_for_serialization(self):
@@ -817,6 +860,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
 
 def _is_function(x):
   return isinstance(x, (def_function.Function, defun.ConcreteFunction))
+
 
 revived_types.register_revived_type(
     "trackable_dict_wrapper",

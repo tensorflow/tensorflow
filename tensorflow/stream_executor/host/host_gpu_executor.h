@@ -61,8 +61,8 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   void *Allocate(uint64 size) override;
-  void *AllocateSubBuffer(DeviceMemoryBase *mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                     uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
@@ -77,7 +77,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst, const void *host_src,
               uint64 size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                            const DeviceMemoryBase &host_src,
+                            const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
@@ -147,7 +147,13 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  DeviceDescription *PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(0);
+  }
+
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
     return port::Status::OK();

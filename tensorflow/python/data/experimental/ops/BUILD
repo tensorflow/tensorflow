@@ -153,24 +153,25 @@ py_library(
 )
 
 py_library(
+    name = "snapshot",
+    srcs = [
+        "snapshot.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "enumerate_ops",
     srcs = ["enumerate_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_library(
-    name = "filter_for_shard_ops",
-    srcs = ["filter_for_shard_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:tensor_util",
     ],
 )
 
@@ -314,6 +315,7 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
@@ -431,18 +433,6 @@ py_library(
 )
 
 py_library(
-    name = "indexed_dataset_ops",
-    srcs = ["indexed_dataset_ops.py"],
-    deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-py_library(
     name = "prefetching_ops",
     srcs = ["prefetching_ops.py"],
     deps = [
@@ -466,10 +456,8 @@ py_library(
         ":distribute",
         ":enumerate_ops",
         ":error_ops",
-        ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
-        ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",
         ":matching_files",
@@ -480,6 +468,7 @@ py_library(
         ":scan_ops",
         ":shuffle_ops",
         ":sleep",
+        ":snapshot",
         ":stats_ops",
         ":take_while_ops",
         ":threadpool",

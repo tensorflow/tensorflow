@@ -286,7 +286,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
   // Handle `i = K; i < N; ++i`.
   if (Match(while_cond_root,
             m::Op()
-                .WithOpcode(HloOpcode::kLt)
+                .WithComparisonDirection(ComparisonDirection::kLt)
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i < N: "
             << while_cond_root->ToString();
@@ -303,7 +303,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
   // Handle `i = K; i <= N; ++i`.
   if (Match(while_cond_root,
             m::Op()
-                .WithOpcode(HloOpcode::kLe)
+                .WithComparisonDirection(ComparisonDirection::kLe)
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();

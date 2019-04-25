@@ -36,7 +36,11 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
+        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:tf_utils",
     ],
 )
 
@@ -72,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -91,6 +96,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -110,6 +116,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -129,6 +136,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -148,6 +156,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -167,6 +176,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -186,6 +196,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -249,4 +260,5 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )

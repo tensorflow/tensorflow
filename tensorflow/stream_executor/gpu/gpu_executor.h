@@ -88,8 +88,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   void* Allocate(uint64 size) override;
 
-  void* AllocateSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
+                     uint64 size_bytes) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
 
@@ -198,12 +198,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   bool GetSymbol(const string& symbol_name, ModuleHandle module_handle,
                  void** mem, size_t* bytes) override;
 
-  DeviceDescription* PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(device_ordinal_);
+  }
 
-  // Populates the block_dim_limit by querying the device driver API. If an
-  // error occurs at any point while asking the driver for block dim limits, it
-  // will be only partially populated as a result, and an error will be logged.
-  bool FillBlockDimLimit(BlockDim* block_dim_limit) const;
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   bool SupportsBlas() const override;
 

@@ -59,8 +59,6 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
 
 StatusOr<bool> HloDomainRemover::RunContext::Run() {
   VLOG(4) << "Processing metadata domain: '" << remover_->kind_ << "'";
-  hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before Domain Remover");
-
   int64 removed_domains = 0;
   for (HloComputation* computation : module_->computations()) {
     // First create the domain instruciton sets. A domain instruction set is
@@ -97,9 +95,6 @@ StatusOr<bool> HloDomainRemover::RunContext::Run() {
   }
   VLOG(3) << "Removed " << removed_domains << " kDomain instructions of '"
           << remover_->kind_ << "' kind";
-  if (removed_domains > 0) {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "After Domain Remover");
-  }
   return removed_domains > 0;
 }
 

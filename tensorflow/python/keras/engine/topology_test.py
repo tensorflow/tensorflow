@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -27,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
@@ -84,27 +87,27 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
     network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.updates), 2)
+    self.assertEqual(len(network.updates), 3)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
-    self.assertEqual(len(network.updates), 2)
+    self.assertEqual(len(network.updates), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
-    self.assertEqual(len(network.updates), 3)
+    self.assertEqual(len(network.updates), 5)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(x4)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
     network.add_update(state_ops.assign_add(layer.a, [[1]]))
-    self.assertEqual(len(network.updates), 4)
+    self.assertEqual(len(network.updates), 6)
     self.assertEqual(len(network.get_updates_for(None)), 2)
 
     network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
-    self.assertEqual(len(network.updates), 5)
+    self.assertEqual(len(network.updates), 7)
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
   @test_util.run_in_graph_and_eager_modes()
@@ -156,29 +159,21 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
     network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.losses), 2)
-    self.assertEqual(len(network.get_losses_for(x1)), 0)
+    self.assertEqual(len(network.losses), 3)
+    self.assertEqual(len(network.get_losses_for(x1)), 1)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
-    self.assertEqual(len(network.losses), 2)
+    self.assertEqual(len(network.losses), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
-    self.assertEqual(len(network.losses), 3)
+    self.assertEqual(len(network.losses), 5)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
     self.assertEqual(len(network.get_losses_for(x4)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
-
-    network.add_loss(math_ops.reduce_sum(layer.a))
-    self.assertEqual(len(network.losses), 4)
-    self.assertEqual(len(network.get_losses_for(None)), 2)
-
-    network.add_loss(math_ops.reduce_sum(x4), inputs=True)
-    self.assertEqual(len(network.losses), 5)
-    self.assertEqual(len(network.get_losses_for(x4)), 2)
 
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
@@ -501,6 +496,19 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
+  def test_multi_output_layer_output_names(self):
+    inp = keras.layers.Input(name='inp', shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(keras.layers.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name='out')(inp)
+    model = keras.models.Model(inp, out)
+    self.assertEqual(['out', 'out_1'], model.output_names)
+    self.assertAllClose([2., 3.], model(1.))
+
   @test_util.run_deprecated_v1
   def test_recursion(self):
     with self.cached_session():
@@ -523,8 +531,8 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
-      self.assertListEqual(g.shape.as_list(), c.get_shape().as_list())
-      self.assertListEqual(h.shape.as_list(), d.get_shape().as_list())
+      self.assertListEqual(g.shape.as_list(), c.shape.as_list())
+      self.assertListEqual(h.shape.as_list(), d.shape.as_list())
 
       # test separate manipulation of different layer outputs
       i = keras.layers.Dense(7, name='dense_4')(h)
@@ -927,6 +935,14 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
       MyNetwork()
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_int_input_shape(self):
+    inputs = keras.Input(10)
+    self.assertEqual([None, 10], inputs.shape.as_list())
+
+    inputs_with_batch = keras.Input(batch_size=20, shape=5)
+    self.assertEqual([20, 5], inputs_with_batch.shape.as_list())
+
 
 class DeferredModeTest(test.TestCase):
 
@@ -1180,6 +1196,36 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
       self.assertAllClose(mask_outputs_val[0], np.any(model_input, axis=-1))
       self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_external_keras_serialization_compat_input_layers(self):
+    inputs = keras.Input(shape=(10,))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    config = model.get_config()
+    # Checks that single inputs and outputs are still saved as 1-element lists.
+    # Saving as 1-element lists or not is equivalent in TF Keras, but only the
+    # 1-element list format is supported in TF.js and keras-team/Keras.
+    self.assertLen(config['input_layers'], 1)
+    self.assertLen(config['output_layers'], 1)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_external_keras_serialization_compat_inbound_nodes(self):
+    # Check single Tensor input.
+    inputs = keras.Input(shape=(10,), name='in')
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    config = model.get_config()
+    self.assertEqual(config['layers'][1]['inbound_nodes'], [[['in', 0, 0, {}]]])
+
+    # Check multiple Tensor input.
+    inputs1 = keras.Input(shape=(10,), name='in1')
+    inputs2 = keras.Input(shape=(10,), name='in2')
+    outputs = keras.layers.Add()([inputs1, inputs2])
+    model = keras.Model([inputs1, inputs2], outputs)
+    config = model.get_config()
+    self.assertEqual(config['layers'][2]['inbound_nodes'],
+                     [[['in1', 0, 0, {}], ['in2', 0, 0, {}]]])
+
 
 class GraphUtilsTest(test.TestCase):
 
@@ -1296,6 +1342,164 @@ class NestedNetworkTest(test.TestCase):
 
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
+
+
+@keras_parameterized.run_all_keras_modes
+class AddLossTest(keras_parameterized.TestCase):
+
+  def test_add_loss_outside_call_only_loss(self):
+    inputs = keras.Input((10,))
+    mid = keras.layers.Dense(10)(inputs)
+    outputs = keras.layers.Dense(1)(mid)
+    model = keras.Model(inputs, outputs)
+    model.add_loss(math_ops.reduce_mean(outputs))
+    self.assertLen(model.losses, 1)
+
+    initial_weights = model.get_weights()
+
+    x = np.ones((10, 10))
+    model.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, batch_size=2, epochs=1)
+
+    model2 = model.from_config(model.get_config())
+    model2.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model2.set_weights(initial_weights)
+    model2.fit(x, batch_size=2, epochs=1)
+
+    # The TFOpLayer and the AddLoss layer are serialized.
+    self.assertLen(model2.layers, 5)
+    self.assertAllClose(model.get_weights(), model2.get_weights())
+
+  def test_add_loss_outside_call_multiple_losses(self):
+    inputs = keras.Input((10,))
+    x1 = keras.layers.Dense(10)(inputs)
+    x2 = keras.layers.Dense(10)(x1)
+    outputs = keras.layers.Dense(1)(x2)
+    model = keras.Model(inputs, outputs)
+    model.add_loss(math_ops.reduce_sum(x1 * x2))
+    model.add_loss(math_ops.reduce_mean(outputs))
+    self.assertLen(model.losses, 2)
+
+    initial_weights = model.get_weights()
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
+
+    model2 = model.from_config(model.get_config())
+    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model2.set_weights(initial_weights)
+    model2.fit(x, y, batch_size=2, epochs=1)
+
+    self.assertAllClose(model.get_weights(), model2.get_weights())
+
+
+@keras_parameterized.run_all_keras_modes
+class WeightAccessTest(keras_parameterized.TestCase):
+
+  def test_functional_model(self):
+    inputs = keras.Input((10,))
+    x1 = keras.layers.Dense(10)(inputs)
+    x2 = keras.layers.Dense(10)(x1)
+    outputs = keras.layers.Dense(1)(x2)
+    model = keras.Model(inputs, outputs)
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_with_input_shape(self):
+    x1 = keras.layers.Dense(10, input_shape=(10,))
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_without_input_shape(self):
+    x1 = keras.layers.Dense(10)
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+  def test_subclass_model_with_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=input_shape[-1], initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+    model(keras.Input((10,)))
+    self.assertEqual(len(model.weights), 1)
+
+  def test_subclass_model_without_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def __init__(self):
+        super(SubclassModel, self).__init__()
+        self.w = self.add_weight(shape=(), initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+    self.assertEqual(len(model.weights), 1)
+
+  def test_layer_with_custom_signature(self):
+
+    class CustomSignatureLayer(keras.layers.Layer):
+
+      def __call__(self, tensor1, tensor2, tensor3=None):
+        if tensor3 is not None:
+          inputs = [tensor1, tensor2, tensor3]
+        else:
+          inputs = [tensor1, tensor2]
+        return super(CustomSignatureLayer, self).__call__(inputs)
+
+      def call(self, inputs):
+        return keras.layers.Concatenate()(inputs)
+
+    layer = CustomSignatureLayer()
+    inputs = keras.Input(10)
+    t1 = keras.layers.Dense(10)(inputs)
+    t2 = keras.layers.Dense(5)(inputs)
+    t3 = keras.layers.Dense(3)(inputs)
+    x1 = layer(t1, t2, tensor3=t3)
+    x2 = layer(t1, t2)
+    outputs = keras.layers.Concatenate()([x1, x2])
+    model = keras.Model(inputs, outputs)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(np.ones((10, 10)), np.ones((10, 33)), batch_size=2)
+    out = model(np.ones((20, 10)))
+    self.assertEqual(out.shape.as_list(), [20, 33])
+
+    model2 = model.from_config(
+        model.get_config(),
+        custom_objects={'CustomSignatureLayer': CustomSignatureLayer})
+    out = model2(np.ones((20, 10)))
+    self.assertEqual(out.shape.as_list(), [20, 33])
+
+    model3 = models.clone_model(model)
+    out = model3(np.ones((5, 10)))
+    self.assertEqual(out.shape.as_list(), [5, 33])
+
+    save_file = os.path.join(self.get_temp_dir(), 'ckpt')
+    model.save(save_file)
+    model4 = keras.models.load_model(
+        save_file,
+        custom_objects={'CustomSignatureLayer': CustomSignatureLayer})
+    out = model4(np.ones((5, 10)))
+    self.assertEqual(out.shape.as_list(), [5, 33])
 
 
 if __name__ == '__main__':

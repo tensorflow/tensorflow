@@ -72,6 +72,10 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
       return inst->mutable_operand(2);
     }
     case HloOpcode::kParameter:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
@@ -81,7 +85,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
     case HloOpcode::kSlice:
       return nullptr;
     default:
-      return UnimplementedStrCat("Unimplimented padding for instruction: ",
+      return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
   }
 }
@@ -160,9 +164,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           HloInstruction* broadcasted_effective_size =
               computation->AddInstruction(HloInstruction::CreateBroadcast(
                   mask_shape, dynamic_size, {}));
-          HloInstruction* pred = computation->AddInstruction(
-              HloInstruction::CreateBinary(pred_shape, HloOpcode::kLt, iota,
-                                           broadcasted_effective_size));
+          HloInstruction* pred =
+              computation->AddInstruction(HloInstruction::CreateCompare(
+                  pred_shape, iota, broadcasted_effective_size,
+                  ComparisonDirection::kLt));
 
           HloInstruction* broadcasted_identity_value =
               computation->AddInstruction(HloInstruction::CreateBroadcast(

@@ -27,6 +27,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "copy_to_device_test",
     size = "small",
@@ -45,6 +57,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -228,21 +241,6 @@ py_test(
 )
 
 py_test(
-    name = "indexed_dataset_ops_test",
-    srcs = ["indexed_dataset_ops_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/data/experimental/ops:indexed_dataset_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "make_batched_features_dataset_test",
     size = "medium",
     srcs = ["make_batched_features_dataset_test.py"],
@@ -367,18 +365,6 @@ py_test(
 )
 
 py_test(
-    name = "cardinality_test",
-    srcs = ["cardinality_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/data/experimental/ops:cardinality",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
     name = "override_threadpool_test",
     size = "small",
     srcs = ["override_threadpool_test.py"],
@@ -461,6 +447,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -558,6 +545,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -628,6 +616,22 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+    ],
+)
+
+py_test(
+    name = "snapshot_test",
+    srcs = ["snapshot_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -750,6 +754,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "variant_test",
+    srcs = ["variant_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 cuda_py_test(
     name = "wrap_unwrap_test",
     size = "small",
@@ -759,4 +775,5 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )

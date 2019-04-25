@@ -235,8 +235,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     if (!directory_
              .insert(std::make_pair(
                  element_iter->name(),
-                 FileRegion(element_iter->offset(),
-                            prev_element_offset - element_iter->offset())))
+                 FileRegion(element_iter->offset(), element_iter->length())))
              .second) {
       return errors::DataLoss("Corrupted memmapped model file: ", filename,
                               " Duplicate name of internal component ",

@@ -29,7 +29,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder_impl
@@ -37,6 +39,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 
 
@@ -140,7 +143,7 @@ class LoadTest(test.TestCase):
                      self.evaluate(first_imported.signatures["first_key"](
                          first_start=constant_op.constant(2.))))
     second_imported = load.load(self._v1_multi_metagraph_saved_model(),
-                                tags=["second"])
+                                tags=set(["second"]))
     with self.assertRaisesRegexp(TypeError, "second_start"):
       second_imported.signatures["second_key"](x=constant_op.constant(2.))
     with self.assertRaisesRegexp(TypeError, "second_start"):
@@ -203,6 +206,132 @@ class LoadTest(test.TestCase):
     fn = third_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
+
+  def _v1_cond_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      branch_selector = array_ops.placeholder(
+          name="branch_selector", shape=[], dtype=dtypes.bool)
+      output = control_flow_ops.cond(
+          branch_selector,
+          lambda: array_ops.ones([]),
+          lambda: array_ops.zeros([]))
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"branch_selector": branch_selector},
+            outputs={"output": output})
+    return path
+
+  def test_cond(self):
+    first_path = self._v1_cond_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 1.}, function(constant_op.constant(True)))
+    self.assertAllClose({"output": 0.}, function(constant_op.constant(False)))
+
+  def _v1_while_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      loop_iterations = array_ops.placeholder(
+          name="loop_iterations", shape=[], dtype=dtypes.int32)
+      _, output = control_flow_ops.while_loop(
+          lambda index, accum: index <= loop_iterations,
+          lambda index, accum: (index + 1, accum + index),
+          [constant_op.constant(0), constant_op.constant(0)])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"loop_iterations": loop_iterations},
+            outputs={"output": output})
+    return path
+
+  def test_while(self):
+    first_path = self._v1_while_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 10}, function(constant_op.constant(4)))
+    self.assertAllClose({"output": 15}, function(constant_op.constant(5)))
+
+  def _v1_nested_while_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+
+      def _inner_while(loop_iterations):
+        _, output = control_flow_ops.while_loop(
+            lambda index, accum: index <= loop_iterations,
+            lambda index, accum: (index + 1, accum + index),
+            [constant_op.constant(0), constant_op.constant(0)])
+        return output
+
+      loop_iterations = array_ops.placeholder(
+          name="loop_iterations", shape=[], dtype=dtypes.int32)
+      _, output = control_flow_ops.while_loop(
+          lambda index, accum: index <= loop_iterations,
+          lambda index, accum: (index + 1, accum + _inner_while(index)),
+          [constant_op.constant(0), constant_op.constant(0)])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"loop_iterations": loop_iterations},
+            outputs={"output": output})
+    return path
+
+  def test_nested_while(self):
+    first_path = self._v1_nested_while_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 20}, function(constant_op.constant(4)))
+    self.assertAllClose({"output": 35}, function(constant_op.constant(5)))
+
+  def _no_signatures_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={},
+            assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+        b.save()
+    return path
+
+  def test_no_signature(self):
+    path = self._no_signatures_model()
+    imported = load.load(path)
+    self.assertEqual([], list(imported.signatures.keys()))
+
+  def _signature_with_no_inputs(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+      output = random_ops.random_normal([2])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={
+                "key": signature_def_utils.build_signature_def(
+                    {}, dict(value=utils_impl.build_tensor_info(output)))})
+        b.save()
+    return path
+
+  def test_signature_with_no_inputs(self):
+    path = self._signature_with_no_inputs()
+    imported = load.load(path)
+    self.assertEqual([2], imported.signatures["key"]()["value"].shape)
 
 if __name__ == "__main__":
   test.main()

@@ -181,6 +181,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // so a CollectiveExecutor should never be required.
   args.collective_executor = nullptr;
 
+  CancellationManager cancellation_manager;
+  args.cancellation_manager = &cancellation_manager;
+
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));
 

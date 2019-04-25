@@ -68,7 +68,7 @@ def _enter_graph(g, eager, creator_stack=None):
 
 def _cpu_device(device):
   cpu_device = tf_device.DeviceSpec.from_string(device)
-  cpu_device.merge_from(tf_device.DeviceSpec(device_type="CPU", device_index=0))
+  cpu_device = cpu_device.replace(device_type="CPU", device_index=0)
   return cpu_device.to_string()
 
 
@@ -177,12 +177,14 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
           # capture the name_scope from the first MRT and assume it is
           # the same for all other MRTs.
           mtt_captured_name_scope = threads[0].captured_name_scope
+          mtt_captured_var_scope = threads[0].captured_var_scope
           # Capture and merge the control dependencies from all the threads.
           mtt_captured_control_deps = set()
           for t in threads:
             mtt_captured_control_deps.update(t.captured_control_deps)
           with ops.name_scope(mtt_captured_name_scope),\
-              ops.control_dependencies(mtt_captured_control_deps):
+              ops.control_dependencies(mtt_captured_control_deps), \
+              variable_scope.variable_scope(mtt_captured_var_scope):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
@@ -295,7 +297,7 @@ def _is_device_list_local(devices):
   """
   all_local = None
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
     is_local = d_spec.job in (None, "localhost")
 
     if all_local is None:  # Determine all_local from first device.
@@ -343,7 +345,7 @@ def _group_device_list(devices):
   device_dict = {}
 
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
 
     # Create an entry for the task_type.
     if d_spec.job not in device_dict:
@@ -359,7 +361,7 @@ def _group_device_list(devices):
 
 
 def _is_gpu_device(device):
-  return tf_device.DeviceSpec().parse_from_string(device).device_type == "GPU"
+  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
 
 
 def _infer_num_gpus_per_worker(devices):
@@ -394,7 +396,7 @@ def _infer_num_gpus_per_worker(devices):
           raise ValueError("All workers should have the same number of GPUs.")
 
         for d in device_in_task:
-          d_spec = tf_device.DeviceSpec().parse_from_string(d)
+          d_spec = tf_device.DeviceSpec.from_string(d)
           if (d_spec.device_type == "GPU" and
               d_spec.device_index >= num_gpus):
             raise ValueError("GPU `device_index` on a worker should be "
@@ -405,8 +407,7 @@ def _infer_num_gpus_per_worker(devices):
 def all_local_devices(num_gpus=None):
   if num_gpus is None:
     num_gpus = context.num_gpus()
-  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
-          ("/device:CPU:0",))
+  return device_util.local_devices_from_num_gpus(num_gpus)
 
 
 def _all_devices():
@@ -418,8 +419,8 @@ def _all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy")
-class MirroredStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.MirroredStrategy", v1=[])
+class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
   This strategy uses one replica per device and sync replication for its
@@ -428,7 +429,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   The multi-worker version will be added in the future.
 
   Args:
-    devices: a list of device strings.
+    devices: a list of device strings.  If `None`, all available GPUs are used.
+    If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, nccl will be use by default.
   """
@@ -439,7 +441,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     super(MirroredStrategy, self).__init__(extended)
 
 
-class MirroredExtended(distribute_lib.DistributionStrategyExtended):
+@tf_export(v1=["distribute.MirroredStrategy"])
+class MirroredStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = MirroredStrategy.__doc__
+
+  def __init__(self, devices=None, cross_device_ops=None):
+    extended = MirroredExtended(
+        self, devices=devices, cross_device_ops=cross_device_ops)
+    super(MirroredStrategyV1, self).__init__(extended)
+
+
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
@@ -508,9 +522,12 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         self._device_map, worker_devices)
 
     if len(workers) > 1:
-      self._inferred_cross_device_ops = (
-          cross_device_ops_lib.MultiWorkerAllReduce(
-              workers, _infer_num_gpus_per_worker(devices)))
+      if not isinstance(self._cross_device_ops,
+                        cross_device_ops_lib.MultiWorkerAllReduce):
+        raise ValueError(
+            "In-graph multi-worker training with `MirroredStrategy` is not "
+            "supported.")
+      self._inferred_cross_device_ops = self._cross_device_ops
     else:
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
@@ -584,6 +601,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
 
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
+
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
@@ -602,7 +623,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       fn_result = fn(ctx, iterator.get_next())
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
-        ctx.last_step_outputs[name] = self._unwrap(output)
+        ctx.last_step_outputs[name] = self._local_results(output)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -741,7 +762,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)
@@ -823,6 +844,7 @@ class _MirroredReplicaThread(threading.Thread):
     self.merge_kwargs = None
     self.merge_result = None
     self.captured_name_scope = None
+    self.captured_var_scope = None
     # We use a thread.Event for the main thread to signal when this
     # thread should start running (`should_run`), and another for
     # this thread to transfer control back to the main thread
@@ -835,11 +857,10 @@ class _MirroredReplicaThread(threading.Thread):
     self.has_paused = threading.Event()
     # These fields have to do with inheriting various contexts from the
     # parent thread:
+    context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
-    # pylint: disable=protected-access
-    if not ctx._context_handle:
-      ctx._initialize_handle_and_devices()
+    self.record_thread_local_context_fields()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))
@@ -849,7 +870,7 @@ class _MirroredReplicaThread(threading.Thread):
       self._init_graph = ops.get_default_graph()
 
     self._variable_creator_stack = self.graph._variable_creator_stack[:]
-    self._captured_var_scope = variable_scope.get_variable_scope()
+    self._var_scope = variable_scope.get_variable_scope()
     # Adding a "/" at end lets us re-enter this scope later.
     self._name_scope = self.graph.get_name_scope()
     if self._name_scope:
@@ -865,6 +886,7 @@ class _MirroredReplicaThread(threading.Thread):
     try:
       if self.coord.should_stop():
         return
+      self.restore_thread_local_context_fields()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -877,12 +899,32 @@ class _MirroredReplicaThread(threading.Thread):
               self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(
-              self._captured_var_scope, reuse=self.replica_id > 0), \
+              self._var_scope, reuse=self.replica_id > 0), \
           variable_scope.variable_creator_scope(self.variable_creator_fn):
         self.main_result = self.main_fn(*self.main_args, **self.main_kwargs)
         self.done = True
     finally:
       self.has_paused.set()
+
+  def record_thread_local_context_fields(self):
+    """Record thread local fields of context.context() in self."""
+    ctx = context.context()
+    self._summary_step = ctx.summary_step
+    self._summary_writer = ctx.summary_writer
+    self._summary_recording = ctx.summary_recording
+    self._summary_recording_distribution_strategy = (
+        ctx.summary_recording_distribution_strategy)
+    # TODO(b/125892694): record other fields in EagerContext.
+
+  def restore_thread_local_context_fields(self):
+    """Restore thread local fields of context.context() from self."""
+    ctx = context.context()
+    ctx.summary_step = self._summary_step
+    ctx.summary_writer = self._summary_writer
+    ctx.summary_recording = self._summary_recording
+    ctx.summary_recording_distribution_strategy = (
+        self._summary_recording_distribution_strategy)
+    # TODO(b/125892694): restore other fields in EagerContext.
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):
@@ -906,6 +948,7 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     if t.captured_name_scope:
       t.captured_name_scope += "/"
 
+    t.captured_var_scope = variable_scope.get_variable_scope()
     t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
 
     # NOTE(priyag): Throw an error if there is a merge call in the middle of a

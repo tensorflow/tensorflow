@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This include can't be in the conv_ops_fused_impl.h headers. See b/62899350.
+#if GOOGLE_CUDA
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_ops_fused_impl.h"
 
 namespace tensorflow {

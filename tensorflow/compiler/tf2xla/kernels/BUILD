@@ -33,6 +33,7 @@ tf_kernel_library(
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
+        "einsum_op.cc",
         "elu_op.cc",
         "empty_op.cc",
         "extract_image_patches_op.cc",
@@ -46,6 +47,7 @@ tf_kernel_library(
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
+        "in_topk_op.cc",
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
@@ -70,6 +72,7 @@ tf_kernel_library(
         "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
+        "replica_id_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
@@ -119,13 +122,14 @@ tf_kernel_library(
     tags = ["optonly"],
     deps = [
         ":case_op",
-        ":conv_op_helpers",
+        ":conv_op_attrs",
         ":if_op",
         ":tensor_list_utils",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
+        "//tensorflow/compiler/tf2xla/lib:data_format",
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:util",
@@ -142,6 +146,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:conv_op_helpers",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -220,25 +225,6 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_op_helpers",
-    srcs = ["conv_op_helpers.cc"],
-    hdrs = ["conv_op_helpers.h"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_bounds_check",
-        "//tensorflow/core/kernels:conv_ops",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "tensor_list_utils",
     srcs = ["tensor_list_utils.cc"],
     hdrs = ["tensor_list_utils.h"],
@@ -255,11 +241,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "if_while_utils",
+    srcs = ["if_while_utils.cc"],
+    hdrs = ["if_while_utils.h"],
+)
+
 tf_kernel_library(
     name = "while_op",
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
     deps = [
+        ":if_while_utils",
         ":tensor_list_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -280,6 +273,7 @@ tf_kernel_library(
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -371,4 +365,15 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "conv_op_attrs",
+    srcs = ["conv_op_attrs.cc"],
+    hdrs = ["conv_op_attrs.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client/lib:conv_op_helpers",
+        "//tensorflow/core:framework",
+    ],
 )

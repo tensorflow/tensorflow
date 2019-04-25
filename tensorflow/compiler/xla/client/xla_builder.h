@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
@@ -321,7 +322,13 @@ class XlaBuilder {
   // functions section in this file.
 
   XlaOp Parameter(int64 parameter_number, const Shape& shape,
-                  const string& name);
+                  const string& name,
+                  const std::vector<bool>& replicated_at_leaf_buffers);
+  XlaOp Parameter(int64 parameter_number, const Shape& shape,
+                  const string& name) {
+    std::vector<bool> empty_bools;
+    return Parameter(parameter_number, shape, name, empty_bools);
+  }
 
   XlaOp ConstantLiteral(const LiteralSlice& literal);
 
@@ -596,9 +603,11 @@ class XlaBuilder {
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
-  // when the operation is between tensors of different ranks.
+  // when the operation is between tensors of different ranks. The direction is
+  // only used if opcode is kCompare.
   XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                 absl::Span<const int64> broadcast_dimensions);
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
@@ -705,7 +714,8 @@ class XlaBuilder {
   XlaBuilder* parent_builder_{nullptr};
 
   friend XlaOp Parameter(XlaBuilder* builder, int64 parameter_number,
-                         const Shape& shape, const string& name);
+                         const Shape& shape, const string& name,
+                         const std::vector<bool>& replicated_at_leaf_buffers);
   friend XlaOp ConstantLiteral(XlaBuilder* builder,
                                const LiteralSlice& literal);
 
@@ -767,6 +777,9 @@ class XlaBuilder {
                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const int64> broadcast_dimensions);
+  friend XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction);
   friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
@@ -846,6 +859,7 @@ class XlaBuilder {
   friend XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Not(const XlaOp& operand);
+  friend XlaOp PopulationCount(const XlaOp& operand);
   friend XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
@@ -1038,6 +1052,11 @@ class XlaScopedShardingAssignment {
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
                 const string& name);
+
+// Same as above, but with leaf buffer replication annotation.
+XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
+                const string& name,
+                const std::vector<bool>& replicated_at_leaf_buffers);
 
 // Enqueues a constant with the value of the given literal onto the
 // computation.
@@ -1279,6 +1298,11 @@ XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
 
+// Enqueues a comparison instruction onto the computation.
+XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction);
+
 // Enqueues a dot instruction onto the computation.
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
           const PrecisionConfig* precision_config = nullptr);
@@ -1507,6 +1531,8 @@ XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Not(const XlaOp& operand);
+
+XlaOp PopulationCount(const XlaOp& operand);
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                 absl::Span<const int64> broadcast_dimensions = {});
@@ -1917,7 +1943,11 @@ XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
 
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
-  return ConstantLiteral(builder, LiteralUtil::CreateR1<NativeT>(values));
+  BorrowingLiteral literal(
+      reinterpret_cast<const char*>(values.begin()),
+      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
+                           {static_cast<int64>(values.size())}));
+  return ConstantLiteral(builder, literal);
 }
 
 template <typename NativeT>

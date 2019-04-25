@@ -135,7 +135,7 @@ else:
     tensor_proto.int64_val.extend([x.item() for x in proto_values])
 
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int_val.extend([x.item(0) for x in proto_values])
+    tensor_proto.int_val.extend([x.item()[0] for x in proto_values])
 
   def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.uint32_val.extend([x.item() for x in proto_values])

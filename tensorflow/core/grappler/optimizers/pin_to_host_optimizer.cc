@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -289,16 +290,6 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
   // We couldn't find an appropriate Host device, return no device.
   return "";
 }
-
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (const auto& node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUExecute" ||
-        node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
-}
 }  // end namespace internal
 
 Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -306,7 +297,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   // Skip all TPU graphs.
-  if (internal::IsTPUGraphDef(*optimized_graph)) {
+  if (IsTPUGraphDef(*optimized_graph)) {
     return Status::OK();
   }
 

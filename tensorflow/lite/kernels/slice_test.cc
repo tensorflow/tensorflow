@@ -42,6 +42,9 @@ class SliceOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
   }
+  void SetStringInput(std::vector<string> data) {
+    PopulateStringTensor(input_, data);
+  }
   void SetBegin(std::initializer_list<index_type> data) {
     PopulateTensor<index_type>(begin_, data);
   }
@@ -183,6 +186,24 @@ TEST(SliceOpTest, SliceInt8) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
+TEST(SliceOpTest, SliceString) {
+  SliceOpModel<string, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
+                                  TensorType_STRING);
+  m.SetStringInput({"0,0,0,0", "0,0,1,0", "0,0,2,0",  //
+                    "0,1,0,0", "0,1,1,0", "0,1,2,0",  //
+                    "1,0,0,0", "1,0,1,0", "1,0,2,0",  //
+                    "1,1,0,0", "1,1,1,0", "1,1,2,0",  //
+                    "2,0,0,0", "2,0,1,0", "2,0,2,0",  //
+                    "2,1,0,0", "2,1,1,0", "2,1,2,0"});
+  m.SetBegin({1, 0, 0, 0});
+  m.SetSize({2, 1, -1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({"1,0,0,0", "1,0,1,0", "1,0,2,0",  //
+                                "2,0,0,0", "2,0,1,0", "2,0,2,0"}));
 }
 
 }  // namespace

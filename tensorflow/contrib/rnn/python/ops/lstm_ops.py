@@ -367,7 +367,7 @@ class LSTMBlockCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
@@ -619,7 +619,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
     """
     super(LSTMBlockFusedCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype)
@@ -691,9 +691,10 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       wci = wcf = wco = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
-      max_seq_len = math_ops.to_int64(time_len)
+      max_seq_len = math_ops.cast(time_len, dtypes.int64)
     else:
-      max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
+      max_seq_len = math_ops.cast(math_ops.reduce_max(sequence_length),
+                                  dtypes.int64)
 
     _, cs, _, _, _, _, h = gen_lstm_ops.block_lstm(
         seq_len_max=max_seq_len,

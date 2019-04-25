@@ -66,6 +66,7 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
           err_tolerance = 2e-3
           self.assertLess(err, err_tolerance)
 
+  @test_util.run_deprecated_v1
   def testGradientDilatedConv(self):
     if test.is_gpu_available(cuda_only=True):
       with self.session(use_gpu=True):

@@ -485,6 +485,7 @@ class MklSliceOp : public OpKernel {
                           MklSliceOp<CPUDevice, type>);
 
 TF_CALL_float(REGISTER_MKL_SLICE);
+TF_CALL_bfloat16(REGISTER_MKL_SLICE);
 #undef REGISTER_MKL_SLICE
 
 }  // namespace tensorflow

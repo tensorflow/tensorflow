@@ -18,18 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import tf_logging
-
-
-# TODO(priyag): Any other reader datasets to consider here?
-_READER_DATASET_OPS = [
-    "TextLineDataset", "TFRecordDataset", "FixedLengthRecordDataset",
-    "FixedLengthRecordDatasetV2"
-]
 
 
 # pylint: disable=protected-access
@@ -40,22 +33,19 @@ def auto_shard_dataset(dataset, num_shards, index):
     dataset: A `tf.data.Dataset` instance, typically the result of a bunch of
       dataset transformations.
     num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        shards operating in parallel. Same usage as in
-        `tf.data.experimental.filter_for_shard`.
+        shards operating in parallel. Same usage as in `tf.data.Dataset.shard`.
     index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
-      Same usage as in `Dataset.shard`.
+      Same usage as in `tf.data.Dataset.shard`.
 
   Returns:
     A modified `Dataset` obtained by updating the pipeline sharded by the
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
-
-  # TODO(rohanj): b/120673685 to track re-enabling auto sharding.
-  tf_logging.warn("Autosharding is currently disabled. Please shard your input "
-                  "manually.")
-  del num_shards, index
-  return dataset
+  if isinstance(dataset, dataset_ops.DatasetV1):
+    return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+  else:
+    return distribute._AutoShardDataset(dataset, num_shards, index)
 
 
 def _clone_dataset(dataset):

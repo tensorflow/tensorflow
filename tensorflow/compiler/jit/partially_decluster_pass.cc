@@ -340,6 +340,46 @@ Status PartiallyDeclusterGraph(Graph* graph,
   return Status::OK();
 }
 }  // namespace reduce_recompilation
+
+namespace decluster_root_shape_consumers {
+// Returns true if `node` an operator that consumes only the shape of its input,
+// not the data itself.
+bool IsShapeConsumerOp(const Node& node) {
+  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
+         node.type_string() == "Size";
+}
+
+Status PartiallyDeclusterGraph(Graph* graph) {
+  std::vector<Node*> reverse_post_order;
+  GetReversePostOrder(*graph, &reverse_post_order,
+                      /*stable_comparator=*/NodeComparatorName(),
+                      /*edge_filter=*/NotBackedge);
+
+  for (Node* n : reverse_post_order) {
+    if (!IsShapeConsumerOp(*n)) {
+      continue;
+    }
+
+    absl::optional<absl::string_view> cluster = GetXlaClusterForNode(*n);
+    if (!cluster.has_value()) {
+      continue;
+    }
+
+    auto input_belongs_to_same_cluster = [&](const Edge* e) {
+      return cluster == GetXlaClusterForNode(*e->src());
+    };
+
+    if (absl::c_any_of(n->in_edges(), input_belongs_to_same_cluster)) {
+      continue;
+    }
+
+    VLOG(2) << "Declustering " << n->name()
+            << " because it is a root shape consumer";
+    RemoveFromXlaCluster(n);
+  }
+  return Status::OK();
+}
+}  // namespace decluster_root_shape_consumers
 }  // namespace
 
 Status PartiallyDeclusterPass::Run(
@@ -366,6 +406,9 @@ Status PartiallyDeclusterPass::Run(
   }
   TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(
       graph, options.flib_def, options.session_options->env));
+
+  TF_RETURN_IF_ERROR(
+      decluster_root_shape_consumers::PartiallyDeclusterGraph(graph));
 
   return Status::OK();
 }

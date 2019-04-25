@@ -89,7 +89,7 @@ def custom_gradient(f):
 
   ```python
   def log1pexp(x):
-    return tf.log(1 + tf.exp(x))
+    return tf.math.log(1 + tf.exp(x))
   ```
 
   Due to numerical instability, the gradient this function evaluated at x=100 is
@@ -110,7 +110,7 @@ def custom_gradient(f):
     e = tf.exp(x)
     def grad(dy):
       return dy * (1 - 1 / (1 + e))
-    return tf.log(1 + e), grad
+    return tf.math.log(1 + e), grad
   ```
 
   With this definition, the gradient at x=100 will be correctly evaluated as
@@ -238,6 +238,9 @@ def _graph_mode_decorator(f, *args, **kwargs):
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+
+  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):

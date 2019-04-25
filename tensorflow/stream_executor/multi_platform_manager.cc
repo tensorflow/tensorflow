@@ -186,7 +186,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByIdLocked(
   if (it == id_map_.end()) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::Printf("could not find registered platform with id: 0x%p", id));
+        port::Printf("could not find registered platform with id: %p", id));
   }
   return it->second;
 }

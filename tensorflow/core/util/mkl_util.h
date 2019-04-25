@@ -1442,6 +1442,12 @@ template <>
 memory::data_type MklDnnType<qint32>() {
   return memory::data_type::s32;
 }
+template <>
+memory::data_type MklDnnType<bfloat16>() {
+  // TODO(nhasabni): Enable MKL-DNN bfloat16 type later.
+  // Currently, falling back to f32 to get compilation working.
+  return memory::data_type::f32;
+}
 
 /// Map TensorFlow's data format into MKL-DNN 3D data format
 /// @input: TensorFlow data format
@@ -1581,7 +1587,7 @@ inline TensorShape MklDnnDimsToTFShape(const memory::dims& dims) {
 
 /// Function to calculate strides given tensor shape in Tensorflow order
 /// E.g., if dims_tf_order is {1, 2, 3, 4}, then as per Tensorflow convention,
-/// dimesion with size 1 is outermost dimension; while dimension with size 4 is
+/// dimension with size 1 is outermost dimension; while dimension with size 4 is
 /// innermost dimension. So strides for this tensor would be {4 * 3 * 2,
 /// 4 * 3, 4, 1}, i.e., {24, 12, 4, 1}.
 ///

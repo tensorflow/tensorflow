@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cmath>
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -35,7 +36,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   for (int i = 0; i < size; ++i) {
     buffer.data.push_back(start + i * delta);
   }
-  CHECK_EQ(floor((limit - start) / delta), buffer.data.size());
+  CHECK_EQ(std::floor((limit - start) / delta), buffer.data.size());
   CHECK_EQ(buffer.data.size(), output_array->shape().dims()[0]);
 }
 

@@ -8,4 +8,8 @@ tf_module {
     name: "convert_op_hints_to_stubs"
     argspec: "args=[\'session\', \'graph_def\', \'write_callback\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'<function <lambda> instance>\'], "
   }
+  member_method {
+    name: "get_potentially_supported_ops"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
 }

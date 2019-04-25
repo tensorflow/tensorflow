@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 #include "tensorflow/core/kernels/split_lib.h"
 
 namespace tensorflow {
@@ -33,15 +33,15 @@ template <typename T>
 struct SplitOpGPULaunch {
   void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
            int32 split_dim_size, int32 suffix_dim_size,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
+           const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 template <typename T, typename IntType>
 struct SplitVOpGPULaunch {
   void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
            int total_cols, int total_rows,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
+           const GpuDeviceArrayStruct<IntType>& output_scan,
+           const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 // Explicit instantiations in split_lib_gpu.cu.cc.
@@ -54,6 +54,8 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_complex64(REGISTER_GPU_KERNEL);
 TF_CALL_complex128(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
+TF_CALL_uint8(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 }  // namespace tensorflow

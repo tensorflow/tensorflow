@@ -56,6 +56,7 @@ py_library(
 py_test(
     name = "converter_test",
     srcs = ["converter_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -67,6 +68,7 @@ py_test(
 py_test(
     name = "errors_test",
     srcs = ["errors_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -82,6 +84,7 @@ py_test(
 py_test(
     name = "function_wrapping_test",
     srcs = ["function_wrapping_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -92,6 +95,7 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

@@ -29,7 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -146,6 +146,8 @@ def model_iteration(model,
         strategy=model._distribution_strategy,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
+
+  model._update_sample_weight_modes(sample_weights=sample_weights)
 
   # Get step function and loop type.
   f = _make_execution_function(model, mode)
@@ -476,7 +478,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # in Distribution Strategy case as it follows the same code path for both
     # eager and graph modes.
     # TODO(priyag,omalleyt): Either we should move the training DS with
-    # EagerIterator to use training_generator code path, or figure out how to
+    # IteratorV2 to use training_generator code path, or figure out how to
     # set a symbolic Iterator out of a Dataset when in eager mode.
     if context.executing_eagerly():
       return get_distributed_inputs
