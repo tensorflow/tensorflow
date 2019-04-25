@@ -140,7 +140,7 @@ def model_iteration(model,
   if mode == ModeKeys.TRAIN:
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
-  # Enter DistributionStrategy scope.
+  # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
     scope = distributed_training_utils.distributed_scope(
         strategy=model._distribution_strategy,
@@ -168,6 +168,9 @@ def model_iteration(model,
     ins = inputs
   else:
     ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
+    # `ins` is a function when a distribute strategy is used in Eager mode.  In
+    # that case `is_dataset` is True.  The code branches that have requirements
+    # about the type of `ins` do not trigger in the distributed case.
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
@@ -260,7 +263,7 @@ def model_iteration(model,
 
         # Get outputs.
         try:
-          # `ins` can be callable in DistributionStrategy + eager case.
+          # `ins` can be callable in tf.distribute.Strategy + eager case.
           actual_inputs = ins() if callable(ins) else ins
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:

@@ -388,7 +388,7 @@ def eager_learning_phase_scope(value):
   """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
-  assert context.executing_eagerly()
+  assert ops.executing_eagerly_outside_functions()
   previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value

@@ -1321,14 +1321,17 @@ def is_dataset_or_iterator(data):
 
 def get_iterator(dataset):
   """Create and initialize an iterator from a dataset."""
-  iterator = dataset_ops.make_initializable_iterator(dataset)
+  if context.executing_eagerly():
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+  else:
+    iterator = dataset_ops.make_initializable_iterator(dataset)
   initialize_iterator(iterator)
   return iterator
 
 
 def initialize_iterator(iterator):
-  init_op = iterator.initializer
   if not context.executing_eagerly():
+    init_op = iterator.initializer
     K.get_session((init_op,)).run(init_op)
 
 

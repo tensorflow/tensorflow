@@ -239,25 +239,32 @@ class Model(network.Network):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
+    # Check whether the experimental feature of distributing the Model without
+    # cloning is requested.
+    # TODO(b/124517980, b/124377929): Remove this temporary undocumented way
+    # of enabling the feature and graduate it to the main distributed code path.
+    self._cloning = kwargs.pop('cloning', True)
+
     # Validate that arguments passed by the user to `compile` are supported by
-    # DistributionStrategy.
+    # tf.distribute.Strategy.
     if self._distribution_strategy:
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
-                                  'DistributionStrategy.')
+                                  'tf.distribute.Strategy.')
       if weighted_metrics:
         raise NotImplementedError('weighted_metrics is not supported with '
-                                  'DistributionStrategy.')
+                                  'tf.distribute.Strategy.')
       if target_tensors:
         raise ValueError('target_tensors is not supported with '
-                         'DistributionStrategy.')
+                         'tf.distribute.Strategy.')
 
       if run_eagerly:
         raise ValueError(
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if not self.built or not self.inputs or not self.outputs:
+      if (distributed_training_utils.is_distributing_by_cloning(self) and
+          (not self.built or not self.inputs or not self.outputs)):
         raise ValueError(
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without `input_shape`/'
@@ -282,8 +289,9 @@ class Model(network.Network):
           'running a model eagerly.')
     self.target_tensors = target_tensors
 
-    # Set DistributionStrategy specific parameters.
+    # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
+    self._distributed_function_cache = {}
 
     if (not context.executing_eagerly() and
         self._distribution_strategy is not None):
@@ -1221,15 +1229,23 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
-    if self._distribution_strategy:
+    # If at this point we are in the replica context, then it is okay to execute
+    # the Eager code path.  The expected way to get here is to call `fit` that
+    # calls `train_on_batch` on each replica.
+    if (self._distribution_strategy and
+        distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`train_on_batch` is not supported for models '
-                                'compiled with DistributionStrategy.')
+                                'distributed with tf.distribute.Strategy.')
     # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight, class_weight=class_weight,
         extract_tensors_from_dataset=True)
 
-    if self.run_eagerly:
+    # If `self._distribution_strategy` is True, then we are in a replica context
+    # at this point because of the check above.  `train_on_batch` is being run
+    # for each replica by `self._distribution_strategy` and the same code path
+    # as Eager is expected to be taken.
+    if self.run_eagerly or self._distribution_strategy:
       outputs = training_eager.train_on_batch(
           self,
           x,
@@ -1293,14 +1309,17 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
-    if self._distribution_strategy:
+    if (self._distribution_strategy and
+        distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
-                                'compiled with DistributionStrategy.')
+                                'distributed with tf.distribute.Strategy.')
     # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight, extract_tensors_from_dataset=True)
 
-    if self.run_eagerly:
+    # If `self._distribution_strategy` is True, then we are in a replica context
+    # at this point.
+    if self.run_eagerly or self._distribution_strategy:
       outputs = training_eager.test_on_batch(
           self,
           x,
@@ -1340,13 +1359,17 @@ class Model(network.Network):
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
-    if self._distribution_strategy:
-      raise NotImplementedError('`predict_on_batch` is not supported for '
-                                'models compiled with DistributionStrategy.')
+    if (self._distribution_strategy and
+        distribution_strategy_context.in_cross_replica_context()):
+      raise NotImplementedError(
+          '`predict_on_batch` is not supported for models distributed with'
+          ' tf.distribute.Strategy.')
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
-    if self.run_eagerly:
+    # If `self._distribution_strategy` is True, then we are in a replica context
+    # at this point.
+    if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils.cast_if_floating_dtype(inputs)
       if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
@@ -1477,7 +1500,7 @@ class Model(network.Network):
     """
     if self._distribution_strategy:
       raise NotImplementedError('`fit_generator` is not supported for '
-                                'models compiled with DistributionStrategy.')
+                                'models compiled with tf.distribute.Strategy.')
     return training_generator.fit_generator(
         self,
         generator,
@@ -1549,7 +1572,7 @@ class Model(network.Network):
     """
     if self._distribution_strategy:
       raise NotImplementedError('`evaluate_generator` is not supported for '
-                                'models compiled with DistributionStrategy.')
+                                'models compiled with tf.distribute.Strategy.')
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -1605,7 +1628,7 @@ class Model(network.Network):
     """
     if self._distribution_strategy:
       raise NotImplementedError('`predict_generator` is not supported for '
-                                'models compiled with DistributionStrategy.')
+                                'models compiled with tf.distribute.Strategy.')
     return training_generator.predict_generator(
         self,
         generator,
@@ -2297,7 +2320,7 @@ class Model(network.Network):
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
-    This is called when using DistributionStrategy to train, evaluate or serve
+    This is called when using tf.distribute.Strategy to train, evaluate or serve
     the model.
 
     Args:
@@ -2327,7 +2350,7 @@ class Model(network.Network):
     """
     if class_weight:
       raise NotImplementedError('`class_weight` is currently not supported '
-                                'when using DistributionStrategy.')
+                                'when using tf.distribute.Strategy.')
 
     if (sample_weight is not None and sample_weight.all() and
         distributed_training_utils.is_tpu_strategy(
@@ -2603,7 +2626,8 @@ class Model(network.Network):
             weighted_metrics=self._compile_weighted_metrics,
             loss_weights=self.loss_weights,
             target_tensors=target_tensors,
-            run_eagerly=self.run_eagerly)
+            run_eagerly=self.run_eagerly,
+            cloning=self._cloning)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to
@@ -2845,7 +2869,7 @@ class Model(network.Network):
 
 
 class DistributedCallbackModel(Model):
-  """Model that is used for callbacks with DistributionStrategy."""
+  """Model that is used for callbacks with tf.distribute.Strategy."""
 
   def __init__(self, model):
     super(DistributedCallbackModel, self).__init__()

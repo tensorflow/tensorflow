@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
@@ -289,6 +290,18 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
+def all_strategy_combinations_plus_cloning():
+  return (
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['graph', 'eager'],
+          cloning=[True, False]) +
+      combinations.combine(
+          distribution=tpu_strategies,
+          mode=['graph'],
+          cloning=[True, False]))
+
+
 def all_strategy_minus_default_and_tpu_combinations():
   return combinations.combine(
       distribution=[
@@ -308,16 +321,23 @@ def all_strategy_combinations_minus_default():
 def strategy_and_optimizer_combinations():
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(optimizer=[
-          strategy_combinations.adagrad_optimizer_v1_fn,
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_v1_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_v1_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_v1_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
-      ]))
+      # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
+      combinations.combine(
+          optimizer=[
+              strategy_combinations.adagrad_optimizer_v1_fn,
+              strategy_combinations.adam_optimizer_v1_fn,
+              strategy_combinations.gradient_descent_optimizer_v1_fn,
+              strategy_combinations.rmsprop_optimizer_v1_fn,
+          ],
+          cloning=True) +
+      combinations.combine(
+          optimizer=[
+              strategy_combinations.adagrad_optimizer_keras_v2_fn,
+              strategy_combinations.adam_optimizer_keras_v2_fn,
+              strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+              strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          ],
+          cloning=[True, False]))
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -343,25 +363,29 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus
           ],
-          mode=['graph']))
-  def test_train_functional_with_distribution_strategy(self, distribution):
+          mode=['graph'],
+          cloning=[True, False]))
+  def test_train_functional_with_distribution_strategy(self, distribution,
+                                                       cloning):
     keras_model = simple_functional_model()
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
-    config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
-                                      model_dir=self._base_dir,
-                                      train_distribute=distribution,
-                                      eval_distribute=distribution)
+        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        cloning=cloning)
+    config = run_config_lib.RunConfig(
+        tf_random_seed=_RANDOM_SEED,
+        model_dir=self._base_dir,
+        train_distribute=distribution,
+        eval_distribute=distribution)
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=config)
       before_eval_results = est_keras.evaluate(
           input_fn=get_ds_test_input_fn, steps=1)
       est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
-      after_eval_results = est_keras.evaluate(input_fn=get_ds_test_input_fn,
-                                              steps=1)
+      after_eval_results = est_keras.evaluate(
+          input_fn=get_ds_test_input_fn, steps=1)
       self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
 
     writer_cache.FileWriterCache.clear()
@@ -373,24 +397,28 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus
           ],
-          mode=['graph']))
-  def test_train_sequential_with_distribution_strategy(self, distribution):
+          mode=['graph'],
+          cloning=[True, False]))
+  def test_train_sequential_with_distribution_strategy(self, distribution,
+                                                       cloning):
     keras_model = simple_sequential_model()
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
-    config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
-                                      model_dir=self._base_dir,
-                                      train_distribute=distribution)
+        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        cloning=cloning)
+    config = run_config_lib.RunConfig(
+        tf_random_seed=_RANDOM_SEED,
+        model_dir=self._base_dir,
+        train_distribute=distribution)
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=config)
       before_eval_results = est_keras.evaluate(
           input_fn=get_ds_test_input_fn, steps=1)
       est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
-      after_eval_results = est_keras.evaluate(input_fn=get_ds_test_input_fn,
-                                              steps=1)
+      after_eval_results = est_keras.evaluate(
+          input_fn=get_ds_test_input_fn, steps=1)
       self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
 
     writer_cache.FileWriterCache.clear()
@@ -454,19 +482,23 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ],
-          mode=['graph']))
-  def test_keras_optimizer_with_distribution_strategy(self, distribution):
+          mode=['graph'],
+          cloning=[True, False]))
+  def test_keras_optimizer_with_distribution_strategy(self, distribution,
+                                                      cloning):
     keras_model = simple_sequential_model()
     keras_model.compile(
         loss='categorical_crossentropy',
-        optimizer=keras.optimizers.rmsprop(lr=0.01))
+        optimizer=keras.optimizers.rmsprop(lr=0.01),
+        cloning=cloning)
 
-    config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
-                                      model_dir=self._base_dir,
-                                      train_distribute=distribution)
+    config = run_config_lib.RunConfig(
+        tf_random_seed=_RANDOM_SEED,
+        model_dir=self._base_dir,
+        train_distribute=distribution)
     with self.cached_session():
-      est_keras = keras_lib.model_to_estimator(keras_model=keras_model,
-                                               config=config)
+      est_keras = keras_lib.model_to_estimator(
+          keras_model=keras_model, config=config)
       with self.assertRaisesRegexp(ValueError,
                                    'Only TensorFlow native optimizers are '
                                    'supported with DistributionStrategy.'):
@@ -607,15 +639,21 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         distributed_training_utils.get_input_params(
             distribution, input_64_samples, steps=10, batch_size=13)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_calling_model_with_numpy_arrays(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_calling_model_with_numpy_arrays(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning or not distribution_strategy_context.has_strategy()
+            else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.001)
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae']
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
         inputs = np.zeros((64, 3), dtype=np.float32)
         targets = np.zeros((64, 4), dtype=np.float32)
@@ -638,15 +676,19 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         # with batch_size
         model.predict(inputs, batch_size=8)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_calling_model_with_nested_numpy_arrays(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_calling_model_with_nested_numpy_arrays(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         model = multi_input_output_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(
-            learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       input_a_np = np.asarray(np.random.random((64, 3)), dtype=np.float32)
       input_b_np = np.asarray(np.random.random((64, 5)), dtype=np.float32)
@@ -674,14 +716,22 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.predict(inputs, batch_size=8)
 
   @combinations.generate(
-      combinations.combine(distribution=strategies_minus_tpu, mode=['graph']))
-  def test_numpy_with_sample_weights(self, distribution):
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['graph'],
+          cloning=[True, False]))
+  def test_numpy_with_sample_weights(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            rmsprop.RMSPropOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.zeros((20, 3), np.float32)
       targets = np.zeros((20, 4), np.float32)
@@ -690,15 +740,19 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
                 steps_per_epoch=2, verbose=1)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_flatten_predict_outputs(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_flatten_predict_outputs(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = multi_input_output_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(
-            learning_rate=0.001)
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       # We take 6 input samples with each input having a dimension of 3 or 5.
       input_a_np = np.asarray(np.random.random((6, 3)), dtype=np.float32)
@@ -715,15 +769,17 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[0].shape)
       self.assertAllEqual([6, 7], outs[1].shape)
 
-  @combinations.generate(tpu_strategy_combinations())
-  def test_predict_with_partial_batch(self, distribution):
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_predict_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
 
       with distribution.scope():
         model_with_ds_strategy = get_model()
-        model_with_ds_strategy.compile(optimizer, loss)
+        model_with_ds_strategy.compile(optimizer, loss, cloning=cloning)
 
       cpu_model = get_model()
       cpu_model.compile(optimizer, loss)
@@ -748,16 +804,18 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-5,
           rtol=1e-5)
 
-  @combinations.generate(tpu_strategy_combinations())
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_partial_batch(
-      self, distribution):
+      self, distribution, cloning):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
 
       with distribution.scope():
         model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
-        model_with_ds_strategy.compile(optimizer, loss)
+        model_with_ds_strategy.compile(optimizer, loss, cloning=cloning)
 
       cpu_model = simple_multi_inputs_multi_outputs_model()
       cpu_model.compile(optimizer, loss)
@@ -782,15 +840,20 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
-  def test_calling_model_on_same_dataset(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_calling_model_on_same_dataset(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.001)
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       dataset = get_dataset(distribution)
 
@@ -801,22 +864,30 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                 validation_data=dataset, validation_steps=2)
       model.predict(get_predict_dataset(distribution), steps=2)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_model_interleaved_eval_same_as_direct_eval(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_model_interleaved_eval_same_as_direct_eval(self, distribution,
+                                                      cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
         user_controlled_model = get_model()
         user_controlled_model.compile(
-            gradient_descent.GradientDescentOptimizer(0.001),
+            optimizer_fn(0.001),
             loss='mse',
-            metrics=['mae', keras.metrics.CategoricalAccuracy()])
+            metrics=['mae', keras.metrics.CategoricalAccuracy()],
+            cloning=cloning)
 
         interleaved_model = get_model()
         interleaved_model.set_weights(user_controlled_model.get_weights())
         interleaved_model.compile(
-            gradient_descent.GradientDescentOptimizer(0.001),
+            optimizer_fn(0.001),
             loss='mse',
-            metrics=['mae', keras.metrics.CategoricalAccuracy()])
+            metrics=['mae', keras.metrics.CategoricalAccuracy()],
+            cloning=cloning)
 
       dataset = get_dataset(distribution)
 
@@ -853,16 +924,20 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ],
-          mode=['graph', 'eager']))
-  def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution):
+          mode=['graph', 'eager'], cloning=[True, False]))
+  def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         model = multi_input_output_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(
-            learning_rate=0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       input_a_np = np.random.random((10, 3))
       input_b_np = np.random.random((10, 5))
@@ -886,16 +961,21 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_fit_eval_and_predict_methods_on_dataset_without_steps(
-      self, distribution):
+      self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.001)
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       inputs = np.zeros((1000, 3), dtype=np.float32)
       targets = np.zeros((1000, 4), dtype=np.float32)
@@ -920,16 +1000,23 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(
+      combinations.times(strategy_minus_tpu_combinations(),
+                         combinations.combine(cloning=[True, False])))
   def test_on_dataset_with_unknown_cardinality_without_steps(
-      self, distribution):
+      self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.001)
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       inputs = np.zeros((1000, 3), dtype=np.float32)
       targets = np.zeros((1000, 4), dtype=np.float32)
@@ -969,15 +1056,20 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           fit_with_numpy_multiple_epochs,
           fit_with_ds_multiple_epochs, atol=1e-4, rtol=1e-4)
 
-  @combinations.generate(tpu_strategy_combinations())
-  def test_on_dataset_with_unknown_cardinality(self, distribution):
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_on_dataset_with_unknown_cardinality(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(
+            gradient_descent.GradientDescentOptimizer(0.001),
+            loss,
+            metrics=metrics,
+            cloning=cloning)
 
       inputs = np.zeros((1000, 3), dtype=np.float32)
       targets = np.zeros((1000, 4), dtype=np.float32)
@@ -991,15 +1083,16 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       predict_dataset = convert_numpy_to_dataset_with_unknown_cardinality(
           inputs)
 
-      self.assertEqual(keras.backend.get_value(cardinality.cardinality(
-          dataset)), cardinality.UNKNOWN)
-      self.assertEqual(keras.backend.get_value(cardinality.cardinality(
-          predict_dataset)), cardinality.UNKNOWN)
+      self.assertEqual(
+          keras.backend.get_value(cardinality.cardinality(dataset)),
+          cardinality.UNKNOWN)
+      self.assertEqual(
+          keras.backend.get_value(cardinality.cardinality(predict_dataset)),
+          cardinality.UNKNOWN)
 
       eval_with_ds = model.evaluate(dataset, steps=100)
       predict_with_ds = model.predict(predict_dataset, steps=100)
-      self.assertAllClose(
-          eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
@@ -1007,15 +1100,20 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                                    'Number of steps could not be infered'):
         model.fit(dataset, epochs=1)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_fit_eval_and_predict_methods_on_dataset(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_fit_eval_and_predict_methods_on_dataset(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.001)
         model = get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
         loss = 'mse'
         metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       dataset = get_dataset(distribution)
 
@@ -1024,12 +1122,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.predict(get_predict_dataset(distribution), steps=2)
 
   @combinations.generate(strategy_and_optimizer_combinations())
-  def test_fit_eval_and_predict_with_optimizer(self, distribution, optimizer):
+  def test_fit_eval_and_predict_with_optimizer(self, distribution, optimizer,
+                                               cloning):
     with self.cached_session():
       with distribution.scope():
+
         model = get_model()
         loss = 'mse'
-        model.compile(optimizer(), loss)
+        model.compile(optimizer(), loss, cloning=cloning)
 
       dataset = get_dataset(distribution)
 
@@ -1037,14 +1137,21 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.evaluate(dataset, steps=2, verbose=1)
       model.predict(get_predict_dataset(distribution), steps=2)
 
-  @combinations.generate(strategy_minus_tpu_combinations())
-  def test_dataset_with_sample_weights(self, distribution):
+  @combinations.generate(
+      combinations.times(strategy_minus_tpu_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_dataset_with_sample_weights(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            rmsprop.RMSPropOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.zeros((10, 3), np.float32)
       targets = np.zeros((10, 4), np.float32)
@@ -1063,16 +1170,21 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ],
-          mode=['graph', 'eager']))
+          mode=['graph', 'eager'], cloning=[True, False]))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
-  def DISABLED_test_dataset_wrong_input_shape(self, distribution):
+  def DISABLED_test_dataset_wrong_input_shape(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            rmsprop.RMSPropOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(learning_rate=0.001)
         model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       # Wrong input shape
       inputs = np.zeros((10, 5), dtype=np.float32)
@@ -1090,16 +1202,18 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ],
-          mode=['graph', 'eager']))
+          mode=['graph', 'eager'],
+          cloning=[True, False]))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
-  def DISABLED_test_dataset_no_batch_input_validation(self, distribution):
+  def DISABLED_test_dataset_no_batch_input_validation(self, distribution,
+                                                      cloning):
     with self.cached_session():
       with distribution.scope():
         model = get_model()
         optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       # User forgets to batch the dataset
       inputs = np.zeros((10, 3), dtype=np.float32)
@@ -1113,14 +1227,15 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=[strategy_combinations.tpu_strategy_one_step],
-          mode=['graph']))
-  def test_dataset_input_shape_fully_defined(self, distribution):
+          mode=['graph'],
+          cloning=[True, False]))
+  def test_dataset_input_shape_fully_defined(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = get_model()
         optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       dataset = get_dataset(distribution)
       # Input shapes are not fully known. Batch dimension is unknown as we are
@@ -1136,8 +1251,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus
           ],
-          mode=['graph', 'eager']))
-  def test_learning_phase_value(self, distribution):
+          mode=['graph', 'eager'], cloning=[True, False]))
+  def test_learning_phase_value(self, distribution, cloning):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the
     # Lambda layer uses the learning phase.
@@ -1149,10 +1264,15 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model = keras.Model(x, z)
         initial_weights = model.get_weights()
 
-        optimizer = gradient_descent.GradientDescentOptimizer(0.005)
+        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+        # mirrored.
+        optimizer_fn = (
+            gradient_descent.GradientDescentOptimizer
+            if cloning else gradient_descent_keras.SGD)
+        optimizer = optimizer_fn(0.005)
         loss = 'mse'
         metrics = ['acc']
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics, cloning=cloning)
 
       batch_size = 8
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
@@ -1181,14 +1301,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       ref_output = np.ones((160, 1), dtype=np.float32)
       self.assertArrayNear(output, ref_output, 1e-1)
 
-  @combinations.generate(all_strategy_combinations())
-  def testOptimizerWithCallbacks(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def testOptimizerWithCallbacks(self, distribution, cloning):
     with self.cached_session():
       with distribution.scope():
         model = get_model()
         optimizer = gradient_descent_keras.SGD(0.01)
         loss = 'mse'
-        model.compile(optimizer, loss)
+        model.compile(optimizer, loss, cloning=cloning)
 
       dataset = get_dataset(distribution)
 
@@ -1199,15 +1319,17 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
 
-  @combinations.generate(tpu_strategy_combinations())
-  def test_predict_with_dataset_with_partial_batch(self, distribution):
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_predict_with_dataset_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
 
       with distribution.scope():
         model_with_ds_strategy = get_model()
-        model_with_ds_strategy.compile(optimizer, loss)
+        model_with_ds_strategy.compile(optimizer, loss, cloning=cloning)
 
       cpu_model = get_model()
       cpu_model.compile(optimizer, loss)
@@ -1223,18 +1345,21 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           model_with_ds_strategy.predict(dataset_with_partial_batch, steps=3),
           cpu_model.predict(dataset_with_partial_batch, steps=3),
-          atol=1e-5, rtol=1e-5)
+          atol=1e-5,
+          rtol=1e-5)
 
-  @combinations.generate(tpu_strategy_combinations())
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_dataset_with_partial_batch(
-      self, distribution):
+      self, distribution, cloning):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
 
       with distribution.scope():
         model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
-        model_with_ds_strategy.compile(optimizer, loss)
+        model_with_ds_strategy.compile(optimizer, loss, cloning=cloning)
 
       cpu_model = simple_multi_inputs_multi_outputs_model()
       cpu_model.compile(optimizer, loss)
@@ -1332,8 +1457,10 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
     return math_ops.reduce_mean(y_pred)
 
   @combinations.generate(
-      strategy_combinations.all_strategy_combinations_minus_default())
-  def test_regularizer_loss(self, distribution):
+      combinations.times(
+          strategy_combinations.all_strategy_combinations_minus_default(),
+          combinations.combine(cloning=[True, False])))
+  def test_regularizer_loss(self, distribution, cloning):
     batch_size = 2
     if not distributed_training_utils.global_batch_size_supported(distribution):
       batch_size //= distribution.num_replicas_in_sync
@@ -1348,11 +1475,11 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
       # replicas, the variable value will be incorrect when number of replicas
       # >1. For e.g. it will be -2 if num replicas = 2.
     with distribution.scope():
-      x = keras.layers.Input(shape=(), batch_size=batch_size)
+      x = keras.layers.Input(shape=(1,), batch_size=batch_size)
       y = TestRegularizerLoss.AddLayer()(x)
       model = keras.models.Model(inputs=x, outputs=y)
       opt = gradient_descent_keras.SGD(1.)
-      model.compile(opt, loss=TestRegularizerLoss.loss_fn)
+      model.compile(opt, loss=TestRegularizerLoss.loss_fn, cloning=cloning)
       model.fit(
           x=np.array([[1.], [1.]], dtype=np.float32),
           y=np.array([[1.], [1.]], dtype=np.float32),
@@ -1364,13 +1491,18 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
 class TestDistributionStrategyWithKerasModels(test.TestCase,
                                               parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
-  def test_distribution_strategy_on_sequential_model(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_distribution_strategy_on_sequential_model(self, distribution,
+                                                     cloning):
     with distribution.scope():
+      # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+      # mirrored.
+      optimizer_fn = (
+          rmsprop.RMSPropOptimizer if cloning else gradient_descent_keras.SGD)
+      optimizer = optimizer_fn(learning_rate=0.001)
       model = simple_sequential_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss)
+      model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.zeros((20, 10), np.float32)
       targets = np.zeros((20, 2), np.float32)
@@ -1379,13 +1511,18 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(inputs, steps=1)
     model.evaluate(inputs, targets, steps=1)
 
-  @combinations.generate(all_strategy_combinations())
-  def test_distribution_strategy_on_functional_model(self, distribution):
+  @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_distribution_strategy_on_functional_model(self, distribution,
+                                                     cloning):
     with distribution.scope():
+      # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
+      # mirrored.
+      optimizer_fn = (
+          rmsprop.RMSPropOptimizer if cloning else gradient_descent_keras.SGD)
+      optimizer = optimizer_fn(learning_rate=0.001)
       model = get_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss)
+      model.compile(optimizer, loss, cloning=cloning)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)
@@ -1395,8 +1532,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(inputs, targets, steps=1)
 
   @combinations.generate(
-      strategy_combinations.all_strategy_combinations_minus_default())
-  def test_distribution_strategy_one_dimensional(self, distribution):
+      combinations.times(
+          all_strategy_minus_default_and_tpu_combinations() +
+          tpu_strategy_combinations(),
+          combinations.combine(cloning=[True, False])))
+  def test_distribution_strategy_one_dimensional(self, distribution, cloning):
     with distribution.scope():
       inp = keras.layers.Input(shape=(10,))
       out = keras.layers.Dense(3, activation='softmax')(inp)
@@ -1405,15 +1545,18 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           optimizer='rmsprop',
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'],
-      )
+          cloning=cloning)
 
       x = np.random.random((64, 10)).astype('float32')
       y = np.random.randint(3, size=64)
 
       model.fit(x, y, epochs=1, steps_per_epoch=2)
 
-  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
-  def test_distribution_strategy_with_symbolic_add_loss(self, distribution):
+  @combinations.generate(
+      combinations.times(all_strategy_minus_default_and_tpu_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_distribution_strategy_with_symbolic_add_loss(self, distribution,
+                                                        cloning):
 
     def _make_model_with_add_loss():
       inputs = keras.Input((10,))
@@ -1428,7 +1571,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     x = np.ones((64, 10)).astype('float32')
 
     model = _make_model_with_add_loss()
-    model.compile('sgd')
+    model.compile('sgd', cloning=cloning)
     history = model.fit(x, steps_per_epoch=2, epochs=1)
 
     with distribution.scope():
@@ -1470,8 +1613,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     self.assertAllClose(history.history, ds_history.history)
 
-  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
-  def test_distribution_strategy_with_add_metric_in_call(self, distribution):
+  @combinations.generate(
+      combinations.times(all_strategy_minus_default_and_tpu_combinations(),
+                         combinations.combine(cloning=[True, False])))
+  def test_distribution_strategy_with_add_metric_in_call(
+      self, distribution, cloning):
 
     class Bias(keras.layers.Layer):
 
@@ -1509,7 +1655,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     with distribution.scope():
       ds_model = _make_model_with_add_metric()
       self.assertLen(ds_model.metrics, 1)
-      ds_model.compile('sgd', 'mse')
+      ds_model.compile('sgd', 'mse', cloning=cloning)
       ds_history = ds_model.fit(
           x,
           y,
@@ -1521,9 +1667,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     self.assertAllClose(history.history, ds_history.history)
 
-  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  @combinations.generate(
+      combinations.times(all_strategy_minus_default_and_tpu_combinations(),
+                         combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_with_add_metric_outside_call(
-      self, distribution):
+      self, distribution, cloning):
 
     def _make_model_with_add_metric():
       inputs = keras.Input((10,))
@@ -1552,7 +1700,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     with distribution.scope():
       ds_model = _make_model_with_add_metric()
       self.assertLen(ds_model.metrics, 1)
-      ds_model.compile('sgd', 'mse')
+      ds_model.compile('sgd', 'mse', cloning=cloning)
       ds_history = ds_model.fit(
           x,
           y,
