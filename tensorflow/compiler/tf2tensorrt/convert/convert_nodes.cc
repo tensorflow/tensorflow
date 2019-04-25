@@ -2023,14 +2023,11 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-// TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
     if (attrs.get<string>("padding") == "SAME") {
       VLOG(2) << "Using SAME padding";
-      // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
-    // For VALID padding, we need to manually set the padding.
     layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
     layer->setPostPadding(
         nvinfer1::DimsHW{padding[0].second, padding[1].second});
