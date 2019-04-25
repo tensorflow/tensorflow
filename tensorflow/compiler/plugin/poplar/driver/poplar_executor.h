@@ -588,8 +588,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx;
     const std::vector<xla::Shape> shapes;
 
-    std::vector<std::unique_ptr<SPSCQueue<tensorflow::TensorBuffer*, 2048>>>
-        tensor_queues;
+    using QueueType = SPSCQueue<tensorflow::TensorBuffer*, 2048>;
+
+    std::vector<std::unique_ptr<QueueType>> tensor_queues;
 
     InfeedDatasetIterator(
         std::unique_ptr<tensorflow::data::IteratorBase> iterator,
@@ -599,14 +600,15 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
           iterator_ctx(std::move(iterator_ctx)),
           shapes(std::move(shapes)) {
       for (uint64 i = 0; i < shapes.size(); i++) {
+        void* ptr = tensorflow::port::AlignedMalloc(sizeof(QueueType), 64);
+
         tensor_queues.emplace_back(
-            new SPSCQueue<tensorflow::TensorBuffer*, 2048>(
-                nullptr, [](tensorflow::TensorBuffer*& buffer) {
-                  if (buffer) {
-                    buffer->Unref();
-                    buffer = nullptr;
-                  }
-                }));
+            new (ptr) QueueType(nullptr, [](tensorflow::TensorBuffer*& buffer) {
+              if (buffer) {
+                buffer->Unref();
+                buffer = nullptr;
+              }
+            }));
       }
     }
   };
