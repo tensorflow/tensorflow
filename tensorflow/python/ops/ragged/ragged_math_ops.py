@@ -106,7 +106,8 @@ def range(starts, limits=None, deltas=1, dtype=None,
     result = gen_ragged_math_ops.ragged_range(
         starts, limits, deltas, Tsplits=row_splits_dtype, name=name)
     return ragged_tensor.RaggedTensor.from_row_splits(result.rt_dense_values,
-                                                      result.rt_nested_splits)
+                                                      result.rt_nested_splits,
+                                                      validate=False)
 
 
 def _infer_matching_dtype(tensors, dtype_hierarchy):
@@ -243,8 +244,8 @@ def _ragged_segment_aggregate(unsorted_segment_op,
     output_values = _ragged_segment_aggregate(unsorted_segment_op, data.values,
                                               data_val_to_out_val_index,
                                               output_splits[-1])
-    return ragged_tensor.RaggedTensor.from_row_splits(output_values,
-                                                      output_splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(
+        output_values, output_splits, validate=False)
 
 
 def segment_sum(data, segment_ids, num_segments, name=None):
@@ -281,7 +282,8 @@ def segment_mean(data, segment_ids, num_segments, name=None):
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
     ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
-        array_ops.ones_like(data.flat_values), data.nested_row_splits)
+        array_ops.ones_like(data.flat_values), data.nested_row_splits,
+        validate=False)
     count = segment_sum(ones, segment_ids, num_segments)
     if ragged_tensor.is_ragged(total):
       return total.with_flat_values(total.flat_values / count.flat_values)
@@ -295,7 +297,8 @@ def segment_sqrt_n(data, segment_ids, num_segments, name=None):
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
     ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
-        array_ops.ones_like(data.flat_values), data.nested_row_splits)
+        array_ops.ones_like(data.flat_values), data.nested_row_splits,
+        validate=False)
     count = segment_sum(ones, segment_ids, num_segments)
     if ragged_tensor.is_ragged(total):
       return total.with_flat_values(
@@ -545,13 +548,14 @@ def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):
     if ragged_tensor.is_ragged(input_tensor):
       ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
           array_ops.ones_like(input_tensor.flat_values),
-          input_tensor.nested_row_splits)
+          input_tensor.nested_row_splits, validate=False)
     else:
       ones = array_ops.ones_like(input_tensor)
     count = reduce_sum(ones, axis, keepdims)
     if ragged_tensor.is_ragged(total):
       return ragged_tensor.RaggedTensor.from_nested_row_splits(
-          total.flat_values / count.flat_values, total.nested_row_splits)
+          total.flat_values / count.flat_values, total.nested_row_splits,
+          validate=False)
     else:
       return total / count
 

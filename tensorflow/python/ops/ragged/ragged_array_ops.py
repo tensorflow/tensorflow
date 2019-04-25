@@ -166,7 +166,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
         # Add the ragged `splits` back to the result.
         if keepdims:
           masked_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
-              masked_values, splits)
+              masked_values, splits, validate=False)
 
         return masked_values
 
@@ -189,7 +189,8 @@ def boolean_mask(data, mask, keepdims=False, name=None):
       masked_values = boolean_mask(data.values, segment_mask, keepdims=False)
 
       return ragged_tensor.RaggedTensor.from_row_splits(masked_values,
-                                                        masked_splits)
+                                                        masked_splits,
+                                                        validate=False)
 
     # If mask is non-ragged and has rank>1, then convert it to be ragged,
     # with a ragged rank matching data.
@@ -213,7 +214,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
                                                 dtype=row_splits_dtype)
         flattened_masked_lengths = array_ops.reshape(masked_lengths, [-1])
         masked_values = ragged_tensor.RaggedTensor.from_row_lengths(
-            masked_values, flattened_masked_lengths)
+            masked_values, flattened_masked_lengths, validate=False)
 
         # Wrap remaining ragged dimensions.
         if mask.shape.ndims > 2 and keepdims:
@@ -223,7 +224,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
             elt_size = mask_shape[dim + 1]
             masked_splits = math_ops.range(split_size[dim]) * elt_size
             masked_values = ragged_tensor.RaggedTensor.from_row_splits(
-                masked_values, masked_splits)
+                masked_values, masked_splits, validate=False)
 
       return masked_values
 
@@ -270,7 +271,8 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
 
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
         _tile_ragged_values(input, multiples, const_multiples),
-        _tile_ragged_splits(input, multiples, const_multiples))
+        _tile_ragged_splits(input, multiples, const_multiples),
+        validate=False)
 
 
 def _tile_ragged_values(rt_input, multiples, const_multiples=None):
@@ -485,7 +487,8 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
       values = expand_dims(input.values, axis - 1)
       splits = input.row_splits
 
-    return ragged_tensor.RaggedTensor.from_row_splits(values, splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(values, splits,
+                                                      validate=False)
 
 
 #===============================================================================

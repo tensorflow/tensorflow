@@ -28,7 +28,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_config
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 
@@ -550,7 +549,8 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
       else:
         nrows = array_ops.shape(rt_input,
                                 out_type=dst_shape.dim_size_dtype)[0]
-      rt_input = ragged_tensor.RaggedTensor.from_row_lengths(rt_input, [nrows])
+      rt_input = ragged_tensor.RaggedTensor.from_row_lengths(rt_input, [nrows],
+                                                             validate=False)
 
   # Add ragged dimensions to match dst_shape.
   if ragged_tensor.is_ragged(rt_input):
@@ -603,7 +603,7 @@ def _ragged_tile_axis(rt_input, axis, repeats, row_splits_dtype):
   assert axis > 0  # Outermost dimension may not be ragged.
 
   if not ragged_tensor.is_ragged(rt_input):
-    rt_input = ragged_conversion_ops.from_tensor(
+    rt_input = ragged_tensor.RaggedTensor.from_tensor(
         rt_input, ragged_rank=1, row_splits_dtype=row_splits_dtype)
 
   if axis > 1:
@@ -623,4 +623,4 @@ def _ragged_tile_axis(rt_input, axis, repeats, row_splits_dtype):
     dst_values = ragged_util.repeat_ranges(rt_input.flat_values, splits,
                                            repeats)
     return ragged_tensor.RaggedTensor.from_nested_row_lengths(
-        dst_values, dst_row_lengths)
+        dst_values, dst_row_lengths, validate=False)

@@ -77,14 +77,14 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
-  def _ragged_factory(values, row_splits):
+  def ragged_factory(values, row_splits):
     row_splits = constant_op.constant(row_splits, dtype=row_splits_dtype)
-    return ragged_tensor.RaggedTensor.from_row_splits(values, row_splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(values, row_splits,
+                                                      validate=False)
 
   with ops.name_scope(name, "RaggedConstant"):
-    return _constant_value(_ragged_factory,
-                           constant_op.constant, pylist, dtype, ragged_rank,
-                           inner_shape)
+    return _constant_value(ragged_factory, constant_op.constant, pylist, dtype,
+                           ragged_rank, inner_shape)
 
 
 @tf_export(v1=["ragged.constant_value"])

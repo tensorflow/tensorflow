@@ -188,7 +188,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
     with ops.control_dependencies(ragged_util.assert_splits_match(splits)):
       return ragged_tensor.RaggedTensor.from_row_splits(
           _ragged_stack_concat_helper(values, axis - 1, stack_values),
-          splits[0][0])
+          splits[0][0], validate=False)
 
 
 def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
@@ -223,7 +223,7 @@ def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
     concatenated_nested_splits.insert(0, stack_splits)
 
   return ragged_tensor.RaggedTensor.from_nested_row_splits(
-      concatenated_flat_values, concatenated_nested_splits)
+      concatenated_flat_values, concatenated_nested_splits, validate=False)
 
 
 def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
@@ -266,15 +266,15 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
       # Add a new splits tensor to group together the values.
       stack_splits = math_ops.range(0, rt_nrows * num_inputs + 1, num_inputs)
       _copy_row_shape(rt_inputs, stack_splits)
-      return ragged_tensor.RaggedTensor.from_row_splits(permuted_rt,
-                                                        stack_splits)
+      return ragged_tensor.RaggedTensor.from_row_splits(
+          permuted_rt, stack_splits, validate=False)
     else:
       # Merge together adjacent rows by dropping the row-split indices that
       # separate them.
       concat_splits = permuted_rt.row_splits[::num_inputs]
       _copy_row_shape(rt_inputs, concat_splits)
-      return ragged_tensor.RaggedTensor.from_row_splits(permuted_rt.values,
-                                                        concat_splits)
+      return ragged_tensor.RaggedTensor.from_row_splits(
+          permuted_rt.values, concat_splits, validate=False)
 
 
 def _copy_row_shape(rt_inputs, splits):

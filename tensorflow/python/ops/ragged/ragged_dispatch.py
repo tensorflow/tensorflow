@@ -140,7 +140,7 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
             ragged_util.assert_splits_match(nested_splits_lists)):
           return ragged_tensor.RaggedTensor.from_nested_row_splits(
               self._original_op(flat_values, *args, **kwargs),
-              nested_splits_lists[0])
+              nested_splits_lists[0], validate=False)
       else:
         return self.NOT_SUPPORTED
     else:

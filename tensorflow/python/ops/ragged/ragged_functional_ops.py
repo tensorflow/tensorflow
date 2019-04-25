@@ -91,7 +91,7 @@ def map_flat_values(op, *args, **kwargs):
     # Delegate to op, and then compose the result from the transformed values
     # and the splits.
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        op(*inner_args, **inner_kwargs), nested_splits_lists[0])
+        op(*inner_args, **inner_kwargs), nested_splits_lists[0], validate=False)
 
 
 def _replace_ragged_with_flat_values(value, nested_splits_lists):

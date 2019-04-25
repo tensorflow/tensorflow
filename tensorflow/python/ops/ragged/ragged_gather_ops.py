@@ -25,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
@@ -117,7 +116,7 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 
     # Compose the RaggedTensor from splits & values.
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        result.output_dense_values, result.output_nested_splits)
+        result.output_dense_values, result.output_nested_splits, validate=False)
 
 
 #===============================================================================
@@ -201,13 +200,13 @@ def gather_nd(params, indices, batch_dims=0, name=None):
     if indices_ndims > 2:
       indices_is_dense = not ragged_tensor.is_ragged(indices)
       if indices_is_dense:
-        indices = ragged_conversion_ops.from_tensor(
+        indices = ragged_tensor.RaggedTensor.from_tensor(
             indices, ragged_rank=indices_ndims - 2,
             row_splits_dtype=params.row_splits.dtype)
       result = indices.with_flat_values(gather_nd(params, indices.flat_values))
       if (indices_is_dense and ragged_tensor.is_ragged(result) and
           result.ragged_rank == indices_ndims - 2):
-        result = ragged_conversion_ops.to_tensor(result)
+        result = ragged_tensor.RaggedTensor.to_tensor(result)
       return result
 
     # indices_ndims <= 2, and the innermost dimension of indices may not be

@@ -138,7 +138,7 @@ def _ragged_getitem(rt_input, key_list):
     nsplits = array_ops.shape(inner_rt.row_splits,
                               out_type=inner_rt.row_splits.dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(
-        inner_rt, array_ops.stack([0, nsplits - 1]))
+        inner_rt, array_ops.stack([0, nsplits - 1]), validate=False)
 
   # Slicing a range of rows: first slice the outer dimension, and then
   # call `_ragged_getitem_inner_dimensions` to handle the inner keys.
@@ -206,7 +206,8 @@ def _slice_ragged_row_dimension(rt_input, row_key):
     values_start = new_splits[0]
     values_limit = new_splits[-1]
     return ragged_tensor.RaggedTensor.from_row_splits(
-        rt_input.values[values_start:values_limit], new_splits - values_start)
+        rt_input.values[values_start:values_limit], new_splits - values_start,
+        validate=False)
 
   # If there is a slice step (aka a strided slice), then use ragged_gather to
   # collect the necessary elements of `ragged.values(rt_input)`.
@@ -248,7 +249,8 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
     nsplits = array_ops.shape(inner_rt.row_splits,
                               out_type=inner_rt.row_splits.dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
-                                                      math_ops.range(nsplits))
+                                                      math_ops.range(nsplits),
+                                                      validate=False)
 
   # Slicing a range of columns in a ragged inner dimension.  We use a
   # recursive call to process the values, and then assemble a RaggedTensor

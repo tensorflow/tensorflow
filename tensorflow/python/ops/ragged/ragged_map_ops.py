@@ -399,8 +399,9 @@ def _maybe_recompose_tensor(t):
   nested_row_lengths = tuple(t.nested_row_lengths)
   for nested_row_length in reversed(nested_row_lengths):
     values = ragged_tensor.RaggedTensor.from_row_lengths(
-        values, nested_row_length)
-  return ragged_tensor.RaggedTensor.from_row_lengths(values, t.outer_row_length)
+        values, nested_row_length, validate=False)
+  return ragged_tensor.RaggedTensor.from_row_lengths(values, t.outer_row_length,
+                                                     validate=False)
 
 
 def _maybe_decompose_dtype(d):
