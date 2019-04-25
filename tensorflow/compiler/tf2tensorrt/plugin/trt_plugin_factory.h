@@ -34,6 +34,13 @@ namespace tensorrt {
 
 class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
  public:
+  // TODO(b/131313301): Delete this when IPluginFactory is fixed upstream.
+  // IPluginFactory defines virtual methods and no virtual destructor. To avoid
+  // a non-virtual-dtor error, we need to add a virtual destructor here. Do not
+  // use a pointer to IPluginFactory because deleting through such a pointer
+  // results in undefined behavior.
+  virtual ~PluginFactoryTensorRT() {}
+
   // TODO(aaroey): this static method has to be inlined to make the singleton a
   // unique global symbol. Find a way to fix it.
   static PluginFactoryTensorRT* GetInstance() {
