@@ -93,7 +93,7 @@ bool HasSdotInstruction() {
     return found;
   }();
   return has_sdot;
-#endif
+#endif // MINGW32
 }
 
 }  // namespace
