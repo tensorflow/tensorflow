@@ -220,7 +220,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("Delete", &PyLocalBuffer::Delete)
       .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
       .def("ToPython", &PyLocalBuffer::ToPython)
-      .def("shape", &PyLocalBuffer::shape);
+      .def("shape", &PyLocalBuffer::on_host_shape);
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,

@@ -5,6 +5,7 @@ package(default_visibility = ["//tensorflow:internal"])
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 py_library(
     name = "xla_client",
@@ -101,6 +102,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shared_device_buffer",
+    srcs = ["shared_device_buffer.cc"],
+    hdrs = ["shared_device_buffer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+    ],
+)
+
+tf_cc_test(
+    name = "shared_device_buffer_test",
+    srcs = ["shared_device_buffer_test.cc"],
+    deps = [
+        ":shared_device_buffer",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -116,6 +144,7 @@ tf_pybind_extension(
     features = ["-use_header_modules"],
     module_name = "xla_extension",
     deps = [
+        ":shared_device_buffer",
         ":types",
         ":worker_thread",
         ":xrt",
@@ -146,11 +175,13 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:lib",

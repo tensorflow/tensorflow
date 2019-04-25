@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -70,9 +71,7 @@ class PyLocalClient {
   std::vector<std::unique_ptr<WorkerThread>> execute_threads_;
 };
 
-// Represents a reference to literals that live in a device-allocated buffer via
-// XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
-// literal to device via the local client.
+// Holds a reference from Python to one or more device buffers.
 class PyLocalBuffer {
  public:
   static StatusOr<PyLocalBuffer> FromPython(const pybind11::object& argument,
@@ -86,25 +85,30 @@ class PyLocalBuffer {
       PyLocalClient* client);
 
   PyLocalBuffer() = default;
-  PyLocalBuffer(ScopedShapedBuffer shaped_buffer, PyLocalClient* client);
+  PyLocalBuffer(Shape on_host_shape,
+                std::shared_ptr<PySharedDeviceBuffer> device_buffer,
+                PyLocalClient* client);
   StatusOr<pybind11::object> ToPython() const;
-  const Shape& shape() const;
-  const ScopedShapedBuffer* shaped_buffer() const;
-
-  // Transfers ownership of the encapsulated ShapedBuffer to the caller,
-  // analogous to std::unique_ptr::release().
-  ScopedShapedBuffer Release();
+  const Shape& on_host_shape() const { return on_host_shape_; }
+  const PySharedDeviceBuffer* device_buffer() const {
+    return device_buffer_.get();
+  }
 
   void Delete() {
-    shaped_buffer_ = absl::nullopt;
+    device_buffer_ = nullptr;
     client_ = nullptr;
   }
+
+  // Returns a view of the PyLocalBuffer DAG as a ShapedBuffer. The
+  // PyLocalBuffer retains ownership of the device buffers.
+  ShapedBuffer AsShapedBuffer() const;
 
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
   StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
 
  private:
-  absl::optional<ScopedShapedBuffer> shaped_buffer_;
+  Shape on_host_shape_;
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer_;
   PyLocalClient* client_ = nullptr;
 };
 

@@ -130,7 +130,9 @@ static StatusOr<PyLocalBuffer> TransferHostToDeviceAsync(
         transfer_manager->TransferLiteralToDeviceAsync(stream, *it, leaf));
     ++it;
   }
-  return PyLocalBuffer(std::move(buffer), client);
+  return PyLocalBuffer(
+      shape, PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(buffer)),
+      client);
 }
 
 /* static */
@@ -224,23 +226,12 @@ PyLocalBuffer::FromPythonValues(
   return outputs;
 }
 
-PyLocalBuffer::PyLocalBuffer(ScopedShapedBuffer shaped_buffer,
-                             PyLocalClient* client)
-    : shaped_buffer_(std::move(shaped_buffer)), client_(client) {}
-
-const ScopedShapedBuffer* PyLocalBuffer::shaped_buffer() const {
-  return &shaped_buffer_.value();
-}
-
-ScopedShapedBuffer PyLocalBuffer::Release() {
-  ScopedShapedBuffer result = std::move(*shaped_buffer_);
-  shaped_buffer_ = absl::nullopt;
-  return result;
-}
-
-const Shape& PyLocalBuffer::shape() const {
-  return shaped_buffer()->on_device_shape();
-}
+PyLocalBuffer::PyLocalBuffer(
+    Shape on_host_shape, std::shared_ptr<PySharedDeviceBuffer> device_buffer,
+    PyLocalClient* client)
+    : on_host_shape_(std::move(on_host_shape)),
+      device_buffer_(std::move(device_buffer)),
+      client_(client) {}
 
 StatusOr<py::object> PyLocalBuffer::ToPython() const {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToPython");
@@ -248,50 +239,29 @@ StatusOr<py::object> PyLocalBuffer::ToPython() const {
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(
-        *literal, client_->client()->ShapedBufferToLiteral(*shaped_buffer()));
+        *literal, client_->client()->ShapedBufferToLiteral(AsShapedBuffer()));
   }
   return LiteralToPython(std::move(literal));
 }
 
+ShapedBuffer PyLocalBuffer::AsShapedBuffer() const {
+  return device_buffer_->AsShapedBuffer(on_host_shape_);
+}
+
 StatusOr<std::vector<PyLocalBuffer>> PyLocalBuffer::DestructureTuple() {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::DestructureTuple");
-  const Shape tuple_shape = shape();
-
-  if (!tuple_shape.IsTuple()) {
+  if (!on_host_shape().IsTuple()) {
     return InvalidArgument(
         "Attemped to destructure a PyLocalBuffer that did not have a tuple "
         "shape; shape: %s",
-        ShapeUtil::HumanString(tuple_shape));
+        ShapeUtil::HumanString(on_host_shape()));
   }
-
-  DeviceMemoryAllocator* allocator = shaped_buffer()->memory_allocator();
-  ScopedShapedBuffer tuple_buffer = Release();
-
-  // Extract some metadata we use to construct scoped buffers.
-  const se::Platform* platform = tuple_buffer.platform();
-  int device_ordinal = tuple_buffer.device_ordinal();
-
-  ShapeTree<se::DeviceMemoryBase>& shape_tree = tuple_buffer.buffers();
+  int num_children = ShapeUtil::TupleElementCount(on_host_shape());
   std::vector<PyLocalBuffer> results;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(tuple_shape); ++i) {
-    // Create a shaped buffer for this destructured tuple element.
-    const Shape& subshape = ShapeUtil::GetSubshape(tuple_shape, {i});
-    VLOG(3) << "Starting tuple element " << i << " subshape: " << subshape;
-    ShapedBuffer shaped_buffer(subshape, subshape, platform, device_ordinal);
-
-    ShapeUtil::ForEachSubshape(
-        subshape, [&](const Shape& s, const ShapeIndex& index) {
-          ShapeIndex original(index);
-          original.push_front(i);
-          se::DeviceMemoryBase* device_memory =
-              shape_tree.mutable_element(original);
-          shaped_buffer.set_buffer(*device_memory, index);
-          *device_memory = se::DeviceMemoryBase();
-        });
-
-    VLOG(3) << "Completed tuple element: " << i;
-    results.push_back(PyLocalBuffer(
-        ScopedShapedBuffer(std::move(shaped_buffer), allocator), client_));
+  results.reserve(num_children);
+  for (int64 i = 0; i < num_children; ++i) {
+    results.push_back(PyLocalBuffer(on_host_shape().tuple_shapes(i),
+                                    device_buffer_->children().at(i), client_));
   }
   return results;
 }
@@ -321,15 +291,17 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
-  StatusOr<ScopedShapedBuffer> result_buffer_status;
   const int device_ordinal = device_assignment_(0, 0);
   VLOG(3) << "Replica 0 mapped to device ordinal for execution: "
           << device_ordinal;
 
-  std::vector<const ShapedBuffer*> argument_buffers;
+  std::vector<ShapedBuffer> argument_buffers;
+  std::vector<const ShapedBuffer*> argument_buffer_ptrs;
   argument_buffers.reserve(argument_handles.size());
+  argument_buffer_ptrs.reserve(argument_handles.size());
   for (auto& handle : argument_handles) {
-    argument_buffers.push_back(handle->shaped_buffer());
+    argument_buffers.push_back(handle->AsShapedBuffer());
+    argument_buffer_ptrs.push_back(&argument_buffers.back());
   }
 
   ExecutableRunOptions options;
@@ -339,12 +311,14 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::Execute(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(&device_assignment_);
 
-  result_buffer_status = executable_->Run(argument_buffers, options);
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result_buffer,
+                      executable_->Run(argument_buffer_ptrs, options));
 
-  if (!result_buffer_status.ok()) {
-    return result_buffer_status.status();
-  }
-  return PyLocalBuffer(std::move(result_buffer_status).ValueOrDie(), client_);
+  Shape on_host_shape = result_buffer.on_host_shape();
+  return PyLocalBuffer(
+      on_host_shape,
+      PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(result_buffer)),
+      client_);
 }
 
 StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
@@ -365,16 +339,19 @@ StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
 
   VLOG(1) << "Executing with " << num_replicas() << " replicas.";
 
-  auto execute =
-      [this, &argument_handles](int replica) -> StatusOr<ScopedShapedBuffer> {
+  auto execute = [this,
+                  &argument_handles](int replica) -> StatusOr<PyLocalBuffer> {
     const int device_ordinal = device_assignment_(replica, 0);
     VLOG(3) << "Replica " << replica
             << " mapped to device ordinal for execution: " << device_ordinal;
 
-    std::vector<const ShapedBuffer*> argument_buffers;
+    std::vector<ShapedBuffer> argument_buffers;
+    std::vector<const ShapedBuffer*> argument_buffer_ptrs;
     argument_buffers.reserve(argument_handles[replica].size());
+    argument_buffer_ptrs.reserve(argument_handles[replica].size());
     for (auto& handle : argument_handles[replica]) {
-      argument_buffers.push_back(handle->shaped_buffer());
+      argument_buffers.push_back(handle->AsShapedBuffer());
+      argument_buffer_ptrs.push_back(&argument_buffers.back());
     }
 
     ExecutableRunOptions options;
@@ -383,21 +360,26 @@ StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
     options.set_intra_op_thread_pool(
         client_->client()->backend().eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment_);
-    StatusOr<ScopedShapedBuffer> result_buffer_status =
-        executable_->Run(argument_buffers, options);
+    StatusOr<ScopedShapedBuffer> result_buffer =
+        executable_->Run(argument_buffer_ptrs, options);
 
-    VLOG(1) << "Replica " << replica
-            << " completed; ok=" << result_buffer_status.ok();
-    if (!result_buffer_status.ok()) {
+    VLOG(1) << "Replica " << replica << " completed; ok=" << result_buffer.ok();
+    if (!result_buffer.ok()) {
       LOG(ERROR) << "Execution of replica " << replica
-                 << " failed: " << result_buffer_status.status();
+                 << " failed: " << result_buffer.status();
+      return result_buffer.status();
     }
-    return result_buffer_status;
+    Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
+
+    return PyLocalBuffer(on_host_shape,
+                         PySharedDeviceBuffer::FromScopedShapedBuffer(
+                             std::move(result_buffer.ValueOrDie())),
+                         client_);
   };
 
   VLOG(1) << "Executing replicated computation; num_replicas="
           << num_replicas();
-  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas());
+  std::vector<StatusOr<PyLocalBuffer>> results(num_replicas());
   if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
@@ -462,8 +444,7 @@ StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
               "replicas may have failed as well).",
               replica));
     }
-    wrapped_results[replica] =
-        PyLocalBuffer(std::move(statusor).ValueOrDie(), client_);
+    wrapped_results[replica] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
 }
