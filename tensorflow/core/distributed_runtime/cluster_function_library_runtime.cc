@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/named_tensor.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -209,16 +211,35 @@ void ClusterFunctionLibraryRuntime::Run(
     req->add_recv_key(recv_key);
   }
 
+  CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;
+  cleanup_req->set_step_id(step_id);
+
   RunGraphResponse* resp = new RunGraphResponse();
+  CleanupGraphResponse* cleanup_resp = new CleanupGraphResponse;
   CallOptions* call_options = new CallOptions();
   wi->RunGraphAsync(
       call_options, req, resp,
-      [call_options, req, resp, rets, recv_keys, done](const Status& status) {
-        if (!status.ok()) {
-          done(status);
-          delete call_options;
-          delete req;
-          delete resp;
+      [wi, call_options, req, resp, rets, recv_keys, cleanup_req, cleanup_resp,
+       done](const Status& status) {
+        Status* local_status = new Status(status);
+        auto cleanup =
+            gtl::MakeCleanup([wi, call_options, req, resp, cleanup_req,
+                              cleanup_resp, local_status, done] {
+              wi->CleanupGraphAsync(
+                  cleanup_req, cleanup_resp,
+                  [call_options, req, resp, cleanup_req, cleanup_resp,
+                   local_status, done](const Status& cleanup_status) {
+                    local_status->Update(cleanup_status);
+                    done(*local_status);
+                    delete local_status;
+                    delete call_options;
+                    delete req;
+                    delete resp;
+                    delete cleanup_req;
+                    delete cleanup_resp;
+                  });
+            });
+        if (!local_status->ok()) {
           return;
         }
         std::map<string, TensorProto*> mapped_recvs;
@@ -229,28 +250,19 @@ void ClusterFunctionLibraryRuntime::Run(
         for (const auto& recv_key : recv_keys) {
           TensorProto* tp = mapped_recvs[recv_key];
           if (tp == nullptr) {
-            done(errors::Internal("Could not find key: ", recv_key));
-            delete call_options;
-            delete req;
-            delete resp;
+            local_status->Update(
+                errors::Internal("Could not find key: ", recv_key));
             return;
           }
           Tensor t;
           if (t.FromProto(*tp)) {
             rets->push_back(t);
           } else {
-            done(errors::Internal("Could not convert tensor proto: ",
-                                  tp->DebugString()));
-            delete call_options;
-            delete req;
-            delete resp;
+            local_status->Update(errors::Internal(
+                "Could not convert tensor proto: ", tp->DebugString()));
             return;
           }
         }
-        done(status);
-        delete call_options;
-        delete req;
-        delete resp;
       });
 }
 
