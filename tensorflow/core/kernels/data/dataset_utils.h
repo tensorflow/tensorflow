@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace data {
 
 // Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   GraphDef* graph_def);
 
 // Returns Status::OK() if `expected` and `received` types match,

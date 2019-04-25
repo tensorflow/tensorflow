@@ -682,7 +682,7 @@ class DatasetBase : public core::RefCounted {
 
  protected:
   friend Status AsGraphDef(
-      OpKernelContext* ctx, DatasetBase* dataset,
+      OpKernelContext* ctx, const DatasetBase* dataset,
       GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
