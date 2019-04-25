@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -636,8 +637,12 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 
   // When Xprof profiling is off (which is the default), constructing the
   // activity is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
+  profiler::TraceMe activity(
+      [&] {
+        return strings::StrCat(op_kernel->name(), ":",
+                               op_kernel->type_string());
+      },
+      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }

@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -319,14 +318,6 @@ class CuptiCallbackHook {
 
 class TraceCollectorImpl : public tracing::TraceCollector {
  public:
-  class ActivityHandle : public Handle {
-   public:
-    ActivityHandle(std::string&& name, int level)
-        : trace_me_(std::move(name), level) {}
-
-   private:
-    profiler::TraceMe trace_me_;
-  };
   TraceCollectorImpl() : active_trace_session_(false) {
     tracing::SetTraceCollector(this);
   }
@@ -351,21 +342,8 @@ class TraceCollectorImpl : public tracing::TraceCollector {
     return absl::make_unique<Impl>(ConcatenateNames(name_part1, name_part2));
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(
-      StringPiece name_part1, StringPiece name_part2, bool is_expensive) const {
-    if (!IsEnabledForActivities(is_expensive)) {
-      return nullptr;
-    }
-    return absl::make_unique<ActivityHandle>(
-        ConcatenateNames(name_part1, name_part2), GetLevel(is_expensive));
-  }
-
   bool IsEnabledForAnnotations() const override {
     return active_trace_session_.load(std::memory_order_relaxed);
-  }
-
-  bool IsEnabledForActivities(bool is_expensive) const override {
-    return profiler::TraceMeRecorder::Active(GetLevel(is_expensive));
   }
 
   void Start() {
@@ -380,10 +358,6 @@ class TraceCollectorImpl : public tracing::TraceCollector {
   }
 
  private:
-  static int GetLevel(bool is_expensive) {
-    return profiler::GetTFTraceMeLevel(is_expensive);
-  }
-
   std::atomic<bool> active_trace_session_;
 };
 

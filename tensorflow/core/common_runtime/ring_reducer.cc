@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -88,7 +90,7 @@ void RingReducer::Run(StatusCallback done) {
     // just wait here on the copy.
     Notification note;
     Status status;
-    tracing::ScopedActivity activity("MemCpyAsync");
+    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
     CollectiveRemoteAccessLocal::MemCpyAsync(
         col_ctx_->op_ctx->input_device_context(0),
         col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
@@ -177,7 +179,8 @@ bool RingReducer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
-    tracing::ScopedActivity activity("WaitForQueuedEvents");
+    profiler::TraceMe activity("WaitForQueuedEvents",
+                               profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -197,7 +200,7 @@ bool RingReducer::RunAsyncParts() {
   std::atomic<bool> aborted(false);
 
   {
-    tracing::ScopedActivity activity("Loop");
+    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
     // Loop until all RingFields have advanced to completion.
     while (field_done_count < rfv_.size()) {
       VLOG(4) << FieldState();

@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -434,8 +435,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
   const uint64 start_time_usecs = options_.env->NowMicros();
-  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
-  tracing::ScopedActivity activity(session_id_meta);
+  profiler::TraceMe activity(
+      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
+      profiler::TraceMeLevel::kInfo);
 
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 

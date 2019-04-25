@@ -105,6 +105,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 
 namespace xla {
@@ -463,8 +464,9 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
-  tracing::ScopedActivity activity("HLO Transforms", module->name(),
-                                   /*is_expensive=*/true);
+  tensorflow::profiler::TraceMe activity(
+      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
 
@@ -643,7 +645,8 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
     int cc_minor, const HloModuleConfig& hlo_module_config) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
-  tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
+  tensorflow::profiler::TraceMe activity(
+      "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are

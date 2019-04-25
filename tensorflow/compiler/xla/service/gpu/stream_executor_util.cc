@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 namespace xla {
@@ -331,8 +332,8 @@ StatusOr<std::vector<uint8>> CompilePtx(
     cc_minor = 0;
   }
 
-  namespace tracing = tensorflow::tracing;
-  tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
+  tensorflow::profiler::TraceMe activity(
+      "Compile PTX", tensorflow::profiler::TraceMeLevel::kInfo);
   auto env = tensorflow::Env::Default();
   string ptxas_path;
   for (const string& cuda_root : GetCudaRootCandidates(compile_ptx_options)) {

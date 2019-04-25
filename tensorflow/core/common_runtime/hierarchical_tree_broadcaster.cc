@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // Set true for greater intelligibility of debug mode log messages.
 #define READABLE_KEYS false
@@ -316,7 +317,9 @@ void HierarchicalTreeBroadcaster::RunTree() {
 
     if (my_rank >= 0 && my_rank != source_rank) {
       // Begin by receiving the value.
-      tracing::ScopedActivity activity("ReceiveValue", std::to_string(si));
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat("ReceiveValue:", si); },
+          profiler::TraceMeLevel::kInfo);
       int recv_from_rank = TreeRecvFrom(*col_params_, si);
       Notification note;
       DispatchRecv(si, recv_from_rank, my_rank, col_ctx_->output,
@@ -330,7 +333,9 @@ void HierarchicalTreeBroadcaster::RunTree() {
 
     // Then forward value to all descendent devices.
     {
-      tracing::ScopedActivity activity("ForwardValue", std::to_string(si));
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat("ForwardValue:", si); },
+          profiler::TraceMeLevel::kInfo);
       if (my_rank >= 0 && status_.ok()) {
         std::vector<int> send_to_ranks;
         TreeSendTo(*col_params_, si, &send_to_ranks);

@@ -13,7 +13,6 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
-    "tf_additional_all_protos",
 )
 
 tf_kernel_library(
@@ -206,6 +205,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )

@@ -36,12 +36,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::tracing::ScopedActivity;
 using tensorflow::tracing::ScopedAnnotation;
 
 }  // namespace
@@ -99,8 +99,9 @@ Status GpuExecutable::ExecuteThunks(
                                 sub_streams, hlo_module_->entry_computation());
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  ScopedActivity hlo_module_activity(hlo_module_->name(), "XLA GPU module",
-                                     true);
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(hlo_module_->name(), ":XLA GPU module"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
