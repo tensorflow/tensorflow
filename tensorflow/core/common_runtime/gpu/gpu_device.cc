@@ -1256,9 +1256,12 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
       GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
   int numa_node = dev_locality.numa_node();
 
-  se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
-  const se::DeviceDescription& desc = se->GetDeviceDescription();
+  se::Platform* gpu_manager = GPUMachineManager();
+  auto desc_status = gpu_manager->DescriptionForDevice(platform_gpu_id.value());
+  if (!desc_status.ok()) {
+    return desc_status.status();
+  }
+  auto desc = desc_status.ConsumeValueOrDie();
   GPUProcessState* process_state = GPUProcessState::singleton();
   Allocator* gpu_allocator = process_state->GetGPUAllocator(
       options.config.gpu_options(), tf_gpu_id, memory_limit);
@@ -1281,11 +1284,11 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   int64 bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
-      tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, desc),
+      tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, *desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
             << (bytes_limit >> 20) << " MB memory) -> physical GPU ("
-            << GetShortDeviceDescription(platform_gpu_id, desc) << ")";
+            << GetShortDeviceDescription(platform_gpu_id, *desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   devices->push_back(std::move(gpu_device));
 
@@ -1351,10 +1354,14 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
     // virtualized in some environments, we can't just use the GPU id.
     // NUMA locales are indexed from 0, buses are indexed from 1.
-    se::StreamExecutor* se =
-        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
-    int numa_node = desc.numa_node();
+    se::Platform* gpu_manager = GPUMachineManager();
+    auto desc_status =
+        gpu_manager->DescriptionForDevice(platform_gpu_id.value());
+    if (!desc_status.ok()) {
+      return desc_status.status();
+    }
+    auto desc = desc_status.ConsumeValueOrDie();
+    int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA
       // affinity of the GPU.  If this is not a multi-socket mobo with
@@ -1407,7 +1414,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     (*localities)[tf_gpu_id] = dev_locality;
     VLOG(1) << "GPUDevice PlatformGpuId " << platform_gpu_id << " TfGpuId "
             << tf_gpu_id << " on bus " << dev_locality.bus_id()
-            << " numa: " << numa_node << " pci: " << desc.pci_bus_id()
+            << " numa: " << numa_node << " pci: " << desc->pci_bus_id()
             << " DeviceLocality: " << dev_locality.DebugString();
   }
   return Status::OK();
