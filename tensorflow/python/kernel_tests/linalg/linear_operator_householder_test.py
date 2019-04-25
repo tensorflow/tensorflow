@@ -32,21 +32,21 @@ class LinearOperatorHouseholderTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 4, 4))]
+        shape_info((1, 1)),
+        shape_info((1, 3, 3)),
+        shape_info((3, 4, 4)),
+        shape_info((2, 1, 4, 4))]
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     # This linear operator is never positive definite.
     return ["cholesky"]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -90,4 +90,5 @@ class LinearOperatorHouseholderTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorHouseholderTest)
   test.main()
