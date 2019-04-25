@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
 
 static bool OpFilter(KernelDef* kdef) {
-
   if (kdef->op() == "Angle") return false;
   if (kdef->op() == "Complex") return false;
   if (kdef->op() == "ComplexAbs") return false;
@@ -39,6 +39,10 @@ static bool OpFilter(KernelDef* kdef) {
   if (kdef->op() == "MaxPoolGradGrad") return false;
   if (kdef->op() == "MaxPool3DGradGrad") return false;
   if (kdef->op() == "Real") return false;
+
+  if (kdef->op() == "Const") {
+    AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
+  }
 
   return true;
 }
