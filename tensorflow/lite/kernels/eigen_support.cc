@@ -103,7 +103,7 @@ class LazyEigenThreadPoolHolder {
   // Updates the thread count, invalidating the ThreadPoolDevice if necessary.
   void SetNumThreads(int num_threads) {
     const int target_num_threads =
-        num_threads != -1 ? num_threads : kDefaultNumThreadpoolThreads;
+        num_threads > -1 ? num_threads : kDefaultNumThreadpoolThreads;
     if (target_num_threads_ != target_num_threads) {
       target_num_threads_ = target_num_threads;
       // As the device references the thread pool wrapper, destroy it first.
@@ -145,7 +145,7 @@ TfLiteStatus Refresh(TfLiteContext* context) {
 void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
-    if (context->recommended_num_threads != -1) {
+    if (context->recommended_num_threads > -1) {
       SetEigenNbThreads(context->recommended_num_threads);
     }
     ptr = new RefCountedEigenContext;
