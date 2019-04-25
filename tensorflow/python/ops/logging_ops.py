@@ -346,7 +346,6 @@ def print_v2(*inputs, **kwargs):
         summarize=summarize,
         name=format_name)
 
-  formatted_string = formatted_string
   return gen_logging_ops.print_v2(formatted_string,
                                   output_stream=output_stream_string,
                                   name=name,
