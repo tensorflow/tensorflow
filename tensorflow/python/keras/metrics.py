@@ -2273,8 +2273,6 @@ class MeanIoU(Metric):
       Update op.
     """
     
-    # If y_true and y_pred are lists then 
-    # they are converted into Tensors 
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
     
