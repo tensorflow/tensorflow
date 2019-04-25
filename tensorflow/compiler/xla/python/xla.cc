@@ -297,7 +297,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   ops.def("AllToAll", &AllToAll);
   ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const ReplicaGroup>)>(
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
@@ -310,14 +310,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
   ops.def("ConcatInDim", &ConcatInDim);
   ops.def("Conditional",
-          static_cast<XlaOp (*)(const XlaOp&,
-                                absl::Span<const XlaComputation* const>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
                                 absl::Span<const XlaOp>)>(&Conditional));
-  ops.def(
-      "Conditional",
-      static_cast<XlaOp (*)(const XlaOp&, const XlaOp&, const XlaComputation&,
-                            const XlaOp&, const XlaComputation&)>(
-          &Conditional));
+  ops.def("Conditional",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
+                                const XlaComputation&)>(&Conditional));
   ops.def("ConstantLiteral", &ConstantLiteral);
   ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
           py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
@@ -333,11 +330,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
   ops.def("DynamicSlice",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice));
   ops.def("DynamicUpdateSlice",
-          static_cast<XlaOp (*)(const XlaOp&, const XlaOp&,
-                                absl::Span<const XlaOp>)>(&DynamicUpdateSlice));
+          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
+              &DynamicUpdateSlice));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"));
   ops.def("GetTupleElement", &GetTupleElement);
@@ -383,12 +380,10 @@ PYBIND11_MODULE(xla_extension, m) {
                                 absl::Span<const int64>)>(&Reduce));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
   ops.def("ReplicaId", &ReplicaId);
+  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
+                                           absl::Span<const int64>)>(&Reshape));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>,
-                                absl::Span<const int64>)>(&Reshape));
-  ops.def(
-      "Reshape",
-      static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>)>(&Reshape));
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
   ops.def("RngNormal", &RngNormal);
   ops.def("RngUniform", &RngUniform);
@@ -400,8 +395,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def("Sort",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>, int64)>(
-              &Sort),
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>, int64)>(&Sort),
           py::arg("keys"), py::arg("values"), py::arg("dimension") = -1);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
