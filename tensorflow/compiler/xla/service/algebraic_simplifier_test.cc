@@ -5229,32 +5229,6 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
   ASSERT_TRUE(transpose->dimensions() == std::vector<int64>({0, 2, 1, 3}));
 }
 
-TEST_F(AlgebraicSimplifierTest, DotContractingReorder_3D) {
-  const char* kModuleStr = R"(
-    HloModule m
-    test {
-      rhs = f32[8, 2] constant({{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6},{7, 7},{8, 8}})
-      t0 = f32[2, 2, 2, 2] parameter(0)
-      t1 = f32[2, 2, 2, 2] transpose(t0), dimensions={0, 2, 3, 1}
-      lhs = f32[2, 8] reshape(t1)
-      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1},
-                                            rhs_contracting_dims={0}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  auto shape1 = ShapeUtil::MakeShape(F32, {2, 8});
-  auto shape2 = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
-  const HloInstruction* transpose;
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Dot(
-                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
-                  m::Reshape(m::Transpose(&transpose,
-                                          m::Reshape(m::Constant())
-                                              .WithShapeCompatibleTo(&shape2))))));
-  ASSERT_TRUE(transpose->dimensions() == std::vector<int64>({2, 0, 1, 3}));
-}
-
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegTranspose) {
   const char* kModuleStr = R"(
     HloModule m
