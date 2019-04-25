@@ -120,8 +120,7 @@ def _model_loss(model,
   outs = model(inputs, **kwargs)
 
   outs = nest.flatten(outs)
-  # `None` by default for `EagerTensors`.
-  masks = [t._keras_mask for t in outs]
+  masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
 
   # Used to keep track of individual output losses.

@@ -862,8 +862,9 @@ class Network(base_layer.Layer):
           if 'training' in argspec:
             kwargs.setdefault('training', training)
           if 'mask' in argspec:
-            computed_masks = nest.map_structure(lambda t: t._keras_mask,
-                                                computed_tensors)
+            computed_masks = nest.map_structure(
+                lambda t: getattr(t, '_keras_mask', None),
+                computed_tensors)
             kwargs.setdefault('mask', computed_masks)
 
           # Compute outputs.
