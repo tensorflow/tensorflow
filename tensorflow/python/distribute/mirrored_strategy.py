@@ -957,20 +957,20 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # `tf.function` and there is a merge_call in `fn`. This breaks because each
     # thread tries to create a distinct tf.function. Each tf.function creation
     # takes a lock, and so if there is a merge call in the middle, the lock is
-    # never releases and subsequent replica threads cannot proceed to define
+    # never released and subsequent replica threads cannot proceed to define
     # their own functions. Checking for the graph being the same is one way for
     # us to check this didn't happen.
     if ops.get_default_graph() != t.graph:
       raise RuntimeError(
-          "`merge_call` called while defining a new graph. "
-          "This can happen if the function `fn` passed to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` is decorated with "
-          "`@tf.function`. In this case, wrap the call to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` with `@tf.function` "
-          "instead of `fn`. This will avoid mismatching graphs and also "
-          "improve performance.")
+          "`merge_call` called while defining a new graph or a tf.function. "
+          "This can often happen if the function `fn` passed to "
+          "`strategy.experimental_run()` is decorated with "
+          "`@tf.function` (or contains a nested `@tf.function`), and `fn` "
+          "contains a synchronization point, such as aggregating gradients. "
+          "This behavior is not yet supported. Instead, please wrap the entire "
+          "call `strategy.experimental_run(fn)` in a `@tf.function`, and avoid "
+          "nested `tf.function`s that may potentially cross a synchronization "
+          "boundary.")
 
     t.has_paused.set()
     t.should_run.wait()
