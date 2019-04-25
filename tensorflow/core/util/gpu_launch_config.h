@@ -27,6 +27,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#define FWD(func, alias) \
+template <typename... Args> \
+auto alias(Args&&... args) -> decltype(func(std::forward<Args>(args)...)) { \
+  return alias(std::forward<Args>(args)...); \
+}
 // Usage of GetGpuLaunchConfig, GetGpu2DLaunchConfig, and
 // GetGpu3DLaunchConfig:
 //
@@ -117,6 +122,7 @@ struct GpuLaunchConfig {
   // Number of blocks for Gpu kernel launch.
   int block_count = -1;
 };
+using CudaLaunchConfig = GpuLaunchConfig;
 
 // Calculate the Gpu launch config we should use for a kernel launch.
 // This is assuming the kernel is quite simple and will largely be
@@ -186,6 +192,7 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
+FWD(GetGpuLaunchConfig, GetCudaLaunchConfig);
 
 // Calculate the Gpu launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
@@ -227,12 +234,14 @@ inline GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   config.block_count = block_count;
   return config;
 }
+FWD(GetGpuLaunchConfigFixedBlockSize, GetCudaLaunchConfigFixedBlockSize);
 
 struct Gpu2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
   dim3 thread_per_block = dim3(0, 0, 0);
   dim3 block_count = dim3(0, 0, 0);
 };
+using Cuda2DLaunchConfig = Gpu2DLaunchConfig;
 
 inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
                                                 const Eigen::GpuDevice& d) {
@@ -336,6 +345,7 @@ inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
   config.block_count = dim3(blocksx, blocksy, blocksz);
   return config;
 }
+FWD(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(
@@ -344,6 +354,7 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(
   return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
                                dynamic_shared_memory_size, block_size_limit);
 }
+FWD(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
 #if GOOGLE_CUDA
 // Returns a raw reference to the current cuda stream.  Required by a
@@ -357,6 +368,7 @@ inline const cudaStream_t& GetGpuStream(OpKernelContext* context) {
                                                 ->GpuStreamMemberHack()));
   return *ptr;
 }
+FWD(GetGpuStream, GetCudaStream);
 #endif // GOOGLE_CUDA
 
 namespace detail {
