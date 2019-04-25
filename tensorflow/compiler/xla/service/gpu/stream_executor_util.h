@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -71,6 +72,46 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              int64 threads_per_block, int64 block_count,
                              se::Stream* stream);
+
+// Options for compiling with PTX.
+struct PtxCompilationOptions {
+  bool xla_gpu_disable_ptxas_optimizations;
+  std::string xla_gpu_cuda_data_dir;
+
+  using PtxOptionsTuple = std::tuple<bool, std::string>;
+
+  explicit PtxCompilationOptions(const HloModuleConfig& hlo_module_config)
+      : xla_gpu_disable_ptxas_optimizations(
+            hlo_module_config.debug_options()
+                .xla_gpu_disable_ptxas_optimizations()),
+        xla_gpu_cuda_data_dir(
+            hlo_module_config.debug_options().xla_gpu_cuda_data_dir()) {}
+
+  // For comparison and hashing.
+  PtxOptionsTuple ToTuple() {
+    return std::make_tuple(xla_gpu_disable_ptxas_optimizations,
+                           xla_gpu_cuda_data_dir);
+  }
+};
+
+// Compiles the given PTX string using ptxas and returns the resulting machine
+// code (i.e. a cubin) as a byte array.
+//
+// Queries stream executor stream_exec to get CUDA compute capability from the
+// device.
+//
+// compile_ptx_options is used to query for the CUDA location in case it is
+// customized in a passed flag, and for controlling ptxas optimizations.
+// It can be constructed from HloModuleConfig.
+StatusOr<std::vector<uint8>> CompilePtx(
+    se::StreamExecutor* stream_exec, absl::string_view ptx,
+    PtxCompilationOptions compile_ptx_options);
+
+// Returns a vector of potential locations of the CUDA root directory.
+// Searches through tensorflow CUDA locations AND through the CUDA location
+// specified in compile_ptx_options (can be constructed from HloModuleConfig).
+std::vector<string> GetCudaRootCandidates(
+    PtxCompilationOptions compile_ptx_options);
 
 }  // namespace gpu
 }  // namespace xla
