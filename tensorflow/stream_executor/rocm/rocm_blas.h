@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "tensorflow/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
 
@@ -96,6 +97,20 @@ class ROCMBlas : public blas::BlasSupport {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/false, args...);
   }
+
+  // A helper struct to for type conversion in DoBlasGemmBatchedInternal
+  template <typename T>
+  struct EigenHalfToRocBlasHalf{
+    using type = T;
+  };
+  
+  // A helper allocation funciton to convert raw pointers memory layout to strided flavor 
+  template <typename T>
+  port::Status AllocateStridedBuffer(
+      const std::vector<typename EigenHalfToRocBlasHalf<T>::type *>& raw_ptrs, int batch_count, 
+      uint64_t batch_stride, ScratchAllocator* scrach_allocator, Stream * stream, 
+      std::unique_ptr<TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>& temp_memory,
+      DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>& device_memory);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
