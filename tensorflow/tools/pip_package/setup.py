@@ -56,7 +56,6 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.2',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
-    'kissfft >= 1.3.0, < 1.3.1',
     'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
