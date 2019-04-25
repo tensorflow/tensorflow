@@ -82,8 +82,10 @@ StringRef tblgen::Operator::getResultName(int index) const {
   return results->getArgNameStr(index);
 }
 
-bool tblgen::Operator::hasVariadicResult() const {
-  return !results.empty() && results.back().constraint.isVariadic();
+unsigned tblgen::Operator::getNumVariadicResults() const {
+  return std::count_if(
+      results.begin(), results.end(),
+      [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
 int tblgen::Operator::getNumNativeAttributes() const {
@@ -98,8 +100,10 @@ const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
   return attributes[index];
 }
 
-bool tblgen::Operator::hasVariadicOperand() const {
-  return !operands.empty() && operands.back().constraint.isVariadic();
+unsigned tblgen::Operator::getNumVariadicOperands() const {
+  return std::count_if(
+      operands.begin(), operands.end(),
+      [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
 StringRef tblgen::Operator::getArgName(int index) const {
@@ -222,13 +226,6 @@ void tblgen::Operator::populateOpStructure() {
     }
   }
 
-  // Verify that only the last operand can be variadic.
-  for (int i = 0, e = operands.size() - 1; i < e; ++i) {
-    if (operands[i].constraint.isVariadic())
-      PrintFatalError(def.getLoc(),
-                      "only the last operand allowed to be variadic");
-  }
-
   auto *resultsDag = def.getValueAsDag("results");
   auto *outsOp = dyn_cast<DefInit>(resultsDag->getOperator());
   if (!outsOp || outsOp->getDef()->getName() != "outs") {
@@ -244,13 +241,6 @@ void tblgen::Operator::populateOpStructure() {
                       Twine("undefined type for result #") + Twine(i));
     }
     results.push_back({name, TypeConstraint(resultDef)});
-  }
-
-  // Verify that only the last result can be variadic.
-  for (int i = 0, e = results.size() - 1; i < e; ++i) {
-    if (results[i].constraint.isVariadic())
-      PrintFatalError(def.getLoc(),
-                      "only the last result allowed to be variadic");
   }
 
   auto traitListInit = def.getValueAsListInit("traits");

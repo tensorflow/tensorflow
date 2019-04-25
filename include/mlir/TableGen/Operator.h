@@ -82,8 +82,8 @@ public:
   // Returns the `index`-th result's name.
   StringRef getResultName(int index) const;
 
-  // Returns true if this operation has a variadic result.
-  bool hasVariadicResult() const;
+  // Returns the number of variadic results in this operation.
+  unsigned getNumVariadicResults() const;
 
   // Op attribute interators.
   using attribute_iterator = const NamedAttribute *;
@@ -112,8 +112,8 @@ public:
     return operands[index];
   }
 
-  // Returns true if this operation has a variadic operand.
-  bool hasVariadicOperand() const;
+  // Returns the number of variadic operands in this operation.
+  unsigned getNumVariadicOperands() const;
 
   // Returns the total number of arguments.
   int getNumArgs() const { return arguments.size(); }

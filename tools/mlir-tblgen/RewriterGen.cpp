@@ -440,7 +440,7 @@ void PatternEmitter::emit(StringRef rewriteName) {
   const Operator &rootOp = pattern.getSourceRootOp();
   auto rootName = rootOp.getOperationName();
 
-  if (rootOp.hasVariadicResult())
+  if (rootOp.getNumVariadicResults() != 0)
     PrintFatalError(
         loc, "replacing op with variadic results not supported right now");
 

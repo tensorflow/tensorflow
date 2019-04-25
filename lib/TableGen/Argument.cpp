@@ -23,3 +23,7 @@ using namespace mlir;
 bool tblgen::NamedTypeConstraint::hasPredicate() const {
   return !constraint.getPredicate().isNull();
 }
+
+bool tblgen::NamedTypeConstraint::isVariadic() const {
+  return constraint.isVariadic();
+}

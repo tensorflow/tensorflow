@@ -759,6 +759,17 @@ def Terminator       : NativeOpTrait<"IsTerminator">;
 def FirstAttrDerivedResultType :
   GenInternalOpTrait<"FirstAttrDerivedResultType">;
 
+// All variadic operands of the op have the same number of values.
+// A variadic operand contains an array of values whose array size is only
+// known at runtime. This trait requires all variadic operands of an op
+// to have the same array size.
+def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
+// All variadic results of the op have the same number of values.
+// A variadic result contains an array of values whose array size is only
+// known at runtime. This trait requires all variadic results of an op
+// to have the same array size.
+def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
+
 //===----------------------------------------------------------------------===//
 // Op definitions
 //===----------------------------------------------------------------------===//

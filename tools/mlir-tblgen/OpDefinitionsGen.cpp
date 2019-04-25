@@ -251,8 +251,9 @@ OpMethodBody &OpMethodBody::operator<<(const FmtObjectBase &content) {
 }
 
 void OpMethodBody::writeTo(raw_ostream &os) const {
-  os << body;
-  if (body.empty() || body.back() != '\n')
+  auto bodyRef = StringRef(body).drop_while([](char c) { return c == '\n'; });
+  os << bodyRef;
+  if (bodyRef.empty() || bodyRef.back() != '\n')
     os << "\n";
 }
 
@@ -455,35 +456,153 @@ void OpEmitter::genAttrGetters() {
 }
 
 void OpEmitter::genNamedOperandGetters() {
-  for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
+  const unsigned numOperands = op.getNumOperands();
+  const unsigned numVariadicOperands = op.getNumVariadicOperands();
+  const unsigned numNormalOperands = numOperands - numVariadicOperands;
+
+  // Special case for ops without variadic operands: the i-th value is for the
+  // i-th operand defined in the op.
+  // Special case for ops with one variadic operand: the variadic operand can
+  // appear at any place, so the i-th value may not necessarily belong to the
+  // i-th operand definition. we need to calculate the index (range) for each
+  // operand.
+  if (numVariadicOperands <= 1) {
+    bool emittedVariadicOperand = false;
+    for (unsigned i = 0; i != numOperands; ++i) {
+      const auto &operand = op.getOperand(i);
+      if (operand.name.empty())
+        continue;
+
+      if (operand.isVariadic()) {
+        auto &m = opClass.newMethod("Operation::operand_range", operand.name);
+        m.body() << formatv(
+            "  return {{std::next(operand_begin(), {0}), "
+            "std::next(operand_begin(), {0} + this->getNumOperands() - {1})};",
+            i, numNormalOperands);
+        emittedVariadicOperand = true;
+      } else {
+        auto &m = opClass.newMethod("Value *", operand.name);
+        m.body() << "  return this->getOperation()->getOperand(";
+        if (emittedVariadicOperand)
+          m.body() << "this->getNumOperands() - " << numOperands - i;
+        else
+          m.body() << i;
+        m.body() << ");\n";
+      }
+    }
+    return;
+  }
+
+  // If we have more than one variadic operands, we need more complicated logic
+  // to calculate the value range for each operand.
+
+  if (!op.hasTrait("SameVariadicOperandSize")) {
+    PrintFatalError(op.getLoc(), "op has multiple variadic operands but no "
+                                 "specification over their sizes");
+  }
+
+  unsigned emittedNormalOperands = 0;
+  unsigned emittedVariadicOperands = 0;
+
+  for (unsigned i = 0; i != numOperands; ++i) {
     const auto &operand = op.getOperand(i);
     if (operand.name.empty())
       continue;
 
-    if (!operand.constraint.isVariadic()) {
-      auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << "  return this->getOperation()->getOperand(" << i << ");\n";
-    } else {
-      assert(i + 1 == e && "only the last operand can be variadic");
+    const char *code = R"(
+  unsigned variadicOperandSize = (this->getNumOperands() - {0}) / {1};
+  unsigned offset = {2} + variadicOperandSize * {3};
+  return )";
+    auto sizeAndOffset =
+        formatv(code, numNormalOperands, numVariadicOperands,
+                emittedNormalOperands, emittedVariadicOperands);
 
-      const char *const code = R"(
-        assert(getOperation()->getNumOperands() >= {0});
-        return {std::next(operand_begin(), {0}), operand_end()};
-      )";
+    if (operand.isVariadic()) {
       auto &m = opClass.newMethod("Operation::operand_range", operand.name);
-      m.body() << formatv(code, i);
+      m.body() << sizeAndOffset
+               << "{std::next(operand_begin(), offset), "
+                  "std::next(operand_begin(), offset + variadicOperandSize)};";
+      ++emittedVariadicOperands;
+    } else {
+      auto &m = opClass.newMethod("Value *", operand.name);
+      m.body() << sizeAndOffset << "this->getOperand(offset);";
+      ++emittedNormalOperands;
     }
   }
 }
 
 void OpEmitter::genNamedResultGetters() {
-  for (int i = 0, e = op.getNumResults(); i != e; ++i) {
+  const unsigned numResults = op.getNumResults();
+  const unsigned numVariadicResults = op.getNumVariadicResults();
+  const unsigned numNormalResults = numResults - numVariadicResults;
+
+  // Special case for ops without variadic results: the i-th value is for the
+  // i-th result defined in the op.
+  // Special case for ops with one variadic result: the variadic result can
+  // appear at any place, so the i-th value may not necessarily belong to the
+  // i-th result definition. we need to calculate the index (range) for each
+  // result.
+  if (numVariadicResults <= 1) {
+    bool emittedVariadicResult = false;
+    for (unsigned i = 0; i != numResults; ++i) {
+      const auto &result = op.getResult(i);
+      if (result.name.empty())
+        continue;
+
+      if (result.isVariadic()) {
+        auto &m = opClass.newMethod("Operation::result_range", result.name);
+        m.body() << formatv(
+            "  return {{std::next(result_begin(), {0}), "
+            "std::next(result_begin(), {0} + this->getNumResults() - {1})};",
+            i, numNormalResults);
+        emittedVariadicResult = true;
+      } else {
+        auto &m = opClass.newMethod("Value *", result.name);
+        m.body() << "  return this->getOperation()->getResult(";
+        if (emittedVariadicResult)
+          m.body() << "this->getNumResults() - " << numResults - i;
+        else
+          m.body() << i;
+        m.body() << ");\n";
+      }
+    }
+    return;
+  }
+
+  // If we have more than one variadic results, we need more complicated logic
+  // to calculate the value range for each result.
+
+  if (!op.hasTrait("SameVariadicResultSize")) {
+    PrintFatalError(op.getLoc(), "op has multiple variadic results but no "
+                                 "specification over their sizes");
+  }
+
+  unsigned emittedNormalResults = 0;
+  unsigned emittedVariadicResults = 0;
+
+  for (unsigned i = 0; i != numResults; ++i) {
     const auto &result = op.getResult(i);
-    if (result.constraint.isVariadic() || result.name.empty())
+    if (result.name.empty())
       continue;
 
-    auto &m = opClass.newMethod("Value *", result.name);
-    m.body() << "  return this->getOperation()->getResult(" << i << ");\n";
+    const char *code = R"(
+  unsigned variadicResultSize = (this->getNumResults() - {0}) / {1};
+  unsigned offset = {2} + variadicResultSize * {3};
+  return )";
+    auto sizeAndOffset = formatv(code, numNormalResults, numVariadicResults,
+                                 emittedNormalResults, emittedVariadicResults);
+
+    if (result.isVariadic()) {
+      auto &m = opClass.newMethod("Operation::result_range", result.name);
+      m.body() << sizeAndOffset
+               << "{std::next(result_begin(), offset), "
+                  "std::next(result_begin(), offset + variadicResultSize)};";
+      ++emittedVariadicResults;
+    } else {
+      auto &m = opClass.newMethod("Value *", result.name);
+      m.body() << sizeAndOffset << "this->getResult(offset);";
+      ++emittedNormalResults;
+    }
   }
 }
 
@@ -505,12 +624,12 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   // Emit parameters for all return types
   if (!useOperandType && !useAttrType) {
     for (unsigned i = 0; i != numResults; ++i) {
-      std::string resultName = op.getResultName(i);
+      const auto &result = op.getResult(i);
+      std::string resultName = result.name;
       if (resultName.empty())
         resultName = formatv("resultType{0}", i);
 
-      bool isVariadic = op.getResultTypeConstraint(i).isVariadic();
-      paramList.append(isVariadic ? ", ArrayRef<Type> " : ", Type ");
+      paramList.append(result.isVariadic() ? ", ArrayRef<Type> " : ", Type ");
       paramList.append(resultName);
 
       resultNames.emplace_back(std::move(resultName));
@@ -520,12 +639,13 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   // Emit parameters for all arguments (operands and attributes).
   int numOperands = 0;
   int numAttrs = 0;
+
   for (int i = 0, e = op.getNumArgs(); i < e; ++i) {
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
-      auto &operand = op.getOperand(numOperands);
-      paramList.append(operand.constraint.isVariadic() ? ", ArrayRef<Value *> "
-                                                       : ", Value *");
+      const auto &operand = op.getOperand(numOperands);
+      paramList.append(operand.isVariadic() ? ", ArrayRef<Value *> "
+                                            : ", Value *");
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {
@@ -542,33 +662,22 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   }
 
   if (numOperands + numAttrs != op.getNumArgs())
-    return PrintFatalError(
-        "op arguments must be either operands or attributes");
+    PrintFatalError("op arguments must be either operands or attributes");
 
-  auto &method =
-      opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
-
-  bool hasVariadicOperand = op.hasVariadicOperand();
+  auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
 
   // Push all result types to the result
   if (numResults > 0) {
     if (!useOperandType && !useAttrType) {
-      bool hasVariadicResult = op.hasVariadicResult();
-      int numNonVariadicResults =
-          numResults - static_cast<int>(hasVariadicResult);
-
-      if (numNonVariadicResults > 0) {
-        method.body() << "  " << builderOpState << "->addTypes({"
-                      << resultNames.front();
-        for (int i = 1; i < numNonVariadicResults; ++i) {
-          method.body() << ", " << resultNames[i];
+      for (unsigned i = 0; i < numResults; ++i) {
+        const auto &result = op.getResult(i);
+        m.body() << "  " << builderOpState;
+        if (result.isVariadic()) {
+          m.body() << "->addTypes(";
+        } else {
+          m.body() << "->types.push_back(";
         }
-        method.body() << "});\n";
-      }
-
-      if (hasVariadicResult) {
-        method.body() << "  " << builderOpState << "->addTypes("
-                      << resultNames.back() << ");\n";
+        m.body() << resultNames[i] << ");\n";
       }
     } else {
       std::string resultType;
@@ -580,32 +689,27 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
           resultType = formatv("{0}.getType()", namedAttr.name);
         }
       } else {
-        const char *index =
-            (numOperands == 1 && hasVariadicOperand) ? ".front()" : "";
+        const char *index = op.getOperand(0).isVariadic() ? ".front()" : "";
         resultType =
             formatv("{0}{1}->getType()", getArgumentName(op, 0), index).str();
       }
-      method.body() << "  " << builderOpState << "->addTypes({" << resultType;
+      m.body() << "  " << builderOpState << "->addTypes({" << resultType;
       for (unsigned i = 1; i != numResults; ++i)
-        method.body() << ", " << resultType;
-      method.body() << "});\n\n";
+        m.body() << ", " << resultType;
+      m.body() << "});\n\n";
     }
   }
 
   // Push all operands to the result
-  int numNonVariadicOperands =
-      numOperands - static_cast<int>(hasVariadicOperand);
-  if (numNonVariadicOperands > 0) {
-    method.body() << "  " << builderOpState << "->addOperands({"
-                  << getArgumentName(op, 0);
-    for (int i = 1; i < numNonVariadicOperands; ++i) {
-      method.body() << ", " << getArgumentName(op, i);
+  for (unsigned i = 0; i < numOperands; ++i) {
+    const auto &operand = op.getOperand(i);
+    m.body() << "  " << builderOpState;
+    if (operand.isVariadic()) {
+      m.body() << "->addOperands(";
+    } else {
+      m.body() << "->operands.push_back(";
     }
-    method.body() << "});\n";
-  }
-  if (hasVariadicOperand) {
-    method.body() << "  " << builderOpState << "->addOperands("
-                  << getArgumentName(op, numOperands - 1) << ");\n";
+    m.body() << getArgumentName(op, i) << ");\n";
   }
 
   // Push all attributes to the result
@@ -613,12 +717,12 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
     if (!namedAttr.attr.isDerivedAttr()) {
       bool emitNotNullCheck = namedAttr.attr.isOptional();
       if (emitNotNullCheck) {
-        method.body() << formatv("  if ({0}) ", namedAttr.name) << "{\n";
+        m.body() << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      method.body() << formatv("  {0}->addAttribute(\"{1}\", {1});\n",
-                               builderOpState, namedAttr.name);
+      m.body() << formatv("  {0}->addAttribute(\"{1}\", {1});\n",
+                          builderOpState, namedAttr.name);
       if (emitNotNullCheck) {
-        method.body() << "  }\n";
+        m.body() << "  }\n";
       }
     }
   }
@@ -646,13 +750,13 @@ void OpEmitter::genBuilder() {
     }
   }
 
-  auto numResults = op.getNumResults();
-  bool hasVariadicResult = op.hasVariadicResult();
-  int numNonVariadicResults = numResults - int(hasVariadicResult);
+  unsigned numResults = op.getNumResults();
+  unsigned numVariadicResults = op.getNumVariadicResults();
+  unsigned numNonVariadicResults = numResults - numVariadicResults;
 
-  auto numOperands = op.getNumOperands();
-  bool hasVariadicOperand = op.hasVariadicOperand();
-  int numNonVariadicOperands = numOperands - int(hasVariadicOperand);
+  unsigned numOperands = op.getNumOperands();
+  unsigned numVariadicOperands = op.getNumVariadicOperands();
+  unsigned numNonVariadicOperands = numOperands - numVariadicOperands;
 
   // Generate default builders that requires all result type, operands, and
   // attributes as parameters.
@@ -681,15 +785,16 @@ void OpEmitter::genBuilder() {
   auto &body = m.body();
 
   // Result types
-  if (!(hasVariadicResult && numNonVariadicResults == 0))
+  if (numVariadicResults == 0 || numNonVariadicResults != 0)
     body << "  assert(resultTypes.size()"
-         << (hasVariadicResult ? " >= " : " == ") << numNonVariadicResults
+         << (numVariadicResults != 0 ? " >= " : " == ") << numNonVariadicResults
          << "u && \"mismatched number of return types\");\n";
   body << "  " << builderOpState << "->addTypes(resultTypes);\n";
 
   // Operands
-  if (!(hasVariadicOperand && numNonVariadicOperands == 0))
-    body << "  assert(operands.size()" << (hasVariadicOperand ? " >= " : " == ")
+  if (numVariadicOperands == 0 || numNonVariadicOperands != 0)
+    body << "  assert(operands.size()"
+         << (numVariadicOperands != 0 ? " >= " : " == ")
          << numNonVariadicOperands
          << "u && \"mismatched number of parameters\");\n";
   body << "  " << builderOpState << "->addOperands(operands);\n\n";
@@ -703,7 +808,7 @@ void OpEmitter::genBuilder() {
 
   bool useOperandType = op.hasTrait("SameOperandsAndResultType");
   bool useAttrType = op.hasTrait("FirstAttrDerivedResultType");
-  if (!op.hasVariadicResult() && (useOperandType || useAttrType))
+  if (numVariadicResults == 0 && (useOperandType || useAttrType))
     genStandaloneParamBuilder(useOperandType, useAttrType);
 }
 
@@ -824,7 +929,7 @@ void OpEmitter::genVerifier() {
   auto verifyValue = [&](const tblgen::NamedTypeConstraint &value, int index,
                          bool isOperand) -> void {
     // TODO: Handle variadic operand/result verification.
-    if (value.constraint.isVariadic())
+    if (value.isVariadic())
       return;
 
     // TODO: Commonality between matchers could be extracted to have a more
@@ -869,12 +974,12 @@ void OpEmitter::genVerifier() {
 }
 
 void OpEmitter::genTraits() {
-  auto numResults = op.getNumResults();
-  bool hasVariadicResult = op.hasVariadicResult();
+  unsigned numResults = op.getNumResults();
+  unsigned numVariadicResults = op.getNumVariadicResults();
 
   // Add return size trait.
-  if (hasVariadicResult) {
-    if (numResults == 1)
+  if (numVariadicResults != 0) {
+    if (numResults == numVariadicResults)
       opClass.addTrait("VariadicResults");
     else
       opClass.addTrait("AtLeastNResults<" + Twine(numResults - 1) + ">::Impl");
@@ -898,12 +1003,12 @@ void OpEmitter::genTraits() {
   }
 
   // Add variadic size trait and normal op traits.
-  auto numOperands = op.getNumOperands();
-  bool hasVariadicOperand = op.hasVariadicOperand();
+  unsigned numOperands = op.getNumOperands();
+  unsigned numVariadicOperands = op.getNumVariadicOperands();
 
   // Add operand size trait.
-  if (hasVariadicOperand) {
-    if (numOperands == 1)
+  if (numVariadicOperands != 0) {
+    if (numOperands == numVariadicOperands)
       opClass.addTrait("VariadicOperands");
     else
       opClass.addTrait("AtLeastNOperands<" + Twine(numOperands - 1) +

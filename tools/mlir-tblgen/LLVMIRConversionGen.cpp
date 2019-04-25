@@ -75,10 +75,14 @@ static StringLoc findNextVariable(StringRef str) {
   return {startPos, endPos - startPos};
 }
 
-// Check if `name` is the name of the variadic argument of `op`.  The variadic
-// argument can only appear at the last position in the list of arguments.
-static bool isVariadicArgumentName(const tblgen::Operator &op, StringRef name) {
-  return op.hasVariadicOperand() && op.getArgName(op.getNumArgs() - 1) == name;
+// Check if `name` is the name of the variadic operand of `op`.  The variadic
+// operand can only appear at the last position in the list of operands.
+static bool isVariadicOperandName(const tblgen::Operator &op, StringRef name) {
+  unsigned numOperands = op.getNumOperands();
+  if (numOperands == 0)
+    return false;
+  const auto &operand = op.getOperand(numOperands - 1);
+  return operand.isVariadic() && operand.name == name;
 }
 
 // Check if `result` is a known name of a result of `op`.
@@ -127,9 +131,9 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
     // First, insert the non-matched part as is.
     bs << builderStrRef.substr(0, loc.pos);
     // Then, rewrite the name based on its kind.
-    bool isVariadicArg = isVariadicArgumentName(op, name);
+    bool isVariadicOperand = isVariadicOperandName(op, name);
     if (isOperandName(op, name)) {
-      auto result = isVariadicArg
+      auto result = isVariadicOperand
                         ? formatv("lookupValues(op.{0}())", name)
                         : formatv("valueMapping.lookup(op.{0}())", name);
       bs << result;

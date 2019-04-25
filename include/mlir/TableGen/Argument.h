@@ -48,10 +48,12 @@ struct NamedAttribute {
   Attribute attr;
 };
 
-// A struct wrapping an op operand/result and its name together
+// A struct wrapping an op operand/result's constraint and its name together
 struct NamedTypeConstraint {
-  // Returns true if this operand has constraint that need to be satisfied.
+  // Returns true if this operand/result has constraint to be satisfied.
   bool hasPredicate() const;
+  // Returns true if this operand/result is variadic.
+  bool isVariadic() const;
 
   llvm::StringRef name;
   TypeConstraint constraint;
