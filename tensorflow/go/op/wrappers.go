@@ -23501,6 +23501,17 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 	return op.Output(0)
 }
 
+// ShardDatasetAttr is an optional argument to ShardDataset.
+type ShardDatasetAttr func(optionalAttr)
+
+// ShardDatasetRequireNonEmpty sets the optional require_non_empty attribute to value.
+// If not specified, defaults to false
+func ShardDatasetRequireNonEmpty(value bool) ShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["require_non_empty"] = value
+	}
+}
+
 // Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
 //
 // Arguments:
@@ -23509,11 +23520,14 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 //	index: An integer representing the current worker index.
 //
 //
-func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShardDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ShardDataset",
 		Input: []tf.Input{
