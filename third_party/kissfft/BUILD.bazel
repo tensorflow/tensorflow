@@ -4,11 +4,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "LICENSE",
-    srcs = glob(["LICENSES/**"]),
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE"])
 
 cc_library(
     name = "kiss_fftr_16",
