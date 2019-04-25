@@ -210,6 +210,6 @@ tf_module {
   }
   member_method {
     name: "tridiagonal_solve"
-    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\'], "
   }
 }
