@@ -200,7 +200,10 @@ class ScopedAnnotation {
                                  : nullptr;
         }()) {}
 
-  bool IsEnabled() const { return static_cast<bool>(handle_); }
+  static bool IsEnabled() {
+    auto* trace_collector = GetTraceCollector();
+    return trace_collector && trace_collector->IsEnabledForAnnotations();
+  }
 
  private:
   std::unique_ptr<TraceCollector::Handle> handle_;
@@ -226,8 +229,6 @@ class ScopedActivity {
                                        name_part1, name_part2, is_expensive)
                                  : nullptr;
         }()) {}
-
-  bool IsEnabled() const { return static_cast<bool>(handle_); }
 
  private:
   std::unique_ptr<TraceCollector::Handle> handle_;
