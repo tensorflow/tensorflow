@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import numpy as np
 
 from tensorflow.python import keras
@@ -29,7 +27,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
@@ -1454,52 +1451,6 @@ class WeightAccessTest(keras_parameterized.TestCase):
 
     model = SubclassModel()
     self.assertEqual(len(model.weights), 1)
-
-  def test_layer_with_custom_signature(self):
-
-    class CustomSignatureLayer(keras.layers.Layer):
-
-      def __call__(self, tensor1, tensor2, tensor3=None):
-        if tensor3 is not None:
-          inputs = [tensor1, tensor2, tensor3]
-        else:
-          inputs = [tensor1, tensor2]
-        return super(CustomSignatureLayer, self).__call__(inputs)
-
-      def call(self, inputs):
-        return keras.layers.Concatenate()(inputs)
-
-    layer = CustomSignatureLayer()
-    inputs = keras.Input(10)
-    t1 = keras.layers.Dense(10)(inputs)
-    t2 = keras.layers.Dense(5)(inputs)
-    t3 = keras.layers.Dense(3)(inputs)
-    x1 = layer(t1, t2, tensor3=t3)
-    x2 = layer(t1, t2)
-    outputs = keras.layers.Concatenate()([x1, x2])
-    model = keras.Model(inputs, outputs)
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
-    model.fit(np.ones((10, 10)), np.ones((10, 33)), batch_size=2)
-    out = model(np.ones((20, 10)))
-    self.assertEqual(out.shape.as_list(), [20, 33])
-
-    model2 = model.from_config(
-        model.get_config(),
-        custom_objects={'CustomSignatureLayer': CustomSignatureLayer})
-    out = model2(np.ones((20, 10)))
-    self.assertEqual(out.shape.as_list(), [20, 33])
-
-    model3 = models.clone_model(model)
-    out = model3(np.ones((5, 10)))
-    self.assertEqual(out.shape.as_list(), [5, 33])
-
-    save_file = os.path.join(self.get_temp_dir(), 'ckpt')
-    model.save(save_file)
-    model4 = keras.models.load_model(
-        save_file,
-        custom_objects={'CustomSignatureLayer': CustomSignatureLayer})
-    out = model4(np.ones((5, 10)))
-    self.assertEqual(out.shape.as_list(), [5, 33])
 
 
 if __name__ == '__main__':

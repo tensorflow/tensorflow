@@ -866,11 +866,8 @@ class Network(base_layer.Layer):
                                                 computed_tensors)
             kwargs.setdefault('mask', computed_masks)
 
-          # Compute outputs. Use `Layer`s `__call__` rather than user-overridden
-          # `__call__` so that users can write layers that accept Tensors as
-          # keyword arguments in their `__call__`.
-          output_tensors = base_layer.Layer.__call__(layer, computed_tensors,
-                                                     **kwargs)
+          # Compute outputs.
+          output_tensors = layer(computed_tensors, **kwargs)
 
           # Update tensor_dict.
           for x, y in zip(
@@ -1064,8 +1061,9 @@ class Network(base_layer.Layer):
         # Preserve compatibility with older configs.
         flat_input_tensors = nest.flatten(input_tensors)
         if len(flat_input_tensors) == 1:
-          input_tensors = flat_input_tensors[0]
-        base_layer.Layer.__call__(layer, input_tensors, **kwargs)
+          layer(flat_input_tensors[0], **kwargs)
+        else:
+          layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
       """Deserializes a layer, then call it on appropriate inputs.
