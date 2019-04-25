@@ -234,6 +234,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
+  Status HandleScatter(HloInstruction* scatter) override;
 
   Status HandleSelect(HloInstruction* select) override;
 
@@ -292,6 +293,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     transpose_dimensions.insert(transpose_dimensions.end(),
                                 contracting_dimensions.begin(),
                                 contracting_dimensions.end());
+    if (absl::c_is_sorted(transpose_dimensions)) {
+      return dot_operand;
+    }
     return MakeTransposeHlo(dot_operand, transpose_dimensions);
   }
 
@@ -307,10 +311,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     simplifier_->UpdateLayout(&shape);
     return computation_->AddInstruction(HloInstruction::CreateReduce(
         shape, hlo, zero, dims, AddReduce_computation));
-  }
-
-  HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
-    return AddReduce(hlo, std::vector<int64>{dim});
   }
 
   // Convenience method for replacing an instruction with a bitcast. If operand
@@ -1205,17 +1205,25 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
   }
 
   HloInstruction* new_lhs =
-      dot->parent()->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::DropDegenerateDimensions(lhs_shape),
-          dot->mutable_operand(0)));
+      num_degenerate_lhs_dims > 0
+          ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::DropDegenerateDimensions(lhs_shape),
+                dot->mutable_operand(0)))
+          : dot->mutable_operand(0);
   HloInstruction* new_rhs =
-      dot->parent()->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::DropDegenerateDimensions(rhs_shape),
-          dot->mutable_operand(1)));
+      num_degenerate_rhs_dims > 0
+          ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::DropDegenerateDimensions(rhs_shape),
+                dot->mutable_operand(1)))
+          : dot->mutable_operand(1);
   TF_ASSIGN_OR_RETURN(auto new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
                                                dot->precision_config()));
-  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-      dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
+  if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
+  } else {
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
+  }
   return true;
 }
 
@@ -3175,6 +3183,22 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   return Status::OK();
 }
 
+Status AlgebraicSimplifierVisitor::HandleScatter(HloInstruction* scatter) {
+  if (ShapeUtil::IsZeroElementArray(scatter->operand(2)->shape()) &&
+      ReplaceInstructionIfSameShape(scatter, scatter->mutable_operand(0))) {
+    return Status::OK();
+  }
+  if (ShapeUtil::IsZeroElementArray(scatter->operand(1)->shape()) &&
+      SameShape(scatter, scatter->operand(0)) &&
+      SameShape(scatter, scatter->operand(2))) {
+    return ReplaceWithNewInstruction(
+        scatter, HloInstruction::CreateMap(
+                     scatter->shape(),
+                     {scatter->mutable_operand(0), scatter->mutable_operand(2)},
+                     scatter->to_apply()));
+  }
+  return Status::OK();
+}
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64 dimension_to_sort = sort->dimensions(0);
@@ -3191,8 +3215,8 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
 }
 
 namespace {
-bool OnlyPermutesMoreThanOneDegenerateDim(const Shape& shape,
-                                          absl::Span<const int64> perm) {
+bool OnlyPermutesDegenerateDims(const Shape& shape,
+                                absl::Span<const int64> perm) {
   std::vector<int64> new_permutation;
   int64 degenerate_count = 0;
   for (int64 i = 0; i < perm.size(); ++i) {
@@ -3202,7 +3226,7 @@ bool OnlyPermutesMoreThanOneDegenerateDim(const Shape& shape,
       ++degenerate_count;
     }
   }
-  return degenerate_count > 1 && absl::c_is_sorted(new_permutation);
+  return degenerate_count > 0 && absl::c_is_sorted(new_permutation);
 }
 }  // namespace
 
@@ -3224,8 +3248,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 
   // Replace transpose with a reshape if more than one degenerate method is
   // permuted.
-  if (OnlyPermutesMoreThanOneDegenerateDim(transpose->shape(),
-                                           transpose->dimensions())) {
+  if (OnlyPermutesDegenerateDims(transpose->shape(), transpose->dimensions())) {
     return ReplaceWithNewInstruction(
         transpose, HloInstruction::CreateReshape(
                        transpose->shape(), transpose->mutable_operand(0)));

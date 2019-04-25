@@ -163,9 +163,8 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   HouseHolderResult result;
   result.v = v;
   result.beta = beta;
-  result.a =
-      Sub(a, Mul(beta, BatchDot(BatchDot(a, TransposeInMinorDims(v), precision),
-                                v, precision)));
+  result.a = Sub(a, Mul(beta, BatchDot(BatchDot(a, false, v, true, precision),
+                                       v, precision)));
 
   return result;
 }
@@ -231,8 +230,8 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   result.v = v;
   result.beta = beta;
   result.a = Sub(
-      a, Mul(beta, BatchDot(v, BatchDot(TransposeInMinorDims(v), a, precision),
-                            precision)));
+      a, Mul(beta, BatchDot(v, false, BatchDot(v, true, a, false, precision),
+                            false, precision)));
 
   return result;
 }
@@ -290,18 +289,16 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                         HouseCol(a, i, i, eps, precision));
-    u = Sub(u, Mul(house_col.beta,
-                   BatchDot(BatchDot(u, house_col.v, precision),
-                            TransposeInMinorDims(house_col.v), precision)));
+    u = Sub(u,
+            Mul(house_col.beta, BatchDot(BatchDot(u, house_col.v, precision),
+                                         false, house_col.v, true, precision)));
     a = house_col.a;
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_row,
                         HouseRow(a, i, i + one, eps, precision));
-    v = Sub(
-        v,
-        Mul(house_row.beta,
-            BatchDot(BatchDot(v, TransposeInMinorDims(house_row.v), precision),
-                     house_row.v, precision)));
+    v = Sub(v, Mul(house_row.beta,
+                   BatchDot(BatchDot(v, false, house_row.v, true, precision),
+                            house_row.v, precision)));
     a = house_row.a;
 
     std::vector<XlaOp> updated_values;
@@ -331,11 +328,10 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
       XlaOp index = ScalarLike(values[0], n - k);
       TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                           HouseCol(values[3], index, index, eps, precision));
-      values[1] =
-          Sub(values[1],
-              Mul(house_col.beta,
-                  BatchDot(BatchDot(values[1], house_col.v, precision),
-                           TransposeInMinorDims(house_col.v), precision)));
+      values[1] = Sub(values[1],
+                      Mul(house_col.beta,
+                          BatchDot(BatchDot(values[1], house_col.v, precision),
+                                   false, house_col.v, true, precision)));
       values[3] = house_col.a;
     }
   }
