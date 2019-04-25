@@ -129,7 +129,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }                                                                         \
   }
 
-#define TF_LITE_CONCATENATION_QUANTIZED                           \
+#define TF_LITE_CONCATENATION_QUANTIZED()                         \
   {                                                               \
     VectorOfQuantizedTensors all_inputs(*context, *node->inputs); \
     tflite::ConcatenationParams op_params;                        \
@@ -158,7 +158,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_CONCATENATION(int32);
       break;
     case kTfLiteUInt8:
-      TF_LITE_CONCATENATION_QUANTIZED;
+      TF_LITE_CONCATENATION_QUANTIZED();
       break;
     case kTfLiteInt8:
       TF_LITE_CONCATENATION(int8_t);
@@ -178,6 +178,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   return kTfLiteOk;
 }
+
+#undef TF_LITE_MACRO_DISPATCH
 
 }  // namespace concatenation
 
