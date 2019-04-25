@@ -578,6 +578,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     XLA_VLOG_LINES(1, module->ToString(GetPrintOptions()));
   }
 
+  if (VLOG_IS_ON(2)) {
+    const auto& annotations = resources.annotations;
+    XLA_VLOG_LINES(2, annotations.input_output_aliasing_map.ToString());
+  }
+
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
   EntryVisitor visitor(resources,

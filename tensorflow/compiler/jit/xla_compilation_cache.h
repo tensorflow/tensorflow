@@ -133,6 +133,7 @@ class XlaCompilationCache : public ResourceBase {
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
   Status BuildExecutable(const XlaCompiler::Options& options,
                          const XlaCompiler::CompilationResult& result,
+                         const uint64 number_of_arguments,
                          const uint64 number_of_variables,
                          std::unique_ptr<xla::LocalExecutable>* executable);
 

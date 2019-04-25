@@ -119,10 +119,9 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
 
   std::map<const HloInstruction*, std::pair<int, int>> operands;
 
-  const int64 n_vars = module->config().resource_update_to_input_index().size();
+  const int64 num_res = GetResourceVariableParameterCount(module);
   std::set<const HloInstruction*> variable_inputs(
-      module->entry_computation()->parameter_instructions().end() -
-          std::min(module->entry_computation()->num_parameters(), n_vars),
+      module->entry_computation()->parameter_instructions().end() - num_res,
       module->entry_computation()->parameter_instructions().end());
 
   for (const auto& comp : module->computations()) {
