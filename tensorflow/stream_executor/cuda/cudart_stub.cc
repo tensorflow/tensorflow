@@ -45,7 +45,13 @@ cudaError_t GetSymbolNotFoundError() {
 
 #define __dv(v)
 #define __CUDA_DEPRECATED
+
+// A bunch of new symbols were introduced in version 10
+#if CUDA_VERSION <= 9020
+#include "tensorflow/stream_executor/cuda/cuda_runtime_9_0.inc"
+#else
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_0.inc"
+#endif
 #undef __dv
 #undef __CUDA_DEPRECATED
 
