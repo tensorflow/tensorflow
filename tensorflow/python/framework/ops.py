@@ -1761,10 +1761,10 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     if shape is None:
       shape = self._values.shape
     if self._dense_shape is None:
-      return [shape, shape[:1]]  # values, indices
+      return (shape, shape[:1])  # values, indices
     else:
       # values, indices, dense_shape
-      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
 
   @property
   def _is_graph_tensor(self):

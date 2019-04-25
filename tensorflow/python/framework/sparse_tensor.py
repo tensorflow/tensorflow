@@ -250,11 +250,11 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       raise ValueError("Shape invariant for SparseTensor must have the form "
                        "TensorShape([r]), got %r" % shape)
     rank = tensor_shape.dimension_value(shape[0])
-    return [
+    return (
         tensor_shape.TensorShape([None, rank]),  # indices
         tensor_shape.TensorShape([None]),  # values
         tensor_shape.TensorShape([rank])  # dense_shape
-    ]
+        )
 
   @property
   def _is_graph_tensor(self):

@@ -3466,7 +3466,7 @@ def while_loop(cond,
           return x
         return ops.convert_to_tensor(x)
 
-      loop_vars = nest.map_structure(convert, loop_vars)
+      loop_vars = nest.map_structure(convert, loop_vars, expand_composites=True)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
