@@ -80,12 +80,14 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        ::grpc::Status status;
-        row_keys_ = dataset()->table()->table().SampleRows(status);
-        if (!status.ok()) {
+        ::google::cloud::StatusOr<
+            std::vector<::google::cloud::bigtable::RowKeySample>>
+            sampled_rows = dataset()->table()->table().SampleRows();
+        if (!sampled_rows.ok()) {
           row_keys_.clear();
-          return GrpcStatusToTfStatus(status);
+          return GcpStatusToTfStatus(sampled_rows.status());
         }
+        row_keys_ = std::move(*sampled_rows);
         return Status::OK();
       }
 
