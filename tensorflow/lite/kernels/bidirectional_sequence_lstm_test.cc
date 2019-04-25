@@ -187,17 +187,25 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
     if (use_aux_input) {
       aux_input_ = AddInput(TensorType_FLOAT32);
+      fw_aux_input_to_input_weights_ = AddInput(weight_type);
+      fw_aux_input_to_forget_weights_ = AddInput(weight_type);
+      fw_aux_input_to_cell_weights_ = AddInput(weight_type);
+      fw_aux_input_to_output_weights_ = AddInput(weight_type);
+      bw_aux_input_to_input_weights_ = AddInput(weight_type);
+      bw_aux_input_to_forget_weights_ = AddInput(weight_type);
+      bw_aux_input_to_cell_weights_ = AddInput(weight_type);
+      bw_aux_input_to_output_weights_ = AddInput(weight_type);
     } else {
       aux_input_ = AddNullInput();
+      fw_aux_input_to_input_weights_ = AddNullInput();
+      fw_aux_input_to_forget_weights_ = AddNullInput();
+      fw_aux_input_to_cell_weights_ = AddNullInput();
+      fw_aux_input_to_output_weights_ = AddNullInput();
+      bw_aux_input_to_input_weights_ = AddNullInput();
+      bw_aux_input_to_forget_weights_ = AddNullInput();
+      bw_aux_input_to_cell_weights_ = AddNullInput();
+      bw_aux_input_to_output_weights_ = AddNullInput();
     }
-    fw_aux_input_to_input_weights_ = AddNullInput();
-    fw_aux_input_to_forget_weights_ = AddNullInput();
-    fw_aux_input_to_cell_weights_ = AddNullInput();
-    fw_aux_input_to_output_weights_ = AddNullInput();
-    bw_aux_input_to_input_weights_ = AddNullInput();
-    bw_aux_input_to_forget_weights_ = AddNullInput();
-    bw_aux_input_to_cell_weights_ = AddNullInput();
-    bw_aux_input_to_output_weights_ = AddNullInput();
 
     SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
                  BuiltinOptions_BidirectionalSequenceLSTMOptions,
@@ -308,6 +316,26 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
   void SetAuxInput(int offset, float* begin, float* end) {
     PopulateTensor(aux_input_, offset, begin, end);
+  }
+
+  void SetAuxInputToInputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_aux_input_to_input_weights_, f);
+    PopulateWeightTensor(bw_aux_input_to_input_weights_, f);
+  }
+
+  void SetAuxInputToForgetWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_aux_input_to_forget_weights_, f);
+    PopulateWeightTensor(bw_aux_input_to_forget_weights_, f);
+  }
+
+  void SetAuxInputToCellWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_aux_input_to_cell_weights_, f);
+    PopulateWeightTensor(bw_aux_input_to_cell_weights_, f);
+  }
+
+  void SetAuxInputToOutputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_aux_input_to_output_weights_, f);
+    PopulateWeightTensor(bw_aux_input_to_output_weights_, f);
   }
 
   std::vector<float> GetFwOutput() { return ExtractVector<float>(fw_output_); }
@@ -2596,7 +2624,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
 // Same as the no cifg no peephole no projection no clipping test, but have an
 // aux input (without aux input weights), this is the case when stacking but no
 // cross-links.
-TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
+TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
@@ -2738,6 +2766,11 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
   // Aux input and input are the same, so we should observe the same outputs
   // as there's no aux input.
   lstm.SetAuxInput(0, batch0_start, batch0_end);
+  std::vector<float> dummpy_weights(n_cell * n_input, 0.0f);
+  lstm.SetAuxInputToInputWeights(dummpy_weights);
+  lstm.SetAuxInputToForgetWeights(dummpy_weights);
+  lstm.SetAuxInputToCellWeights(dummpy_weights);
+  lstm.SetAuxInputToOutputWeights(dummpy_weights);
 
   lstm.Invoke();
 
