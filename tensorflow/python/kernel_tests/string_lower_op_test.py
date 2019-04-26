@@ -49,7 +49,8 @@ class StringLowerOpTest(test.TestCase):
     with self.cached_session() as sess:
       output = string_ops.string_lower(strings, encoding='utf-8')
       output = self.evaluate(output)
-      self.assertAllEqual(output, [[b"óósschloë"]]),
+      # output: "óósschloë"
+      self.assertAllEqual(output, [[b"\xc3\xb3\xc3\xb3sschlo\xc3\xab"]])
 
 
 if __name__ == "__main__":
