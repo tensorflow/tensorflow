@@ -6118,6 +6118,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
     "gemm_functors.h",
     "mirror_pad_op_cpu_impl.h",
@@ -6168,6 +6169,7 @@ filegroup(
             "decode_and_crop_jpeg_op.*",
             "decode_gif_op.*",
             "identity_reader_op.*",
+            "redux_functor.h",
             "remote_fused_graph_execute_op.*",
             "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
