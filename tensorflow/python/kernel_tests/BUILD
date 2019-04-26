@@ -3710,6 +3710,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/compiler/xla",
     ],
     grpc_enabled = True,
     xla_enable_strict_auto_jit = True,
