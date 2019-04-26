@@ -20,7 +20,6 @@ limitations under the License.
 #include <math.h>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -141,8 +141,8 @@ class MklRequantizePerChannelOp : public OpKernel {
       output_min->flat<float>()(0) = input_requested_min_float;
       output_max->flat<float>()(0) = input_requested_max_float;
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + std::string(e.message) + ", in file " +
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         std::string(e.message) + ", in file " +
                          std::string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
@@ -162,11 +162,18 @@ class MklRequantizePerChannelOp : public OpKernel {
   engine cpu_engine_ = engine(engine::cpu, 0);
 };
 
+// Registration for out_type: qint8
 REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint32>("T")
                             .TypeConstraint<qint8>("out_type"),
                         MklRequantizePerChannelOp<CPUDevice, qint8>);
+// Registration for out_type: quint8
+REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint32>("T")
+                            .TypeConstraint<quint8>("out_type"),
+                        MklRequantizePerChannelOp<CPUDevice, quint8>);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
