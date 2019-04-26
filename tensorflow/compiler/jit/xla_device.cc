@@ -462,11 +462,13 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Allocator* allocator = GetAllocatorLocked(alloc_attrs);
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
     Notification n;
-    device_context->CopyCPUTensorToDevice(&parsed, this, &copy,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
+    device_context->CopyCPUTensorToDevice(
+        &parsed, this, &copy,
+        [&n, &status](const Status& s) {
+          status = s;
+          n.Notify();
+        },
+        true /*sync_dst_compute*/);
     n.WaitForNotification();
     *tensor = copy;
   }

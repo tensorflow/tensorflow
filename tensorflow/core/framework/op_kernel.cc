@@ -751,6 +751,9 @@ Status OpKernelContext::allocate_temp(
       int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
+  } else if (record_memory_consumption_) {
+    mutex_lock l(stats_mu_);
+    temp_memory_allocated_ += out_temp->TotalBytes();
   }
   return s;
 }
@@ -775,6 +778,10 @@ Status OpKernelContext::allocate_persistent(DataType type,
         int64 alloc_id = a->AllocationId(t->tensor_data().data());
         record_persistent_memory_allocation(alloc_size, alloc_id);
       }
+    } else if (record_memory_consumption_) {
+      mutex_lock l(stats_mu_);
+      persistent_memory_allocated_ +=
+          out_persistent->AccessTensor(this)->TotalBytes();
     }
   }
   return s;
