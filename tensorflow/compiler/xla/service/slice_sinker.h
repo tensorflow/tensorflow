@@ -20,8 +20,8 @@ limitations under the License.
 
 namespace xla {
 
-// An HLO pass that sink slice instructions to merge the same operations
-// togather.
+// An HLO pass that sinks slice instructions used by a group of elementwise
+// instructions and merges the group of elementwise instructions.
 class SliceSinker: public HloModulePass {
  public:
   tensorflow::StringPiece name() const override { return "slice-sinker"; }
