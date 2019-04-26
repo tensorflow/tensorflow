@@ -90,6 +90,7 @@ class _BaseAttentionMechanism(AttentionMechanism):
                memory_layer=None,
                check_inner_dims_defined=True,
                score_mask_value=None,
+               custom_key_value_fn=None,
                name=None):
     """Construct base AttentionMechanism class.
 
@@ -114,6 +115,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
       score_mask_value: (optional): The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
         `memory_sequence_length` is not None.
+      custom_key_value_fn: (optional): The custom function for
+        computing keys and values.
       name: Name to use when creating ops.
     """
     if (query_layer is not None and
@@ -148,6 +151,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
       self._keys = (
           self.memory_layer(self._values) if self.memory_layer  # pylint: disable=not-callable
           else self._values)
+      if custom_key_value_fn is not None:
+        self._keys, self._values = custom_key_value_fn(self._keys, self._values)
       self._batch_size = (
           tensor_shape.dimension_value(self._keys.shape[0]) or
           array_ops.shape(self._keys)[0])
@@ -672,6 +677,7 @@ class LuongAttention(_BaseAttentionMechanism):
                probability_fn=None,
                score_mask_value=None,
                dtype=None,
+               custom_key_value_fn=None,
                name="LuongAttention"):
     """Construct the AttentionMechanism mechanism.
 
@@ -691,6 +697,8 @@ class LuongAttention(_BaseAttentionMechanism):
         `probability_fn`. The default is -inf. Only used if
         `memory_sequence_length` is not None.
       dtype: The data type for the memory layer of the attention mechanism.
+      custom_key_value_fn: (optional): The custom function for
+        computing keys and values.
       name: Name to use when creating ops.
     """
     # For LuongAttention, we only transform the memory layer; thus
@@ -708,6 +716,7 @@ class LuongAttention(_BaseAttentionMechanism):
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
+        custom_key_value_fn=custom_key_value_fn,
         name=name)
     self._num_units = num_units
     self._scale = scale
@@ -930,6 +939,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
                probability_fn=None,
                score_mask_value=None,
                dtype=None,
+               custom_key_value_fn=None,
                name="BahdanauAttention"):
     """Construct the Attention mechanism.
 
@@ -950,6 +960,8 @@ class BahdanauAttention(_BaseAttentionMechanism):
         `memory_sequence_length` is not None.
       dtype: The data type for the query and memory layers of the attention
         mechanism.
+      custom_key_value_fn: (optional): The custom function for
+        computing keys and values.
       name: Name to use when creating ops.
     """
     if probability_fn is None:
@@ -964,6 +976,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
             num_units, name="memory_layer", use_bias=False, dtype=dtype),
         memory=memory,
         probability_fn=wrapped_probability_fn,
+        custom_key_value_fn=custom_key_value_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
         name=name)
