@@ -109,6 +109,11 @@ int ROCmPlatform::VisibleDeviceCount() const {
 
 const string& ROCmPlatform::Name() const { return name_; }
 
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+ROCmPlatform::DescriptionForDevice(int ordinal) const {
+  return GpuExecutor::CreateDeviceDescription(ordinal);
+}
+
 port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
