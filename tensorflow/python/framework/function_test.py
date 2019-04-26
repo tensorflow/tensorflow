@@ -835,7 +835,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual("Foo_kEdkAG8SJvg",
                        Foo.instantiate([dtypes.float32] * 3).name)
     else:
-      self.assertEqual("Foo_aCYSbwBkR5A",
+      self.assertEqual("Foo_iaWr0XXe2BQ",
                        Foo.instantiate([dtypes.float32] * 3).name)
 
   @test_util.run_deprecated_v1
