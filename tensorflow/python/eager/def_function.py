@@ -915,9 +915,9 @@ def function(func=None,
 
   _Tracing and staging_
 
-  When `autograph` is `True`, all Python code that depends on `Tensor` values is
-  staged into a TensorFlow graph. When `autograph` is `False`, the function is
-  traced and control flow is not allowed to depend on data.
+  When `autograph` is `True`, all Python control flow that depends on `Tensor`
+  values is staged into a TensorFlow graph. When `autograph` is `False`, the
+  function is traced and control flow is not allowed to depend on data.
 
   Note that `function` only stages TensorFlow operations, all Python code that
   `func` executes and does not depend on data will shape the _construction_ of
@@ -953,6 +953,33 @@ def function(func=None,
   The same is true if code with Python side effects is used inside control flow,
   such as a loop. If your code uses side effects that are not intended to
   control graph construction, wrap them inside `tf.compat.v1.py_func`.
+
+  _Retracing_
+
+  A single tf.function object might need to map to multiple computation graphs
+  under the hood. This should be visible only as performance (tracing graphs has
+  a nonzero computational and memory cost) but should not affect the correctness
+  of the program. A traced function should return the same result as it would
+  when run eagerly, assuming no unintended Python side-effects.
+
+  Calling a `tf.function` with tensor arguments of different dtypes should lead
+  to at least one computational graph per distinct set of dtypes. Alternatively,
+  always calling a `tf.function` with tensor arguments of the same shapes and
+  dtypes and the same non-tensor arguments should not lead to additional
+  retracings of your function.
+
+  Other than that, TensorFlow reserves the right to retrace functions as many
+  times as needed, to ensure that traced functions behave as they would when run
+  eagerly and to provide the best end-to-end performance. For example, the
+  behavior of how many traces TensorFlow will do when the function is repeatedly
+  called with different python scalars as arguments is left undefined to allow
+  for future optimizations.
+
+  To control the tracing behavior, use the following tools:
+   - different `tf.function` objects are guaranteed to not share traces; and
+   - specifying a signature or using concrete function objects returned from
+     get_concrete_function() guarantees that only one function graph will be
+     built.
 
   Args:
     func: function to be compiled. If `func` is None, returns a decorator that
