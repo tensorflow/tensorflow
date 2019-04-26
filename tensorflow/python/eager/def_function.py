@@ -30,7 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -38,7 +37,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
 
-class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
+class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   """Variable which does not lift its initializer out of function context.
 
   Instances of this variable, when created, build a graph which runs their
@@ -48,7 +47,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
   mode. That is, non-function-building graphs are not supported.
   """
 
-  def __init__(self,  # pylint: disable=super-init-not-called
+  def __init__(self,
                initial_value=None,
                trainable=None,
                caching_device=None,
@@ -116,8 +115,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
           caching_device=caching_device, name=name, dtype=dtype,
           constraint=constraint)
       return
-    with ops.init_scope():
-      self._in_graph_mode = not context.executing_eagerly()
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
@@ -130,44 +127,27 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
-    synchronization, aggregation, trainable = (
-        variables.validate_synchronization_aggregation_trainable(
-            synchronization, aggregation, trainable, name))
-    self._trainable = trainable
-    self._synchronization = synchronization
-    self._aggregation = aggregation
-    self._save_slice_info = None
-    self._initial_value = None
-    self._initializer_op = None
-    self._is_initialized_op = None
-    self._graph_element = None
-    self._cached_value = None
-    # Store the graph key so optimizers know how to only retrieve variables from
-    # this graph. Guaranteed to be the same as the eager graph_key.
-    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as name:
-      # pylint: disable=protected-access
-      with ops.init_scope():
-        handle_name = ops.name_from_scope_name(name)
-        unique_id = "%s_%d" % (handle_name, ops.uid())
-        shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
             name="initial_value", dtype=dtype)
-      with ops.init_scope():
-        self._handle = resource_variable_ops.eager_safe_variable_handle(
-            initial_value=initial_value,
-            shared_name=shared_name,
-            name=name,
-            graph_mode=self._in_graph_mode)
-      self._shape = initial_value.shape
-      self._unique_id = unique_id
-      self._handle_name = handle_name + ":0"
-      self._dtype = initial_value.dtype.base_dtype
-      self._constraint = constraint
       assert initial_value is not None
+
+      # Use the constructor for UninitializedVariable to start.
+      super(UnliftedInitializerVariable, self).__init__(
+          trainable=trainable,
+          caching_device=caching_device,
+          name=name,
+          shape=initial_value.shape,
+          dtype=initial_value.dtype,
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation,
+          extra_handle_data=initial_value,
+          **unused_kwargs)
+
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
@@ -188,13 +168,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
               self._initializer_op = resource_variable_ops.assign_variable_op(
                   self._handle, lifted_initializer, name=n)
-          with ops.name_scope("Read"), ops.colocate_with(self._handle):
-            # Manually assign reads to the handle's device to avoid log
-            # messages.
-            with ops.device(self._handle.device):
-              value = self._read_variable_op()
-            self._graph_element = value
-          ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
       else:
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
@@ -213,16 +186,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
-
-    # After the handle has been created, set up a way to clean it up when
-    # executing eagerly. We'll hold the only reference to the deleter, so that
-    # when this object is garbage collected the deleter will be too. This
-    # means ResourceVariables can be part of reference cycles without those
-    # cycles being uncollectable.
-    if not self._in_graph_mode:
-      self._handle_deleter = resource_variable_ops.EagerResourceDeleter(
-          handle=self._handle, handle_device=self._handle.device)
-    self._cached_shape_as_list = None
 
 
 RUN_FUNCTIONS_EAGERLY = False
