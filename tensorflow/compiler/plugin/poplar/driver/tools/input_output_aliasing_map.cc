@@ -9,8 +9,6 @@ namespace poplarplugin {
 
 InputOutputAliasingMap::InputOutputAliasingMap(const HloModule* module) {
   const auto& inputs = module->entry_computation()->parameter_instructions();
-  uint64 num_arguments = module->config().argument_count();
-  uint64 num_resource_inputs = module->config().resource_input_count();
   const auto& input_mapping = module->config().input_mapping();
   const auto& resource_update_to_input_index =
       module->config().resource_update_to_input_index();
@@ -21,21 +19,29 @@ InputOutputAliasingMap::InputOutputAliasingMap(const HloModule* module) {
    * are used by it.
    *
    * The `num_arguments` variable stores the total number of arguments in the
-   * original _XlaRun operation.  `input_mapping` contains a map from the XLA
-   * computation parameters to the _XlaRun arguments.  The number of entries
-   * in the `input_mapping` will be less than `num_arguments` when there are
-   * uninitialized ResourceVariables, which are not passed to the XLA
-   * Computation.
+   * original _XlaRun operation.  This does not include the resource variables.
    *
    * The `num_resource_inputs` gives the total number of resource variables in
    * the original _XlaRun Op.
+   *
+   * `input_mapping` contains a map from the XLA computation parameters to the
+   * _XlaRun arguments.  The number of entries in the `input_mapping` may be
+   * less than the sum of `num_arguments` and `num_resources` when there are
+   * uninitialized ResourceVariables, which are not passed to the XLA
+   * Computation.
    */
 
-  num_streaming_inputs_ = num_arguments - num_resource_inputs;
+  if (module->config().argument_count() == 0 &&
+      module->config().resource_input_count() == 0) {
+    // The information is not available.  Assume all inputs and outputs are
+    // streamed.
+    num_streaming_inputs_ = inputs.size();
+  } else {
+    num_streaming_inputs_ = module->config().argument_count();
+  }
 
   for (uint64 idx = 0; idx < inputs.size(); ++idx) {
-    bool is_resource = idx < input_mapping.size() &&
-                       input_mapping[idx] >= num_streaming_inputs_;
+    bool is_resource = (idx >= num_streaming_inputs_);
     const InputInfo::Type type = is_resource
                                      ? InputInfo::Type::ResourceNotModified
                                      : InputInfo::Type::StreamedVariable;
@@ -60,7 +66,6 @@ InputOutputAliasingMap::InputOutputAliasingMap(const HloModule* module) {
     } else {
       const uint64 resource_idx = idx - num_streaming_outputs_;
       const uint64 input_index = resource_update_to_input_index[resource_idx];
-
       auto input_map_it = absl::c_find(input_mapping, input_index);
       if (input_map_it != input_mapping.end()) {
         int64 parameter_index =
@@ -68,7 +73,7 @@ InputOutputAliasingMap::InputOutputAliasingMap(const HloModule* module) {
 
         if (num_streaming_inputs_ <= parameter_index) {
           entry_output_infos_.push_back(
-              OutputInfo(OutputInfo::Type::ResourceModified, input_index));
+              OutputInfo(OutputInfo::Type::ResourceModified, parameter_index));
           entry_input_infos_[parameter_index] =
               InputInfo(InputInfo::Type::ResourceModified, idx);
         } else {
@@ -138,21 +143,33 @@ const uint64 InputOutputAliasingMap::OutputInfo::GetInputIndex() const {
 std::string InputOutputAliasingMap::ToString() const {
   std::stringstream ss;
   ss << "== Input information ==\n";
+  ss << "Num streaming = " << num_streaming_inputs_ << "\n";
   for (int i = 0; i < entry_input_infos_.size(); i++) {
     auto& ip = entry_input_infos_[i];
-    ss << " " << i << ":\n";
-    ss << " -IsStreaming=" << ip.IsStreaming() << "\n";
-    ss << " -IsResource=" << ip.IsResource() << "\n";
-    ss << " -IsResourceNotModified=" << ip.IsResourceNotModified() << "\n";
-    ss << " -GetOutputIndex=" << ip.GetOutputIndex() << "\n";
+    ss << " " << i << ": ";
+    if (ip.IsStreaming()) {
+      ss << "streaming\n";
+    } else {
+      ss << (ip.IsResource() ? "resource" : "");
+      if (ip.IsResourceNotModified()) {
+        ss << " (not modified)\n";
+      } else {
+        ss << ", output index = " << ip.GetOutputIndex() << "\n";
+      }
+    }
   }
   ss << "== Output information ==\n";
+  ss << "Num streaming = " << num_streaming_outputs_ << "\n";
   for (int i = 0; i < entry_output_infos_.size(); i++) {
     auto& op = entry_output_infos_[i];
-    ss << " " << i << ":\n";
-    ss << " -IsStreaming=" << op.IsStreaming() << "\n";
-    ss << " -IsResourceModified=" << op.IsResourceModified() << "\n";
-    ss << " -GetInputIndex=" << op.GetInputIndex() << "\n";
+    ss << " " << i << ": ";
+    if (op.IsStreaming()) {
+      ss << "streaming\n";
+    } else if (op.IsResourceModified()) {
+      ss << "modified resource, input index = " << op.GetInputIndex() << "\n";
+    } else {
+      ss << "initialized resource\n";
+    }
   }
 
   return ss.str();

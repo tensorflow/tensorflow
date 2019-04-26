@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
+
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -45,22 +47,25 @@ class GraphCompileIoMapTest : public HloTestBase {
 
 namespace {
 
-TEST_F(GraphCompileIoMapTest, NoShared) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+TEST_F(GraphCompileIoMapTest, DefaultEmptyModuleConfig) {
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
-  builder.AddInstruction(HloInstruction::CreateTuple({add}));
+main {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] add(a0, a1)
+  ROOT t = (f16[]) tuple(a2)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
 
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
@@ -73,7 +78,57 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   PoplarCompiler compiler;
 
   std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(2, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsStreaming());
+  EXPECT_EQ(1, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsStreaming());
+}
+
+TEST_F(GraphCompileIoMapTest, NoShared) {
+  std::string hlo_string = R"(
+HloModule top
+
+main {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] add(a0, a1)
+  ROOT t = (f16[]) tuple(a2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(2);
+  config.set_resource_input_count(0);
+  config.set_input_mapping({0, 1});
+  config.set_resource_update_to_input_index({});
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
+
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  IpuOptions opts;
+  auto* p = static_cast<PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+
+  PoplarCompiler compiler;
+
+  std::unique_ptr<Executable> executable =
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -89,31 +144,29 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 }
 
 TEST_F(GraphCompileIoMapTest, Input1Shared) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto res = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "res"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, res, in1));
-  builder.AddInstruction(HloInstruction::CreateTuple({add}));
+main {
+  a0 = f16[] parameter(0)
+  p1 = f16[] parameter(1)
+  a2 = f16[] add(p1, a0),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="grad1"}
+  ROOT t = (f16[]) tuple(a2)
+}
+  )";
 
-  OpMetadata metadata1;
-  metadata1.set_op_name("grad%1");
-  metadata1.set_op_type("ResourceApplyGradientDescent");
-  add->set_metadata(metadata1);
-
-  auto computation = builder.Build();
-
-  auto config = GetModuleConfigForTest();
-  config.set_argument_count(2);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(1);
   config.set_resource_input_count(1);
   config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({1});
-  auto hlo_module = CreateNewVerifiedModuleWithConfig(config);
-  hlo_module->AddEntryComputation(std::move(computation));
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
 
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
@@ -126,7 +179,7 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   PoplarCompiler compiler;
 
   std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -143,38 +196,38 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   EXPECT_EQ(1, output_infos[0].GetInputIndex());
 }
 
-TEST_F(GraphCompileIoMapTest, TupleInTuple) {
-  Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
+TEST_F(GraphCompileIoMapTest, TwoResourcesOnlyOneUpdating) {
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
-  auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, image_shape, "input3"));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
-  auto tup1 = builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
-  auto tup2 = builder.AddInstruction(HloInstruction::CreateTuple({add2, in3}));
-  builder.AddInstruction(HloInstruction::CreateTuple({tup1, tup2}));
+main {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] parameter(3)
+  a4 = f16[] add(a2, a0),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="grad1"}
+  a5 = f16[] add(a1, a3)
+  ROOT t = (f16[], f16[]) tuple(a5, a4)
+}
+  )";
 
-  OpMetadata metadata1;
-  metadata1.set_op_name("grad%1");
-  metadata1.set_op_type("ResourceApplyGradientDescent");
-  add1->set_metadata(metadata1);
+  /* a0 is a streamed input
+   * a1, a2, a3 are resources
+   * output is a tuple of (streamed out, resource update of a2)
+   * a1 and a3 are resources which are not updated
+   */
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(1);
+  config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3});
+  config.set_resource_update_to_input_index({2});
 
-  OpMetadata metadata2;
-  metadata2.set_op_name("grad%2");
-  metadata2.set_op_type("ResourceApplyGradientDescent");
-  add2->set_metadata(metadata2);
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto& module = module_or_status.ValueOrDie();
 
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
@@ -187,7 +240,72 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   PoplarCompiler compiler;
 
   std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(4, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsResource());
+  EXPECT_TRUE(input_infos[1].IsResourceNotModified());
+  EXPECT_TRUE(input_infos[2].IsResource());
+  EXPECT_FALSE(input_infos[2].IsResourceNotModified());
+  EXPECT_TRUE(input_infos[3].IsResource());
+  EXPECT_TRUE(input_infos[3].IsResourceNotModified());
+  EXPECT_EQ(1, input_infos[2].GetOutputIndex());
+
+  EXPECT_EQ(2, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsStreaming());
+  EXPECT_TRUE(output_infos[1].IsResourceModified());
+  EXPECT_EQ(2, output_infos[1].GetInputIndex());
+}
+
+TEST_F(GraphCompileIoMapTest, TupleInTuple) {
+  std::string hlo_string = R"(
+HloModule top
+
+main {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] add(a0, a1),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="grad1"}
+  a4 = f16[] add(a1, a2),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="grad2"}
+  a5 = (f16[], f16[]) tuple(a3, a4)
+  a6 = (f16[], f16[]) tuple(a4, a2)
+  ROOT t = ((f16[], f16[]), (f16[], f16[])) tuple(a5, a6)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(3);
+  config.set_resource_input_count(0);
+  config.set_input_mapping({0, 1, 2});
+  config.set_resource_update_to_input_index({});
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
+
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  IpuOptions opts;
+  auto* p = static_cast<PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+
+  PoplarCompiler compiler;
+
+  std::unique_ptr<Executable> executable =
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -205,29 +323,33 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 }
 
 TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
-  Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
-  auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, image_shape, "input3"));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
-  auto tup1 = builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
-  auto tup2 = builder.AddInstruction(HloInstruction::CreateTuple({add2, in3}));
-  auto tup3 = builder.AddInstruction(HloInstruction::CreateTuple({tup1, tup2}));
-  builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(tup2->shape(), tup3, 1));
+main {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] add(a0, a1)
+  a4 = f16[] add(a1, a2)
+  a5 = (f16[], f16[]) tuple(a3, a4)
+  a6 = (f16[], f16[]) tuple(a4, a2)
+  a7 = ((f16[], f16[]), (f16[], f16[])) tuple(a5, a6)
+  ROOT t = (f16[], f16[]) get-tuple-element(a7), index=1
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(3);
+  config.set_resource_input_count(0);
+  config.set_input_mapping({0, 1, 2});
+  config.set_resource_update_to_input_index({});
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
 
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
@@ -240,7 +362,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   PoplarCompiler compiler;
 
   std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -258,29 +380,31 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 }
 
 TEST_F(GraphCompileIoMapTest, ResourceInit) {
-  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto i2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto i3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, shape, "input3"));
-  builder.AddInstruction(HloInstruction::CreateTuple({i1, i1, i2, i3}));
-
-  auto computation = builder.Build();
+main {
+  a0 = f32[2] parameter(0)
+  a1 = f32[2] parameter(1)
+  a2 = f32[2] parameter(2)
+  ROOT t = (f32[2], f32[2], f32[2], f32[2]) tuple(a0, a0, a1, a2)
+}
+  )";
 
   /* 3 inputs, 4 resources, all resources uninitialized, 2 set from one of the
    * inputs
    */
-  auto config = GetModuleConfigForTest();
-  config.set_argument_count(7);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_argument_count(3);
   config.set_resource_input_count(4);
   config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({3, 4, 5, 6});
-  auto hlo_module = CreateNewVerifiedModuleWithConfig(config);
-  hlo_module->AddEntryComputation(std::move(computation));
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto& module = module_or_status.ValueOrDie();
 
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
@@ -295,12 +419,11 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
 
   PoplarCompiler compiler;
 
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
+  module = compiler.RunHloPasses(std::move(module), stream_executor, nullptr)
+               .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+      compiler.RunBackend(std::move(module), stream_executor, nullptr)
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -342,6 +465,8 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
 
   float b2[2] = {5.0, 6.0};
   stream_executor->SynchronousMemcpyH2D(b2, sizeof(float) * 2, &buf2);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
 
   ShapedBuffer arg0(shape, shape, platform, 0);
   arg0.set_buffer(buf0, {});

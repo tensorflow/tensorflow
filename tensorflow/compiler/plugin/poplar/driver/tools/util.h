@@ -48,6 +48,9 @@ absl::optional<To> convert_scalar(const From& from) {
   return check_convert_ok(to, from) ? absl::optional<To>(to) : absl::nullopt;
 };
 
+// Calculate the number of resource variable parameters
+int64 GetResourceVariableParameterCount(const HloModule*);
+
 // Check if there are any operations in the computation which have sharding
 // information
 bool HaveSharding(HloComputation* comp);

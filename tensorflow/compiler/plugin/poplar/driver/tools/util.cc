@@ -15,6 +15,22 @@
 namespace xla {
 namespace poplarplugin {
 
+int64 GetResourceVariableParameterCount(const HloModule* module) {
+  /*
+   * An XLA entry computation has a set of input parameters.  These map to a
+   * combination of the inputs to the _XlaRun TF Op, and the resources which
+   * are used by it.
+   *
+   * The `num_arguments` variable stores the total number of arguments in the
+   * original _XlaRun operation. This does not include the number of resource
+   * variables, or compile time constants.
+   */
+
+  const auto& inputs = module->entry_computation()->parameter_instructions();
+  uint64 num_arguments = module->config().argument_count();
+  return inputs.size() - num_arguments;
+}
+
 bool IsSupportedSharding(const HloSharding& sharding) {
   // We support unique single device sharding, representing an op/tensor which
   // is on an IPU, or single device sharding in a tuple/tree, repesenting a
