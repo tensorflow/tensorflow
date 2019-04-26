@@ -29,6 +29,7 @@
 
 namespace mlir {
 
+class AffineExpr;
 class MLIRContext;
 
 enum class SDBMExprKind { Add, Stripe, Diff, Constant, DimId, SymbolId, Neg };
@@ -109,6 +110,17 @@ public:
 
   /// Returns the MLIR context in which this expression lives.
   MLIRContext *getContext() const;
+
+  /// Convert the SDBM expression into an Affine expression.  This always
+  /// succeeds because SDBM are a subset of affine.
+  AffineExpr getAsAffineExpr() const;
+
+  /// Try constructing an SDBM expression from the given affine expression.
+  /// This may fail if the affine expression is not representable as SDBM, in
+  /// which case llvm::None is returned.  The conversion procedure recognizes
+  /// (nested) multiplicative ((x floordiv B) * B) and additive (x - x mod B)
+  /// patterns for the stripe expression.
+  static Optional<SDBMExpr> tryConvertAffineExpr(AffineExpr affine);
 
 protected:
   ImplType *impl;

@@ -48,7 +48,8 @@ enum class AffineExprKind {
   Add,
   /// RHS of mul is always a constant or a symbolic expression.
   Mul,
-  /// RHS of mod is always a constant or a symbolic expression.
+  /// RHS of mod is always a constant or a symbolic expression with a positive
+  /// value.
   Mod,
   /// RHS of floordiv is always a constant or a symbolic expression.
   FloorDiv,

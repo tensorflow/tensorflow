@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SDBMExpr.h"
 #include "gtest/gtest.h"
@@ -177,6 +178,66 @@ TEST(SDBMExpr, Diff) {
   auto generic = static_cast<SDBMExpr>(expr);
   EXPECT_TRUE(generic.isa<SDBMDiffExpr>());
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
+}
+
+TEST(SDBMExpr, AffineRoundTrip) {
+  // Build an expression (s0 - s0 # 2)
+  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
+  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto stripe = SDBMStripeExpr::get(var, cst2);
+  auto expr = SDBMDiffExpr::get(var, stripe);
+
+  // Check that it can be converted to AffineExpr and back, i.e. stripe
+  // detection works correctly.
+  Optional<SDBMExpr> roundtripped =
+      SDBMExpr::tryConvertAffineExpr(expr.getAsAffineExpr());
+  ASSERT_TRUE(roundtripped.hasValue());
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(expr));
+
+  // Check that (s0 # 2 # 5) can be converted to AffineExpr, i.e. stripe
+  // detection supports nested expressions.
+  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
+  auto outerStripe = SDBMStripeExpr::get(stripe, cst5);
+  roundtripped = SDBMExpr::tryConvertAffineExpr(outerStripe.getAsAffineExpr());
+  ASSERT_TRUE(roundtripped.hasValue());
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(outerStripe));
+
+  // Check that (s0 # 2 # 5 - s0 # 2) + 2 can be converted as an example of a
+  // deeper expression tree.
+  auto diff = SDBMDiffExpr::get(outerStripe, stripe);
+  auto sum = SDBMSumExpr::get(diff, cst2);
+  roundtripped = SDBMExpr::tryConvertAffineExpr(sum.getAsAffineExpr());
+  ASSERT_TRUE(roundtripped.hasValue());
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(sum));
+}
+
+TEST(SDBMExpr, MatchStripeMulPattern) {
+  // Make sure conversion from AffineExpr recognizes multiplicative stripe
+  // pattern (x floordiv B) * B == x # B.
+  auto cst = getAffineConstantExpr(42, ctx());
+  auto dim = getAffineDimExpr(0, ctx());
+  auto floor = getAffineBinaryOpExpr(AffineExprKind::FloorDiv, dim, cst);
+  auto mul = getAffineBinaryOpExpr(AffineExprKind::Mul, cst, floor);
+  Optional<SDBMExpr> converted = SDBMStripeExpr::tryConvertAffineExpr(mul);
+  ASSERT_TRUE(converted.hasValue());
+  EXPECT_TRUE(converted->isa<SDBMStripeExpr>());
+}
+
+TEST(SDBMExpr, NonSDBM) {
+  auto d0 = getAffineDimExpr(0, ctx());
+  auto d1 = getAffineDimExpr(1, ctx());
+  auto sum = getAffineBinaryOpExpr(AffineExprKind::Add, d0, d1);
+  auto c2 = getAffineConstantExpr(2, ctx());
+  auto prod = getAffineBinaryOpExpr(AffineExprKind::Mul, d0, c2);
+  auto ceildiv = getAffineBinaryOpExpr(AffineExprKind::CeilDiv, d1, c2);
+
+  // The following are not valid SDBM expressions:
+  // - a sum of two variables
+  EXPECT_FALSE(SDBMExpr::tryConvertAffineExpr(sum).hasValue());
+  // - a variable with coefficient other than 1 or -1
+  EXPECT_FALSE(SDBMExpr::tryConvertAffineExpr(prod).hasValue());
+  // - a ceildiv expression
+  EXPECT_FALSE(SDBMExpr::tryConvertAffineExpr(ceildiv).hasValue());
 }
 
 } // end namespace
