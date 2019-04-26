@@ -31,7 +31,7 @@ namespace xla {
 class WorkerThread {
  public:
   // 'name' is a name for the thread for debugging purposes.
-  WorkerThread(tensorflow::Env* env, const string& name);
+  WorkerThread(tensorflow::Env* env, const std::string& name);
 
   // Blocks until all enqueued closures have completed.
   ~WorkerThread();
