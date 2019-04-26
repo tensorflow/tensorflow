@@ -21,6 +21,7 @@
 #include "AttributeDetail.h"
 #include "IntegerSetDetail.h"
 #include "LocationDetail.h"
+#include "SDBMExprDetail.h"
 #include "TypeDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -462,6 +463,26 @@ public:
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
   //===--------------------------------------------------------------------===//
+  // SDBM uniquing
+  //===--------------------------------------------------------------------===//
+  llvm::BumpPtrAllocator SDBMAllocator;
+  llvm::sys::SmartRWMutex<true> SDBMMutex;
+
+  DenseMap<std::tuple<SDBMVaryingExpr, SDBMConstantExpr>,
+           SDBMBinaryExprStorage *>
+      SDBMSumExprs;
+  DenseMap<std::tuple<SDBMPositiveExpr, SDBMConstantExpr>,
+           SDBMBinaryExprStorage *>
+      SDBMStripeExprs;
+  DenseMap<std::tuple<SDBMPositiveExpr, SDBMPositiveExpr>,
+           SDBMDiffExprStorage *>
+      SDBMDiffExprs;
+  std::vector<SDBMPositiveExprStorage *> SDBMDimExprs;
+  std::vector<SDBMPositiveExprStorage *> SDBMSymbolExprs;
+  DenseMap<SDBMPositiveExpr, SDBMNegExprStorage *> SDBMNegExprs;
+  DenseMap<int64_t, SDBMConstantExprStorage *> SDBMConstExprs;
+
+  //===--------------------------------------------------------------------===//
   // Type uniquing
   //===--------------------------------------------------------------------===//
   StorageUniquer typeUniquer;
@@ -840,6 +861,103 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
     std::uninitialized_copy(locs.begin(), locs.end(),
                             result->getTrailingObjects<Location>());
     return result;
+  });
+}
+
+//===----------------------------------------------------------------------===//
+// SDBMExpr uniquing
+//===----------------------------------------------------------------------===//
+
+SDBMSumExpr SDBMSumExpr::get(SDBMVaryingExpr lhs, SDBMConstantExpr rhs) {
+  assert(lhs && "expected SDBM variable expression");
+  assert(rhs && "expected SDBM constant");
+
+  MLIRContextImpl &impl = lhs.getContext()->getImpl();
+
+  // If LHS of a sum is another sum, fold the constant RHS parts.
+  if (auto lhsSum = lhs.dyn_cast<SDBMSumExpr>()) {
+    lhs = lhsSum.getLHS();
+    rhs = SDBMConstantExpr::get(rhs.getContext(),
+                                rhs.getValue() + lhsSum.getRHS().getValue());
+  }
+
+  auto key = std::make_tuple(lhs, rhs);
+  return safeGetOrCreate(
+      impl.SDBMSumExprs, key, impl.SDBMMutex, [&impl, lhs, rhs] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMBinaryExprStorage>();
+        return new (mem) SDBMBinaryExprStorage(SDBMExprKind::Add,
+                                               lhs.getContext(), lhs, rhs);
+      });
+}
+
+SDBMDiffExpr SDBMDiffExpr::get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs) {
+  assert(lhs && "expected SDBM dimension");
+  assert(rhs && "expected SDBM dimension");
+
+  MLIRContextImpl &impl = lhs.getContext()->getImpl();
+  auto key = std::make_tuple(lhs, rhs);
+  return safeGetOrCreate(
+      impl.SDBMDiffExprs, key, impl.SDBMMutex, [&impl, lhs, rhs] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMDiffExprStorage>();
+        return new (mem) SDBMDiffExprStorage(lhs.getContext(), lhs, rhs);
+      });
+}
+
+SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
+                                   SDBMConstantExpr stripeFactor) {
+  assert(var && "expected SDBM variable expression");
+  assert(stripeFactor && "expected non-null stripe factor");
+  assert(stripeFactor.getValue() > 0 && "non-positive stripe factor");
+
+  MLIRContextImpl &impl = var.getContext()->getImpl();
+  auto key = std::make_tuple(var, stripeFactor);
+  return safeGetOrCreate(
+      impl.SDBMStripeExprs, key, impl.SDBMMutex, [&impl, var, stripeFactor] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMBinaryExprStorage>();
+        return new (mem) SDBMBinaryExprStorage(
+            SDBMExprKind::Stripe, var.getContext(), var, stripeFactor);
+      });
+}
+
+SDBMDimExpr SDBMDimExpr::get(MLIRContext *context, unsigned position) {
+  assert(context && "expected non-null context");
+  MLIRContextImpl &impl = context->getImpl();
+  return safeGetOrCreate(
+      impl.SDBMDimExprs, position, impl.SDBMMutex, [&impl, context, position] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMPositiveExprStorage>();
+        return new (mem)
+            SDBMPositiveExprStorage(SDBMExprKind::DimId, context, position);
+      });
+}
+
+SDBMSymbolExpr SDBMSymbolExpr::get(MLIRContext *context, unsigned position) {
+  assert(context && "expected non-null context");
+  MLIRContextImpl &impl = context->getImpl();
+  return safeGetOrCreate(
+      impl.SDBMSymbolExprs, position, impl.SDBMMutex,
+      [&impl, context, position] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMPositiveExprStorage>();
+        return new (mem)
+            SDBMPositiveExprStorage(SDBMExprKind::SymbolId, context, position);
+      });
+}
+
+SDBMConstantExpr SDBMConstantExpr::get(MLIRContext *context, int64_t value) {
+  assert(context && "expected non-null context");
+  MLIRContextImpl &impl = context->getImpl();
+  return safeGetOrCreate(
+      impl.SDBMConstExprs, value, impl.SDBMMutex, [&impl, context, value] {
+        auto *mem = impl.SDBMAllocator.Allocate<SDBMConstantExprStorage>();
+        return new (mem) SDBMConstantExprStorage(context, value);
+      });
+}
+
+SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
+  assert(var && "expected non-null SDBM variable expression");
+  MLIRContextImpl &impl = var.getContext()->getImpl();
+  return safeGetOrCreate(impl.SDBMNegExprs, var, impl.SDBMMutex, [&impl, var] {
+    auto *mem = impl.SDBMAllocator.Allocate<SDBMNegExprStorage>();
+    return new (mem) SDBMNegExprStorage(var);
   });
 }
 
