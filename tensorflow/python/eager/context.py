@@ -959,7 +959,14 @@ class Context(object):
         self.set_virtual_device_configuration(
             cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
 
+    # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
+
+    # If there are no GPUs detected, simply ignore all the GPU options passed in
+    # rather than doing any validation checks.
+    if not gpus:
+      return
+
     gpu_count = self._config.device_count.get("GPU", None)
 
     visible_gpus = []
