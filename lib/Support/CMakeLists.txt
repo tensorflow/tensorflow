@@ -1,5 +1,6 @@
 add_llvm_library(MLIRSupport
   FileUtilities.cpp
+  StorageUniquer.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Support

@@ -80,8 +80,9 @@ struct OpaqueTypeStorage;
 ///      instance of the type within its kind.
 ///      * The key type must be constructible from the values passed into the
 ///        detail::TypeUniquer::get call after the type kind.
-///      * The key type must have a llvm::DenseMapInfo specialization for
-///        hashing.
+///      * If the KeyTy does not have an llvm::DenseMapInfo specialization, the
+///        storage class must define a hashing method:
+///         'static unsigned hashKey(const KeyTy &)'
 ///
 ///    - Provide a method, 'bool operator==(const KeyTy &) const', to
 ///      compare the storage instance against an instance of the key type.

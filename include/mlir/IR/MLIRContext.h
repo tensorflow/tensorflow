@@ -25,9 +25,10 @@
 
 namespace mlir {
 class AbstractOperation;
-class MLIRContextImpl;
-class Location;
 class Dialect;
+class Location;
+class MLIRContextImpl;
+class StorageUniquer;
 
 /// MLIRContext is the top-level object for a collection of MLIR modules.  It
 /// holds immortal uniqued objects like types, and the tables used to unique
@@ -92,6 +93,10 @@ public:
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() { return *impl.get(); }
+
+  /// Returns the storage uniquer used for constructing type storage instances.
+  /// This should not be used directly.
+  StorageUniquer &getTypeUniquer();
 
 private:
   const std::unique_ptr<MLIRContextImpl> impl;
