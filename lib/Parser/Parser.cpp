@@ -2387,6 +2387,17 @@ public:
 
   ParseResult parseOperations(Block *block);
 
+  /// Return the location of the value identified by its name and number if it
+  /// has been already defined.  Placeholder values are considered undefined.
+  llvm::Optional<SMLoc> getDefinitionLoc(StringRef name, unsigned number) {
+    if (!values.count(name) || number >= values[name].size())
+      return {};
+    Value *value = values[name][number].first;
+    if (value && !isForwardReferencePlaceholder(value))
+      return values[name][number].second;
+    return {};
+  }
+
 private:
   Function *function;
 
@@ -3131,12 +3142,6 @@ public:
     if (opDefinition->parseAssembly(this, opState))
       return true;
 
-    // Check there were no dangling entry block arguments.
-    if (!parsedRegionEntryArguments.empty()) {
-      return emitError(
-          nameLoc, "no region was attached to parsed entry block arguments");
-    }
-
     // Check that none of the operands of the current operation reference an
     // entry block argument for any of the region.
     for (auto *entryArg : parsedRegionEntryArgumentPlaceholders)
@@ -3365,34 +3370,45 @@ public:
     return result == nullptr;
   }
 
-  /// Parses a region.
-  bool parseRegion(Region &region) override {
-    if (parser.parseOperationRegion(region, parsedRegionEntryArguments))
-      return true;
+  /// Parse a region that takes `arguments` of `argTypes` types.  This
+  /// effectively defines the SSA values of `arguments` and assignes their type.
+  bool parseRegion(Region &region, ArrayRef<OperandType> arguments,
+                   ArrayRef<Type> argTypes) override {
+    assert(arguments.size() == argTypes.size() &&
+           "mismatching number of arguments and types");
 
-    parsedRegionEntryArguments.clear();
-    return false;
-  }
+    SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2> regionArguments;
+    for (const auto &pair : llvm::zip(arguments, argTypes)) {
+      const OperandType &operand = std::get<0>(pair);
+      Type type = std::get<1>(pair);
+      FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
+                                                operand.location};
+      regionArguments.emplace_back(operandInfo, type);
 
-  /// Parses an argument for the entry block of the next region to be parsed.
-  bool parseRegionEntryBlockArgument(Type argType) override {
-    SmallVector<Value *, 1> argValues;
-    OperandType operand;
-    if (parseOperand(operand))
-      return true;
-
-    // Create a place holder for this argument.
-    FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
-                                              operand.location};
-    if (auto *value = parser.resolveSSAUse(operandInfo, argType)) {
-      parsedRegionEntryArguments.emplace_back(operandInfo, argType);
-      // Track each of the placeholders so that we can detect invalid references
-      // to region arguments.
+      // Create a placeholder for this argument so that we can detect invalid
+      // references to region arguments.
+      Value *value = parser.resolveSSAUse(operandInfo, type);
+      if (!value)
+        return true;
       parsedRegionEntryArgumentPlaceholders.emplace_back(value);
-      return false;
     }
 
-    return true;
+    return parser.parseOperationRegion(region, regionArguments);
+  }
+
+  /// Parse a region argument.  Region arguments define new values, so this also
+  /// checks if the values with the same name has not been defined yet.  The
+  /// type of the argument will be resolved later by a call to `parseRegion`.
+  bool parseRegionArgument(OperandType &argument) {
+    // Use parseOperand to fill in the OperandType structure.
+    if (parseOperand(argument))
+      return true;
+    if (auto defLoc = parser.getDefinitionLoc(argument.name, argument.number)) {
+      parser.emitError(argument.location,
+                       "redefinition of SSA value '" + argument.name + "'");
+      return parser.emitError(*defLoc, "previously defined here");
+    }
+    return false;
   }
 
   //===--------------------------------------------------------------------===//
@@ -3424,8 +3440,6 @@ public:
   bool didEmitError() const { return emittedError; }
 
 private:
-  SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2>
-      parsedRegionEntryArguments;
   SmallVector<Value *, 2> parsedRegionEntryArgumentPlaceholders;
   SMLoc nameLoc;
   StringRef opName;

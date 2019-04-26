@@ -892,9 +892,9 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
 
 bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType inductionVariable;
   // Parse the induction variable followed by '='.
-  if (parser->parseRegionEntryBlockArgument(builder.getIndexType()) ||
-      parser->parseEqual())
+  if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
     return true;
 
   // Parse loop bounds.
@@ -924,7 +924,7 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Parse the body region.
   Region *body = result->addRegion();
-  if (parser->parseRegion(*body))
+  if (parser->parseRegion(*body, inductionVariable, builder.getIndexType()))
     return true;
 
   ensureAffineTerminator(*body, builder, result->location);
@@ -1277,13 +1277,13 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   Region *elseRegion = result->addRegion();
 
   // Parse the 'then' region.
-  if (parser->parseRegion(*thenRegion))
+  if (parser->parseRegion(*thenRegion, {}, {}))
     return true;
   ensureAffineTerminator(*thenRegion, parser->getBuilder(), result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
   if (!parser->parseOptionalKeyword("else")) {
-    if (parser->parseRegion(*elseRegion))
+    if (parser->parseRegion(*elseRegion, {}, {}))
       return true;
     ensureAffineTerminator(*elseRegion, parser->getBuilder(), result->location);
   }

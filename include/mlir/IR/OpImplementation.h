@@ -329,11 +329,14 @@ public:
                            Delimiter delimiter = Delimiter::None) = 0;
 
   /// Parses a region. Any parsed blocks are appended to "region" and must be
-  /// moved to the op regions after the op is created.
-  virtual bool parseRegion(Region &region) = 0;
+  /// moved to the op regions after the op is created. The first block of the
+  /// region takes "arguments" of types "argTypes".
+  virtual bool parseRegion(Region &region, ArrayRef<OperandType> arguments,
+                           ArrayRef<Type> argTypes) = 0;
 
-  /// Parses an argument for the entry block of the next region to be parsed.
-  virtual bool parseRegionEntryBlockArgument(Type argType) = 0;
+  /// Parse a region argument.  Region arguments define new values, so this also
+  /// checks if the values with the same name has not been defined yet.
+  virtual bool parseRegionArgument(OperandType &argument) = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser
