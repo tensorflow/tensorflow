@@ -217,6 +217,7 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static("FromPython", &PyLocalBuffer::FromPython)
       .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
+      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
       .def("Delete", &PyLocalBuffer::Delete)
       .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
       .def("ToPython", &PyLocalBuffer::ToPython)

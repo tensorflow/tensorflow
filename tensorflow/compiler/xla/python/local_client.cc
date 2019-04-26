@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -224,6 +225,41 @@ PyLocalBuffer::FromPythonValues(
     TF_ASSIGN_OR_RETURN(outputs[i], std::move(transfers[i].buffer));
   }
   return outputs;
+}
+
+/* static */ StatusOr<PyLocalBuffer> PyLocalBuffer::MakeTuple(
+    const std::vector<PyLocalBuffer> buffers, PyLocalClient* client,
+    int device_ordinal) {
+  std::vector<xla::Shape> host_shapes;
+  std::vector<std::shared_ptr<PySharedDeviceBuffer>> device_buffers;
+  host_shapes.reserve(buffers.size());
+  device_buffers.reserve(buffers.size());
+  for (const PyLocalBuffer& buffer : buffers) {
+    TF_RET_CHECK(buffer.device_buffer()->device_memory().device_ordinal() ==
+                 device_ordinal);
+    host_shapes.push_back(buffer.on_host_shape());
+    device_buffers.push_back(buffer.device_buffer());
+  }
+  DeviceMemoryAllocator* allocator =
+      client->client()->backend().memory_allocator();
+  TransferManager* transfer_manager =
+      client->client()->backend().transfer_manager();
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<PySharedDeviceBuffer> tuple_buffer,
+      PySharedDeviceBuffer::MakeTuple(device_buffers, transfer_manager,
+                                      allocator, device_ordinal));
+  PyLocalBuffer buffer(ShapeUtil::MakeTupleShape(host_shapes), tuple_buffer,
+                       client);
+
+  TF_ASSIGN_OR_RETURN(
+      StreamPool::Ptr stream,
+      client->client()->mutable_backend()->BorrowStream(device_ordinal));
+  // TODO(phawkins): extend TransferManager so we do not need to form a full
+  // ShapedBuffer just to write the root tuple index table.
+  transfer_manager->WriteRootTupleIndexTable(stream.get(),
+                                             buffer.AsShapedBuffer());
+  stream->BlockHostUntilDone();
+  return buffer;
 }
 
 PyLocalBuffer::PyLocalBuffer(

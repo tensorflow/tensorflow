@@ -84,14 +84,18 @@ class PyLocalBuffer {
       const std::vector<std::pair<pybind11::object, int>>& argument,
       PyLocalClient* client);
 
+  static StatusOr<PyLocalBuffer> MakeTuple(
+      const std::vector<PyLocalBuffer> buffers, PyLocalClient* client,
+      int device_ordinal);
+
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
                 std::shared_ptr<PySharedDeviceBuffer> device_buffer,
                 PyLocalClient* client);
   StatusOr<pybind11::object> ToPython() const;
   const Shape& on_host_shape() const { return on_host_shape_; }
-  const PySharedDeviceBuffer* device_buffer() const {
-    return device_buffer_.get();
+  const std::shared_ptr<PySharedDeviceBuffer>& device_buffer() const {
+    return device_buffer_;
   }
 
   void Delete() {
