@@ -189,8 +189,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      context->ReportError(context, "Type %s not currently supported.",
+                           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -208,7 +208,7 @@ TfLiteRegistration* Register_AVERAGE_POOL_2D() {
   return &r;
 }
 
-TfLiteRegistration* Register_MAX_POOL() {
+TfLiteRegistration* Register_MAX_POOL_2D() {
   static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
                                  pooling::MaxEval};
   return &r;
