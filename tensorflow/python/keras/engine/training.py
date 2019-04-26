@@ -2912,12 +2912,11 @@ class DistributedCallbackModel(Model):
   def __getattr__(self, item):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
-    if item in ('_setattr_tracking', '_layers'):
-      return super(DistributedCallbackModel, self).__getattr__(item)
-
-    logging.warning('You are accessing attribute ' + item + ' of the '
-                    'DistributedCallbackModel that may not have been set '
-                    'correctly.')
+    if item not in ('_setattr_tracking', '_layers'):
+      logging.warning('You are accessing attribute ' + item + ' of the '
+                      'DistributedCallbackModel that may not have been set '
+                      'correctly.')
+    return super(DistributedCallbackModel, self).__getattr__(item)
 
 
 def _is_symbolic_tensor(x):
