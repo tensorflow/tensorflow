@@ -204,6 +204,41 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsConstTest) {
   EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, -1}),
                "crops.i. >= 0 was not true.");
 }
+
+TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
+  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({2, 2});
+  m.SetCrops({0, 0, -1, 0});
+  EXPECT_DEATH(m.Invoke(), "crops.*>= 0 was not true.");
+}
+
+TEST(BatchToSpaceNDOpTest, InvalidBlockConstTest) {
+  EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 0}, {0, 0, 0, 0}),
+               "block_shape.*>= 1 was not true");
+}
+
+TEST(BatchToSpaceNDOpTest, InvalidBlockDynamicTest) {
+  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({0, 2});
+  m.SetCrops({0, 0, 0, 0});
+  EXPECT_DEATH(m.Invoke(), "block_shape.*>= 1 was not true.");
+}
+
+TEST(BatchToSpaceNDOpTest, InvalidOutSizeConstTest) {
+  EXPECT_DEATH(BatchToSpaceNDOpConstModel({4, 2, 2, 1}, {2, 2}, {2, 3, 0, 0}),
+               "final_dim_size >= 0 was not true");
+}
+
+TEST(BatchToSpaceNDOpTest, InvalidOutSizeDynamicTest) {
+  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({2, 2});
+  m.SetCrops({0, 0, 3, 3});
+  EXPECT_DEATH(m.Invoke(), "final_dim_size >= 0 was not true.");
+}
+
 #endif
 
 TEST(BatchToSpaceNDOpTest, Simple3DConstTest) {

@@ -61,6 +61,7 @@ namespace optimized_ops {
 // Unoptimized reference ops:
 using reference_ops::ArgMax;
 using reference_ops::ArgMinMax;
+using reference_ops::BatchToSpaceND;
 using reference_ops::Broadcast4DSlowGreater;
 using reference_ops::Broadcast4DSlowGreaterEqual;
 using reference_ops::Broadcast4DSlowGreaterEqualWithScaling;
@@ -4976,87 +4977,6 @@ inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
   *end_index = std::min(
       input_dim,
       (output_dim - spatial_index_dim + block_shape_dim - 1) / block_shape_dim);
-}
-
-template <typename T>
-inline void BatchToSpaceND(
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
-    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("BatchToSpaceND");
-
-  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
-                   unextended_output_shape.DimensionsCount());
-
-  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  auto extend_shape = [](const RuntimeShape& shape) {
-    if (shape.DimensionsCount() == 4) {
-      return shape;
-    }
-    RuntimeShape new_shape(4, 1);
-    new_shape.SetDim(0, shape.Dims(0));
-    new_shape.SetDim(1, shape.Dims(1));
-    new_shape.SetDim(3, shape.Dims(2));
-    return new_shape;
-  };
-  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
-  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
-
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch_size = output_shape.Dims(0);
-
-  const int depth = input1_shape.Dims(3);
-  const int input_width = input1_shape.Dims(2);
-  const int input_height = input1_shape.Dims(1);
-  const int input_batch_size = input1_shape.Dims(0);
-
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width =
-      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
-  const int crops_top = crops_data[0];
-  const int crops_left =
-      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
-
-  for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    const int out_batch = in_batch % output_batch_size;
-    const int spatial_offset = in_batch / output_batch_size;
-
-    int in_h_start = 0;
-    int in_h_end = 0;
-    // GetIndexRange ensures start and end indices are in [0, output_height).
-    GetIndexRange(spatial_offset / block_shape_width - crops_top,
-                  block_shape_height, input_height, output_height, &in_h_start,
-                  &in_h_end);
-
-    for (int in_h = in_h_start; in_h < in_h_end; ++in_h) {
-      const int out_h = in_h * block_shape_height +
-                        spatial_offset / block_shape_width - crops_top;
-      TFLITE_DCHECK_GE(out_h, 0);
-      TFLITE_DCHECK_LT(out_h, output_height);
-
-      int in_w_start = 0;
-      int in_w_end = 0;
-      // GetIndexRange ensures start and end indices are in [0, output_width).
-      GetIndexRange(spatial_offset % block_shape_width - crops_left,
-                    block_shape_width, input_width, output_width, &in_w_start,
-                    &in_w_end);
-
-      for (int in_w = in_w_start; in_w < in_w_end; ++in_w) {
-        const int out_w = in_w * block_shape_width +
-                          spatial_offset % block_shape_width - crops_left;
-        TFLITE_DCHECK_GE(out_w, 0);
-        TFLITE_DCHECK_LT(out_w, output_width);
-        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
-        const T* in =
-            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
-        memcpy(out, in, depth * sizeof(T));
-      }
-    }
-  }
 }
 
 template <typename T>

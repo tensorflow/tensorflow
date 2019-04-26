@@ -1828,64 +1828,161 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
+    int32* input_indices_tensor_data, int32* output_indices_tensor_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BatchToSpaceND");
-  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
-                   unextended_output_shape.DimensionsCount());
 
-  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  auto extend_shape = [](const RuntimeShape& shape) {
-    if (shape.DimensionsCount() == 4) {
-      return shape;
-    }
-    RuntimeShape new_shape(4, 1);
-    new_shape.SetDim(0, shape.Dims(0));
-    new_shape.SetDim(1, shape.Dims(1));
-    new_shape.SetDim(3, shape.Dims(2));
-    return new_shape;
+  const int block_num =
+      unextended_input2_shape.Dims(0);  // As it is always 1-Dim [M]
+  const int output_batch_size = unextended_output_shape.Dims(0);
+
+  // To perform Permutation, we need to capture co-ordinates of Input &
+  // corresponding Output
+  struct IndicesCoeffPair {
+    int indices;
+    int coeff;
   };
-  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
-  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch_size = output_shape.Dims(0);
+  // Input data coordinates can be captured
+  // based on  - [block_shape[0], ..., block_shape[M-1],
+  // batch / prod(block_shape), input_shape[1], ..., input_shape[M]]
+  const int input_num_indices = 2 * block_num + 1;
 
-  const int depth = input1_shape.Dims(3);
-  const int input_width = input1_shape.Dims(2);
-  const int input_height = input1_shape.Dims(1);
-  const int input_batch_size = input1_shape.Dims(0);
+  // Output data coordinates can be captured
+  // based on  - [batch / prod(block_shape)] + [spatial_shape]
+  const int output_num_indices = block_num + 1;
 
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width =
-      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
-  const int crops_top = crops_data[0];
-  const int crops_left =
-      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
-  for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    const int out_batch = in_batch % output_batch_size;
-    const int spatial_offset = in_batch / output_batch_size;
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      const int out_h = in_h * block_shape_height +
-                        spatial_offset / block_shape_width - crops_top;
-      if (out_h < 0 || out_h >= output_height) {
-        continue;
-      }
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        const int out_w = in_w * block_shape_width +
-                          spatial_offset % block_shape_width - crops_left;
+  IndicesCoeffPair* input_indices =
+      reinterpret_cast<IndicesCoeffPair*>(input_indices_tensor_data);
+  IndicesCoeffPair* output_indices =
+      reinterpret_cast<IndicesCoeffPair*>(output_indices_tensor_data);
 
-        if (out_w < 0 || out_w >= output_width) {
-          continue;
-        }
-        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
-        const T* in =
-            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
-        memcpy(out, in, depth * sizeof(T));
-      }
+  // Depth is same as [remaining_shape] of input data which does not take part
+  // in Batch-To-Space Transformation
+  int depth = 1;
+  for (int idx = block_num + 1; idx < unextended_input1_shape.DimensionsCount();
+       ++idx) {
+    depth *= unextended_input1_shape.Dims(idx);
+  }
+
+  // Run through [1, M] dimension in input to check if post cropping evaluates
+  // to 0 As any Dimension if evaluates to 0, then output will be empty, so no
+  // need to continue with further processing. As  input_shape[M] *
+  // block_shape[M-1] - crops[M-1,0] - crops[M-1,1] already computed in
+  // ResizeTensor(). So no need to compute again, just check the output shape.
+  // Note: Below is a safe check, as currently TFLite framework can not
+  // check 0 output dim
+  for (int idx = 1; idx <= unextended_input2_shape.DimensionsCount(); ++idx) {
+    if (0 == unextended_output_shape.Dims(idx)) {
+      return;
     }
+  }
+
+  // To compute offset based on Indices & their correponding co-eff captured
+  std::function<int(IndicesCoeffPair*, int)> compute_offset =
+      [&compute_offset](IndicesCoeffPair* indices, int num_indices) {
+        int sum_pos = 0;
+        for (int idx = 0; idx < num_indices; idx++) {
+          sum_pos = (indices[idx].indices + sum_pos) * indices[idx].coeff;
+        }
+        return sum_pos;
+      };
+
+  // Need to itereate only through Axis = [1, M], where M is
+  // NumElements(block_shape)
+  int final_axis = block_num;
+
+  // Calculate one-to-one mapping of Input data(with cropping) to corresponding
+  // in Output data. Perform only permutation of Input data to Output Data based
+  // on below logic, final reshaping is automatically taken care, as the output
+  // buffer is flat one. Permutation:
+  //              Input Shape:  [block_shape[0], ..., block_shape[M-1], batch /
+  //              prod(block_shape), input_shape[1], ..., input_shape[N-1]]
+  //
+  //              Output Shape:  [batch / prod(block_shape),
+  //              input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+  //              ..., input_shape[M] * block_shape[M-1] - crops[M-1,0] -
+  //              crops[M-1,1], input_shape[M+1], ..., input_shape[N-1]]
+
+  // Store as std::function to allow recursion.
+  std::function<void(int)> compute_permute =
+      [&compute_permute, final_axis, depth, output_batch_size,
+       input_num_indices, output_num_indices, unextended_input1_shape,
+       unextended_output_shape, block_num, input_indices, output_indices,
+       output_data, input1_data, compute_offset, crops_data,
+       block_shape_data](int axis) {
+        TFLITE_DCHECK_GE(axis, 1);
+        int crop_start = crops_data[2 * (axis - 1)];
+        // Below if, else check for axis can be fused inside for loop for code
+        // compact. But it is not done to achieve slightly better performance,
+        // as number of if checks reduced on  realtime data.
+        if (axis == (final_axis)) {
+          for (int in_x = 0; in_x < unextended_output_shape.Dims(axis);
+               in_x++) {
+            output_indices[axis].indices = in_x;
+            output_indices[axis].coeff = unextended_output_shape.Dims(axis + 1);
+
+            // As output shape is combination of input_shape & block_shape as
+            // below output_shape[K] =  input_shape[K] * block_shape[K-1] -
+            // crops[K-1,0] - crops[K-1,1], where K = [1, M]. So we need break
+            // down each output_shape[K] into 2 co-ordinates : input_shape[K] &
+            // block_shape[K-1]. Each output indices has to be offset with
+            // crop_start to match accurate indices in input.
+            int input_shape_index =
+                (in_x + crop_start) / block_shape_data[axis - 1];
+            int block_shape_index =
+                (in_x + crop_start) % block_shape_data[axis - 1];
+
+            // Input positioning: [block_shape[0], ..., block_shape[M-1],
+            // batch  / prod(block_shape), input_shape[1], ..., input_shape[M]]
+            input_indices[axis + block_num].indices = input_shape_index;
+            input_indices[axis + block_num].coeff =
+                unextended_input1_shape.Dims(axis + 1);
+            input_indices[axis - 1].indices = block_shape_index;
+            input_indices[axis - 1].coeff = output_batch_size;
+
+            T* out = output_data +
+                     compute_offset(output_indices, output_num_indices);
+            const T* in =
+                input1_data + compute_offset(input_indices, input_num_indices);
+            memcpy(out, in, depth * sizeof(T));
+          }
+        } else {
+          for (int in_x = 0; in_x < unextended_output_shape.Dims(axis);
+               in_x++) {
+            output_indices[axis].indices = in_x;
+            output_indices[axis].coeff = unextended_output_shape.Dims(axis + 1);
+
+            // As output shape is combination of input_shape & block_shape as
+            // below output_shape[K] =  input_shape[K] * block_shape[K-1] -
+            // crops[K-1,0] - crops[K-1,1], where K = [1, M]. So we need break
+            // down each output_shape[K] into 2 co-ordinates : input_shape[K] &
+            // block_shape[K-1]. Each output indices has to be offset with
+            // crop_start to match accurate indices in input.
+            int input_shape_index =
+                (in_x + crop_start) / block_shape_data[axis - 1];
+            int block_shape_index =
+                (in_x + crop_start) % block_shape_data[axis - 1];
+
+            // Input positioning: [block_shape[0], ..., block_shape[M-1],
+            // batch  / prod(block_shape), input_shape[1], ..., input_shape[M]]
+            input_indices[axis + block_num].indices = input_shape_index;
+            input_indices[axis + block_num].coeff =
+                unextended_input1_shape.Dims(axis + 1);
+            input_indices[axis - 1].indices = block_shape_index;
+            input_indices[axis - 1].coeff = block_shape_data[axis];
+
+            compute_permute(axis + 1);
+          }
+        }
+      };
+
+  for (int batch_i = 0; batch_i < output_batch_size; ++batch_i) {
+    output_indices[0].indices = batch_i;
+    output_indices[0].coeff = unextended_output_shape.Dims(1);
+    input_indices[block_num].indices = batch_i;
+    input_indices[block_num].coeff = unextended_input1_shape.Dims(1);
+    compute_permute(1);
   }
 }
 
