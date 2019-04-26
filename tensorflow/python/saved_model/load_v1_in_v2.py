@@ -107,8 +107,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       signature_fn = wrapped.prune(
           feeds=[wrapped.graph.as_graph_element(inp.name)
                  for inp in input_specs],
-          fetches={name: wrapped.graph.as_graph_element(out.name)
-                   for name, out in signature_def.outputs.items()})
+          fetches={name: out for name, out in signature_def.outputs.items()})
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
       if len(input_names) == 1:

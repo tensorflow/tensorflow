@@ -27,6 +27,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -104,6 +105,32 @@ class LoadTest(test.TestCase):
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
     self.assertEqual(6., fn(start=constant_op.constant(2.))["output"].numpy())
+
+  def _v1_output_shape_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      start = array_ops.placeholder(
+          shape=[None], dtype=dtypes.float32, name="start")
+      output = array_ops.identity(start, name="output")
+      output.set_shape([1])  # Ok to use [1] because shape is only informational
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        builder = builder_impl.SavedModelBuilder(path)
+        builder.add_meta_graph_and_variables(
+            session, tags=[tag_constants.SERVING],
+            signature_def_map={
+                "serving_default": signature_def_utils.build_signature_def(
+                    {"start": utils_impl.build_tensor_info(start)},
+                    {"output": utils_impl.build_tensor_info(
+                        output)})})
+        builder.save()
+    return path
+
+  def test_restore_output_shapes(self):
+    saved = self._v1_output_shape_saved_model()
+    imported = load.load(saved)
+    fn = imported.signatures["serving_default"]
+    self.assertEqual(tensor_shape.TensorShape([1]), fn.outputs[0].shape)
 
   def _v1_multi_metagraph_saved_model(self):
     export_graph = ops.Graph()
@@ -332,6 +359,7 @@ class LoadTest(test.TestCase):
     path = self._signature_with_no_inputs()
     imported = load.load(path)
     self.assertEqual([2], imported.signatures["key"]()["value"].shape)
+
 
 if __name__ == "__main__":
   test.main()
