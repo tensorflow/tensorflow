@@ -1716,6 +1716,12 @@ def _log_prob(self, x):
     expected_error = "replaced by a call to tf.compat.v2.summary.record_if()"
     self.assertIn(expected_error, errors[0])
 
+  def test_contrib_summary_all_summary_ops(self):
+    text = "tf.contrib.summary.all_summary_ops()"
+    expected = "tf.compat.v1.summary.all_v2_summary_ops()"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_contrib_summary_full_example(self):
     deindent = lambda n, s: "\n".join(line[n:] for line in s.split("\n"))
     text = deindent(4, """
