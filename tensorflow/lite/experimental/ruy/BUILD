@@ -256,7 +256,11 @@ cc_library(
         "dispatch.h",
         "impl.h",
     ],
-    hdrs = ["ruy.h"],
+    hdrs = [
+        "matrix.h",
+        "path.h",
+        "ruy.h",
+    ],
     visibility = ruy_visibility(),
     deps = [
         ":allocator",
@@ -265,10 +269,8 @@ cc_library(
         ":common",
         ":context",
         ":kernel",
-        ":matrix",
         ":opt_set",
         ":pack",
-        ":path",
         ":size_util",
         ":spec",
         ":thread_pool",

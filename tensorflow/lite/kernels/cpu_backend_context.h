@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/experimental/ruy/context.h"
 
 namespace tflite {
 
@@ -27,6 +28,8 @@ class CpuBackendContext final {
   CpuBackendContext();
   ~CpuBackendContext();
 
+  ruy::Context* ruy_context() const { return ruy_context_.get(); }
+
   gemmlowp::GemmContext* gemmlowp_context() const {
     return gemmlowp_context_.get();
   }
@@ -34,7 +37,13 @@ class CpuBackendContext final {
   void set_max_num_threads(int max_num_threads);
 
  private:
-  // gemmlowp context used to implement this CpuBackendContext.
+  // To enable a smooth transition from the current direct usage
+  // of the underlying gemmlowp context to going through abstractions
+  // (see :cpu_backend_gemm), for now a CpuBackendContext always
+  // stores both a gemmlowp context and a ruy context.
+  // TODO(b/131416458): Once call sites all go through abstractions,
+  // elide what can be elided based on TFLITE_WITH_RUY.
+  const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
   CpuBackendContext(const CpuBackendContext&) = delete;
