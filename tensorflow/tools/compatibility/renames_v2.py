@@ -1243,6 +1243,8 @@ renames = {
         'tf.compat.v1.summary.SummaryDescription',
     'tf.summary.TaggedRunMetadata':
         'tf.compat.v1.summary.TaggedRunMetadata',
+    'tf.summary.all_v2_summary_ops':
+        'tf.compat.v1.summary.all_v2_summary_ops',
     'tf.summary.audio':
         'tf.compat.v1.summary.audio',
     'tf.summary.get_summary_description':

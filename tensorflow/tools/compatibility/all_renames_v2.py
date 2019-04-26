@@ -201,6 +201,8 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.all_summary_ops":
+        "tf.compat.v1.summary.all_v2_summary_ops",
     "tf.contrib.summary.always_record_summaries":
         "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":
