@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
-#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -386,7 +385,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64 inner_dim = data_size / N;
     ReductionF reduction;
     auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, inner_dim);
-    const int num_threads = cpu_device.numThreads();
+    const int64 num_threads = cpu_device.numThreads();
 
     // 'num_reductions' counts the number of output rows actually reduced,
     // the rows only filled with InitialValueF() will be excluded.
@@ -395,10 +394,8 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     // 'row_counter' records how many input rows will be reduced in each
     // output row, the row only fills with InitialValueF() will keep 0.
     std::vector<Index> row_counter(num_segments, 0);
-    for (int64 i = 0; i < N; i++) {
-      // Get the corresponding output index j of input i.
+    for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
-      // Check the validity of index j.
       if (j < 0) {
         continue;
       }
@@ -411,8 +408,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
       }
       row_counter[j]++;
     }
-    eigen_assert(num_reductions <= num_segments &&
-                 "reduced rows number can't be greater than num_segments.");
+    DCHECK_LE(num_reductions, num_segments);
 
     // Estimate task size and block number for shard function according to the
     // rules:
@@ -420,10 +416,13 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     //    work to do.
     // 2. total task block number shouldn't be greater than num_reductions or
     //    num_threads.
-    const int min_block_size = 64;
-    const int max_block_num = std::min(N / min_block_size + 1, num_reductions);
-    int block_num = std::min(max_block_num, num_threads);
-    const int block_size = N / block_num;
+    const int64 min_block_size = 64;
+    int64 block_num = std::min(num_reductions, num_threads);
+    int64 block_size = (N - 1) / block_num + 1;
+    if (block_size < min_block_size) {
+      block_size = min_block_size;
+      block_num = (N - 1) / min_block_size + 1;
+    }
 
     // Compute the real task size for each block and record the index.
     // Keep 'block_range[0]' 0 because need a start index for shard function.
@@ -464,8 +463,8 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
 
     // reduction functors includes Sum, Max, Min, etc. Simply consider it
     // will cost 5 cycles per operation.
-    const int compute_cycles = 5 * (N - num_reductions) * inner_dim;
-    const int output_bytes = num_reductions * inner_dim * sizeof(T);
+    const int64 compute_cycles = 5 * (N - num_reductions) * inner_dim;
+    const int64 output_bytes = num_reductions * inner_dim * sizeof(T);
     const Eigen::TensorOpCost cost(data_size * sizeof(T), output_bytes,
                                    compute_cycles);
 
