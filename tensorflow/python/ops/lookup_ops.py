@@ -239,16 +239,34 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
 
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
-  """A generic hash table implementation.
+  """A generic hash table implementation. The table is immutable once
+  initialized.
 
   Example usage:
 
   ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
   table = tf.lookup.StaticHashTable(
-      tf.KeyValueTensorInitializer(keys, values), -1)
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
+  ```
+
+  When running in graph mode, you must evaluate the tensor returned by
+  `tf.tables_initializer()` before evaluating the tensor returned by 
+  this class's `lookup()` method. Example usage in graph mode:
+
+  ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
   out = table.lookup(input_tensor)
-  table.init.run()
-  print(out.eval())
+  with tf.Session() as sess:
+      sess.run(tf.tables_initializer())
+      print(sess.run(out))
   ```
   """
 
