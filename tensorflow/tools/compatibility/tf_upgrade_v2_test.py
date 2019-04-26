@@ -1528,6 +1528,10 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_layers_layer_norm_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
+    self.assertIn("`tf.contrib.layers.layer_norm` has been deprecated", report)
+
   def test_contrib_rnn_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.rnn")
     self.assertIn("tf.contrib.rnn.* has been deprecated", report)
@@ -1711,6 +1715,12 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade(text)
     expected_error = "replaced by a call to tf.compat.v2.summary.record_if()"
     self.assertIn(expected_error, errors[0])
+
+  def test_contrib_summary_all_summary_ops(self):
+    text = "tf.contrib.summary.all_summary_ops()"
+    expected = "tf.compat.v1.summary.all_v2_summary_ops()"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
 
   def test_contrib_summary_full_example(self):
     deindent = lambda n, s: "\n".join(line[n:] for line in s.split("\n"))

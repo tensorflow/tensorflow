@@ -62,7 +62,13 @@ from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency: ops -> tensor_spec -> ops
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
@@ -1686,7 +1692,8 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    _get_graph_from_inputs([values, indices, dense_shape])
+    if not isinstance(values, tensor_spec.TensorSpec):
+      _get_graph_from_inputs([values, indices, dense_shape])
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -1754,10 +1761,10 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     if shape is None:
       shape = self._values.shape
     if self._dense_shape is None:
-      return [shape, shape[:1]]  # values, indices
+      return (shape, shape[:1])  # values, indices
     else:
       # values, indices, dense_shape
-      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
 
   @property
   def _is_graph_tensor(self):

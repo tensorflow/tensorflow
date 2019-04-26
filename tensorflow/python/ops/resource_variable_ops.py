@@ -128,6 +128,51 @@ def _combine_handle_data(handle, initial_value):
   return variable_handle_data
 
 
+def variable_handle_from_shape_and_dtype(
+    shape, dtype, shared_name, name, graph_mode, extra_handle_data=None):
+  """Create a new variable handle, optionally copying in `extra_handle_data`."""
+  container = ops.get_default_graph()._container  # pylint: disable=protected-access
+  if container is None:
+    container = ""
+  handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
+                                                   shared_name=shared_name,
+                                                   name=name,
+                                                   container=container)
+  if extra_handle_data is None:
+    extra_handle_data = handle
+  if graph_mode:
+    full_handle_data = _combine_handle_data(handle, extra_handle_data)
+    _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
+    return handle
+  else:
+    # We do not want two distinct ResourceVariable objects for the same
+    # underlying resource in the runtime.
+    # When in eager mode, explicitly ensure so here. When in graph mode, it's
+    # ensured by always generating different variable names.
+    exists = gen_resource_variable_ops.var_is_initialized_op(handle)
+    if exists:
+      raise ValueError("variable object with name '%s' already created. Use "
+                       "get_variable() if reuse is desired." %
+                       shared_name)
+    with context.graph_mode(), ops.Graph().as_default() as graph:
+      h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
+                                                  shared_name=shared_name,
+                                                  name=name,
+                                                  container=container)
+
+      # Tensor._handle_data contains information for the shape-inference code to
+      # know the shape and dtype of the variable pointed to by a handle. Since
+      # shape inference doesn't run in eager mode we copy this data here for
+      # when the handle is captured by an eager mode function.
+      # pylint: disable=protected-access
+      full_handle_data = _combine_handle_data(h, extra_handle_data)
+      _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
+      # pylint: enable=protected-access
+    # Clean up op->graph->op reference cycles.
+    ops.dismantle_graph(graph)
+    return handle
+
+
 def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference.
 
@@ -170,45 +215,8 @@ def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
   """
   shape = initial_value.get_shape()
   dtype = initial_value.dtype.base_dtype
-  container = ops.get_default_graph()._container  # pylint: disable=protected-access
-  if container is None:
-    container = ""
-  handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
-                                                   shared_name=shared_name,
-                                                   name=name,
-                                                   container=container)
-
-  if graph_mode:
-    full_handle_data = _combine_handle_data(handle, initial_value)
-    _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
-    return handle
-  else:
-    # We do not want two distinct ResourceVariable objects for the same
-    # underlying resource in the runtime.
-    # When in eager mode, explicitly ensure so here. When in graph mode, it's
-    # ensured by always generating different variable names.
-    exists = gen_resource_variable_ops.var_is_initialized_op(handle)
-    if exists:
-      raise ValueError("variable object with name '%s' already created. Use "
-                       "get_variable() if reuse is desired." %
-                       shared_name)
-    with context.graph_mode(), ops.Graph().as_default() as graph:
-      h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
-                                                  shared_name=shared_name,
-                                                  name=name,
-                                                  container=container)
-
-      # Tensor._handle_data contains information for the shape-inference code to
-      # know the shape and dtype of the variable pointed to by a handle. Since
-      # shape inference doesn't run in eager mode we copy this data here for
-      # when the handle is captured by an eager mode function.
-      # pylint: disable=protected-access
-      full_handle_data = _combine_handle_data(h, initial_value)
-      _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
-      # pylint: enable=protected-access
-    # Clean up op->graph->op reference cycles.
-    ops.dismantle_graph(graph)
-    return handle
+  return variable_handle_from_shape_and_dtype(
+      shape, dtype, shared_name, name, graph_mode, initial_value)
 
 
 @contextlib.contextmanager
@@ -1635,21 +1643,119 @@ def is_resource_variable(var):
       var, "_should_act_as_resource_variable")
 
 
+# TODO(allenl): Rather than UninitializedVariable inheriting from
+# ResourceVariable, ResourceVariable should inherit from UninitializedVariable
+# and add its initialization logic.
+class UninitializedVariable(ResourceVariable):
+  """A variable with no initializer."""
+
+  def __init__(self,  # pylint: disable=super-init-not-called
+               trainable=None,
+               caching_device=None,
+               name=None,
+               shape=None,
+               dtype=None,
+               constraint=None,
+               synchronization=None,
+               aggregation=None,
+               extra_handle_data=None,
+               **unused_kwargs):
+    """Creates the variable handle.
+
+    Args:
+      trainable: If `True`, GradientTapes automatically watch uses of this
+        Variable.
+      caching_device: Optional device string or function describing where the
+        Variable should be cached for reading.  Defaults to the Variable's
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+      shape: The variable's shape.
+      dtype: The variable's dtype.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+      extra_handle_data: Optional, another resource handle or Tensor with handle
+        data to merge with `shape` and `dtype`.
+    """
+    with ops.init_scope():
+      self._in_graph_mode = not context.executing_eagerly()
+    synchronization, aggregation, trainable = (
+        variables.validate_synchronization_aggregation_trainable(
+            synchronization, aggregation, trainable, name))
+    self._trainable = trainable
+    self._synchronization = synchronization
+    self._aggregation = aggregation
+    self._save_slice_info = None
+    self._initial_value = None
+    self._initializer_op = None
+    self._is_initialized_op = None
+    self._graph_element = None
+    self._cached_value = None
+    # Store the graph key so optimizers know how to only retrieve variables from
+    # this graph. Guaranteed to be the same as the eager graph_key.
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    self._shape = shape
+    self._dtype = dtype
+    with ops.init_scope():
+      handle_name = ops.name_from_scope_name(name)
+      unique_id = "%s_%d" % (handle_name, ops.uid())
+      shared_name = context.shared_name(unique_id)
+      self._handle = variable_handle_from_shape_and_dtype(
+          shape=shape, dtype=dtype, shared_name=shared_name,
+          name=name, graph_mode=self._in_graph_mode,
+          extra_handle_data=extra_handle_data)
+      if self._in_graph_mode:
+        with ops.name_scope("Read"), ops.colocate_with(self._handle):
+          # Manually assign reads to the handle's device to avoid log
+          # messages.
+          with ops.device(self._handle.device):
+            value = self._read_variable_op()
+          self._graph_element = value
+        ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+    self._unique_id = unique_id
+    self._handle_name = handle_name + ":0"
+    self._constraint = constraint
+    # After the handle has been created, set up a way to clean it up when
+    # executing eagerly. We'll hold the only reference to the deleter, so that
+    # when this object is garbage collected the deleter will be too. This
+    # means ResourceVariables can be part of reference cycles without those
+    # cycles being uncollectable.
+    if not self._in_graph_mode:
+      self._handle_deleter = EagerResourceDeleter(
+          handle=self._handle, handle_device=self._handle.device)
+    self._cached_shape_as_list = None
+
+
 def copy_to_graph_uninitialized(var):
   """Copies an existing variable to a new graph, with no initializer."""
   # Like ResourceVariable.__deepcopy__, but does not set an initializer on the
   # new variable.
   # pylint: disable=protected-access
-  new_variable = ResourceVariable(
-      initial_value=array_ops.placeholder(
-          shape=var.shape, dtype=var.dtype,
-          name="unused_initial_variable_value"),
+  new_variable = UninitializedVariable(
       trainable=var.trainable,
       constraint=var._constraint,
+      shape=var.shape,
       dtype=var.dtype,
       name=var._shared_name,
       synchronization=var.synchronization,
-      aggregation=var.aggregation)
+      aggregation=var.aggregation,
+      extra_handle_data=var.handle)
   new_variable._maybe_initialize_trackable()
   # pylint: enable=protected-access
   return new_variable

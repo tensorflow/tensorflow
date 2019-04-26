@@ -84,27 +84,27 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
     network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.updates), 2)
+    self.assertEqual(len(network.updates), 3)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
-    self.assertEqual(len(network.updates), 2)
+    self.assertEqual(len(network.updates), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
-    self.assertEqual(len(network.updates), 3)
+    self.assertEqual(len(network.updates), 5)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(x4)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
     network.add_update(state_ops.assign_add(layer.a, [[1]]))
-    self.assertEqual(len(network.updates), 4)
+    self.assertEqual(len(network.updates), 6)
     self.assertEqual(len(network.get_updates_for(None)), 2)
 
     network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
-    self.assertEqual(len(network.updates), 5)
+    self.assertEqual(len(network.updates), 7)
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
   @test_util.run_in_graph_and_eager_modes()
@@ -156,18 +156,18 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
     network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.losses), 2)
-    self.assertEqual(len(network.get_losses_for(x1)), 0)
+    self.assertEqual(len(network.losses), 3)
+    self.assertEqual(len(network.get_losses_for(x1)), 1)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
     x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
-    self.assertEqual(len(network.losses), 2)
+    self.assertEqual(len(network.losses), 4)
 
     x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
-    self.assertEqual(len(network.losses), 3)
+    self.assertEqual(len(network.losses), 5)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
     self.assertEqual(len(network.get_losses_for(x4)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
@@ -492,6 +492,19 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       input_b_np = np.random.random((10, 32))
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
+
+  def test_multi_output_layer_output_names(self):
+    inp = keras.layers.Input(name='inp', shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(keras.layers.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name='out')(inp)
+    model = keras.models.Model(inp, out)
+    self.assertEqual(['out', 'out_1'], model.output_names)
+    self.assertAllClose([2., 3.], model(1.))
 
   @test_util.run_deprecated_v1
   def test_recursion(self):

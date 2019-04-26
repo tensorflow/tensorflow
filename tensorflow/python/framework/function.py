@@ -1014,13 +1014,7 @@ def _call(sig, *inputs, **kwargs):
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
   op = g.create_op(
-      func_name,
-      list(inputs),
-      output_types,
-      name=name,
-      attrs=attrs,
-      op_def=sig,
-      compute_shapes=False)
+      func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]

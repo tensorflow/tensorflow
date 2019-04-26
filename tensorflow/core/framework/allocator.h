@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,6 +38,14 @@ class Variant;
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
+  AllocationAttributes() = default;
+
+  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+                       std::function<uint64()>* freed_by_func)
+      : no_retry_on_failure(no_retry_on_failure),
+        allocation_will_be_logged(allocation_will_be_logged),
+        freed_by_func(freed_by_func) {}
+
   // If the first attempt to allocate the memory fails, the allocation
   // should return immediately without retrying.
   // An example use case is optional scratch spaces where a failure
@@ -49,9 +58,11 @@ struct AllocationAttributes {
   // true.
   bool allocation_will_be_logged = false;
   // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
-  // a memory chunk whose last-freed count is at this value or earlier may be
+  // a memory chunk whose freed_at_count is at this value or earlier may be
   // returned.
-  std::function<uint64()> freed_by_func = nullptr;
+  std::function<uint64()>* freed_by_func = nullptr;  // Not owned.
+
+  TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
 // Runtime statistics collected by an allocator. Exactly the same as
@@ -210,6 +221,8 @@ class Allocator {
 
   // Clears the internal stats except for the `in_use` field.
   virtual void ClearStats() {}
+
+  virtual void SetSafeFrontier(uint64 count) {}
 
  private:
   // No constructors or destructors are run for simple types

@@ -80,6 +80,18 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
       d.stream(), dist, state_size, output_size, state_data, output_data));
 }
 
+// Precondition: there is only 1 block and 1 thread.
+__global__ void SkipKernel(int64 delta, StateElementType* state_data) {
+  auto philox = GetPhiloxRandomFromMem(state_data);
+  UpdateMemWithPhiloxRandom(philox, delta, state_data);
+}
+
+void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
+                                           Tensor* state_tensor) {
+  SkipKernel<<<1, 1, 0, d.stream()>>>(
+      delta, state_tensor->flat<StateElementType>().data());
+}
+
 // Explicit instantiation of the GPU distributions functors.
 
 // clang-format off

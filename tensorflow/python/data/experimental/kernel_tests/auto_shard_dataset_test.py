@@ -248,6 +248,18 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
 
+  def testShardOutOfRange(self):
+    dataset = dataset_ops.Dataset.range(5)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = distribute._AutoShardDataset(dataset, 10, 0)
+      self.evaluate(self.getNext(dataset)())
+
+  def testShardOutOfRangeEmptyDataset(self):
+    dataset = dataset_ops.Dataset.range(0)
+    with self.assertRaises(errors.OutOfRangeError):
+      dataset = distribute._AutoShardDataset(dataset, 10, 0)
+      self.evaluate(self.getNext(dataset)())
+
   def testNoReaderPipelines(self):
     dataset = dataset_ops.Dataset.range(1024)
     dataset = distribute._AutoShardDataset(dataset, 2, 0)

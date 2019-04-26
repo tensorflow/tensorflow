@@ -27,6 +27,7 @@ py_library(
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
         ":ragged_concat_ops",
+        ":ragged_config",
         ":ragged_conversion_ops",
         ":ragged_dispatch",
         ":ragged_factory_ops",
@@ -39,6 +40,7 @@ py_library(
         ":ragged_string_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
+        ":ragged_tensor_spec",
         ":ragged_tensor_value",
         ":ragged_util",
         ":ragged_where_op",
@@ -283,10 +285,20 @@ py_library(
 )
 
 py_library(
+    name = "ragged_config",
+    srcs = ["ragged_config.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+py_library(
     name = "ragged_tensor",
     srcs = ["ragged_tensor.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":ragged_config",
         ":ragged_tensor_value",
         ":ragged_util",
         ":segment_id_ops",
@@ -363,6 +375,7 @@ py_library(
     srcs = ["segment_id_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":ragged_config",
         ":ragged_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -419,6 +432,18 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "ragged_tensor_spec",
+    srcs = ["ragged_tensor_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
     ],
 )
 

@@ -614,7 +614,7 @@ class OptimizerV2(trackable.Trackable):
   @iterations.setter
   def iterations(self, variable):
     if self._iterations is not None:
-      raise RuntimeError("Cannot set `iterations` to a new Variable after"
+      raise RuntimeError("Cannot set `iterations` to a new Variable after "
                          "the Optimizer weights have been created")
     self._iterations = variable
     self._weights.append(self._iterations)

@@ -30,6 +30,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -511,10 +512,8 @@ class AutoAddUpdates(object):
       if is_stateful_op and op.type != 'ReadVariableOp':
         new_stateful_ops.add(op)
 
-    explicit_updates = set([
-        u for u in self.layer._get_unfiltered_updates(check_trainable=False)
-        if not isinstance(u, tuple)
-    ])
+    explicit_updates = set(
+        [u for u in self.layer.updates if not isinstance(u, tuple)])
     # pylint: enable=protected-access
 
     # Don't add updates that will already be run by virtue of being consumed by
@@ -573,3 +572,96 @@ def autocast_context_manager(input_list, should_cast):
   var_read_dtype = _get_var_read_dtype(input_list, should_cast)
   return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
       var_read_dtype)
+
+
+def is_subclassed(layer):
+  return (layer.__module__.find('keras.engine') == -1 and
+          layer.__module__.find('keras.layers') == -1)
+
+
+def check_graph_consistency(tensor, method):
+  """Checks that tensors passed to `add_*` method match the Keras graph.
+
+  When one of the `add_*` method is called inside a V2 conditional branch,
+  the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
+  We need to raise clear error messages in such cases.
+
+  Arguments:
+    tensor: Tensor to check.
+    method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
+
+  Raises:
+    RuntimeError: In case of an out-of-graph tensor.
+  """
+  if ops.executing_eagerly_outside_functions() and hasattr(tensor, 'graph'):
+    if isinstance(tensor.graph,
+                  (control_flow_util_v2.CondBranchFuncGraph,
+                   control_flow_util_v2.WhileCondFuncGraph,
+                   control_flow_util_v2.WhileBodyFuncGraph)):
+      if method == 'add_metric':
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            metric = compute_metric(inputs)
+            self.add_metric(metric, name='my_metric', aggregation='mean')
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            metric = compute_metric(inputs)
+          else:
+            metric = 0.
+          self.add_metric(metric, name='my_metric', aggregation='mean')
+          return inputs
+        """
+      elif method == 'add_loss':
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            loss = compute_loss(inputs)
+            self.add_loss(loss)
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            loss = compute_loss(inputs)
+          else:
+            loss = 0.
+          self.add_loss(loss)
+          return inputs
+        """
+      else:
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            self.add_update(self.w.assign_add(1))
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            increment = 1
+          else:
+            increment = 0
+          self.add_update(self.w.assign_add(increment))
+          return inputs
+        """
+      raise RuntimeError(
+          'You are using the method `{method}` in a control flow branch '
+          'in your layer, e.g.:\n{bad_example}\n'
+          'This is not currently supported. '
+          'You should either use static control flow (`tf.cond`) '
+          'or move your call to {method} out of the control flow branch, '
+          'e.g.:\n{correct_example}\n'
+          'You can also resolve this by marking your layer '
+          'as dynamic (eager-only) by passing '
+          '`dynamic=True` to the layer constructor. '
+          'Any kind of control flow is supported with dynamic layers. '
+          'Note that using `dynamic=True` requires you '
+          'to implement static shape inference '
+          'in the `compute_output_shape(input_shape)` method.'.format(
+              method=method,
+              bad_example=bad_example,
+              correct_example=correct_example))

@@ -403,12 +403,12 @@ class ParametersTest(ComputationTest):
         expected=[-4.3, 1.3, -6.3, 3.3])
 
 
-class LocalBufferTest(ComputationTest):
-  """Tests focusing on execution with LocalBuffers."""
+class BufferTest(ComputationTest):
+  """Tests focusing on execution with Buffers."""
 
   def _Execute(self, c, arguments):
     compiled_c = c.Build().Compile()
-    arg_buffers = [xla_client.LocalBuffer.from_pyval(arg) for arg in arguments]
+    arg_buffers = [xla_client.Buffer.from_pyval(arg) for arg in arguments]
     result_buffer = compiled_c.Execute(arg_buffers)
     return result_buffer.to_py()
 
@@ -437,23 +437,23 @@ class LocalBufferTest(ComputationTest):
     c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
     arg = NumpyArrayF32(1.11)
     compiled_c = c.Build().Compile()
-    arg_buffer = xla_client.LocalBuffer.from_pyval(arg)
+    arg_buffer = xla_client.Buffer.from_pyval(arg)
     arg_buffer.delete()
     with self.assertRaises(ValueError):
       compiled_c.Execute([arg_buffer])
 
   def testDestructureTupleEmpty(self):
     t = ()
-    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    local_buffer = xla_client.Buffer.from_pyval(t)
     pieces = local_buffer.destructure()
-    self.assertTrue(local_buffer.is_deleted())
+    self.assertFalse(local_buffer.is_deleted())
     self.assertEqual(len(pieces), 0)
 
   def testDestructureTupleOneArrayElement(self):
     t = (np.array([1, 2, 3, 4], dtype=np.int32),)
-    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    local_buffer = xla_client.Buffer.from_pyval(t)
     pieces = local_buffer.destructure()
-    self.assertTrue(local_buffer.is_deleted())
+    self.assertFalse(local_buffer.is_deleted())
     self.assertEqual(len(pieces), 1)
     array = pieces[0]
     got = array.to_py()
@@ -461,25 +461,30 @@ class LocalBufferTest(ComputationTest):
     np.testing.assert_equal(want, got)
 
   def testDestructureTupleTwoArrayElementDifferentType(self):
-    t = (np.array([1.0, 2.0, 3.0, 4.0],
-                  dtype=np.float32), np.array([2, 3, 4, 5], dtype=np.int32))
-    local_buffer = xla_client.LocalBuffer.from_pyval(t)
-    pieces = local_buffer.destructure()
-    self.assertTrue(local_buffer.is_deleted())
-    self.assertEqual(len(pieces), 2)
-    array0, array1 = pieces
-    got = array0.to_py()
-    want = NumpyArrayF32([1.0, 2.0, 3.0, 4.0])
-    np.testing.assert_equal(want, got)
-    got = array1.to_py()
-    want = NumpyArrayS32([2, 3, 4, 5])
-    np.testing.assert_equal(want, got)
+    t = (
+        np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+        np.array([2, 3, 4, 5], dtype=np.int32),
+    )
+    local_buffer = xla_client.Buffer.from_pyval(t)
+    # Run the test twice to verify that the original tuple buffer remains valid
+    # even after destructuring.
+    for _ in range(2):
+      pieces = local_buffer.destructure()
+      self.assertFalse(local_buffer.is_deleted())
+      self.assertEqual(len(pieces), 2)
+      array0, array1 = pieces
+      got = array0.to_py()
+      want = NumpyArrayF32([1.0, 2.0, 3.0, 4.0])
+      np.testing.assert_equal(want, got)
+      got = array1.to_py()
+      want = NumpyArrayS32([2, 3, 4, 5])
+      np.testing.assert_equal(want, got)
 
   def testDestructureTupleNested(self):
     t = ((NumpyArrayF32([1.0, 2.0]), NumpyArrayS32([3, 4])), NumpyArrayS32([5]))
-    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    local_buffer = xla_client.Buffer.from_pyval(t)
     pieces = local_buffer.destructure()
-    self.assertTrue(local_buffer.is_deleted())
+    self.assertFalse(local_buffer.is_deleted())
     self.assertEqual(len(pieces), 2)
     tuple0, array1 = pieces
     got = array1.to_py()
@@ -491,9 +496,25 @@ class LocalBufferTest(ComputationTest):
     np.testing.assert_equal(NumpyArrayF32([1.0, 2.0]), got[0])
     np.testing.assert_equal(NumpyArrayS32([3, 4]), got[1])
 
+  def testMakeTuple(self):
+    t = (
+        np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+        np.array([2, 3, 4, 5], dtype=np.int32),
+    )
+    b0 = xla_client.Buffer.from_pyval(t[0])
+    b1 = xla_client.Buffer.from_pyval(t[1])
+    btup = xla_client.Buffer.make_tuple([b0, b1], device=0)
+    pieces = btup.destructure()
+    self.assertEqual(len(pieces), 2)
+    array0, array1 = pieces
+    np.testing.assert_equal(
+        np.array([1, 2, 3, 4], dtype=np.float32), array0.to_py())
+    np.testing.assert_equal(
+        np.array([2, 3, 4, 5], dtype=np.int32), array1.to_py())
+
   def testShape(self):
     pyval = np.array([[1., 2.]], np.float32)
-    local_buffer = xla_client.LocalBuffer.from_pyval(pyval)
+    local_buffer = xla_client.Buffer.from_pyval(pyval)
     xla_shape = local_buffer.shape()
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))

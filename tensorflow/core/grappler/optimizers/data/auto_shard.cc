@@ -121,6 +121,9 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(num_shards_node->name());
   new_node.add_input(index_node->name());
 
+  // Ensure that each shard will have at least one element.
+  (*(new_node.mutable_attr()))["require_non_empty"].set_b(true);
+
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
 

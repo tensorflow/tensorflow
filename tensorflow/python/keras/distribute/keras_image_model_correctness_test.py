@@ -28,7 +28,12 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
-  def get_model(self, initial_weights=None, distribution=None):
+  def get_model(self,
+                initial_weights=None,
+                distribution=None,
+                cloning=None,
+                input_shapes=None):
+    del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
       image = keras.layers.Input(shape=(28, 28, 3), name='image')
       c1 = keras.layers.Conv2D(
@@ -50,7 +55,8 @@ class DistributionStrategyCnnCorrectnessTest(
           optimizer=gradient_descent.SGD(
               learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
-          metrics=['sparse_categorical_accuracy'])
+          metrics=['sparse_categorical_accuracy'],
+          cloning=cloning)
 
     return model
 
@@ -75,17 +81,19 @@ class DistributionStrategyCnnCorrectnessTest(
     x_predict = x_train
     return x_train, y_train, x_predict
 
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_and_input_config_combinations())
-  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
-    self.run_correctness_test(distribution, use_numpy, use_validation_data)
-
-  @combinations.generate(keras_correctness_test_base.
-                         all_strategy_and_input_config_combinations())
-  def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
-                                           use_validation_data):
+  @combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data,
+                           cloning):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              with_batch_norm=True)
+                              cloning)
+
+  @combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
+                                           use_validation_data, cloning):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data,
+                              with_batch_norm=True, cloning=cloning)
 
 
 if __name__ == '__main__':

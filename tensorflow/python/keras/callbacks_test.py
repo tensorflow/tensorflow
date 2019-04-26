@@ -1260,7 +1260,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1489,7 +1490,8 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def fitModelAndAssertKerasModelWritten(self, model):

@@ -682,7 +682,7 @@ class DatasetBase : public core::RefCounted {
 
  protected:
   friend Status AsGraphDef(
-      OpKernelContext* ctx, DatasetBase* dataset,
+      OpKernelContext* ctx, const DatasetBase* dataset,
       GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
@@ -742,22 +742,7 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) final {
-    tracing::ScopedActivity activity(params_.prefix);
-    RecordStart(ctx, true /* stop_output */);
-    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
-    RecordStop(ctx, true /* start_output */);
-    if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-      s = errors::Internal(
-          "Iterator \"", params_.prefix,
-          "\" returned OutOfRange without setting `*end_of_sequence`. This "
-          "indicates that an error may have occurred. Original message: ",
-          s.error_message());
-      LOG(ERROR) << s;
-    }
-    return s;
-  }
+                 bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));

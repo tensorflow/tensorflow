@@ -221,7 +221,10 @@ class _SaveableView(object):
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj._create_resource()  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        with ops.device(obj._resource_device):
+          new_resource = obj._create_resource()
+        # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -606,7 +609,7 @@ def _write_object_proto(obj, proto, asset_file_def_index):
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
   elif isinstance(obj, tracking.TrackableResource):
-    proto.resource.SetInParent()
+    proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:

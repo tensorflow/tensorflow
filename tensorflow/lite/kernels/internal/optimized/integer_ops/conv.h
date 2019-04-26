@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/map.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -74,7 +75,9 @@ inline void ConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     const RuntimeShape& im2col_shape, int8* im2col_data,
-    gemmlowp::GemmContext* gemmlowp_context) {
+    CpuBackendContext* cpu_backend_context) {
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;

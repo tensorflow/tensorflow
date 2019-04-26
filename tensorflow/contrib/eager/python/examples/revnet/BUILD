@@ -134,6 +134,7 @@ py_library(
 py_binary(
     name = "cifar_tfrecords",
     srcs = ["cifar_tfrecords.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -143,6 +144,7 @@ py_binary(
 py_binary(
     name = "main",
     srcs = ["main.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":main_lib"],
 )
@@ -162,6 +164,7 @@ py_library(
 py_binary(
     name = "main_estimator",
     srcs = ["main_estimator.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",

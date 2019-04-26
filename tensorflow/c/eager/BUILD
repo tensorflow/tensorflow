@@ -258,3 +258,22 @@ filegroup(
     srcs = ["c_api.h"],
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+# TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
+# right now, remove this public rule when no longer needed (it should be
+# replaced by TF Lite)
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "*test*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)

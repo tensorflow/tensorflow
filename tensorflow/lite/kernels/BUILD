@@ -80,15 +80,61 @@ cc_test(
 )
 
 cc_library(
-    name = "gemmlowp_support",
+    name = "cpu_backend_context",
     srcs = [
-        "gemmlowp_support.cc",
+        "cpu_backend_context.cc",
     ],
     hdrs = [
-        "gemmlowp_support.h",
+        "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":op_macros",
+        # For now this unconditionally depends on both ruy and gemmlowp.
+        # See the comment inside class CpuBackendContext on the
+        # gemmlowp_context_ and ruy_context_ members.
+        "//tensorflow/lite/experimental/ruy:context",
+        "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_gemm",
+    hdrs = [
+        "cpu_backend_gemm.h",
+    ],
+    deps = [
+        ":op_macros",
+        ":cpu_backend_context",
+        # Depend on ruy regardless of `with_ruy`. See the comment in
+        # cpu_backend_gemm.h about why ruy is the generic path.
+        "//tensorflow/lite/experimental/ruy",
+    ],
+)
+
+cc_test(
+    name = "cpu_backend_gemm_test",
+    srcs = ["cpu_backend_gemm_test.cc"],
+    deps = [
+        ":cpu_backend_gemm",
+        "@com_google_googletest//:gtest",
+        # ruy's reference path provides the reference implementation
+        # that this test compares against.
+        "//tensorflow/lite/experimental/ruy",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_support",
+    srcs = [
+        "cpu_backend_support.cc",
+    ],
+    hdrs = [
+        "cpu_backend_support.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",
@@ -252,8 +298,8 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
+        ":cpu_backend_support",
         ":eigen_support",
-        ":gemmlowp_support",
         ":kernel_util",
         ":lstm_eval",
         ":op_macros",

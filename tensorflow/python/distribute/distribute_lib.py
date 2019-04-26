@@ -33,6 +33,7 @@ from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -561,14 +562,15 @@ class Strategy(object):
           raise ValueError(
               "`axis` = %r out of range for `value` with rank %d" %
               (axis, v.shape.rank))
-        # TODO(anjalisridhar): Added a second condition to handle the case of
-        # dynamic shapes when using tf.functions. We might want to remove this
-        # static shape case and always calculate the shape of v.
-        if (v.shape[axis] is not None and
-            [x for x in v.get_shape().as_list() if x]):
+        # TF v2 returns `None` for unknown dimensions and an integer for
+        # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
+        # or tensor_shape.Dimension(integer). `dimension_value` hides this
+        # difference, always returning `None` or an integer.
+        dim = tensor_shape.dimension_value(v.shape[axis])
+        if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, v.shape[axis]
+          return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]

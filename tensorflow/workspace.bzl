@@ -55,6 +55,8 @@ def clean_dep(dep):
 # path_prefix is no longer used.
 # tf_repo_name is thought to be under consideration.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+    """All external dependencies for TF builds."""
+
     # Note that we check the minimum bazel version in WORKSPACE.
     clang6_configure(name = "local_config_clang6")
     cc_download_clang_toolchain(name = "local_config_download_clang")
@@ -147,11 +149,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "8b3e1c0494af6b616ef3f2a107e093be1ea57c6a34f277edb2bdb1dbf3e3870a",
-        strip_prefix = "eigen-eigen-4fe5a1014743",
+        sha256 = "366e978cc0cb8a8bf2fa67c65f5647e27167325bf284806e05059a3336d2f497",
+        strip_prefix = "eigen-eigen-fb5130011791",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/4fe5a1014743.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/4fe5a1014743.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/fb5130011791.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/fb5130011791.tar.gz",
         ],
     )
 
@@ -216,11 +218,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "gemmlowp",
-        sha256 = "dcf6e2aed522d74ac76b54038c19f0138565f4778a8821ab6679738755ebf6c2",
-        strip_prefix = "gemmlowp-dec2b7dd5f6f0043070af4587d2a9dc156f4ebab",
+        sha256 = "88a5a506efbe0ad9c0502eef30b693c9b76d738686773dc47f1baddda7131ffc",
+        strip_prefix = "gemmlowp-f0077a59ec6d1df4ff2751cb74993994c2cca1d1",
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
-            "https://github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
+            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
+            "https://github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
         ],
     )
 
@@ -708,6 +710,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         urls = [
             "http://mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.8.0.zip",
             "https://github.com/NVlabs/cub/archive/1.8.0.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "rocprim_archive",
+        build_file = clean_dep("//third_party:rocprim.BUILD"),
+        sha256 = "12adf5bf3641d73c92915f102b17951f978704551fdcb9ed7f6311ed299b1d80",
+        strip_prefix = "rocPRIM-eff7d0687baf57db2507a31663a3dea72eed9093",
+        urls = [
+            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/eff7d0687baf57db2507a31663a3dea72eed9093.tar.gz",
+            "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/eff7d0687baf57db2507a31663a3dea72eed9093.tar.gz",
         ],
     )
 

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -408,7 +409,8 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
   string session_id_meta = strings::StrCat("RunGraph #id=", step_id, "#");
-  auto* activity = new tracing::ScopedActivity(session_id_meta);
+  auto* activity = new profiler::TraceMe(absl::string_view(session_id_meta),
+                                         profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {

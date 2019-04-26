@@ -234,7 +234,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_MUL, Register_MUL());
+  AddBuiltin(BuiltinOperator_MUL, Register_MUL(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION(),
              /* min_version */ 1,
              /* max_version */ 2);

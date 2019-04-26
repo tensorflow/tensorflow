@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   GraphDef* graph_def) {
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);

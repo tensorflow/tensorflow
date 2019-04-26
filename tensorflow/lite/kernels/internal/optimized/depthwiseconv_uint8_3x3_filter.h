@@ -5351,8 +5351,8 @@ struct DepthwiseConvThroughDepth {
   // |start_depth| to |end_depth|. Keep this not inlined to maintain a small
   // binary size. We use a DepthwiseConvParams struct for read only params
   // to minimize call overhead.
-  static __attribute__((noinline)) void Run(
-      const uint8* input_ptr, const uint8* filter_ptr, const int32* bias_ptr,
+  static void __attribute__((noinline))
+  Run(const uint8* input_ptr, const uint8* filter_ptr, const int32* bias_ptr,
       uint8* output_ptr, int64_t start_depth, int64_t end_depth,
       int64_t input_depth, int64_t input_row_size, int32 output_window_height,
       int32 output_window_width, const DepthwiseConvParams& params) {
@@ -5680,9 +5680,9 @@ inline void DepthwiseConv3x3Filter(
   }
 
   for (int32 b = batch_start; b < batch_end; ++b) {
+    // input_ptr and output_ptr point to the start of each batch
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size +
-                        row_start * params.output_width * params.output_depth;
+    uint8* output_ptr = output_data + b * output_batch_size;
 
     int32 out_x = 0;
     int32 out_y = row_start;
@@ -5698,12 +5698,18 @@ inline void DepthwiseConv3x3Filter(
       end_x = params.output_width - 1;
       out_y = std::max(1, out_y);
       end_y = std::min(params.output_height - 1, end_y);
-      const int in_x = (out_x * stride_width) - pad_width;
-      const int in_y = (out_y * stride_height) - pad_height;
-      input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr +=
-          out_y * params.output_row_size + out_x * params.output_depth;
     }
+
+    // pad_width and pad_height can both be 0 or 1, depending on padding option,
+    // such as Padding_VALID / Padding_SAME.
+    const int in_x = (out_x * stride_width) - pad_width;
+    const int in_y = (out_y * stride_height) - pad_height;
+
+    // input_ptr and output_ptr point to (in_y, in_x) and (out_y, out_x),
+    // respectively. (in_y, in_x) and (out_y, out_x) change along with
+    // row_start.
+    input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
+    output_ptr += out_y * params.output_row_size + out_x * params.output_depth;
 
     // Shuffling shapes that maximize width over the shuffle workspace size
     // perform better since the inputs are closer together, minimizing
@@ -5761,11 +5767,44 @@ inline void DepthwiseConv3x3Filter(
 
 #endif
 
+// Perform any necessary cache hinting and pre-writing.
+template <DepthwiseConvImplementation implementation>
+struct WorkspacePrefetchWrite {
+  static inline void Run(int8 fill_data, int size, int8* workspace) {}
+};
+
+#if defined(USE_NEON) && defined(__aarch64__)
+// Encourage the processor to keep the workspace in cache. Both the cache hint
+// and some memory writes are required.
+//
+// This code is extremely fragile.
+// Do not edit without extensive comparative performance testing.
+// Do not inline without great care.
+// Do not rely on results before and after getting coffee: non-thermal changes
+//    of more than 10% can occur with hidden underlying processor state changes.
+template <>
+struct WorkspacePrefetchWrite<
+    DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
+  static void __attribute__((noinline))
+  Run(int8 fill_data, int size, int8* workspace) {
+    const int8x8_t fill_data_vec = vdup_n_s8(fill_data);
+    int i = 0;
+    for (; i < (size - 15); i += 64) {
+      int8* ptr = workspace + i;
+      asm volatile("prfm pstl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      vst1_lane_u32(reinterpret_cast<uint32_t*>(ptr), fill_data_vec, 0);
+    }
+    vst1_lane_u32(reinterpret_cast<uint32_t*>(workspace + size - 4),
+                  fill_data_vec, 0);
+  }
+};
+#endif  // USE_NEON &&__aarch64__
+
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
-  static void ProcessPerDepthNeon(
+  static inline void ProcessPerDepthNeon(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
@@ -6092,11 +6131,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(input_block_data, scratch_block_data, function_params);
   }
 };
@@ -6483,11 +6522,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -6832,11 +6871,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -7049,11 +7088,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -7671,10 +7710,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -8098,10 +8137,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -8741,10 +8780,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -9267,10 +9306,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -9744,6 +9783,15 @@ inline void DepthwiseConvDotProduct3x3(
   function_params.input_height_stride = input_height_stride;
   function_params.output_height_stride = output_height_stride;
   function_params.residual_width = residual_micro_width;
+
+  // Prefetch workspace for write, along with any necessary dummy writes.
+  const int max_workspace_height_stride =
+      16 * ((workspace_width_micro_repeats + 3) >> 2) * largest_macro_depth;
+  const int workspace_fill_size = std::min(
+      kDepthwiseConvScratchWorkspaceSize,
+      height_block_size * max_workspace_height_stride + kWorkspaceExtension);
+  WorkspacePrefetchWrite<implementation>::Run(
+      params.weights_offset, workspace_fill_size, macroblock_workspace);
 
   // Main process.
   //

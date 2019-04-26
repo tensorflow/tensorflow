@@ -147,6 +147,7 @@ class OpLevelCostEstimator {
   Costs PredictAvgPoolGrad(const OpContext& op_context) const;
   Costs PredictFusedBatchNorm(const OpContext& op_context) const;
   Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
+  Costs PredictEinsum(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
   Costs PredictFusedOp(const OpContext& op_context,

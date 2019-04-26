@@ -41,6 +41,11 @@ int HostPlatform::VisibleDeviceCount() const {
 
 const string& HostPlatform::Name() const { return name_; }
 
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+HostPlatform::DescriptionForDevice(int ordinal) const {
+  return HostExecutor::CreateDeviceDescription(ordinal);
+}
+
 port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;

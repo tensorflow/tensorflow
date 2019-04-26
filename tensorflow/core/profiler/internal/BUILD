@@ -375,6 +375,7 @@ tf_cuda_library(
     visibility = [
         "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
     ],
@@ -417,6 +418,8 @@ filegroup(
     srcs = [
         "profiler_interface.cc",
         "profiler_interface.h",
+        "traceme_recorder.cc",
+        "traceme_recorder.h",
     ],
     visibility = ["//visibility:public"],
 )

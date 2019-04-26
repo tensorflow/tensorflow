@@ -1452,8 +1452,8 @@ def main():
       if validate_cuda_config(environ_cp):
         cuda_env_names = [
             'TF_CUDA_VERSION', 'TF_CUBLAS_VERSION', 'TF_CUDNN_VERSION',
-            'TF_TENSORRT_VERSION', 'TF_NCCL_VERSION', 'TF_CUDA_PATHS',
-            'CUDA_TOOLKIT_PATH'
+            'TF_TENSORRT_VERSION', 'TENSORRT_INSTALL_PATH', 'TF_NCCL_VERSION',
+            'TF_CUDA_PATHS', 'CUDA_TOOLKIT_PATH'
         ]
         for name in cuda_env_names:
           if name in environ_cp:

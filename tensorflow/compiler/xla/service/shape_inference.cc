@@ -634,10 +634,6 @@ Status ValidateDotDimensionNumbers(
     return fail("Element types do not match.");
   }
 
-  if ((lhs.rank() < 1) || (rhs.rank() < 1)) {
-    return fail("Dot only supports rank 1 or above.");
-  }
-
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 

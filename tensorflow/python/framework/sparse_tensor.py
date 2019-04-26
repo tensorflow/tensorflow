@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -114,21 +115,29 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
     """
-    with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
-      indices = ops.convert_to_tensor(
-          indices, name="indices", dtype=dtypes.int64)
-      # TODO(touts): Consider adding mutable_values() when 'values'
-      # is a VariableOp and updating users of SparseTensor.
-      values = ops.internal_convert_to_tensor(values, name="values")
-      dense_shape = ops.convert_to_tensor(
-          dense_shape, name="dense_shape", dtype=dtypes.int64)
+    if isinstance(indices, tensor_spec.TensorSpec):
+      if not isinstance(values, tensor_spec.TensorSpec):
+        raise TypeError("Expected values to be a TensorSpec")
+      if not isinstance(dense_shape, tensor_spec.TensorSpec):
+        raise TypeError("Expected dense_shape to be a TensorSpec")
+      if indices.dtype != dtypes.int64 or dense_shape.dtype != dtypes.int64:
+        raise TypeError("indices and dense_shape must have dtype=int64")
+    else:
+      with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
+        indices = ops.convert_to_tensor(
+            indices, name="indices", dtype=dtypes.int64)
+        # TODO(touts): Consider adding mutable_values() when 'values'
+        # is a VariableOp and updating users of SparseTensor.
+        values = ops.internal_convert_to_tensor(values, name="values")
+        dense_shape = ops.convert_to_tensor(
+            dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape
 
-    indices_shape = indices.get_shape().with_rank(2)
-    values_shape = values.get_shape().with_rank(1)
-    dense_shape_shape = dense_shape.get_shape().with_rank(1)
+    indices_shape = indices.shape.with_rank(2)
+    values_shape = values.shape.with_rank(1)
+    dense_shape_shape = dense_shape.shape.with_rank(1)
 
     # Assert number of rows in indices match the number of elements in values.
     indices_shape.dims[0].merge_with(values_shape.dims[0])
@@ -241,11 +250,11 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       raise ValueError("Shape invariant for SparseTensor must have the form "
                        "TensorShape([r]), got %r" % shape)
     rank = tensor_shape.dimension_value(shape[0])
-    return [
+    return (
         tensor_shape.TensorShape([None, rank]),  # indices
         tensor_shape.TensorShape([None]),  # values
-        tensor_shape.TensorShape([rank])
-    ]  # dense_shape
+        tensor_shape.TensorShape([rank])  # dense_shape
+        )
 
   @property
   def _is_graph_tensor(self):

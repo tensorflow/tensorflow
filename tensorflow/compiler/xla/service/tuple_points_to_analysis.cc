@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -754,6 +755,14 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
                                           other_add_operand_index);
+    } else if (user->IsCustomFusion()) {
+      std::vector<int64> operand_indices = user->OperandIndices(operand);
+      return operand_indices.size() == 1 && operand_indices[0] == 0 &&
+             absl::c_any_of(
+                 user->fused_instructions_computation()->instructions(),
+                 [](const HloInstruction* hlo) {
+                   return hlo->opcode() == HloOpcode::kScatter;
+                 });
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||

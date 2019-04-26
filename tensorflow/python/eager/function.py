@@ -966,6 +966,8 @@ class FunctionSpec(object):
     #   - remove the corresponding arguments,
     #   - remove the corresponding keywords.
     _, unwrapped = tf_decorator.unwrap(python_function)
+    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
+    # fullargspec.kwonlydefaults.
     if isinstance(unwrapped, functools.partial):
       # Also consider the Python3 case with kwonlydefaults.
       if fullargspec.defaults or fullargspec.kwonlydefaults:
@@ -1037,7 +1039,7 @@ class FunctionSpec(object):
 
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
-                                                      expand_composites=False))
+                                                      expand_composites=True))
 
   @property
   def fullargspec(self):
@@ -1654,7 +1656,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature, expand_composites=False)):
+         for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 

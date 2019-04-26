@@ -404,9 +404,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int filter_width = SizeOfDimension(weights, 2);
   const int filter_height = SizeOfDimension(weights, 1);
 
+  int unused_output_height, unused_output_width;
   data->padding = ComputePaddingHeightWidth(
-      params->stride_height, params->stride_width, 1, height, width,
-      filter_height, filter_width, params->padding);
+      params->stride_height, params->stride_width, 1, 1, height, width,
+      filter_height, filter_width, params->padding, &unused_output_height,
+      &unused_output_width);
 
   // Currently support float32 and uint8.
   switch (input->type) {
