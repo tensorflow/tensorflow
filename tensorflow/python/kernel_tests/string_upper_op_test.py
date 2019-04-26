@@ -49,7 +49,8 @@ class StringUpperOpTest(test.TestCase):
     with self.cached_session() as sess:
       output = string_ops.string_upper(strings, encoding='utf-8')
       output = self.evaluate(output)
-      self.assertAllEqual(output, [[b"ÓÓSSCHLOË"]]),
+      # output: "ÓÓSSCHLOË"
+      self.assertAllEqual(output, [[b"\xc3\x93\xc3\x93SSCHLO\xc3\x8b"]])
 
 
 if __name__ == "__main__":
