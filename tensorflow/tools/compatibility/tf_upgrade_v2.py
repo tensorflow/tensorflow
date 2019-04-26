@@ -873,6 +873,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.summary.all_summary_ops":
+            contrib_summary_comment,
         "tf.contrib.summary.audio":
             contrib_summary_comment,
         "tf.contrib.summary.create_file_writer":
