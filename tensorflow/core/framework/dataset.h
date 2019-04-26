@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -743,23 +742,7 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) final {
-    profiler::TraceMe activity(absl::string_view(params_.prefix),
-                               profiler::TraceMeLevel::kInfo);
-    RecordStart(ctx, /*stop_output=*/true);
-    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
-    RecordStop(ctx, /*stop_output=*/true);
-    if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-      s = errors::Internal(
-          "Iterator \"", params_.prefix,
-          "\" returned OutOfRange without setting `*end_of_sequence`. This "
-          "indicates that an error may have occurred. Original message: ",
-          s.error_message());
-      LOG(ERROR) << s;
-    }
-    return s;
-  }
+                 bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));

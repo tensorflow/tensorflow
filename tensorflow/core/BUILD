@@ -2761,7 +2761,6 @@ tf_cuda_library(
     deps = [
         ":framework_internal_headers_lib",
         "//third_party/eigen3",
-        "//tensorflow/core/profiler/lib:traceme",
         ":lib",
     ] + if_static(
         extra_deps = [
