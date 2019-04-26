@@ -114,6 +114,8 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
+std::string GetRandomNumberSeedStream() { return "__seed_stream"; }
+
 std::string GetInputCopyHandle(int64 parameter, int64 index) {
   return tensorflow::strings::Printf("%lld.%lld", parameter, index);
 }
@@ -181,6 +183,33 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
     auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
     p->ResetXfeedManagers();
   }
+}
+
+Shape GetOutfeedShape(const Shape& output_shape,
+                      const uint32 replication_factor) {
+  if (replication_factor > 1) {
+    // When the graph is replicated, we expect an extra dimension at the front
+    // of the output.
+    std::vector<int64> dimensions = {replication_factor};
+    absl::c_copy(output_shape.dimensions(), std::back_inserter(dimensions));
+    return ShapeUtil::MakeShape(output_shape.element_type(), dimensions);
+  } else {
+    return output_shape;
+  }
+}
+
+void ConnectSeedCallback(poplar::Engine* engine, int replication_factor) {
+  static std::random_device rd;
+  static std::mt19937_64 gen(rd());
+
+  auto callback = [gen, replication_factor](void* ptr) mutable {
+    uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
+    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
+      seedValue[i] = gen();
+    }
+  };
+
+  engine->connectStreamToCallback(GetRandomNumberSeedStream(), callback);
 }
 }  // namespace
 
@@ -264,21 +293,6 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
     }
   }
 }
-
-namespace {
-Shape GetOutfeedShape(const Shape& output_shape,
-                      const uint32 replication_factor) {
-  if (replication_factor > 1) {
-    // When the graph is replicated, we expect an extra dimension at the front
-    // of the output.
-    std::vector<int64> dimensions = {replication_factor};
-    absl::c_copy(output_shape.dimensions(), std::back_inserter(dimensions));
-    return ShapeUtil::MakeShape(output_shape.element_type(), dimensions);
-  } else {
-    return output_shape;
-  }
-}
-}  // namespace
 
 void PoplarExecutor::ConnectOutfeedToStreamCallback(
     se::StreamExecutor* executor, const OutfeedInfos& outfeed_infos,
@@ -1439,6 +1453,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     if (engine_changed) {
       try {
         engine->load(poplar_device_);
+
+        const auto replication_factor = executable.GetReplicationFactor();
+        ConnectSeedCallback(engine, replication_factor);
 
         if (current_config_.profiling().enable_ipu_trace_events() &&
             current_config_.profiling().enable_io_trace()) {
