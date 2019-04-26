@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -682,7 +683,7 @@ class DatasetBase : public core::RefCounted {
 
  protected:
   friend Status AsGraphDef(
-      OpKernelContext* ctx, DatasetBase* dataset,
+      OpKernelContext* ctx, const DatasetBase* dataset,
       GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
@@ -743,11 +744,12 @@ class DatasetBaseIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
-    tracing::ScopedActivity activity(params_.prefix);
-    RecordStart(ctx, true /* stop_output */);
+    profiler::TraceMe activity(absl::string_view(params_.prefix),
+                               profiler::TraceMeLevel::kInfo);
+    RecordStart(ctx, /*stop_output=*/true);
     Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
     if (s.ok() && !*end_of_sequence) RecordElement(ctx);
-    RecordStop(ctx, true /* start_output */);
+    RecordStop(ctx, /*stop_output=*/true);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
           "Iterator \"", params_.prefix,

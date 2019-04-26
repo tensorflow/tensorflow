@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
+#include <memory>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -251,7 +252,7 @@ const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
     return *device_description_;
   }
 
-  device_description_.reset(PopulateDeviceDescription());
+  device_description_ = CreateDeviceDescription();
   return *device_description_;
 }
 
@@ -764,8 +765,10 @@ bool StreamExecutor::StopTimer(Stream *stream, Timer *timer) {
   return implementation_->StopTimer(stream, timer);
 }
 
-DeviceDescription *StreamExecutor::PopulateDeviceDescription() const {
-  return implementation_->PopulateDeviceDescription();
+std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
+    const {
+  auto desc_status = implementation_->CreateDeviceDescription();
+  return desc_status.ConsumeValueOrDie();
 }
 
 bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {

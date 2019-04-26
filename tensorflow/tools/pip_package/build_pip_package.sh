@@ -125,7 +125,7 @@ function prepare_src() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow} > /dev/null
-  for header in $(find protobuf_archive -regex ".*\.\(h\|inc\)"); do
+  for header in $(find protobuf_archive -type f,l \( -name "*.h" -o -name "*.inc" \)); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done

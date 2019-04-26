@@ -195,11 +195,15 @@ class Generator(tracking.AutoTrackable):
                                        dtype=SEED_TYPE)
       else:
         state = create_rng_state(seed, algorithm)
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = algorithm
     else:
       assert seed is None
-      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(copy_from.state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = copy_from.algorithm
 
   def reset(self, seed):

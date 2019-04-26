@@ -13,7 +13,6 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
-    "tf_additional_all_protos",
 )
 
 tf_kernel_library(
@@ -206,6 +205,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -338,6 +338,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -476,12 +477,4 @@ tf_kernel_library(
         ":unbatch_dataset_op",
         ":unique_dataset_op",
     ],
-)
-
-tf_proto_library(
-    name = "snapshot_proto",
-    srcs = ["snapshot.proto"],
-    cc_api_version = 2,
-    default_header = True,
-    protodeps = tf_additional_all_protos(),
 )

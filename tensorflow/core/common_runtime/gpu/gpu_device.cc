@@ -15,7 +15,8 @@ limitations under the License.
 
 // TODO(opensource): Use a more generic sounding preprocessor name than
 // GOOGLE_CUDA
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -635,8 +637,12 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 
   // When Xprof profiling is off (which is the default), constructing the
   // activity is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
+  profiler::TraceMe activity(
+      [&] {
+        return strings::StrCat(op_kernel->name(), ":",
+                               op_kernel->type_string());
+      },
+      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }
@@ -1255,9 +1261,12 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
       GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
   int numa_node = dev_locality.numa_node();
 
-  se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
-  const se::DeviceDescription& desc = se->GetDeviceDescription();
+  se::Platform* gpu_manager = GPUMachineManager();
+  auto desc_status = gpu_manager->DescriptionForDevice(platform_gpu_id.value());
+  if (!desc_status.ok()) {
+    return desc_status.status();
+  }
+  auto desc = desc_status.ConsumeValueOrDie();
   GPUProcessState* process_state = GPUProcessState::singleton();
   Allocator* gpu_allocator = process_state->GetGPUAllocator(
       options.config.gpu_options(), tf_gpu_id, memory_limit);
@@ -1280,11 +1289,11 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   int64 bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
-      tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, desc),
+      tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, *desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
             << (bytes_limit >> 20) << " MB memory) -> physical GPU ("
-            << GetShortDeviceDescription(platform_gpu_id, desc) << ")";
+            << GetShortDeviceDescription(platform_gpu_id, *desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   devices->push_back(std::move(gpu_device));
 
@@ -1350,10 +1359,14 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
     // virtualized in some environments, we can't just use the GPU id.
     // NUMA locales are indexed from 0, buses are indexed from 1.
-    se::StreamExecutor* se =
-        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
-    int numa_node = desc.numa_node();
+    se::Platform* gpu_manager = GPUMachineManager();
+    auto desc_status =
+        gpu_manager->DescriptionForDevice(platform_gpu_id.value());
+    if (!desc_status.ok()) {
+      return desc_status.status();
+    }
+    auto desc = desc_status.ConsumeValueOrDie();
+    int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA
       // affinity of the GPU.  If this is not a multi-socket mobo with
@@ -1406,7 +1419,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     (*localities)[tf_gpu_id] = dev_locality;
     VLOG(1) << "GPUDevice PlatformGpuId " << platform_gpu_id << " TfGpuId "
             << tf_gpu_id << " on bus " << dev_locality.bus_id()
-            << " numa: " << numa_node << " pci: " << desc.pci_bus_id()
+            << " numa: " << numa_node << " pci: " << desc->pci_bus_id()
             << " DeviceLocality: " << dev_locality.DebugString();
   }
   return Status::OK();
@@ -1420,15 +1433,14 @@ static int GetDefaultMinGPUMultiprocessorCount(
   // Find the highest multi-processor count across all visible GPUs.
   int max_count = -1;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    auto exec_status =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_order[i]);
-    if (!exec_status.ok()) {
+    int visible_gpu_id = visible_gpu_order[i].value();
+    auto description_status = gpu_manager->DescriptionForDevice(visible_gpu_id);
+    if (!description_status.ok()) {
       continue;
     }
 
-    se::StreamExecutor* se = exec_status.ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
-    max_count = std::max(max_count, desc.core_count());
+    auto description = description_status.ConsumeValueOrDie();
+    max_count = std::max(max_count, description->core_count());
   }
 
   if (max_count < 0 || kDefaultMinGPUMultiprocessorCount < max_count) {
@@ -1578,39 +1590,37 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     std::vector<PlatformGpuId>* ids) {
   se::Platform* gpu_manager = GPUMachineManager();
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    const PlatformGpuId visible_gpu_id = visible_gpu_order[i];
-    auto executor =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_id);
-    if (!executor.ok()) {
-      return executor.status();
+    int visible_gpu_id = visible_gpu_order[i].value();
+    auto description_status = gpu_manager->DescriptionForDevice(visible_gpu_id);
+    if (!description_status.ok()) {
+      return description_status.status();
     }
 
-    auto stream_exec = executor.ValueOrDie();
-    const auto& description = stream_exec->GetDeviceDescription();
+    auto description = description_status.ConsumeValueOrDie();
 #if GOOGLE_CUDA
     int cc_major;
     int cc_minor;
-    if (!description.cuda_compute_capability(&cc_major, &cc_minor)) {
+    if (!description->cuda_compute_capability(&cc_major, &cc_minor)) {
       // Logs internally on failure.
       cc_major = 0;
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << " major: " << cc_major
+              << "\nname: " << description->name() << " major: " << cc_major
               << " minor: " << cc_minor
-              << " memoryClockRate(GHz): " << description.clock_rate_ghz()
-              << "\npciBusID: " << description.pci_bus_id();
+              << " memoryClockRate(GHz): " << description->clock_rate_ghz()
+              << "\npciBusID: " << description->pci_bus_id();
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
-    if (!description.rocm_amdgpu_isa_version(&isa_version)) {
+    if (!description->rocm_amdgpu_isa_version(&isa_version)) {
       // Logs internally on failure.
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
+              << "\nname: " << description->name() << "\nAMDGPU ISA: gfx"
               << isa_version << "\nmemoryClockRate (GHz) "
-              << description.clock_rate_ghz() << "\npciBusID "
-              << description.pci_bus_id();
+              << description->clock_rate_ghz() << "\npciBusID "
+              << description->pci_bus_id();
 #endif
   }
 
@@ -1638,23 +1648,23 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   // Filter out devices that don't have the right capability or power.
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     const PlatformGpuId visible_gpu_id = visible_gpu_order[i];
-    auto exec_status =
-        GpuIdUtil::ExecutorForPlatformGpuId(gpu_manager, visible_gpu_id);
-    if (!exec_status.ok()) {
+    auto description_status =
+        gpu_manager->DescriptionForDevice(visible_gpu_id.value());
+    if (!description_status.ok()) {
       LOG(INFO) << "Ignoring visible gpu device " << visible_gpu_id
                 << " whose executor is in invalid state: "
-                << exec_status.status().ToString();
+                << description_status.status().ToString();
       continue;
     }
-    se::StreamExecutor* se = exec_status.ValueOrDie();
-    const se::DeviceDescription& desc = se->GetDeviceDescription();
+
+    auto desc = description_status.ConsumeValueOrDie();
 
 #if GOOGLE_CUDA
     CudaVersion device_capability;
-    if (!desc.cuda_compute_capability(&device_capability.major_part,
-                                      &device_capability.minor_part)) {
+    if (!desc->cuda_compute_capability(&device_capability.major_part,
+                                       &device_capability.minor_part)) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "whose CUDA compute capability is not available.";
       continue;
@@ -1663,7 +1673,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // accepted.
     if (device_capability < min_supported_capability) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "with Cuda compute capability " << device_capability
                 << ". The minimum required Cuda capability is "
@@ -1672,14 +1682,14 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 #elif TENSORFLOW_USE_ROCM
     int device_isa;
-    if (!desc.rocm_amdgpu_isa_version(&device_isa)) {
+    if (!desc->rocm_amdgpu_isa_version(&device_isa)) {
       continue;
     }
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
     if (device_isa < min_supported_isa) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
                 << "with AMDGPU ISA gfx" << device_isa
                 << ". The minimum required AMDGPU ISA is gfx"
@@ -1692,11 +1702,11 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // count than the fastest GPU are filtered out, unless they have 8 or more
     // multiprocessors. If the TF_MIN_GPU_MULTIPROCESSOR_COUNT environment
     // variable is set, its value will be used to filter out GPUs.
-    if (desc.core_count() < min_gpu_core_count) {
+    if (desc->core_count() < min_gpu_core_count) {
       LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
-                << "with core count: " << desc.core_count()
+                << "with core count: " << desc->core_count()
                 << ". The minimum required count is " << min_gpu_core_count
                 << ". You can adjust this requirement with the env var "
                    "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";

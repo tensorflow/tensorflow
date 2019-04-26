@@ -81,6 +81,11 @@ class XlaOpKernelContext {
   // xla::PRIMITIVE_TYPE_INVALID.
   xla::PrimitiveType input_xla_type(int index);
 
+  // Returns the type of input `name` as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType InputXlaType(absl::string_view name);
+
   // Returns the shape of input `index`.
   TensorShape InputShape(int index);
 

@@ -413,7 +413,7 @@ def _in_place_subclassed_model_reset(model):
           'loss_weights_list',
           'targets',
           '_feed_targets',
-          'sample_weight_modes',
+          '_sample_weight_modes',
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',

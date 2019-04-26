@@ -81,7 +81,8 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
                                             TfGpuId tf_gpu_id,
                                             size_t total_bytes) {
   CHECK(process_state_);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
@@ -163,7 +164,8 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 
 SharedCounter* GPUProcessState::GPUAllocatorCounter(TfGpuId tf_gpu_id) {
   DCHECK(process_state_);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
   mutex_lock l(mu_);
   if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
@@ -275,7 +277,8 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
 
 void GPUProcessState::AddGPUAllocVisitor(int bus_id,
                                          const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_allocators_.empty())  // Crash OK
       << "AddGPUAllocVisitor must be called before "
@@ -290,7 +293,8 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
 
 void GPUProcessState::AddGpuHostAllocVisitor(
     int numa_node, const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostAllocVisitor must be called before "
@@ -304,7 +308,8 @@ void GPUProcessState::AddGpuHostAllocVisitor(
 
 void GPUProcessState::AddGpuHostFreeVisitor(
     int numa_node, const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostFreeVisitor must be called before "

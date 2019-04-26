@@ -4462,7 +4462,6 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
       m == 1 || k == 1 || n == 1 || m == -1 || k == -1 || n == -1;
   EXPECT_EQ(changed, dot_should_be_transformed);
   TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
-  EXPECT_EQ(changed, dot_should_be_transformed);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kDot) {

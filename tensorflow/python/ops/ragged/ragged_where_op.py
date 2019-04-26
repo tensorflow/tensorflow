@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -108,6 +107,7 @@ def where(condition, x=None, y=None, name=None):
     else:
       x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
       y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, name='y')
+      condition, x, y = ragged_tensor.match_row_splits_dtypes(condition, x, y)
       return _elementwise_where(condition, x, y)
 
 
@@ -145,6 +145,7 @@ def _coordinate_where(condition):
   selected_coords = _coordinate_where(condition.values)
 
   # Convert the first index in each coordinate to a row index and column index.
+  condition = condition.with_row_splits_dtype(selected_coords.dtype)
   first_index = selected_coords[:, 0]
   selected_rows = array_ops.gather(condition.value_rowids(), first_index)
   selected_row_starts = array_ops.gather(condition.row_splits, selected_rows)
@@ -158,9 +159,8 @@ def _coordinate_where(condition):
                           axis=1)
 
 
-def _nrows(rt_input, out_type=dtypes.int64, name=None):
+def _nrows(rt_input):
   if isinstance(rt_input, ragged_tensor.RaggedTensor):
-    return rt_input.nrows(out_type=out_type, name=name)
+    return rt_input.nrows()
   else:
-    with ops.name_scope(name, 'RaggedNRows', [rt_input]):
-      return array_ops.shape(rt_input, out_type=out_type)[0]
+    return array_ops.shape(rt_input)[0]

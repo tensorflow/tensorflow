@@ -280,7 +280,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 8,
+    shard_count = 10,
     tags = [
         "noasan",
         "optonly",
@@ -321,7 +321,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "noasan",  # times out
         "optonly",

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -289,16 +290,20 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     done.WaitForNotification();
   } else {
     const string& op_name = kernel_->name();
-    // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
+    // If tracing if off, the overheads of ScopedAnnotation and TraceMe
     // are negligible.
     if (device_->TraceUsingAnnotations()) {
       // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          profiler::TraceMeLevel::kInfo);
       // 'ScopedAnnotation' will trace the OpKernel execution time on device.
       tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
-      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          profiler::TraceMeLevel::kInfo);
       device_->Compute(kernel_.get(), &context);
     }
   }

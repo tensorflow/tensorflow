@@ -202,6 +202,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
         "@local_config_nccl//:nccl",
         "//tensorflow/core/nccl:nccl_lib",
@@ -1275,7 +1276,9 @@ cc_library(
     deps = [
         ":ragged_gather_op",
         ":ragged_range_op",
+        ":ragged_tensor_from_variant_op",
         ":ragged_tensor_to_sparse_kernel",
+        ":ragged_tensor_to_variant_op",
     ],
 )
 
@@ -1342,6 +1345,56 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_to_variant_op",
+    srcs = ["ragged_tensor_to_variant_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_from_variant_op",
+    srcs = ["ragged_tensor_from_variant_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_variant_op_test",
+    size = "small",
+    srcs = ["ragged_tensor_to_variant_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_variant_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_from_variant_op_test",
+    size = "small",
+    srcs = ["ragged_tensor_from_variant_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_from_variant_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2481,6 +2534,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 

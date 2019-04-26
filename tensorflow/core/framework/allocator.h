@@ -22,10 +22,12 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,6 +39,14 @@ class Variant;
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
+  AllocationAttributes() = default;
+
+  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+                       std::function<uint64()> freed_by_func)
+      : no_retry_on_failure(no_retry_on_failure),
+        allocation_will_be_logged(allocation_will_be_logged),
+        freed_by_func(std::move(freed_by_func)) {}
+
   // If the first attempt to allocate the memory fails, the allocation
   // should return immediately without retrying.
   // An example use case is optional scratch spaces where a failure
@@ -52,6 +62,8 @@ struct AllocationAttributes {
   // a memory chunk whose last-freed count is at this value or earlier may be
   // returned.
   std::function<uint64()> freed_by_func = nullptr;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
 // Runtime statistics collected by an allocator. Exactly the same as

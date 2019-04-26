@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -72,7 +71,8 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
       indices, values, shape = gen_string_ops.string_split(
           input, delimiter="", skip_empty=False)
       return ragged_tensor.RaggedTensor.from_value_rowids(
-          values=values, value_rowids=indices[:, 0], nrows=shape[0])
+          values=values, value_rowids=indices[:, 0], nrows=shape[0],
+          validate=False)
     else:
       return string_bytes_split(ragged_tensor.RaggedTensor.from_tensor(input))
 
@@ -146,8 +146,8 @@ def unicode_encode(input,
       if input_tensor.shape.ndims == 2:
         # The input tensor is of the correct 2-D shape, it's just not ragged.
         return unicode_encode(
-            ragged_conversion_ops.from_tensor(input_tensor), output_encoding,
-            errors, replacement_char)
+            ragged_tensor.RaggedTensor.from_tensor(input_tensor),
+            output_encoding, errors, replacement_char)
       elif input_tensor.shape.ndims > 2:
         # We need to initially flatten the input tensor to 2-D, and then can
         # reshape the output of our processed flattened tensor.
@@ -166,7 +166,8 @@ def unicode_encode(input,
         ragged_input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
             input_tensor,
             array_ops.stack(
-                [0, array_ops.shape(input_tensor, out_type=dtypes.int64)[0]]))
+                [0, array_ops.shape(input_tensor, out_type=dtypes.int32)[0]]),
+            validate=False)
         output_tensor = unicode_encode(ragged_input_tensor, output_encoding,
                                        errors, replacement_char)
         return array_ops.reshape(output_tensor, [])
@@ -404,11 +405,11 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
   if input_ndims > 1:
     # Convert to a ragged tensor with ragged_rank = input_ndims - 1.
     if not ragged_tensor.is_ragged(input):
-      input = ragged_conversion_ops.from_tensor(
+      input = ragged_tensor.RaggedTensor.from_tensor(
           input, ragged_rank=input_ndims - 1)
     elif input.ragged_rank < input_ndims - 1:
       input = input.with_flat_values(
-          ragged_conversion_ops.from_tensor(
+          ragged_tensor.RaggedTensor.from_tensor(
               input.flat_values,
               ragged_rank=input_ndims - input.ragged_rank + 1))
 
@@ -435,12 +436,13 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
       offsets = flat_result.char_to_byte_starts
   else:
     codepoints = ragged_tensor.RaggedTensor.from_row_splits(
-        flat_result.char_values, flat_result.row_splits)
+        flat_result.char_values, flat_result.row_splits, validate=False)
     if input_ndims > 1:
       codepoints = input.with_flat_values(codepoints)
     if with_offsets:
       offsets = ragged_tensor.RaggedTensor.from_row_splits(
-          flat_result.char_to_byte_starts, flat_result.row_splits)
+          flat_result.char_to_byte_starts, flat_result.row_splits,
+          validate=False)
       if input_ndims > 1:
         offsets = input.with_flat_values(offsets)
 
@@ -492,7 +494,8 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
     return ragged_tensor.RaggedTensor.from_value_rowids(
         values=sparse_result.values,
         value_rowids=sparse_result.indices[:, 0],
-        nrows=sparse_result.dense_shape[0])
+        nrows=sparse_result.dense_shape[0],
+        validate=False)
 
 
 @tf_export(v1=["string_split"])
@@ -552,7 +555,8 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None,
       return ragged_tensor.RaggedTensor.from_value_rowids(
           values=sparse_result.values,
           value_rowids=sparse_result.indices[:, 0],
-          nrows=sparse_result.dense_shape[0])
+          nrows=sparse_result.dense_shape[0],
+          validate=False)
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
 
@@ -617,6 +621,7 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
       return ragged_tensor.RaggedTensor.from_value_rowids(
           values=sparse_result.values,
           value_rowids=sparse_result.indices[:, 0],
-          nrows=sparse_result.dense_shape[0])
+          nrows=sparse_result.dense_shape[0],
+          validate=False)
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")

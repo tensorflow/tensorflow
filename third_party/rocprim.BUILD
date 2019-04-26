@@ -2,7 +2,7 @@
 
 licenses(["notice"])  # BSD
 
-exports_files(["LICENSE.TXT"])
+exports_files(["LICENSE.txt"])
 
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "rocm_default_copts")
 

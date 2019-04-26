@@ -73,9 +73,6 @@ tf_cuda_library(
 
 filegroup(
     name = "mobile_srcs",
-    srcs = [
-        "profiler_session.cc",
-        "profiler_session.h",
-    ],
+    srcs = glob(["*"]),
     visibility = ["//visibility:public"],
 )

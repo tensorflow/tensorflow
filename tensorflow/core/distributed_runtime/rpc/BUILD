@@ -15,8 +15,8 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
     "tf_cc_test",
+    "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
@@ -223,6 +223,7 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -241,6 +242,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )

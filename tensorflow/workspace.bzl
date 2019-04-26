@@ -151,11 +151,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "83658ef0f4c88a9ac1dfc11a34573d54febb6321e22fd0fa4a63565c43bc9e95",
-        strip_prefix = "eigen-eigen-973d172a72e8",
+        sha256 = "4bc6d3b365ef5bc64a7ead33ec99b41ae8e25225083ab6a2c7a5ad66d054070f",
+        strip_prefix = "eigen-eigen-c97a66af8736",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/973d172a72e8.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/973d172a72e8.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/c97a66af8736.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/c97a66af8736.tar.gz",
         ],
     )
 
@@ -220,11 +220,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "gemmlowp",
-        sha256 = "dcf6e2aed522d74ac76b54038c19f0138565f4778a8821ab6679738755ebf6c2",
-        strip_prefix = "gemmlowp-dec2b7dd5f6f0043070af4587d2a9dc156f4ebab",
+        sha256 = "88a5a506efbe0ad9c0502eef30b693c9b76d738686773dc47f1baddda7131ffc",
+        strip_prefix = "gemmlowp-f0077a59ec6d1df4ff2751cb74993994c2cca1d1",
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
-            "https://github.com/google/gemmlowp/archive/dec2b7dd5f6f0043070af4587d2a9dc156f4ebab.zip",
+            "http://mirror.tensorflow.org/github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
+            "https://github.com/google/gemmlowp/archive/f0077a59ec6d1df4ff2751cb74993994c2cca1d1.zip",
         ],
     )
 

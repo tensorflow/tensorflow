@@ -18,14 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -104,16 +109,8 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   # This will be used to construct the main train function.
   all_inputs = flatten_perdevice_values(distribution_strategy,
                                         grouped_inputs)
-  if with_loss_tensor:
-    # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
-                                        grouped_outputs[0], axis=None)
-    all_outputs = flatten_perdevice_values(distribution_strategy,
-                                           grouped_outputs[1:])
-    all_outputs = [loss] + all_outputs
-  else:
-    all_outputs = flatten_perdevice_values(distribution_strategy,
-                                           grouped_outputs)
+  all_outputs = unwrap_outputs(distribution_strategy, grouped_outputs,
+                               with_loss_tensor)
 
   if grouped_updates:
     all_updates = flatten_perdevice_values(distribution_strategy,
@@ -137,6 +134,41 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   return all_inputs, all_outputs, all_updates, all_session_args
 
 
+def unwrap_outputs(distribution_strategy, grouped_outputs,
+                   with_loss_tensor=False):
+  """Unwrap the list of outputs contained in the PerDevice parameters.
+
+  This function calls `flatten_perdevice_values` to parse each of the input
+  parameters into a list of outputs on the different devices. If we set
+  `with_loss_tensor` to be True, we also call `reduce` on the list of losses on
+  the different devices to give us one loss tensor.
+
+  Args:
+    distribution_strategy: DistributionStrategy used to distribute training and
+        validation.
+    grouped_outputs: PerDevice outputs returned from the train or test function
+        that we ran on each device.
+    with_loss_tensor: Boolean that indicates if we need to add the reduced loss
+        tensor as one of the outputs.
+
+  Returns:
+    Values of each of the PerDevice outputs.
+
+  """
+  if not with_loss_tensor:
+    return flatten_perdevice_values(distribution_strategy,
+                                    grouped_outputs)
+
+  if not isinstance(grouped_outputs, list):
+    grouped_outputs = [grouped_outputs]
+  # reduce loss tensor before adding it to the list of fetches
+  loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
+                                      grouped_outputs[0], axis=None)
+  all_outputs = flatten_perdevice_values(distribution_strategy,
+                                         grouped_outputs[1:])
+  return [loss] + all_outputs
+
+
 def flatten_perdevice_values(distribution_strategy, perdevice_values):
   """Unwraps and flattens a nest of PerDevice parameters.
 
@@ -147,7 +179,7 @@ def flatten_perdevice_values(distribution_strategy, perdevice_values):
 
   Args:
     distribution_strategy: DistributionStrategy used to distribute training and
-        validation.
+      validation.
     perdevice_values: List of PerDevice object or a single PerDevice object.
 
   Returns:
@@ -158,6 +190,31 @@ def flatten_perdevice_values(distribution_strategy, perdevice_values):
   # returns all the values associated with it.
   return [e for flattened in nest.flatten(perdevice_values)
           for e in distribution_strategy.unwrap(flattened)]
+
+
+def unwrap_perdevice_values(distribution_strategy, perdevice_values):
+  """Unwraps a nest of PerDevice parameters.
+
+  PerDevice values have one value associated with each device. Each entry in
+  the PerDevice dict has a device `key` and the corresponding value on the
+  device as the `value`. In this function we take a PerDevice value or a list of
+  PerDevice values, transform all the values in each PerDevice dict to a list
+  and return a list of such lists.
+
+  Args:
+    distribution_strategy: DistributionStrategy used to distribute training and
+      validation.
+    perdevice_values: List of PerDevice object or a single PerDevice object.
+
+  Returns:
+    List of lists of values of all the PerDevice objects.
+
+  """
+  flats = [
+      distribution_strategy.unwrap(flattened)
+      for flattened in nest.flatten(perdevice_values)
+  ]
+  return list(zip(*flats))
 
 
 def validate_callbacks(input_callbacks, optimizer):
@@ -561,8 +618,22 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   # correct order.
   if isinstance(inputs, dict):
     inputs = [inputs[key] for key in model._feed_input_names]
-  inputs = flatten_perdevice_values(strategy, inputs)
-  targets = flatten_perdevice_values(strategy, targets)
+  if is_distributing_by_cloning(model):
+    inputs = flatten_perdevice_values(strategy, inputs)
+    targets = flatten_perdevice_values(strategy, targets)
+  else:
+    # TODO(b/129653859):  Simplify after PerReplica can be the input of
+    # `def_function.function`.
+    # Without cloning the `inputs` and `target` are the inputs to
+    # `values.regroup`.  Instead of a flat list of `len(inputs) * num_replicas`
+    # we need a list of `len(inputs)` lists, where each per-input list has
+    # `len(num_replicas)` elements. Each element[i] in the per-input
+    # list is the input to the i-th replica.  For example, if inputs are
+    # `[[1, 2], [3, 4]]` and there are two replicas, then we want
+    # `[[1, 3], [2, 4]]` (see `values_test.testWrapAListOfTwoTuples`) so that
+    # we arrive at a `PerReplica(d0: 1, d1: 2)` and a `PerReplica(d0:3, d1:4)`.
+    inputs = unwrap_perdevice_values(strategy, inputs)
+    targets = unwrap_perdevice_values(strategy, targets)
 
   # Expand 1-dimensional inputs.
   # TODO(b/124535720): Remove once this standarize data logic is shared with
@@ -572,15 +643,35 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
+  elif not is_distributing_by_cloning(model):
+    sample_weights = None  # b/129503665
   else:
     sample_weights = [
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
-  ins = inputs + targets + sample_weights
+  ins = [inputs, targets, sample_weights]
   if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
                                                int):
     ins += [True]
-  return ins
+  return tuple(ins)
+
+
+def is_distributing_by_cloning(model):
+  """Decide whether this model is going to be distributed via cloning.
+
+  We are going to distribute the model by cloning if the user has signaled
+  that intent by not setting `cloning=False` in `Model.compile()` unless we
+  are in graph mode or running on TPU.
+
+  Args:
+    model: Keras model to distribute.
+
+  Returns:
+    True if the `model` is going to be distributed using cloning and False
+    otherwise.
+  """
+  return (model._cloning or not context.executing_eagerly() or
+          K.is_tpu_strategy(model._distribution_strategy))
 
 
 def _custom_compile_for_predict(model):
@@ -731,6 +822,92 @@ def clone_model_on_replicas(model, strategy, mode, inputs=None, targets=None):
 
 def _make_execution_function(model, mode):
   """Makes or reuses function to run one step of distributed model execution."""
+  if is_distributing_by_cloning(model):
+    return _make_execution_function_with_cloning(model, mode)
+
+  distributed_function = get_distributed_function(model, mode)
+  if distributed_function:
+    return distributed_function
+
+  logging.info(
+      'Creating the execution function without cloning for model {} and '
+      'mode {}.'.format(model, mode))
+  distribution_function = _make_execution_function_without_cloning(model, mode)
+  set_distributed_function(model, mode, distribution_function)
+  return distribution_function
+
+
+def _make_execution_function_without_cloning(model, mode):
+  """Creates a function to run one step of distributed model execution."""
+  strategy = model._distribution_strategy
+  devices = strategy.extended.worker_devices
+
+  with strategy.scope():
+    per_replica_function = _make_replica_execution_function(model, mode)
+
+    @def_function.function
+    def distributed_function(x, y, sample_weights, learning_phase=None):
+      """A single step of the distributed execution across replicas."""
+      del learning_phase
+
+      # TODO(b/129653859):  Simplify after PerReplica can be the input of
+      # `def_function.function`.  `regroup` calls and re-wrapping in
+      # PerReplica won't be needed then.
+      if isinstance(strategy, one_device_strategy.OneDeviceStrategy):
+        device_map = values.SingleDeviceMap(devices[0])
+        wrap_class = lambda d, x: x
+      else:
+        device_map = values.ReplicaDeviceMap(devices)
+        wrap_class = values.PerReplica
+
+      # Transform each lists of lists of values into per replica objects
+      # in the case of mirrored strategy.  For example, for 2 replicas:
+      # [[x0, y0], [x1, y1]] > [PerReplica(d0:x0, d1:x1),
+      #                         PerReplica(d0:y0, d1:y1)]
+      x = values.regroup(device_map, x, wrap_class)
+      y = values.regroup(device_map, y, wrap_class) if y else None
+      sample_weights = values.regroup(device_map, sample_weights,
+                                      wrap_class) if sample_weights else None
+
+      # Call `Model.{train,test,predict}_on_batch` on every replica passing
+      # PerReplicas as arguments.  On every replica inside this call, each
+      # PerReplica object will return the value for that replica.  The outputs
+      # are PerReplicas too.
+      outputs = strategy.experimental_run_v2(
+          per_replica_function, args=(x, y, sample_weights))
+      # Out of PerReplica outputs reduce or pick values to return.
+      all_outputs = unwrap_outputs(
+          strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
+      return all_outputs
+
+    # `numpy` translates Tensors to values in Eager mode.
+    return lambda inputs: [out.numpy() for out in distributed_function(*inputs)]
+
+
+def _make_replica_execution_function(model, mode):
+  """A single step of the distributed execution on a replica."""
+  if mode == ModeKeys.TRAIN:
+    func = model.train_on_batch
+  elif mode == ModeKeys.TEST:
+    func = model.test_on_batch
+  else:
+
+    def predict_on_batch(x, y=None, sample_weights=None):
+      del y, sample_weights
+      return model.predict_on_batch(x)
+
+    func = predict_on_batch
+
+  if mode != ModeKeys.PREDICT:
+    # `reset_metrics` is set to False to maintain stateful metrics across
+    # batch-level calls.
+    func = functools.partial(func, reset_metrics=False)
+
+  return func
+
+
+def _make_execution_function_with_cloning(model, mode):
+  """Clones or re-uses models to run one step of distributed model execution."""
   strategy = model._distribution_strategy
 
   distributed_model = get_distributed_model(model, mode)
@@ -893,6 +1070,16 @@ def get_distributed_model(model, mode):
 def set_distributed_model(model, mode, distributed_model):
   key = _generate_cache_key(mode)
   model._distributed_model_cache[key] = distributed_model
+
+
+def get_distributed_function(model, mode):
+  key = _generate_cache_key(mode)
+  return model._distributed_function_cache.get(key, None)
+
+
+def set_distributed_function(model, mode, distributed_function):
+  key = _generate_cache_key(mode)
+  model._distributed_function_cache[key] = distributed_function
 
 
 def _generate_cache_key(mode):

@@ -338,10 +338,9 @@ def tridiagonal_solve(diagonals,
                       diagonals_format='compact',
                       transpose_rhs=False,
                       conjugate_rhs=False,
-                      name=None):
+                      name=None,
+                      partial_pivoting=True):
   r"""Solves tridiagonal systems of equations.
-
-  Solution is computed via Gaussian elemination with partial pivoting.
 
   The input can be supplied in various formats: `matrix`, `tuple` and `compact`,
   specified by the `diagonals_format` arg.
@@ -392,6 +391,15 @@ def tridiagonal_solve(diagonals,
   invertible. `tf.debugging.check_numerics` can be applied to the output to
   detect invertibility problems.
 
+  **Note**: with large batch sizes, the computation on the GPU may be slow, if
+  either `partial_pivoting=True` or there are multiple right-hand sides
+  (`K > 1`). If this issue arises, consider if it's possible to disable pivoting
+  and have `K = 1`, or, alternatively, consider using CPU.
+
+  On CPU, solution is computed via Gaussian elimination with or without partial
+  pivoting, depending on `partial_pivoting` parameter. On GPU, Nvidia's cuSPARSE
+  library is used: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv
+
   Args:
     diagonals: A `Tensor` or tuple of `Tensor`s describing left-hand sides. The
       shape depends of `diagonals_format`, see description above. Must be
@@ -404,6 +412,10 @@ def tridiagonal_solve(diagonals,
       if the shape of rhs is [..., M]).
     conjugate_rhs: If `True`, `rhs` is conjugated before solving.
     name:  A name to give this `Op` (optional).
+    partial_pivoting: whether to perform partial pivoting. `True` by default.
+      Partial pivoting makes the procedure more stable, but slower. Partial
+      pivoting is unnecessary in some cases, including diagonally dominant and
+      symmetric positive definite matrices (see e.g. theorem 9.12 in [1]).
 
   Returns:
     A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
@@ -412,10 +424,14 @@ def tridiagonal_solve(diagonals,
     ValueError: An unsupported type is provided as input, or when the input
     tensors have incorrect shapes.
 
+  [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
+  Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
+
   """
   if diagonals_format == 'compact':
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   if diagonals_format == 'sequence':
     if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
@@ -447,7 +463,8 @@ def tridiagonal_solve(diagonals,
 
     diagonals = array_ops.stack((superdiag, maindiag, subdiag), axis=-2)
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   if diagonals_format == 'matrix':
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
@@ -472,16 +489,14 @@ def tridiagonal_solve(diagonals,
     diagonals = array_ops.transpose(
         array_ops.gather_nd(array_ops.transpose(diagonals), indices))
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   raise ValueError('Unrecognized diagonals_format: {}'.format(diagonals_format))
 
 
-def _tridiagonal_solve_compact_format(diagonals,
-                                      rhs,
-                                      transpose_rhs=False,
-                                      conjugate_rhs=False,
-                                      name=None):
+def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                      conjugate_rhs, partial_pivoting, name):
   """Helper function used after the input has been cast to compact form."""
   diags_rank, rhs_rank = len(diagonals.shape), len(rhs.shape)
 
@@ -510,7 +525,8 @@ def _tridiagonal_solve_compact_format(diagonals,
     rhs = array_ops.expand_dims(rhs, -1)
     check_num_lhs_matches_num_rhs()
     return array_ops.squeeze(
-        linalg_ops.tridiagonal_solve(diagonals, rhs, name), -1)
+        linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name),
+        -1)
 
   if transpose_rhs:
     rhs = array_ops.matrix_transpose(rhs, conjugate=conjugate_rhs)
@@ -518,5 +534,5 @@ def _tridiagonal_solve_compact_format(diagonals,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, name)
+  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
   return array_ops.matrix_transpose(result) if transpose_rhs else result

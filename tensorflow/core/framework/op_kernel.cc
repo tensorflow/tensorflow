@@ -702,9 +702,10 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  AllocationAttributes logged_attr(allocation_attr);
-  logged_attr.allocation_will_be_logged = true;
-  Tensor new_tensor(a, type, shape, logged_attr);
+  Tensor new_tensor(a, type, shape,
+                    AllocationAttributes(allocation_attr.no_retry_on_failure,
+                                         /* allocation_will_be_logged= */ true,
+                                         allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(

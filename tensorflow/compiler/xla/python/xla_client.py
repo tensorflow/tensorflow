@@ -76,6 +76,10 @@ class Backend(object):
     """Deletes buffer `c_buffer`."""
 
   @abc.abstractmethod
+  def make_tuple(self, c_buffers, device_ordinal):
+    """Makes a tuple from a sequence of backend buffer objects."""
+
+  @abc.abstractmethod
   def destructure_tuple(self, c_buffer):
     """Destructures a tuple buffer into a sequence of buffers."""
 
@@ -121,6 +125,9 @@ class LocalBackend(Backend):
   def delete_buffer(self, c_buffer):
     c_buffer.Delete()
 
+  def make_tuple(self, c_buffers, device_ordinal):
+    return _xla.PyLocalBuffer.MakeTuple(c_buffers, self.client, device_ordinal)
+
   def destructure_tuple(self, c_buffer):
     return c_buffer.DestructureTuple()
 
@@ -135,6 +142,8 @@ class LocalBackend(Backend):
       argument_layouts = c_computation.GetProgramShape().Parameters()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout.as_xla_shape()
+    options.debug_options.xla_cpu_fast_math_honor_infs = True
+    options.debug_options.xla_cpu_fast_math_honor_nans = True
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
                                         options, self.client)
 
@@ -322,6 +331,13 @@ class Buffer(object):
         for cbuf, (_, device) in zip(cbufs, pyvals_and_devices)
     ]
 
+  @staticmethod
+  def make_tuple(buffers, backend=None, device=0):
+    backend = backend or get_local_backend()
+    buf = backend.make_tuple([b.c_buffer for b in buffers],
+                             device_ordinal=device)
+    return Buffer(buf, backend, device)
+
   def to_py(self):
     return self.c_buffer.ToPython()
 
@@ -340,7 +356,6 @@ class Buffer(object):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
     result = self._backend.destructure_tuple(self.c_buffer)
-    self.delete()
     return tuple(
         Buffer(sub_buffer, device=self._device, backend=self._backend)
         for sub_buffer in result)

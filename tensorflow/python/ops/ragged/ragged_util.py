@@ -268,7 +268,7 @@ def repeat_ranges(params, splits, repeats):
   else:
     # Optimization: we can just call repeat once, and then slice the result.
     repeated_splits = repeat(splits, repeats, axis=0)
-    n_splits = array_ops.shape(repeated_splits, out_type=dtypes.int64)[0]
+    n_splits = array_ops.shape(repeated_splits, out_type=repeats.dtype)[0]
     repeated_starts = repeated_splits[:n_splits - repeats]
     repeated_limits = repeated_splits[repeats:]
 

@@ -565,6 +565,7 @@ class ParameterServerStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
+                              ignore_order=False,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
@@ -580,7 +581,10 @@ class ParameterServerStrategyTestBase(
         next_element = iterator.get_next()
         computed_value = sess.run([values.select_replica(r, next_element)
                                    for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
@@ -595,7 +599,10 @@ class ParameterServerStrategyTestBase(
           next_element = iterator.get_next()
           computed_value = sess.run([values.select_replica(r, next_element)
                                      for r in range(len(devices))])
-          self.assertEqual(expected_value, computed_value)
+          if ignore_order:
+            self.assertCountEqual(expected_value, computed_value)
+          else:
+            self.assertEqual(expected_value, computed_value)
 
 
 class ParameterServerStrategyTest(
@@ -689,7 +696,6 @@ class ParameterServerStrategyTest(
   def testMinimizeLossGraphLocal(self, num_gpus, use_core_strategy):
     self._test_minimize_loss_graph(None, None, num_gpus, use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(priyag): Refactor this and other multi worker tests.
   @combinations.generate(
       combinations.combine(
@@ -698,7 +704,7 @@ class ParameterServerStrategyTest(
           required_gpus=1,
           use_core_strategy=[True, False],
           use_dataset=[True, False]))
-  def DISABLED_testMakeInputFnIteratorDistributed(
+  def testMakeInputFnIteratorDistributed(
       self, num_gpus, use_core_strategy, use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
@@ -724,9 +730,9 @@ class ParameterServerStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
@@ -734,8 +740,8 @@ class ParameterServerStrategyTest(
           required_gpus=1,
           use_core_strategy=[True, False],
           use_dataset=[True, False]))
-  def DISABLED_testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
-                                            use_dataset):
+  def testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
+                                   use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -760,6 +766,7 @@ class ParameterServerStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(

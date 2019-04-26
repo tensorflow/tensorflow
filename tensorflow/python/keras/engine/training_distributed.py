@@ -82,6 +82,15 @@ def fit_distributed(model,
       validation_split=validation_split,
       shuffle=shuffle,
       repeat=True)
+  if not distributed_training_utils.is_distributing_by_cloning(model):
+    with model._distribution_strategy.scope():
+      (dataset, _, _) = model._standardize_user_data(
+          dataset,
+          sample_weight=sample_weight,
+          class_weight=class_weight,
+          batch_size=batch_size,
+          validation_split=validation_split,
+          shuffle=shuffle)
 
   val_dataset = None
   if validation_data:
@@ -284,7 +293,7 @@ def experimental_tpu_fit_loop(model,
                               val_dataset=None,
                               validation_steps=None,
                               validation_freq=1):
-  """Fit loop for training with TPU DistributionStrategy.
+  """Fit loop for training with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -452,7 +461,7 @@ def experimental_tpu_test_loop(model,
                                verbose=0,
                                steps=None,
                                callbacks=None):
-  """Test loop for evaluating with TPU DistributionStrategy.
+  """Test loop for evaluating with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -583,7 +592,7 @@ def experimental_tpu_predict_loop(model,
                                   verbose=0,
                                   steps=None,
                                   callbacks=None):
-  """Predict loop for predicting with TPU DistributionStrategy.
+  """Predict loop for predicting with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.

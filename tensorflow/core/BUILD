@@ -246,6 +246,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/trackable_object_graph.proto",
     "protobuf/control_flow.proto",
+    "protobuf/data/experimental/snapshot.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
@@ -1755,10 +1756,12 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
         "//tensorflow/c:srcs",
+        "//tensorflow/c/eager:srcs",
     ] + glob(
         [
             "common_runtime/**/*.h",
@@ -1775,7 +1778,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "common_runtime/gpu/**/*",
-            "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
             "graph/dot.*",
         ],
@@ -1824,6 +1826,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1848,6 +1851,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -2757,6 +2761,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal_headers_lib",
         "//third_party/eigen3",
+        "//tensorflow/core/profiler/lib:traceme",
         ":lib",
     ] + if_static(
         extra_deps = [
@@ -2859,6 +2864,7 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
@@ -3195,6 +3201,8 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -3273,6 +3281,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/profiler/lib:profiler_graph_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -3309,7 +3318,6 @@ tf_cuda_library(
         ":lib",
         ":protos_all_cc",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
 )
@@ -3397,6 +3405,7 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

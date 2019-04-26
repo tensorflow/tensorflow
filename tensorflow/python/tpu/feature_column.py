@@ -22,6 +22,7 @@ import math
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
@@ -415,6 +416,10 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
 
     tensor = inputs.get(self.get_feature_key_name())
     tensor_lengths = inputs.get(self.get_sequence_length_feature_key_name())
+
+    # inputs is a _LazyBuilder and for rank 1 tensors, it calls expand_dims(-1).
+    # We need to undo this to match the standard CPU sequence embedding.
+    tensor_lengths = array_ops.squeeze(tensor_lengths, -1)
 
     # Add to collection for _create_tpu_embedding_variables_and_ops
     _record_variable_scope_and_name(self.get_embedding_var_name(),

@@ -595,7 +595,7 @@ class StreamExecutor {
 
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.
-  DeviceDescription *PopulateDeviceDescription() const;
+  std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
   // Adds a task to the port::ThreadPool work queue. These tasks must be
   // fire-and-forget and have no external data or timing dependencies; their

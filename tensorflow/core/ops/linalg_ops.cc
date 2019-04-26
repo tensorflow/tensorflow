@@ -413,6 +413,7 @@ REGISTER_OP("TridiagonalSolve")
     .Input("diagonals: T")
     .Input("rhs: T")
     .Output("output: T")
+    .Attr("partial_pivoting: bool = True")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(TridiagonalSolveShapeFn);
 

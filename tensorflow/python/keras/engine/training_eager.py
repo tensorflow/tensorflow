@@ -120,8 +120,7 @@ def _model_loss(model,
   outs = model(inputs, **kwargs)
 
   outs = nest.flatten(outs)
-  # `None` by default for `EagerTensors`.
-  masks = [t._keras_mask for t in outs]
+  masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
 
   # Used to keep track of individual output losses.
@@ -304,7 +303,12 @@ def train_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [tensor_util.constant_value(v) for v in results]
+  return [_non_none_constant_value(v) for v in results]
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v
 
 
 def test_on_batch(model,
@@ -354,4 +358,4 @@ def test_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [tensor_util.constant_value(v) for v in results]
+  return [_non_none_constant_value(v) for v in results]

@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python import autograph
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -594,6 +595,21 @@ class Layer(module.Module):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
+
+          # Wrapping `call` function in autograph to allow for dynamic control
+          # dependencies in call. We are limiting this to subclassed layers as
+          # autograph is strictly needed only for subclassed layers.
+          if base_layer_utils.is_subclassed(self):
+            decorators, original_func = tf_decorator.unwrap(self.call)
+            converted_func = autograph.convert(recursive=True)(original_func)
+            if decorators:
+              call_fn = tf_decorator.rewrap(self.call, original_func,
+                                            converted_func)
+            else:
+              call_fn = converted_func
+          else:
+            call_fn = self.call
+
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
@@ -613,20 +629,18 @@ class Layer(module.Module):
                   self._mixed_precision_policy.should_cast_variables), (
                       base_layer_utils.AutoAddUpdates(self,
                                                       inputs)) as auto_updater:
-                outputs = self.call(inputs, *args, **kwargs)
+                outputs = call_fn(inputs, *args, **kwargs)
                 auto_updater.set_outputs(outputs)
 
             except TypeError as e:
-              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager')
               exception_str = str(e)
-              for msg in messages:
-                if msg in exception_str:
-                  raise TypeError('You are attempting to use Python control '
-                                  'flow in a layer that was not declared to be '
-                                  'dynamic. Pass `dynamic=True` to the class '
-                                  'constructor.\nEncountered error:\n"""\n' +
-                                  exception_str + '\n"""')
+              exception_msg = 'Tensor objects are only iterable when eager'
+              if exception_msg in exception_str:
+                raise TypeError('You are attempting to use Python control '
+                                'flow in a layer that was not declared to be '
+                                'dynamic. Pass `dynamic=True` to the class '
+                                'constructor.\nEncountered error:\n"""\n' +
+                                exception_str + '\n"""')
               raise
           else:
             # We will use static shape inference to return symbolic tensors
@@ -725,7 +739,9 @@ class Layer(module.Module):
 
   @property
   def updates(self):
-    return self._get_unfiltered_updates(check_trainable=True)
+    if not self.trainable and not self.stateful:
+      return []
+    return self._updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -773,7 +789,7 @@ class Layer(module.Module):
     class MyLayer(tf.keras.layers.Layer):
       def call(inputs, self):
         self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
-        return 2*inputs
+        return inputs
     ```
 
     This method can also be called directly on a Functional Model during
@@ -829,6 +845,7 @@ class Layer(module.Module):
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+      base_layer_utils.check_graph_consistency(loss, method='add_loss')
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -840,12 +857,15 @@ class Layer(module.Module):
     for loss in losses:
       if callable(loss):
         callable_losses.append(functools.partial(_tag_unconditional, loss))
-      elif tf_utils.is_symbolic_tensor(loss):
+        continue
+      if loss is None:
+        continue
+      if not tensor_util.is_tensor(loss):
+        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+      if tf_utils.is_symbolic_tensor(loss):
         symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
-      elif loss is not None:  # `None` is valid but should be ignored.
-        raise ValueError('Found non-Tensor loss: ' + str(loss))
 
     self._callable_losses += callable_losses
 
@@ -1003,14 +1023,24 @@ class Layer(module.Module):
       return  # Updates already applied when in eager mode.
 
     def process_update(x):
+      """Standardize update ops.
+
+      Arguments:
+        x: Tensor, op, or callable.
+
+      Returns:
+        An update op.
+      """
       if callable(x):
         x = x()
       if isinstance(x, ops.Operation):
-        return x
+        update = x
       elif hasattr(x, 'op'):
-        return x.op
+        update = x.op
       else:
-        return ops.convert_to_tensor(x)
+        update = ops.convert_to_tensor(x)
+      base_layer_utils.check_graph_consistency(update, method='add_update')
+      return update
 
     updates = [process_update(x) for x in updates]
     self._updates += updates
@@ -1071,25 +1101,16 @@ class Layer(module.Module):
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
-    # Updates disabled if layer is not trainable and not explicitly stateful.
-    if not self.trainable and not self.stateful:
-      return []
-
     if inputs is None:
       # Requesting unconditional updates.
-      return [
-          x for x in self._get_unfiltered_updates() if x._unconditional_update  # pylint: disable=protected-access
-      ]
+      return [u for u in self.updates if u._unconditional_update]
 
     # Requesting input-conditional updates.
+    updates = [u for u in self.updates if not u._unconditional_update]
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(
-        inputs, self._get_unfiltered_updates())
-    return [u for u in self._get_unfiltered_updates() if u in reachable]  # pylint: disable=protected-access
+    reachable = tf_utils.get_reachable_from_inputs(inputs, updates)
+    return [u for u in updates if u in reachable]
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1099,26 +1120,16 @@ class Layer(module.Module):
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if inputs is None:
       # Requesting unconditional losses.
-      return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
+      return [l for l in self.losses if l._unconditional_loss]
 
     # Requesting input-conditional losses.
+    losses = [l for l in self.losses if not l._unconditional_loss]
     inputs = nest.flatten(inputs)
-    # Retrieve the set of tensors in the TF graph that depend on `inputs`.
-    # The losses we want to return will be part of this set.
-    # To avoid unnecessary work, we stop the search in case all of
-    # `self.losses` have been retrieved.
-    reachable = tf_utils.get_reachable_from_inputs(inputs, self.losses)
-    losses = []
-    for loss in self.losses:
-      if loss in reachable:
-        losses.append(loss)
-    return losses
+    reachable = tf_utils.get_reachable_from_inputs(inputs, losses)
+    return [l for l in losses if l in reachable]
 
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
@@ -1519,6 +1530,7 @@ class Layer(module.Module):
     self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    base_layer_utils.check_graph_consistency(value, method='add_metric')
     match = self._get_existing_metric(name)
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
@@ -1916,7 +1928,13 @@ class Layer(module.Module):
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
-      super(tracking.AutoTrackable, self).__setattr__(name, value)
+      try:
+        super(tracking.AutoTrackable, self).__setattr__(name, value)
+      except AttributeError:
+        raise AttributeError(
+            ('Can\'t set the attribute "{}", likely because it conflicts with '
+             'an existing read-only @property of the object. Please choose a '
+             'different name.').format(name))
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
@@ -1989,11 +2007,6 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
-
-  def _get_unfiltered_updates(self, check_trainable=True):
-    if check_trainable and not self.trainable and not self.stateful:
-      return []
-    return self._updates + self._gather_children_attribute('updates')
 
 
 class Node(object):

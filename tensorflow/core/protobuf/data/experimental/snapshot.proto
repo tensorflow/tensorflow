@@ -10,3 +10,12 @@ import "tensorflow/core/framework/tensor.proto";
 message SnapshotRecord {
   repeated .tensorflow.TensorProto tensor = 1;
 }
+
+// This stores the metadata information present in each snapshot record.
+message SnapshotMetadataRecord {
+  string graph_fingerprint = 1;
+  string run_id = 2;
+  int64 creation_timestamp = 3;
+
+  bool finalized = 1000;
+}
