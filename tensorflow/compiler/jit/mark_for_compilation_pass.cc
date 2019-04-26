@@ -1062,7 +1062,6 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
 StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
     Cluster* cluster_from) {
   bool changed = false;
-  // Needs to be RPO because of shape consumer opt
   for (int to :
        cycles_graph_.Successors(cluster_from->cycles_graph_node_id())) {
     iteration_count_++;
