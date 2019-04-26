@@ -139,7 +139,7 @@ class LinearOperatorAdjointTest(
 
   def test_matmul_adjoint_complex_operator(self):
     if test.is_built_with_rocm:
-        return
+      self.skipTest("Complex data type is yet not supported in ROCm")
 
     matrix1 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
     matrix2 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
@@ -192,7 +192,7 @@ class LinearOperatorAdjointTest(
 
   def test_solve_adjoint_complex_operator(self):
     if test.is_built_with_rocm:
-        return
+      self.skipTest("Complex data type is yet not supported in ROCm")
 
     matrix1 = self.evaluate(linear_operator_test_util.random_tril_matrix(
         [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
