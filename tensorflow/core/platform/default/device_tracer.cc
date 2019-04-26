@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
@@ -715,7 +717,11 @@ std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
 }
 
 auto register_device_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateDeviceTracer);
+  bool enable;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_GPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateDeviceTracer);
+  }
   return 0;
 }();
 

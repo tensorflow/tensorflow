@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -146,7 +147,12 @@ std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*) {
 }
 
 auto register_host_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateHostTracer);
+  bool enable;
+
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_CPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateHostTracer);
+  }
   return 0;
 }();
 
