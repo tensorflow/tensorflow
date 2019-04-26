@@ -1527,9 +1527,9 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   paths_bitfield = paths_bitfield & kAllPaths;
   paths = PathsBitfieldAsVector(paths_bitfield);
 
-  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
-
 #ifdef RUY_TEST_EXTERNAL_PATHS
+
+  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
 
   if (!getenv("NOEXT") && IsLinear(lhs.matrix.layout) &&
       IsLinear(rhs.matrix.layout)) {
