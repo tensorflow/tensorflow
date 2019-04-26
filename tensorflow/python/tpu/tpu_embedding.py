@@ -463,10 +463,10 @@ class TPUEmbedding(object):
     self._num_hosts = self._tpu_system_metadata.num_hosts
     master_job_name = tpu_system_metadata_lib.master_job(self._master,
                                                          self._cluster_def)
-    self._hosts = sorted([
+    self._hosts = [
         device.name for device in self._tpu_system_metadata.devices
         if 'device:CPU:' in device.name and (master_job_name is None or
-                                             master_job_name in device.name)])
+                                             master_job_name in device.name)]
     self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
     self._num_cores = self._tpu_system_metadata.num_cores
 
