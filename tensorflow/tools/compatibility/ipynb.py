@@ -157,7 +157,7 @@ def _update_notebook(original_notebook, original_raw_lines, updated_code_lines):
 
   code_cell_idx = 0
   for cell in new_notebook["cells"]:
-    if cell["cell_type"] != "code":
+    if not is_python(cell):
       continue
 
     applicable_lines = [
