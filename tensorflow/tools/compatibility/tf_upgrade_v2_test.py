@@ -1528,6 +1528,10 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_layers_layer_norm_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
+    self.assertIn("`tf.contrib.layers.layer_norm` has been deprecated", report)
+
   def test_contrib_rnn_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.rnn")
     self.assertIn("tf.contrib.rnn.* has been deprecated", report)

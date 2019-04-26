@@ -669,6 +669,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " they may already have been correct)."
     )
 
+    contrib_layers_layer_norm_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.layers.layer_norm` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.keras.layers.LayerNormalization` in TensorFlow 2.0. "
+        "Note that, the default value of `epsilon` is changed to `1e-3` in the "
+        "new API from `1e-12`, and this may introduce numerical differences. "
+        "Please check the new API and use that instead."
+    )
+
     initializers_no_dtype_comment = (
         ast_edits.INFO,
         "Initializers no longer have the "
@@ -879,6 +889,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.layers.layer_norm":
+            contrib_layers_layer_norm_comment,
         "tf.contrib.summary.audio":
             contrib_summary_comment,
         "tf.contrib.summary.create_file_writer":
