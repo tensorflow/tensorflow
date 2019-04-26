@@ -140,7 +140,8 @@ void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   LOG(FATAL) << "Feature not supported on ROCM platform (UnloadKernel)";
 }
 
-port::Status GpuExecutor::Init(DeviceOptions device_options) {
+port::Status GpuExecutor::Init(int device_ordinal,
+			       DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
   auto status = GpuDriver::Init();
@@ -818,7 +819,7 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device_)) {
+  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
     return false;
   }
 
@@ -869,7 +870,7 @@ static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
-CreateDeviceDescriptionInternal(int device_ordinal) {
+GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
   if (!status.ok()) {
@@ -934,7 +935,7 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(&block_dim_limit);
+    FillBlockDimLimit(device, &block_dim_limit);
     builder.set_block_dim_limit(block_dim_limit);
   }
 
@@ -968,11 +969,6 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
   builder.set_registers_per_core_limit(64 * 1024);
 
   return builder.Build();
-}
-
-port::StatusOr<std::unique_ptr<DeviceDescription>>
-GpuExecutor::CreateDeviceDescription() const {
-  return CreateDeviceDescriptionInternal(device_ordinal_);
 }
 
 }  // namespace gpu
