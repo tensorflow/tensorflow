@@ -1070,6 +1070,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 

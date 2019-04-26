@@ -463,6 +463,8 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   Example:
 
   ```python
+  >>> tf.strings.split('hello world')
+  <Tensor ['hello', 'world']>
   >>> tf.strings.split(['hello world', 'a b c'])
   <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
   ```
@@ -477,7 +479,8 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   Note that the above mentioned behavior matches python's str.split.
 
   Args:
-    input: `1-D` string `Tensor`, the strings to split.
+    input: A string `Tensor` of rank `N`, the strings to split.  If
+      `rank(input)` is not known statically, then it is assumed to be `1`.
     sep: `0-D` string `Tensor`, the delimiter string.
     maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
     name: A name for the operation (optional).
@@ -486,16 +489,30 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
     ValueError: If sep is not a string.
 
   Returns:
-    A `RaggedTensor` of rank `2`: the strings split according to the delimiter.
+    A `RaggedTensor` of rank `N+1`, the strings split according to the
+    delimiter.
   """
   with ops.name_scope(name, "StringSplit", [input]):
-    sparse_result = string_ops.string_split_v2(input, sep=sep,
-                                               maxsplit=maxsplit)
-    return ragged_tensor.RaggedTensor.from_value_rowids(
-        values=sparse_result.values,
-        value_rowids=sparse_result.indices[:, 0],
-        nrows=sparse_result.dense_shape[0],
-        validate=False)
+    input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        input, dtype=dtypes.string, name="input")
+    if isinstance(input, ragged_tensor.RaggedTensor):
+      return input.with_flat_values(
+          string_split_v2(input.flat_values, sep, maxsplit))
+
+    rank = input.shape.ndims
+    if rank == 0:
+      return string_split_v2(array_ops.stack([input]), sep, maxsplit)[0]
+    elif rank == 1 or rank is None:
+      sparse_result = string_ops.string_split_v2(
+          input, sep=sep, maxsplit=maxsplit)
+      return ragged_tensor.RaggedTensor.from_value_rowids(
+          values=sparse_result.values,
+          value_rowids=sparse_result.indices[:, 0],
+          nrows=sparse_result.dense_shape[0],
+          validate=False)
+    else:
+      return string_split_v2(
+          ragged_tensor.RaggedTensor.from_tensor(input), sep, maxsplit)
 
 
 @tf_export(v1=["string_split"])
@@ -594,7 +611,8 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
   Note that the above mentioned behavior matches python's str.split.
 
   Args:
-    input: `1-D` string `Tensor`, the strings to split.
+    input: A string `Tensor` of rank `N`, the strings to split.  If
+      `rank(input)` is not known statically, then it is assumed to be `1`.
     sep: `0-D` string `Tensor`, the delimiter character.
     maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
     result_type: The tensor type for the result: one of `"RaggedTensor"` or
@@ -606,22 +624,21 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
     ValueError: If sep is not a string.
 
   Returns:
-    A `SparseTensor` of rank `2`, the strings split according to the delimiter.
-    The first column of the indices corresponds to the row in `source` and the
-    second column corresponds to the index of the split component in this row.
+    A `SparseTensor` or `RaggedTensor` of rank `N+1`, the strings split
+    according to the delimiter.
   """
   source = deprecation.deprecated_argument_lookup(
       "input", input, "source", source)
   with ops.name_scope(name, "StringSplit", [source]):
-    sparse_result = string_ops.string_split_v2(
-        source, sep=sep, maxsplit=maxsplit)
+    input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        input, dtype=dtypes.string, name="input")
+    if result_type == "SparseTensor" and input.shape.rank == 1:
+      return string_ops.string_split_v2(source, sep=sep, maxsplit=maxsplit)
+
+    ragged_result = string_split_v2(source, sep=sep, maxsplit=maxsplit)
     if result_type == "SparseTensor":
-      return sparse_result
+      return ragged_result.to_sparse()
     elif result_type == "RaggedTensor":
-      return ragged_tensor.RaggedTensor.from_value_rowids(
-          values=sparse_result.values,
-          value_rowids=sparse_result.indices[:, 0],
-          nrows=sparse_result.dense_shape[0],
-          validate=False)
+      return ragged_result
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
