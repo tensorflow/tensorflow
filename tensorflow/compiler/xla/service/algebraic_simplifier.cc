@@ -1548,19 +1548,19 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
     return nullptr;
   }
 
-  // Check if reshape squishes some dims into one dim, and that this one
-  // dim is the dot's lhs contracting dim.
-  // The size of unmodified_dims should be N - 1, where N is the rank of the
-  // reshape output. This means that the reshape squishes some dims into one
-  // dim. lhs contracting dim should not be in unmodified_dims. This means
-  // that the squishing target dim is the lhs contracting dim.
+  // Check that reshape squishes some dims into one dim and that this one
+  // dim is the dot's lhs contracting dim. The size of unmodified_dims should
+  // be N - 1, where N is the rank of the reshape output. This means that the
+  // reshape squishes some dims into one dim. lhs contracting dim should not
+  // be in unmodified_dims. This means that the squishing target dim is the
+  // lhs contracting dim.
   auto unmodified_dims = ShapeUtil::DimensionsUnmodifiedByReshape(
       reshape->operand(0)->shape(), reshape->shape());
   CHECK_EQ(lhs_contracting_dims.size(), 1);
   if ((unmodified_dims.size() != reshape->shape().rank() - 1) ||
-      (absl::c_find_if(unmodified_dims, [&](const std::pair<int64, int64>& p) {
-         return p.second == lhs_contracting_dims[0];
-       }) != unmodified_dims.end())) {
+      absl::c_any_of(unmodified_dims, [&](const std::pair<int64, int64>& p) {
+        return p.second == lhs_contracting_dims[0];
+      })) {
     return nullptr;
   }
   // Virtually pull the reshape into the dot. Now the dot is equivalent to a
