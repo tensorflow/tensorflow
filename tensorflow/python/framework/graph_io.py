@@ -68,7 +68,8 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
   path = os.path.join(logdir, name)
   if as_text:
     file_io.atomic_write_string_to_file(path,
-                                        text_format.MessageToString(graph_def))
+                                        text_format.MessageToString(
+                                            graph_def, float_format=''))
   else:
     file_io.atomic_write_string_to_file(path, graph_def.SerializeToString())
   return path
