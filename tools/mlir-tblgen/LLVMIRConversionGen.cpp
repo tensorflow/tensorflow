@@ -173,7 +173,7 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
 // Emit all builders.  Returns false on success because of the generator
 // registration requirements.
 static bool emitBuilders(const RecordKeeper &recordKeeper, raw_ostream &os) {
-  for (const auto *def : recordKeeper.getAllDerivedDefinitions("LLVM_Op")) {
+  for (const auto *def : recordKeeper.getAllDerivedDefinitions("LLVM_OpBase")) {
     if (!emitOneBuilder(*def, os))
       return true;
   }

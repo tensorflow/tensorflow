@@ -23,33 +23,14 @@
 #else
 #define LLVMIR_OPS
 
-#ifdef OP_BASE
-#else
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-// LLVM IR type wrapped in MLIR.
-def LLVM_Type : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMType>()">,
-                     "LLVM dialect type">;
+include "mlir/LLVMIR/LLVMOpBase.td"
 
 // Base class for LLVM operations.  All operations get an "llvm." prefix in
 // their name automatically.  LLVM operations have either zero or one result,
 // this class is specialized below for both cases and should not be used
 // directly.
 class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<!strconcat("llvm.", mnemonic), traits> {
-  // A pattern for constructing the LLVM IR Instruction (or other Value) that
-  // corresponds to this op.  This pattern can use `builder` to refer to an
-  // `llvm::IRBuilder<>` instance, $-names of arguments and results and the
-  // following special variable names:
-  //   - $_resultType - substituted with the LLVM IR type of the result;
-  //   - $_numOperands - substituted with the number of operands (including
-  //                     the variadic ones);
-  //   - $_hasResult - substituted with a check that a variadic-result op does
-  //                   have a result (LLVM ops can have 0 or 1 result);
-  //   - $_location - mlir::Location object of the instruction.
-  // Additionally, `$$` can be used to produce the dollar character.
-  string llvmBuilder = "";
+    LLVM_OpBase<!strconcat("llvm.", mnemonic), traits> {
 }
 
 class LLVM_Builder<string builder> {
