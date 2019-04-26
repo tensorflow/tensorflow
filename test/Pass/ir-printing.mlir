@@ -1,8 +1,8 @@
-// RUN: mlir-opt %s -cse -canonicalize -print-ir-before=cse  -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE %s
-// RUN: mlir-opt %s -cse -canonicalize -print-ir-before-all -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE_ALL %s
-// RUN: mlir-opt %s -cse -canonicalize -print-ir-after=cse -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER %s
-// RUN: mlir-opt %s -cse -canonicalize -print-ir-after-all -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER_ALL %s
-// RUN: mlir-opt %s -cse -canonicalize -print-ir-before=cse -print-ir-module-scope -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE_MODULE %s
+// RUN: mlir-opt %s -disable-pass-threading=true -cse -canonicalize -print-ir-before=cse  -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE %s
+// RUN: mlir-opt %s -disable-pass-threading=true -cse -canonicalize -print-ir-before-all -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE_ALL %s
+// RUN: mlir-opt %s -disable-pass-threading=true -cse -canonicalize -print-ir-after=cse -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER %s
+// RUN: mlir-opt %s -disable-pass-threading=true -cse -canonicalize -print-ir-after-all -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER_ALL %s
+// RUN: mlir-opt %s -disable-pass-threading=true -cse -canonicalize -print-ir-before=cse -print-ir-module-scope -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE_MODULE %s
 
 func @foo() {
   return

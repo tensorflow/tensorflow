@@ -32,10 +32,10 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-static llvm::cl::opt<bool> enableThreads(
-    "experimental-mt-pm",
-    llvm::cl::desc("Enable experimental multithreading in the pass manager"),
-    llvm::cl::init(false));
+static llvm::cl::opt<bool>
+    disableThreads("disable-pass-threading",
+                   llvm::cl::desc("Disable multithreading in the pass manager"),
+                   llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
 // Pass
@@ -430,13 +430,13 @@ void PassManager::addPass(FunctionPassBase *pass) {
   detail::FunctionPassExecutor *fpe;
   if (nestedExecutorStack.empty()) {
     /// Create an executor adaptor for this pass.
-    if (enableThreads && llvm::llvm_is_multithreaded()) {
-      // If multi-threading is enabled, then create an asynchronous adaptor.
-      auto *adaptor = new ModuleToFunctionPassAdaptorParallel();
+    if (disableThreads || !llvm::llvm_is_multithreaded()) {
+      // If multi-threading is disabled, then create a synchronous adaptor.
+      auto *adaptor = new ModuleToFunctionPassAdaptor();
       addPass(adaptor);
       fpe = &adaptor->getFunctionExecutor();
     } else {
-      auto *adaptor = new ModuleToFunctionPassAdaptor();
+      auto *adaptor = new ModuleToFunctionPassAdaptorParallel();
       addPass(adaptor);
       fpe = &adaptor->getFunctionExecutor();
     }
