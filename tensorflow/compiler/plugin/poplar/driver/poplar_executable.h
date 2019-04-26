@@ -100,7 +100,8 @@ class PoplarExecutable : public Executable {
       const std::string& filename);
 
   static Status Serialize(const PoplarExecutable& executable,
-                          const std::string& filename);
+                          const std::string& filename,
+                          const poplar::OptionFlags& opts);
 
  private:
   friend class GraphCompileIoMapTest;

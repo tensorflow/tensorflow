@@ -291,8 +291,9 @@ HloPrintOptions GetPrintOptions() {
   return opts;
 }
 
-std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
-    poplar::Graph& master_graph, poplar::Graph& graph, int replication_factor) {
+poplar::program::Program InitializeSeed(poplar::Graph& master_graph,
+                                        poplar::Graph& graph,
+                                        int replication_factor) {
   const std::string seed_prefix = "__seed";
 
   auto seed =
@@ -300,7 +301,7 @@ std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
   graph.setTileMapping(seed, 0);
 
   auto data_stream = master_graph.addHostToDeviceFIFO(
-      seed_prefix + "/stream", seed.elementType(),
+      GetRandomNumberSeedStream(), seed.elementType(),
       seed.numElements() * std::max(replication_factor, 1));
 
   poplar::program::Sequence seq;
@@ -313,23 +314,7 @@ std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
 
   poprand::setSeed(graph, seed, 0, seq, seed_prefix + "/set");
 
-  return {seq, data_stream};
-}
-
-void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
-                         poplar::DataStream stream) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-
-  auto callback = [gen, replication_factor](void* ptr) mutable {
-    std::uniform_int_distribution<uint64_t> dis;
-    uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
-    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
-      seedValue[i] = dis(gen);
-    }
-  };
-
-  engine.connectStreamToCallback(stream, callback);
+  return seq;
 }
 
 void setFpBehaviour(poplar::Graph& graph,
@@ -616,7 +601,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     // Set up the random seed
     auto seed_setup = InitializeSeed(resources.main_graph, *sharding_main_graph,
                                      replication_factor);
-    main_program.add(seed_setup.first);
+    main_program.add(seed_setup);
 
     // Set up the floating point control register if required
     const auto& fp_control = poplarExecutor->FloatingPointBehaviour();
@@ -665,10 +650,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           VLOG(1) << "Poplar compilation " << progress_percent << "% complete";
         };
 
-        engine.reset(new poplar::Engine(resources.main_graph, progs, opts,
-                                        progress_logging));
+        poplar::Executable exec = poplar::compileGraph(
+            resources.main_graph, progs, opts, progress_logging);
 
-        ConnectSeedCallback(*engine, replication_factor, seed_setup.second);
+        engine.reset(new poplar::Engine(std::move(exec), opts));
+
       } catch (const std::exception& e) {
         if (poplarExecutor->CompilerReportingEnabled()) {
           DumpIfPoplarOutOfMemoryAllocationException(
@@ -725,8 +711,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   if (poplarExecutor->HaveExecutableCache()) {
     if (!poplarExecutor->HaveCachedExecutable(filename)) {
-      TF_RETURN_IF_ERROR(
-          PoplarExecutable::Serialize(*poplar_executable, filename));
+      TF_RETURN_IF_ERROR(PoplarExecutable::Serialize(
+          *poplar_executable, filename, poplarExecutor->GetReportFlags()));
     }
   }
 

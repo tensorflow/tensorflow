@@ -181,6 +181,15 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     outfeeds.push_back(info);
   }
 
+  // Load the poplar compilation options from the serialized executable
+  poplar::OptionFlags opts;
+  for (const auto flag : proto.option_flags()) {
+    opts.set(flag.key(), flag.value());
+  }
+
+  // TODO
+  // Actually load the executable rather than creating an empty one
+
   // TODO
   //
   // verify that the streams in the loaded poplar executable match the streams
@@ -194,7 +203,8 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
 }
 
 /*static*/ Status PoplarExecutable::Serialize(
-    const PoplarExecutable& executable, const std::string& filename) {
+    const PoplarExecutable& executable, const std::string& filename,
+    const poplar::OptionFlags& opts) {
   PoplarExecutableProto proto;
 
   if (executable.is_constant_graph_) {
@@ -226,6 +236,13 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     feed->set_stream_prefix(outfeed.stream_prefix);
     feed->set_config(outfeed.config);
     *(feed->mutable_shape()) = outfeed.shape.ToProto();
+  }
+
+  // write the compilation options into the serialized executable
+  for (const auto flag : opts) {
+    auto* poplar_opt = proto.add_option_flags();
+    poplar_opt->set_key(flag.first);
+    poplar_opt->set_value(flag.second);
   }
 
   return WriteBinaryProto(tensorflow::Env::Default(), filename, proto);

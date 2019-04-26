@@ -11,6 +11,11 @@ message FeedConfig {
   ShapeProto shape = 3;
 }
 
+message PoplarOptionFlag {
+  string key = 1;
+  string value = 2;
+}
+
 message PoplarExecutableProto {
 
   // The serialized Engine
@@ -25,4 +30,6 @@ message PoplarExecutableProto {
   // Names of the outfeed instructions
   repeated FeedConfig outfeeds = 4;
 
+  // The OptionFlags which were used during engine compilation
+  repeated PoplarOptionFlag option_flags = 5;
 };
