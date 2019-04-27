@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_JNI_UTILS_H_
 #define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_JNI_UTILS_H_
 
-#include <jni.h>
 #include <stdint.h>
 
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
