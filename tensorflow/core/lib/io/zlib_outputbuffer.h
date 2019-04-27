@@ -132,7 +132,7 @@ class ZlibOutputBuffer : public WritableFile {
   //
   // Note: This method does not flush contents to file.
   // Returns non-ok status if writing contents to file fails.
-  Status DeflateBuffered(bool last = false);
+  Status DeflateBuffered(int flush_mode);
 
   // Appends contents of `z_stream_output_` to `file_`.
   // Returns non-OK status if writing to file fails.

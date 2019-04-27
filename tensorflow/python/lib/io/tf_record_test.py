@@ -450,13 +450,13 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
   def testFlush(self):
     records = list(map(self._Record, range(self._num_records)))
-    def childProcess(writer, rec):
-      writer.write(rec)
+    def childProcess(writer, rs):
+      for r in rs:
+        writer.write(r)
       writer.flush()
-    for record in records:
-      write_process = multiprocessing.Process(target=childProcess, args=(self._writer,record))
-      write_process.start()
-      write_process.join()
+    write_process = multiprocessing.Process(target=childProcess, args=(self._writer, records))
+    write_process.start()
+    write_process.join()
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
     self.assertListEqual(actual, records)
 
