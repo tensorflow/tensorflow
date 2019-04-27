@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -31,8 +32,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -145,13 +144,14 @@ StreamExecutor::StreamExecutor(
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()) {
-  if (port::Lowercase(platform_->Name()) == "cuda") {
+  string name = absl::AsciiStrToLower(platform_->Name());
+  if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
-  } else if (port::Lowercase(platform_->Name()) == "rocm") {
+  } else if (name == "rocm") {
     platform_kind_ = PlatformKind::kROCm;
-  } else if (port::Lowercase(platform_->Name()) == "opencl") {
+  } else if (name == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
-  } else if (port::Lowercase(platform_->Name()) == "host") {
+  } else if (name == "host") {
     platform_kind_ = PlatformKind::kHost;
   } else {
     platform_kind_ = PlatformKind::kInvalid;
@@ -170,7 +170,7 @@ StreamExecutor::~StreamExecutor() {
   if (FLAGS_check_device_leaks) {
     for (auto it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
-                << port::Printf("%p", it.first)
+                << absl::StrFormat("%p", it.first)
                 << ", bytes: " << it.second.bytes << ", trace: \n"
                 << it.second.stack_trace;
     }
@@ -238,7 +238,7 @@ port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
   if (config != SharedMemoryConfig::kDefault &&
       config != SharedMemoryConfig::kFourByte &&
       config != SharedMemoryConfig::kEightByte) {
-    string error_msg = port::Printf(
+    string error_msg = absl::StrFormat(
         "Invalid shared memory config specified: %d", static_cast<int>(config));
     LOG(ERROR) << error_msg;
     return port::Status(port::error::INVALID_ARGUMENT, error_msg);
@@ -633,12 +633,12 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
-    result = port::Status(port::error::INTERNAL,
-                          port::Printf("failed to synchronously memcpy "
-                                       "device-to-host: device %p to host %p "
-                                       "size %lld: %s",
-                                       device_src.opaque(), host_dst, size,
-                                       result.ToString().c_str()));
+    result = port::Status(
+        port::error::INTERNAL,
+        absl::StrFormat("failed to synchronously memcpy device-to-host: device "
+                        "%p to host %p size %d: %s",
+                        device_src.opaque(), host_dst, size,
+                        result.ToString()));
   }
 
   return result;
@@ -658,10 +658,10 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(
   if (!result.ok()) {
     result = port::Status(
         port::error::INTERNAL,
-        port::Printf("failed to synchronously memcpy host-to-device: host "
-                     "%p to device %p size %lld: %s",
-                     host_src, device_dst->opaque(), size,
-                     result.ToString().c_str()));
+        absl::StrFormat("failed to synchronously memcpy host-to-device: host "
+                        "%p to device %p size %d: %s",
+                        host_src, device_dst->opaque(), size,
+                        result.ToString()));
   }
 
   return result;
@@ -792,8 +792,7 @@ void StreamExecutor::EraseAllocRecord(void *opaque) {
   if (FLAGS_check_device_leaks && opaque != nullptr) {
     mutex_lock lock(mu_);
     if (mem_allocs_.find(opaque) == mem_allocs_.end()) {
-      LOG(ERROR) << "Deallocating unknown pointer: "
-                 << port::Printf("0x%p", opaque);
+      LOG(ERROR) << "Deallocating unknown pointer: " << opaque;
     } else {
       mem_alloc_bytes_ -= mem_allocs_[opaque].bytes;
       mem_allocs_.erase(opaque);
