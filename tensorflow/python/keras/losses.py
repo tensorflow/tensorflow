@@ -914,8 +914,8 @@ def poisson(y_true, y_pred):
   ```
 
   Args:
-    y_true: tensor of true targets.
-    y_pred: tensor of predicted targets.
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
 
   Returns:
     A `Tensor` with the mean Poisson loss.
