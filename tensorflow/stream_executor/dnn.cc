@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dnn.h"
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace stream_executor {
 namespace dnn {
 
 uint64 AlgorithmDesc::hash() const {
-  return ::tensorflow::Hash64Combine(algo_id(), tensor_ops_enabled());
+  auto p = std::make_pair(algo_id(), tensor_ops_enabled());
+  return absl::Hash<decltype(p)>()(p);
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
