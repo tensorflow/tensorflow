@@ -1471,14 +1471,16 @@ def resize_image_with_pad_v2(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit variance.
+  """Linearly scales each image in `image` to have zero mean and unit variance.
 
-  This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
-  of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
+  For each image `x` in `image`, computes `(x - mean) / adjusted_stddev`, where
 
-  `stddev` is the standard deviation of all values in `image`. It is capped
-  away from zero to protect against division by 0 when handling uniform images.
+  - `mean` is the average of all values in `x`
+  - `adjusted_stddev = max(stddev, 1.0/sqrt(N))`
+    - `N` is the number of elements in `x`
+    - `stddev` is the standard deviation of all values in `x`
+    - `adjusted_stddev` is capped away from zero to protect against division by 0
+      when handling uniform images
 
   Args:
     image: An n-D Tensor where the last 3 dimensions are `[height, width,
@@ -2923,7 +2925,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
     x: First set of images.
     y: Second set of images.
     reducer: Function that computes 'local' averages from set of images. For
-      non-covolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
+      non-convolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
       for convolutional version, this is usually tf.nn.avg_pool2d or
       tf.nn.conv2d with weighted-sum kernel.
     max_val: The dynamic range (i.e., the difference between the maximum
