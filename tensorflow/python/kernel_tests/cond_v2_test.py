@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -795,7 +794,10 @@ class CondV2Test(test.TestCase):
 
       return grad
 
-    xla.compile(func_with_cond)
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+    func_with_cond()
+    xla_context.Exit()
 
   @test_util.run_deprecated_v1
   def testLoweringDisabledWithSingleThreadedExecutorContext(self):
