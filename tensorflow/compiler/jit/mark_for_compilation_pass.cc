@@ -66,6 +66,32 @@ bool HasResourceInput(const Node& node) {
   return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
 }
 
+// Check if a node with a resource input, and the input is from
+// Switch op.
+//
+// This is to workaround a problem with the following use pattern,
+//     op0 : VarHandleOp
+//     op1 : Switch op0, pred
+//     op2 : ReadVariableOp op0
+//     op3 : ReadVariableOp op1
+//
+//  If op2 and op3 are clustered, the op0 and op1 are inputs,
+//  and they are both considered as resources, and
+//  op1 and op0 happen to point to the same resource, and
+//  this will cause an execution error since the resource is
+//  not allowed to be initialized (locked) twice.
+//
+bool HasResourceInputFromSwitch(const Node& node) {
+  if (HasResourceInput(node)) {
+    for (auto edge : node.in_edges()) {
+      if (edge->src()->type_string() == "Switch")
+        return true;
+    }
+  }
+  return false;
+}
+
+
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
 // PartitionedCall op to execute the cluster in the regular graph executor if
@@ -361,6 +387,10 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
       HasResourceInput(node)) {
     return LogNotCompilableAndReturn(node,
                                      "resource variable op in called function");
+  }
+
+  if (HasResourceInputFromSwitch(*node)) {
+    return false;
   }
 
   return true;
@@ -1095,6 +1125,10 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     string resource_op_device;
     if (is_resource_op) {
       resource_op_device = device;
+    }
+
+    if (HasResourceInputFromSwitch(*node)) {
+      return false;
     }
 
     absl::optional<int> resource_var_operation_node_id;
