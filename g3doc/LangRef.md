@@ -1957,9 +1957,9 @@ Examples:
 
 ```
 
-MLIR does not allow direct references to functions in SSA operands because we
-anticipate the desire to multithread the compiler, and disallowing SSA values to
-directly reference a function simplifies this
+MLIR does not allow direct references to functions in SSA operands because the
+compiler is multithreaded, and disallowing SSA values to directly reference a
+function simplifies this
 ([rationale](Rationale.md#multithreading-the-compiler)).
 
 #### 'divis' operation
