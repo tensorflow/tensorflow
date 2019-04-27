@@ -476,7 +476,7 @@ cc_library(
     srcs = ["cudnn_version.cc"],
     hdrs = ["cudnn_version.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
