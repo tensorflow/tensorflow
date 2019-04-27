@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <stdint.h>
 #include <stdlib.h>
-
 #include <map>
 #include <set>
 #include <utility>
@@ -24,12 +23,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
+#include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
@@ -466,7 +465,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::LoadHsaco(GpuContext* context,
                                        const char* hsaco_contents,
                                        hipModule_t* module) {
-  absl::Notification notification;
+  port::Notification notification;
   bool ret = true;
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, module, &ret, &notification]() {
