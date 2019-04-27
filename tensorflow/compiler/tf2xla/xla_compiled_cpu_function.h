@@ -105,7 +105,7 @@ class XlaCompiledCpuFunction {
   // AllocMode controls the buffer allocation mode.
   enum class AllocMode {
     // Allocate all buffers - args, results, profile and temps.
-    ARGS_RESULTS_PROFILES_AND_TEMPS,
+    ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS,
 
     // Only allocate result, profile and temp buffers.
     // Use set_arg_data to set argument buffers before Run is called.
@@ -114,7 +114,8 @@ class XlaCompiledCpuFunction {
 
   explicit XlaCompiledCpuFunction(
       const StaticData& static_data,
-      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
+      AllocMode alloc_mode =
+          AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
