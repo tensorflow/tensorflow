@@ -136,7 +136,10 @@ def _get_ld_config_paths():
   pattern = re.compile(".* => (.*)")
   result = set()
   for line in output.splitlines():
-    match = pattern.match(line.decode("ascii"))
+    try:
+      match = pattern.match(line.decode("ascii"))
+    except:
+      match = False
     if match:
       result.add(os.path.dirname(match.group(1)))
   return sorted(list(result))
