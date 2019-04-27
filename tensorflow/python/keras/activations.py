@@ -69,9 +69,11 @@ def softmax(x, axis=-1):
 @keras_export('keras.activations.elu')
 def elu(x, alpha=1.0):
   """Exponential Linear Unit.
-  The exponential linear unit (ELU) with `alpha` > 0 is:
-  `x` if `x > 0` and `alpha * (exp(x)-1)` if `x < 0`
-  The ELU hyperparameter `alpha` (α) controls the value to which an
+
+  The exponential linear unit (ELU) with `alpha > 0` is:
+  `x` if `x > 0` and
+  `alpha * (exp(x) - 1)` if `x < 0`
+  The ELU hyperparameter `alpha` controls the value to which an
   ELU saturates for negative net inputs. ELUs diminish the
   vanishing gradient effect.
 
@@ -82,10 +84,6 @@ def elu(x, alpha=1.0):
   ELUs saturate to a negative value when the argument gets smaller.
   Saturation means a small derivative which decreases the variation
   and the information that is propagated to the next layer.
-
-  ![](https://akiraaptx.files.wordpress.com/2017/01/screen-shot-2017-01-14-at-1-39-39-pm.png)
-  (Courtesy: Blog post on TensorFlow Activation Functions by
-  https://akiraaptx.blog/2017/01/14/tensorflowactivationfunction/)
 
   Example Usage:
 
