@@ -92,8 +92,8 @@ def selu(x):
   The Scaled Exponential Linear Unit (SELU) activation function is:
   `scale * x` if `x > 0` and `scale * alpha * (exp(x) - 1)` if `x < 0`
   where `alpha` and `scale` are pre-defined constants
-  (`alpha = 1.6732632423543772848170429916717`
-  and `scale = 1.0507009873554804934193349852946`).
+  (`alpha = 1.67326324`
+  and `scale = 1.05070098`).
   The SELU activation function multiplies  `scale` > 1 with the
   `[elu](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/activations/elu)`
   (Exponential Linear Unit (ELU)) to ensure a slope larger than one
