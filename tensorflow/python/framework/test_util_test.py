@@ -851,5 +851,19 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
     LeakedObjectTest().test_has_no_leak()
 
 
+class DeterministicCudnnDecoratorTest(test_util.TensorFlowTestCase):
+
+  def test_decorated_function_with_positional_argument(self):
+
+    @test_util.use_deterministic_cudnn
+    def layer_test(layer_cls, kwargs=None):
+      del layer_cls
+      del kwargs
+
+    layer_test('Dropout', kwargs=None)
+    # Fix bug: https://github.com/tensorflow/addons/pull/92
+    layer_test(layer_cls='Dropout', kwargs=None)
+
+
 if __name__ == "__main__":
   googletest.main()
