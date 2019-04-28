@@ -1,11 +1,6 @@
 op {
   graph_op_name: "TensorScatterMin"
-  deprecation_message: "Use tensor_scatter_nd_min instead"
   endpoint {
     name: "tensor_scatter_nd_min"
-  }
-  endpoint {
-    name: "tensor_scatter_min"
-    deprecation_version: 2
   }
 }
