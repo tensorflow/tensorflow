@@ -855,6 +855,7 @@ class DeterministicCudnnDecoratorTest(test_util.TensorFlowTestCase):
 
   def test_decorated_function_with_positional_argument(self):
 
+    # Similar interface with `tf.keras.testing_utils.layer_test` function:
     @test_util.use_deterministic_cudnn
     def layer_test(layer_cls, kwargs=None):
       del layer_cls
