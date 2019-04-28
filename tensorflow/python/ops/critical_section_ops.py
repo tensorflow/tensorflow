@@ -124,7 +124,7 @@ class CriticalSection(object):
   will not ensure serial execution:
 
   ```python
-  v = tf.get_variable("v", initializer=0.0, use_resource=True)
+  v = tf.compat.v1.get_variable("v", initializer=0.0, use_resource=True)
   def accumulate(up):
     x = v.read_value()
     with tf.control_dependencies([x]):
@@ -143,6 +143,7 @@ class CriticalSection(object):
   def __init__(self, name=None, shared_name=None,
                critical_section_def=None, import_scope=None):
     """Creates a critical section."""
+    context.ensure_initialized()
     if critical_section_def and name is not None:
       raise ValueError("critical_section_def and shared_name are "
                        "mutually exclusive.")

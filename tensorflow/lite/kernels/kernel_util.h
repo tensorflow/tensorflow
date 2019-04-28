@@ -65,6 +65,14 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   return nullptr;
 }
 
+inline int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
+  if (is_uint8) {
+    return reinterpret_cast<int8_t*>(tensor->data.uint8);
+  } else {
+    return tensor->data.int8;
+  }
+}
+
 // Determines whether tensor is constant.
 inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
@@ -82,6 +90,13 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
     tensor->allocation_type = kTfLiteDynamic;
     tensor->data.raw = nullptr;
   }
+}
+
+// Determines whether it is a hybrid op - one that has float inputs and
+// quantized weights.
+inline bool IsHybridOp(const TfLiteTensor* input, const TfLiteTensor* weight) {
+  return ((weight->type == kTfLiteUInt8 || weight->type == kTfLiteInt8) &&
+          input->type == kTfLiteFloat32);
 }
 
 // Check dimensionality match and populate OpData for Conv and DepthwiseConv.
@@ -103,6 +118,12 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* input,
                                               const TfLiteTensor* filter,
                                               const TfLiteTensor* bias,
+                                              TfLiteTensor* output,
+                                              double* multiplier);
+
+TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              const TfLiteTensor* filter,
                                               TfLiteTensor* output,
                                               double* multiplier);
 

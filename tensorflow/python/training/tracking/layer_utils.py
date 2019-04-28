@@ -27,14 +27,21 @@ from tensorflow.python.training.tracking import object_identity
 def is_layer(obj):
   """Implicit check for Layer-like objects."""
   # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
-  return hasattr(obj, "_is_layer")
+  return hasattr(obj, "_is_layer") and not isinstance(obj, type)
 
 
 def has_weights(obj):
   """Implicit check for Layer-like objects."""
   # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
-  return (hasattr(obj, "trainable_weights")
-          and hasattr(obj, "non_trainable_weights"))
+  try:
+    has_weight = (hasattr(obj, "trainable_weights")
+                  and hasattr(obj, "non_trainable_weights"))
+  except ValueError:
+    # Ignore the ValueError here since the model/layer might not be built yet.
+    # In that case, the obj is actual a instance with weights.
+    has_weight = True
+
+  return has_weight and not isinstance(obj, type)
 
 
 def filter_empty_layer_containers(layer_list):

@@ -68,16 +68,73 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "eigen_support_test",
+    size = "small",
+    srcs = ["eigen_support_test.cc"],
+    deps = [
+        ":eigen_support",
+        "//tensorflow/lite/kernels/internal:optimized",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
-    name = "gemm_support",
+    name = "cpu_backend_context",
     srcs = [
-        "gemm_support.cc",
+        "cpu_backend_context.cc",
     ],
     hdrs = [
-        "gemm_support.h",
+        "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":op_macros",
+        # For now this unconditionally depends on both ruy and gemmlowp.
+        # See the comment inside class CpuBackendContext on the
+        # gemmlowp_context_ and ruy_context_ members.
+        "//tensorflow/lite/experimental/ruy:context",
+        "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_gemm",
+    hdrs = [
+        "cpu_backend_gemm.h",
+    ],
+    deps = [
+        ":op_macros",
+        ":cpu_backend_context",
+        # Depend on ruy regardless of `with_ruy`. See the comment in
+        # cpu_backend_gemm.h about why ruy is the generic path.
+        "//tensorflow/lite/experimental/ruy",
+    ],
+)
+
+cc_test(
+    name = "cpu_backend_gemm_test",
+    srcs = ["cpu_backend_gemm_test.cc"],
+    deps = [
+        ":cpu_backend_gemm",
+        "@com_google_googletest//:gtest",
+        # ruy's reference path provides the reference implementation
+        # that this test compares against.
+        "//tensorflow/lite/experimental/ruy",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_support",
+    srcs = [
+        "cpu_backend_support.cc",
+    ],
+    hdrs = [
+        "cpu_backend_support.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "@gemmlowp",
@@ -188,6 +245,8 @@ cc_library(
         "logical.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "matrix_diag.cc",
+        "matrix_set_diag.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
         "mirror_pad.cc",
@@ -198,6 +257,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "pow.cc",
+        "quantize.cc",
         "range.cc",
         "rank.cc",
         "reduce.cc",
@@ -238,6 +298,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
+        ":cpu_backend_support",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
@@ -246,7 +307,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:gemm_support",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
@@ -267,6 +327,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
     ],
@@ -1369,9 +1430,10 @@ cc_test(
     size = "small",
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
+        ":kernel_util",
         ":subgraph_test_util",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1380,6 +1442,43 @@ cc_test(
     name = "reverse_sequence_test",
     size = "small",
     srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_diag_test",
+    size = "small",
+    srcs = ["matrix_diag_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_test",
+    size = "small",
+    srcs = ["quantize_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_set_diag_test",
+    size = "small",
+    srcs = ["matrix_set_diag_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:framework",

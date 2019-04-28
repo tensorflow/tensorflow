@@ -101,6 +101,16 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
+  def test_broadcast_to(self):
+    x = random_ops.random_uniform([3, 2, 1, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.broadcast_to(x1, [2, 2, 3]),
+              array_ops.broadcast_to(x1, [1, 2, 1, 3]))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_expand_dims(self):
     x = random_ops.random_uniform([3, 2, 3])
 
@@ -190,6 +200,17 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 4)
 
+  def test_squeeze(self):
+    x = random_ops.random_uniform([5, 1, 2, 1])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.squeeze(x1, axis=0),
+              array_ops.squeeze(x1, axis=-1),
+              array_ops.squeeze(x1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
   def test_transpose(self):
     x = random_ops.random_uniform([3, 2, 3, 4])
 
@@ -254,6 +275,19 @@ class ArrayTest(PForTestCase):
       return array_ops.matrix_diag_part(array_ops.gather(x, i))
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
+
+  def test_matrix_set_diag(self):
+    matrices = random_ops.random_uniform([3, 4, 4])
+    diags = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      matrix_i = array_ops.gather(matrices, i)
+      diag_i = array_ops.gather(diags, i)
+      return (array_ops.matrix_set_diag(matrix_i, diag_i),
+              array_ops.matrix_set_diag(matrices[0, ...], diag_i),
+              array_ops.matrix_set_diag(matrix_i, diags[0, ...]))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_strided_slice(self):
     with backprop.GradientTape(persistent=True) as g:

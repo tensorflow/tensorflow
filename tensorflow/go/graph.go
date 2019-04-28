@@ -53,7 +53,7 @@ type Graph struct {
 	c *C.TF_Graph
 }
 
-// Graph execution options
+// The GraphImportOptions struct holds parameters for the ImportWithOptions function.
 type GraphImportOptions struct {
 	// Node prefix
 	Prefix string
@@ -170,7 +170,7 @@ func (g *Graph) Operation(name string) *Operation {
 
 // Operations returns a list of all operations in the graph
 func (g *Graph) Operations() []Operation {
-	var pos C.size_t = 0
+	var pos C.size_t
 	ops := []Operation{}
 	for {
 		cop := C.TF_GraphNextOperation(g.c, &pos)

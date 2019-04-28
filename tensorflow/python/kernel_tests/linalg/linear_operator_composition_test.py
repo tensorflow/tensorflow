@@ -43,12 +43,12 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     # Cholesky not implemented.
     return ["cholesky"]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
@@ -141,7 +141,7 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
     shape = list(build_info.shape)
 
@@ -218,4 +218,6 @@ class NonSquareLinearOperatorCompositionTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorCompositionTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorCompositionTest)
   test.main()

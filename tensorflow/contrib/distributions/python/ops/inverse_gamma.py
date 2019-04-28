@@ -84,7 +84,7 @@ class InverseGamma(distribution.Distribution):
   examples for details.
 
   WARNING: This distribution may draw 0-valued samples for small concentration
-  values. See note in `tf.random_gamma` docstring.
+  values. See note in `tf.random.gamma` docstring.
 
   #### Examples
 
@@ -190,7 +190,7 @@ class InverseGamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return 1. / random_ops.random_gamma(

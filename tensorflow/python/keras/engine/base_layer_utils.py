@@ -21,6 +21,7 @@ import collections as collections_lib
 import threading
 import enum
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
@@ -29,6 +30,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -55,9 +57,10 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  result = metric_obj(value)
-  return metric_obj, result
+  return (metric_obj,
+          distributed_training_utils.call_replica_local_fn(metric_obj, value))
 
 
 def make_variable(name,
@@ -247,21 +250,27 @@ def create_keras_history(tensors):
   Arguments:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
+
+  Returns:
+    keras_tensors: The Tensors found that came from a Keras Layer.
   """
-  _create_keras_history_helper(tensors, set())
+  _, created_layers = _create_keras_history_helper(tensors, set(), [])
+  return created_layers
 
 
-def _create_keras_history_helper(tensors, processed_ops=None):
+def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
   Arguments:
     tensors: A structure of Tensors for which to create Keras metadata.
-    processed_ops: Set. TensorFlow operations that have already been wrapped
-      in `TensorFlowOpLayer` instances.
+    processed_ops: Set. TensorFlow operations that have already been wrapped in
+      `TensorFlowOpLayer` instances.
+    created_layers: List. The `TensorFlowOpLayer` instances created.
 
   Returns:
-    The updated set of TensorFlow Operations that have been wrapped
-    in `TensorFlowOpLayer` instances.
+    Tuple. First element is the updated set of TensorFlow Operations that
+    have been wrapped in `TensorFlowOpLayer` instances. Second element is
+    a list of the `TensorFlowOpLayer` instances created.
   """
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
@@ -282,19 +291,25 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           layer_inputs.append(op_input)
         else:
           # Treat any value not originating from a `keras.Input` as
-          # a constant (Variables currently have `Placeholder` op type
-          # when originating from an eager context
-          # so can't be supported.
-          constants[i] = backend.function([], op_input)([])
-      processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
+          # a constant. Variables cannot be supported.
+          if (distribution_strategy_context.in_cross_replica_context() and
+              not ops.executing_eagerly_outside_functions()):
+            # In Legacy Graph mode, evaluating here makes Session be
+            # configured improperly.
+            constants[i] = op_input
+          else:
+            constants[i] = backend.function([], op_input)([])
+      processed_ops, created_layers = _create_keras_history_helper(
+          layer_inputs, processed_ops, created_layers)
       name = op.name
       node_def = op.node_def.SerializeToString()
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
+      created_layers.append(op_layer)
       op_layer._add_inbound_node(  # pylint: disable=protected-access
           layer_inputs, op.outputs)
       processed_ops.update([op])
-  return processed_ops
+  return processed_ops, created_layers
 
 
 def needs_keras_history(tensors):
@@ -323,6 +338,17 @@ def needs_keras_history(tensors):
 def is_in_call_context():
   """Returns true if inside of a model/layer '__call__'."""
   return getattr(_call_context, 'in_call', False)
+
+
+def is_in_frozen_context():
+  """Returns if currently executing inside a `call` of a frozen Layer.
+
+  A Layer is considered frozen if `layer.trainable=False`.
+
+  Returns:
+    Whether currently inside the `call` of a frozen Layer.
+  """
+  return getattr(_call_context, 'frozen', False)
 
 
 def uses_keras_history(tensors):
@@ -383,14 +409,18 @@ def mark_checked(tensors):
 
 
 @tf_contextlib.contextmanager
-def call_context():
+def call_context(layer):
   """Scope that marks when we are currently inside a Layer/Model's `call`."""
   was_in_call = is_in_call_context()
+  was_frozen = is_in_frozen_context()
   _call_context.in_call = True
+  if not layer.trainable:
+    _call_context.frozen = True
   try:
     yield
   finally:
     _call_context.in_call = was_in_call
+    _call_context.frozen = was_frozen
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
@@ -483,7 +513,7 @@ class AutoAddUpdates(object):
         new_stateful_ops.add(op)
 
     explicit_updates = set(
-        [u for u in self.layer._unfiltered_updates if not isinstance(u, tuple)])
+        [u for u in self.layer.updates if not isinstance(u, tuple)])
     # pylint: enable=protected-access
 
     # Don't add updates that will already be run by virtue of being consumed by
@@ -543,3 +573,95 @@ def autocast_context_manager(input_list, should_cast):
   return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
       var_read_dtype)
 
+
+def is_subclassed(layer):
+  return (layer.__module__.find('keras.engine') == -1 and
+          layer.__module__.find('keras.layers') == -1)
+
+
+def check_graph_consistency(tensor, method):
+  """Checks that tensors passed to `add_*` method match the Keras graph.
+
+  When one of the `add_*` method is called inside a V2 conditional branch,
+  the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
+  We need to raise clear error messages in such cases.
+
+  Arguments:
+    tensor: Tensor to check.
+    method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
+
+  Raises:
+    RuntimeError: In case of an out-of-graph tensor.
+  """
+  if ops.executing_eagerly_outside_functions() and hasattr(tensor, 'graph'):
+    if isinstance(tensor.graph,
+                  (control_flow_util_v2.CondBranchFuncGraph,
+                   control_flow_util_v2.WhileCondFuncGraph,
+                   control_flow_util_v2.WhileBodyFuncGraph)):
+      if method == 'add_metric':
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            metric = compute_metric(inputs)
+            self.add_metric(metric, name='my_metric', aggregation='mean')
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            metric = compute_metric(inputs)
+          else:
+            metric = 0.
+          self.add_metric(metric, name='my_metric', aggregation='mean')
+          return inputs
+        """
+      elif method == 'add_loss':
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            loss = compute_loss(inputs)
+            self.add_loss(loss)
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            loss = compute_loss(inputs)
+          else:
+            loss = 0.
+          self.add_loss(loss)
+          return inputs
+        """
+      else:
+        bad_example = """
+        def call(self, inputs, training=None):
+          if training:
+            self.add_update(self.w.assign_add(1))
+          return inputs
+        """
+        correct_example = """
+        def call(self, inputs, training=None):
+          if training:
+            increment = 1
+          else:
+            increment = 0
+          self.add_update(self.w.assign_add(increment))
+          return inputs
+        """
+      raise RuntimeError(
+          'You are using the method `{method}` in a control flow branch '
+          'in your layer, e.g.:\n{bad_example}\n'
+          'This is not currently supported. '
+          'You should either use static control flow (`tf.cond`) '
+          'or move your call to {method} out of the control flow branch, '
+          'e.g.:\n{correct_example}\n'
+          'You can also resolve this by marking your layer '
+          'as dynamic (eager-only) by passing '
+          '`dynamic=True` to the layer constructor. '
+          'Any kind of control flow is supported with dynamic layers. '
+          'Note that using `dynamic=True` requires you '
+          'to implement static shape inference '
+          'in the `compute_output_shape(input_shape)` method.'.format(
+              method=method,
+              bad_example=bad_example,
+              correct_example=correct_example))

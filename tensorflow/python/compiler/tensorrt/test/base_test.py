@@ -144,7 +144,7 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     ).GetConversionParams(run_params)._replace(
         # Disable layout optimizer, since it'll add Transpose(Const, Const) to
         # the graph and breaks the conversion check.
-        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
+        rewriter_config_template=trt_test.OptimizerDisabledRewriterConfig())
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):

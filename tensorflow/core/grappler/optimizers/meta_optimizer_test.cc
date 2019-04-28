@@ -364,32 +364,25 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   for (const FunctionDef* optimized_func : optimized_funcs) {
     count = 0;
     for (const NodeDef& node : optimized_func->node_def()) {
-      if (node.name() == "my_mul/inlined_inputs" && ++count) {
-        EXPECT_EQ("IdentityN", node.op());
-        EXPECT_EQ(2, node.input_size());
-        EXPECT_EQ("x:0", node.input(0));
-        EXPECT_EQ("x:0", node.input(1));
-      } else if (node.name() == "my_mul/x" && ++count) {
+      if (node.name() == "Func/my_mul/input/_0" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/inlined_inputs:output:0", node.input(0));
-      } else if (node.name() == "my_mul/y" && ++count) {
+        EXPECT_EQ("x", node.input(0));
+      } else if (node.name() == "Func/my_mul/input/_1" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/inlined_inputs:output:1", node.input(0));
+        EXPECT_EQ("x", node.input(0));
       } else if (node.name() == "my_mul/mul" && ++count) {
         EXPECT_EQ("Mul", node.op());
         EXPECT_EQ(2, node.input_size());
-        EXPECT_EQ("my_mul/x:output:0", node.input(0));
-        EXPECT_EQ("my_mul/y:output:0", node.input(1));
-      } else if (node.name() == "my_mul" && ++count) {
-        EXPECT_EQ("IdentityN", node.op());
-        EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/mul:z:0", node.input(0));
+        EXPECT_EQ("Func/my_mul/input/_0:output:0", node.input(0));
+        EXPECT_EQ("Func/my_mul/input/_1:output:0", node.input(1));
       }
       EXPECT_TRUE(node.device().empty());
     }
-    EXPECT_EQ(5, count);
+    EXPECT_EQ(3, count);
+    ASSERT_EQ(1, optimized_func->ret().size());
+    EXPECT_EQ("Func/my_mul/output/_2:output:0", optimized_func->ret().at("z"));
   }
 
   item.fetch = {"out_s", "out_q"};
@@ -623,17 +616,17 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
   MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define simple function library with two identical mul functions.
-  FunctionDef mul_func_1 =
-      FunctionDefHelper::Create("MyMul1", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_1 = FunctionDefHelper::Create(
+      "MyMul1", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
-  FunctionDef mul_func_2 =
-      FunctionDefHelper::Create("MyMul2", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_2 = FunctionDefHelper::Create(
+      "MyMul2", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
   // Tensorflow graph:
   //

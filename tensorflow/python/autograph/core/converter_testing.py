@@ -65,7 +65,9 @@ class TestCase(test.TestCase):
       return RESULT_OF_MOCK_CONVERTED_CALL
 
     try:
-      result, source = compiler.ast_to_object(node, include_source_map=True)
+      result, source, source_map = compiler.ast_to_object(
+          node, include_source_map=True)
+      # TODO(mdan): Move the unparsing from converter into pyct and reuse here.
 
       # TODO(mdan): Move this into self.prepare()
       result.tf = self.make_fake_mod('fake_tf', *symbols)
@@ -80,6 +82,7 @@ class TestCase(test.TestCase):
           errors.rewrite_graph_construction_error)
       fake_ag.function_scope = function_wrapping.function_scope
       result.ag__ = fake_ag
+      result.ag_source_map__ = source_map
       for k, v in namespace.items():
         result.__dict__[k] = v
       yield result
@@ -119,10 +122,11 @@ class TestCase(test.TestCase):
     for k, v in ns.items():
       setattr(module, k, v)
 
-  def prepare(self, test_fn, namespace, arg_types=None, recursive=True):
+  def prepare(self, test_fn, namespace, recursive=True):
     namespace['ConversionOptions'] = converter.ConversionOptions
 
-    node, source, _ = parser.parse_entity(test_fn)
+    future_features = ('print_function', 'division')
+    node, source = parser.parse_entity(test_fn, future_features=future_features)
     namer = naming.Namer(namespace)
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(recursive=recursive),
@@ -130,9 +134,8 @@ class TestCase(test.TestCase):
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file='<fragment>',
-        namespace=namespace,
-        arg_values=None,
-        arg_types=arg_types)
+        future_features=future_features,
+        namespace=namespace)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
     origin_info.resolve(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)

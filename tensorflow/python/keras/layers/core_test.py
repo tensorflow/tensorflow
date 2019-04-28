@@ -204,6 +204,19 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertLen(layer.trainable_weights, 1)
     self.assertEqual(layer.trainable_weights[0].name, 'lambda/multiplier:0')
 
+  def test_lambda_with_training_arg(self):
+
+    def fn(x, training=True):
+      return keras.backend.in_train_phase(x, 2 * x, training=training)
+
+    layer = keras.layers.Lambda(fn)
+    x = keras.backend.ones(())
+    train_out = layer(x, training=True)
+    eval_out = layer(x, training=False)
+
+    self.assertEqual(keras.backend.get_value(train_out), 1.)
+    self.assertEqual(keras.backend.get_value(eval_out), 2.)
+
 
 class TestStatefulLambda(keras_parameterized.TestCase):
 

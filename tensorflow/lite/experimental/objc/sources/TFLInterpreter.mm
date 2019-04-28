@@ -213,7 +213,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   if (data.length != byteSize) {
     NSString *errorDescription = [NSString
         stringWithFormat:@"Input tensor at index (%lu) expects data size (%lu), but got (%lu).",
-                         (unsigned long)index, byteSize, (unsigned long)data.length];
+                         (unsigned long)index, (unsigned long)byteSize, (unsigned long)data.length];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeInvalidInputByteSize
                                    description:errorDescription
                                          error:error];

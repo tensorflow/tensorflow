@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import numpy as np
 
 from tensorflow.python.client import session
@@ -28,7 +29,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
@@ -37,6 +37,23 @@ from tensorflow.python.platform import test
 _sample_diags = np.array([[2, 1, 4, 0], [1, 3, 2, 2], [0, 1, -1, 1]])
 _sample_rhs = np.array([1, 2, 3, 4])
 _sample_result = np.array([-9, 5, -4, 4])
+
+# Flag, indicating that test should be run only with partial_pivoting=True
+FLAG_REQUIRES_PIVOTING = "FLAG_REQUIRES_PIVOT"
+
+# Flag, indicating that test shouldn't be parameterized by different values of
+# partial_pivoting, etc.
+FLAG_NO_PARAMETERIZATION = "FLAG_NO_PARAMETERIZATION"
+
+
+def flags(*args):
+
+  def decorator(f):
+    for flag in args:
+      setattr(f, flag, True)
+    return f
+
+  return decorator
 
 
 def _tfconst(array):
@@ -56,7 +73,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             diags_format="compact",
             transpose_rhs=False,
             conjugate_rhs=False):
-    with self.cached_session(use_gpu=False):
+    with self.cached_session(use_gpu=True):
       result = linalg_impl.tridiagonal_solve(diags, rhs, diags_format,
                                              transpose_rhs, conjugate_rhs)
       self.assertAllClose(self.evaluate(result), expected)
@@ -105,6 +122,13 @@ class TridiagonalSolveOpTest(test.TestCase):
     self._testWithLists(
         diags=[[2, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[-5, 3])
 
+  def test2x2Complex(self):
+    for dtype in dtypes.complex64, dtypes.complex128:
+      self._test(
+          diags=constant_op.constant([[2j, 0j], [1j, 3j], [0j, 1j]], dtype),
+          rhs=constant_op.constant([1 - 1j, 4 - 4j], dtype),
+          expected=constant_op.constant([5 + 5j, -3 - 3j], dtype))
+
   def test1x1(self):
     self._testWithLists(diags=[[0], [3], [0]], rhs=[6], expected=[2])
 
@@ -114,8 +138,28 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs=constant_op.constant(0, shape=(0, 1), dtype=dtypes.float32),
         expected=constant_op.constant(0, shape=(0, 1), dtype=dtypes.float32))
 
+  def test2x2WithMultipleRhs(self):
+    self._testWithLists(
+        diags=[[2, 0], [1, 3], [0, 1]],
+        rhs=[[1, 2, 3], [4, 8, 12]],
+        expected=[[-5, -10, -15], [3, 6, 9]])
+
+  def test1x1WithMultipleRhs(self):
+    self._testWithLists(
+        diags=[[0], [3], [0]], rhs=[[6, 9, 12]], expected=[[2, 3, 4]])
+
+  def test1x1NotInvertible(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]], expected=[])
+
+  def test2x2NotInvertible(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._testWithLists(
+          diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[])
+
   # Other edge cases
 
+  @flags(FLAG_REQUIRES_PIVOTING)
   def testCaseRequiringPivoting(self):
     # Without partial pivoting (e.g. Thomas algorithm) this would fail.
     self._testWithLists(
@@ -123,6 +167,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs=[1, 2, 3, 4],
         expected=[8, -3.5, 0, -4])
 
+  @flags(FLAG_REQUIRES_PIVOTING)
   def testCaseRequiringPivotingLastRows(self):
     self._testWithLists(
         diags=[[2, 1, -1, 0], [1, -1, 2, 1], [0, 1, -6, 1]],
@@ -130,6 +175,10 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
+    if test.is_gpu_available(cuda_only=True):
+      # CuSparse gtsv routines don't raise errors for non-invertible
+      # matrices.
+      return
     with self.assertRaises(errors_impl.InvalidArgumentError):
       self._testWithLists(
           diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]],
@@ -167,6 +216,16 @@ class TridiagonalSolveOpTest(test.TestCase):
         diags=np.array([_sample_diags, -_sample_diags]),
         rhs=np.array([_sample_rhs, 2 * _sample_rhs]),
         expected=np.array([_sample_result, -2 * _sample_result]))
+
+  def testWithTwoBatchingDimensions(self):
+    self._testWithLists(
+        diags=np.array([[_sample_diags, -_sample_diags, _sample_diags],
+                        [-_sample_diags, _sample_diags, -_sample_diags]]),
+        rhs=np.array([[_sample_rhs, 2 * _sample_rhs, 3 * _sample_rhs],
+                      [4 * _sample_rhs, 5 * _sample_rhs, 6 * _sample_rhs]]),
+        expected=np.array(
+            [[_sample_result, -2 * _sample_result, 3 * _sample_result],
+             [-4 * _sample_result, 5 * _sample_result, -6 * _sample_result]]))
 
   def testBatchingAndTwoRightHandSides(self):
     rhs = np.transpose([_sample_rhs, 2 * _sample_rhs])
@@ -292,6 +351,7 @@ class TridiagonalSolveOpTest(test.TestCase):
 
   # Invalid input shapes
 
+  @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesCompactFormat(self):
 
     def test_raises(diags_shape, rhs_shape):
@@ -302,6 +362,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 3, 4), (5))
     test_raises((5), (5, 4))
 
+  @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesSequenceFormat(self):
 
     def test_raises(diags_tuple_shapes, rhs_shape):
@@ -315,6 +376,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises(((5, 4), (7, 4), (5, 4)), (5, 4))
     test_raises(((5, 4), (7, 4), (5, 4)), (3, 4))
 
+  @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesMatrixFormat(self):
 
     def test_raises(diags_shape, rhs_shape):
@@ -337,8 +399,9 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     diags = array_ops.placeholder(dtypes.float64, shape=diags_shape)
     rhs = array_ops.placeholder(dtypes.float64, shape=rhs_shape)
-    x = linalg_impl.tridiagonal_solve(diags, rhs, diags_format)
-    with self.cached_session(use_gpu=False) as sess:
+    x = linalg_impl.tridiagonal_solve(
+        diags, rhs, diags_format, partial_pivoting=self.pivoting)
+    with self.cached_session(use_gpu=True) as sess:
       result = sess.run(x, feed_dict={diags: diags_feed, rhs: rhs_feed})
       self.assertAllClose(result, expected)
 
@@ -407,8 +470,9 @@ class TridiagonalSolveOpTest(test.TestCase):
 
     x = linalg_impl.tridiagonal_solve((superdiag, diag, subdiag),
                                       rhs,
-                                      diagonals_format="sequence")
-    with self.cached_session(use_gpu=False) as sess:
+                                      diagonals_format="sequence",
+                                      partial_pivoting=self.pivoting)
+    with self.cached_session(use_gpu=True) as sess:
       result = sess.run(
           x,
           feed_dict={
@@ -426,31 +490,68 @@ class TridiagonalSolveOpTest(test.TestCase):
              (100000, 100, 1), (10000, 1, 100), (10000, 1, 1000),
              (10000, 1, 10000)]
 
+    pivoting_options = [(True, "pivoting"), (False, "no_pivoting")]
+
     def _generateData(self, matrix_size, batch_size, num_rhs, seed=42):
-      data = random_ops.random_normal(
-          shape=(batch_size, 3 + num_rhs, matrix_size),
-          dtype=dtypes.float64,
-          seed=seed)
-      diags = array_ops.stack([data[:, 0], data[:, 1], data[:, 2]], axis=-2)
-      rhs = data[:, 3:, :]
-      return diags, rhs
+      np.random.seed(seed)
+      data = np.random.normal(size=(batch_size, matrix_size, 3 + num_rhs))
+      diags = np.stack([data[:, :, 0], data[:, :, 1], data[:, :, 2]], axis=-2)
+      rhs = data[:, :, 3:]
+      return (ops.convert_to_tensor(diags, dtype=dtypes.float64),
+              ops.convert_to_tensor(rhs, dtype=dtypes.float64))
 
     def benchmarkTridiagonalSolveOp(self):
-      for matrix_size, batch_size, num_rhs in self.sizes:
+      devices = [("/cpu:0", "cpu")]
+      if test.is_gpu_available(cuda_only=True):
+        devices += [("/gpu:0", "gpu")]
+
+      for device_option, pivoting_option, size_option in \
+          itertools.product(devices, self.pivoting_options, self.sizes):
+
+        device_id, device_name = device_option
+        pivoting, pivoting_name = pivoting_option
+        matrix_size, batch_size, num_rhs = size_option
+
         with ops.Graph().as_default(), \
-                session.Session(config=benchmark.benchmark_config()) as sess, \
-                ops.device("/cpu:0"):
+            session.Session(config=benchmark.benchmark_config()) as sess, \
+            ops.device(device_id):
           diags, rhs = self._generateData(matrix_size, batch_size, num_rhs)
-          x = linalg_impl.tridiagonal_solve(diags, rhs, transpose_rhs=True)
+          x = linalg_impl.tridiagonal_solve(
+              diags, rhs, partial_pivoting=pivoting)
           variables.global_variables_initializer().run()
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x),
               min_iters=10,
               store_memory_usage=False,
-              name=("tridiagonal_solve_matrix_size_{}_batch_size_{}_"
-                    "num_rhs_{}").format(matrix_size, batch_size, num_rhs))
+              name=("tridiagonal_solve_{}_matrix_size_{}_batch_size_{}_"
+                    "num_rhs_{}_{}").format(device_name, matrix_size,
+                                            batch_size, num_rhs, pivoting_name))
 
 
 if __name__ == "__main__":
+  for name, fun in dict(TridiagonalSolveOpTest.__dict__).items():
+    if not name.startswith("test"):
+      continue
+    if hasattr(fun, FLAG_NO_PARAMETERIZATION):
+      continue
+
+    # Replace testFoo with testFoo_pivoting and testFoo_noPivoting, setting
+    # self.pivoting to corresponding value.
+    delattr(TridiagonalSolveOpTest, name)
+
+    def decor(test_fun, pivoting):
+
+      def wrapped(instance):
+        instance.pivoting = pivoting
+        test_fun(instance)
+
+      return wrapped
+
+    setattr(TridiagonalSolveOpTest, name + "_pivoting",
+            decor(fun, pivoting=True))
+    if not hasattr(fun, FLAG_REQUIRES_PIVOTING):
+      setattr(TridiagonalSolveOpTest, name + "_noPivoting",
+              decor(fun, pivoting=False))
+
   test.main()

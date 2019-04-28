@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -60,28 +61,6 @@ class IrArray {
       CHECK(index_ty->isIntegerTy());
     }
 
-    // Constructs an index from multi-dimensional index "multidim". The linear
-    // index is set to nullptr.
-    explicit Index(absl::Span<llvm::Value* const> multidim,
-                   llvm::Type* index_ty = nullptr)
-        : multidim_(multidim.begin(), multidim.end()) {
-      if (size() == 0) {
-        index_type_ = index_ty;
-      } else {
-        for (const auto* dim : multidim) {
-          CHECK_NE(dim, nullptr);
-        }
-        index_type_ = multidim[0]->getType();
-        if (index_ty != nullptr) {
-          CHECK_EQ(index_type_, index_ty);
-        }
-      }
-      CHECK_NE(index_type_, nullptr);
-      CHECK(absl::c_all_of(multidim, [&](llvm::Value* v) {
-        return index_type_ == v->getType();
-      }));
-    }
-
     // Constructs an index from linear index "linear" and computes the
     // multi-dimensional index from "linear" and "shape". "b" is the IR
     // builder to emit the index of each dimension in the multi-dimensional
@@ -98,15 +77,24 @@ class IrArray {
     Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
           llvm::Type* index_type);
 
+    // Same as above, but only the dimensions of the shape without layout is
+    // passed. The layout is assumed to be the default (descending
+    // minor-to-major) layout.
+    Index(absl::Span<llvm::Value* const> multidim,
+          absl::Span<int64 const> dimensions, llvm::Type* index_type);
+
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
                          llvm::IRBuilder<>* b) const {
-      std::vector<llvm::Value*> multi_index = multidim();
-      multi_index[dim] = b->CreateAdd(multi_index[dim], addend);
-      return Index(multi_index, index_type_);
+      Index with_offset = *this;
+      with_offset.linear_ = nullptr;
+      with_offset.multidim_[dim] =
+          b->CreateAdd(with_offset.multidim_[dim], addend);
+      return with_offset;
     }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
+    const std::vector<int64>& dims() const { return dims_; }
     llvm::Value* linear() const { return linear_; }
 
     size_t size() const { return multidim().size(); }
@@ -120,8 +108,14 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
-    // Given that "this" is the target index of a reshape from `operand_shape`
-    // to `shape`, returns the source index.
+    bool ShapeIsCompatible(const Shape& a) const {
+      Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
+      *own_shape.mutable_layout() = layout_;
+      return ShapeUtil::Equal(own_shape, a);
+    }
+
+    // Given that "this" is the target index of a reshape from `input_shape`
+    // to `output_shape`, returns the source index.
     Index SourceIndexOfReshape(const Shape& output_shape,
                                const Shape& input_shape,
                                llvm::IRBuilder<>* builder) const;
@@ -167,8 +161,6 @@ class IrArray {
       // APInt &V).
       return llvm::ConstantInt::get(index_type_, c);
     }
-
-    void ClearLinearIndex() { linear_ = nullptr; }
 
    private:
     // Constructs an index from both a multi-dimensional index and a linear
@@ -227,7 +219,8 @@ class IrArray {
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
   llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
-                                       absl::string_view name = "") const;
+                                       absl::string_view name = "",
+                                       bool use_linear_index = true) const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -240,15 +233,23 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
-                                    absl::string_view name = "") const;
+                                    absl::string_view name = "",
+                                    bool use_linear_index = true) const;
 
   // Emit IR to write the given value to the array element at the given index.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                             llvm::IRBuilder<>* b) const;
+                             llvm::IRBuilder<>* b,
+                             bool use_linear_index = true) const;
 
   // Returns a new IrArray whose shape is "new_shape" and base pointer is a
   // bitcast of the base pointer of "this" IrArray.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   IrArray CastToShape(const Shape& new_shape, llvm::IRBuilder<>* b) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {

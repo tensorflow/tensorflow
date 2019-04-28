@@ -335,8 +335,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testGradientFunction(self):
-    # Input to tf.py_func is necessary, otherwise get_gradient_function()
-    # returns None per default.
+    # Input to tf.compat.v1.py_func is necessary,
+    # otherwise get_gradient_function() returns None per default.
     a = constant_op.constant(0)
     x, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64])
     y, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64], stateful=False)
@@ -353,7 +353,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallel(self):
-    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    # Tests that tf.compat.v1.py_func's can run in parallel if they release
+    # the GIL.
     with self.cached_session() as session:
       q = queue.Queue(1)
 
@@ -534,7 +535,6 @@ class PyFuncTest(test.TestCase):
         self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.disable_xla("XLA cannot compile functions containing py_func")
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():

@@ -159,7 +159,8 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         node_id_end = 1;
         ensemble_resource->SetIsFinalized(current_tree, true);
         if (pruning_mode_ == kPostPruning) {
-          ensemble_resource->PostPruneTree(current_tree);
+          // TODO(crawles): change for multi-class.
+          ensemble_resource->PostPruneTree(current_tree, 1); /*logit dimension*/
         }
         if (ensemble_resource->num_trees() > 0) {
           // Create a dummy new tree with an empty node.

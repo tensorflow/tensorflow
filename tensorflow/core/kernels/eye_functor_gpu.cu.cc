@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/eye_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -52,9 +52,10 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int m = matrix_batch.dimension(1);
     const int n = matrix_batch.dimension(2);
     CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-    EyeKernel<<<config.block_count, config.thread_per_block, 0,
-                device.stream()>>>(config.virtual_thread_count, batch_size, m,
-                                   n, matrix_batch.data());
+    TF_CHECK_OK(CudaLaunchKernel(EyeKernel<Scalar>, config.block_count,
+                                 config.thread_per_block, 0, device.stream(),
+                                 config.virtual_thread_count, batch_size, m, n,
+                                 matrix_batch.data()));
   }
 };
 

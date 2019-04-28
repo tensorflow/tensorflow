@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -98,14 +99,12 @@ Status GpuExecutable::ExecuteThunks(
                                 sub_streams, hlo_module_->entry_computation());
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  // This top-level trace serves two purposes:
-  //  1) It marks the scope of the whole XLA module.
-  //  2) It tells us whether tracing is enabled.  We use this to avoid the
-  //     expensive HloInstruction::ToString() calls inside the loop below if
-  //     tracing is disabled.
-  ScopedAnnotation top_level_annotation(hlo_module_->name(), "XLA GPU module");
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(hlo_module_->name(), ":XLA GPU module"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
@@ -114,12 +113,13 @@ Status GpuExecutable::ExecuteThunks(
     // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
     // since we expect it to be an expensive call?
     absl::optional<ScopedAnnotation> op_annotation;
-    if (top_level_annotation.IsEnabled()) {
+    CHECK(thunk->hlo_instruction());
+    if (scoped_annotation_enabled) {
+      auto hlo = thunk->hlo_instruction();
       op_annotation.emplace(
-          thunk->hlo_instruction() != nullptr
-              ? thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical())
-              : "<unknown>",
-          "XLA op");
+          thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
+          absl::StrCat("#tf_op=", hlo->metadata().op_name(),
+                       ",hlo_op=", hlo->name(), "#"));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
@@ -130,13 +130,6 @@ Status GpuExecutable::ExecuteThunks(
 
     for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
-
-    // If this thunk is about to autotune then wait for all currently executing
-    // thunks to finish.  This reduces noise and thus the probability of
-    // choosing a suboptimal algorithm.
-    if (thunk->WillAutotuneKernel(stream)) {
-      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
     VLOG(2) << "Executing the thunk for "

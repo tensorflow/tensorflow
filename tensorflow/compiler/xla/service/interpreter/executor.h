@@ -69,8 +69,8 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   void *Allocate(uint64 size) override;
-  void *AllocateSubBuffer(DeviceMemoryBase *mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                     uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
@@ -80,9 +80,9 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
-  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &pop_src,
+  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &dev_src,
               uint64 size) override;
-  bool Memcpy(Stream *stream, DeviceMemoryBase *pop_dst, const void *host_src,
+  bool Memcpy(Stream *stream, DeviceMemoryBase *dev_dst, const void *host_src,
               uint64 size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
@@ -114,10 +114,10 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase *pop_dst,
+  port::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
                                  const void *host_src, uint64 size) override;
   port::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &pop_src,
+                                 const DeviceMemoryBase &dev_src,
                                  uint64 size) override;
   port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
                                                const DeviceMemoryBase &pop_src,
@@ -165,7 +165,13 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  DeviceDescription *PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(0);
+  }
+
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
     return port::Status::OK();

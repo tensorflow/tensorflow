@@ -70,11 +70,12 @@ struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  Tensor* output, TensorFormat data_format) {
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
-        col_stride == 1) {
+        col_stride == 1 && (padding == SAME || padding == VALID)) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -110,10 +111,20 @@ struct LaunchGeneric {
           input.shaped<T, 2>({input.dim_size(0), k}),
           filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair);
     } else {
-      functor::SpatialConvolution<Device, T>()(
-          ctx->eigen_device<Device>(), output->tensor<T, 4>(),
-          input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
-          row_dilation, col_dilation, BrainPadding2EigenPadding(padding));
+      if (padding == EXPLICIT) {
+        functor::SpatialConvolution<Device, T>()(
+            ctx->eigen_device<Device>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+            row_dilation, col_dilation, static_cast<int>(explicit_paddings[2]),
+            static_cast<int>(explicit_paddings[3]),
+            static_cast<int>(explicit_paddings[4]),
+            static_cast<int>(explicit_paddings[5]));
+      } else {
+        functor::SpatialConvolution<Device, T>()(
+            ctx->eigen_device<Device>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+            row_dilation, col_dilation, BrainPadding2EigenPadding(padding));
+      }
     }
   }
 };
@@ -133,18 +144,19 @@ struct LaunchConv2DOp<CPUDevice, T> {
                                 "NHWC tensor format for now."));
       return;
     }
-    // TODO(reedwm): Enable explicit padding on the CPU.
-    OP_REQUIRES(
-        ctx, padding != Padding::EXPLICIT,
-        errors::Unimplemented("Generic conv implementation does not support "
-                              "EXPLICIT padding yet."));
     const int64 in_depth = GetTensorDim(input, data_format, 'C');
     OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
                 errors::Unimplemented("Generic conv implementation does not "
                                       "support grouped convolutions for now."));
+    for (int64 explicit_padding : explicit_paddings) {
+      if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
+        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        return;
+      }
+    }
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                  row_dilation, col_dilation, padding, output,
-                                  data_format);
+                                  row_dilation, col_dilation, padding,
+                                  explicit_paddings, output, data_format);
   }
 };
 
@@ -870,23 +882,21 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                   output_desc, &output_ptr, &scratch_allocator,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-          result.mutable_conv()->set_tensor_ops_enabled(
-              profile_algorithm.tensor_ops_enabled());
-          result.mutable_success()->set_scratch_bytes(
-              scratch_allocator.TotalByteSize());
-          *result.mutable_success()->mutable_run_time() =
-              proto_utils::ToDurationProto(
-                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    LogConvAutotuneResults(ctx->op_kernel().def(), input, transformed_filter,
-                           transformed_output, stream->parent(), results);
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
+                           stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
