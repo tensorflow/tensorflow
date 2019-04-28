@@ -42,7 +42,9 @@ _TF_ACTIVATIONS_V2 = {
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """The softmax activation function transforms the outputs so that all values are 
+  """Softmax activation function. 
+  
+  The softmax activation function transforms the outputs so that all values are 
   in range (0, 1) and sum to 1. It is often used as the activation for the last
   layer of a classification network because the result could be interpreted as
   a probability distribution. The softmax of x is calculated by
@@ -121,7 +123,9 @@ def selu(x):
 
 @keras_export('keras.activations.softplus')
 def softplus(x):
-  """The Softplus activation function is a smoothed version of
+  """Softplus activation function. 
+  
+  The Softplus activation function is a smoothed version of
   the relu function. For negative values the function returns a 
   value close to zero, for positive values the result of 
   the function is similar to what a linear function 
@@ -138,7 +142,9 @@ def softplus(x):
 
 @keras_export('keras.activations.softsign')
 def softsign(x):
-  """The Softsign activation function is similar to the 
+  """Softsign activation function. 
+  
+  The Softsign activation function is similar to the 
   tanh function. For large values the function returns 
   values close to 1 and for small values the function 
   returns values close to -1. Like tanh the Softsign 
@@ -179,7 +185,9 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  """The Hyperbolic Tangent activation function is a similar to the 
+  """Hyperbolic Tangent activation function. 
+  
+  The Hyperbolic Tangent activation function is a similar to the 
   sigmoid activation function. It also is a smooth curve ranging within 
   its minimum and maximum value. The difference from the sigmoid function 
   is that the tanh function ranges from -1 to 1. 
