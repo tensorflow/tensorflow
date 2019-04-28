@@ -60,7 +60,7 @@ class AveragePooling1D(keras_layers.AveragePooling1D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.average_pooling1d instead.')
+    instructions='Use keras.layers.AveragePooling1D instead.')
 @tf_export(v1=['layers.average_pooling1d'])
 def average_pooling1d(inputs, pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -131,7 +131,7 @@ class MaxPooling1D(keras_layers.MaxPooling1D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.max_pooling1d instead.')
+    instructions='Use keras.layers.MaxPooling1D instead.')
 @tf_export(v1=['layers.max_pooling1d'])
 def max_pooling1d(inputs, pool_size, strides,
                   padding='valid', data_format='channels_last',
