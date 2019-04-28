@@ -44,7 +44,9 @@
 
 using namespace mlir;
 using namespace mlir::detail;
-using namespace llvm;
+
+using llvm::hash_combine;
+using llvm::hash_combine_range;
 
 /// A utility function to safely get or create a uniqued instance within the
 /// given set container.
@@ -135,7 +137,7 @@ struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addTypes<FunctionType, OpaqueType, FloatType, IndexType, IntegerType,
              VectorType, RankedTensorType, UnrankedTensorType, MemRefType,
-             ComplexType, TupleType>();
+             ComplexType, TupleType, NoneType>();
   }
 };
 
@@ -426,7 +428,7 @@ public:
 
   /// This is a mapping from operation name to AbstractOperation for registered
   /// operations.
-  StringMap<AbstractOperation> registeredOperations;
+  llvm::StringMap<AbstractOperation> registeredOperations;
 
   /// This is a mapping from type identifier to Dialect for registered types.
   DenseMap<const TypeID *, Dialect *> registeredTypes;
@@ -499,7 +501,7 @@ public:
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
   DenseSet<IntegerAttributeStorage *, IntegerAttrKeyInfo> integerAttrs;
   DenseSet<FloatAttributeStorage *, FloatAttrKeyInfo> floatAttrs;
-  StringMap<StringAttributeStorage *> stringAttrs;
+  llvm::StringMap<StringAttributeStorage *> stringAttrs;
   using ArrayAttrSet = DenseSet<ArrayAttributeStorage *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
   DenseMap<AffineMap, AffineMapAttributeStorage *> affineMapAttrs;
@@ -670,7 +672,7 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
     // We just have the operations in a non-deterministic hash table order. Dump
     // into a temporary array, then sort it by operation name to get a stable
     // ordering.
-    StringMap<AbstractOperation> &registeredOps =
+    llvm::StringMap<AbstractOperation> &registeredOps =
         getImpl().registeredOperations;
 
     opsToSort.reserve(registeredOps.size());
@@ -822,7 +824,7 @@ Location FusedLoc::get(ArrayRef<Location> locs, MLIRContext *context) {
 Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
                        MLIRContext *context) {
   // Unique the set of locations to be fused.
-  SmallSetVector<Location, 4> decomposedLocs;
+  llvm::SmallSetVector<Location, 4> decomposedLocs;
   for (auto loc : locs) {
     // If the location is a fused location we decompose it if it has no
     // metadata or the metadata is the same as the top level metadata.

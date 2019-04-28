@@ -909,6 +909,9 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::None:
+    os << "none";
+    return;
   }
 }
 

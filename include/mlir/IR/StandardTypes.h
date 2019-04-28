@@ -67,6 +67,7 @@ enum Kind {
   MemRef,
   Complex,
   Tuple,
+  None,
 };
 
 } // namespace StandardTypes
@@ -492,6 +493,19 @@ public:
   static bool kindof(unsigned kind) { return kind == StandardTypes::Tuple; }
 };
 
+/// NoneType is a unit type, i.e. a type with exactly one possible value, where
+/// its value does not have a defined dynamic representation.
+class NoneType : public Type::TypeBase<NoneType, Type> {
+public:
+  using Base::Base;
+
+  /// Get or create a NoneType instance.
+  static NoneType get(MLIRContext *context) {
+    return Base::get(context, StandardTypes::None);
+  }
+
+  static bool kindof(unsigned kind) { return kind == StandardTypes::None; }
+};
 } // end namespace mlir
 
 #endif // MLIR_IR_STANDARDTYPES_H

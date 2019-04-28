@@ -883,3 +883,10 @@ func @pretty_dialect_type() {
 
   return
 }
+
+// CHECK-LABEL: func @none_type
+func @none_type() {
+  // CHECK: "foo.unknown_op"() : () -> none
+  %none_val = "foo.unknown_op"() : () -> none
+  return
+}

@@ -92,7 +92,6 @@ using llvm::Twine;
 // Other common classes.
 using llvm::APFloat;
 using llvm::APInt;
-using llvm::NoneType;
 using llvm::raw_ostream;
 } // namespace mlir
 

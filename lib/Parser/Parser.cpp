@@ -324,9 +324,11 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///                       | memref-type
 ///                       | complex-type
 ///                       | tuple-type
+///                       | none-type
 ///
 ///   index-type ::= `index`
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
+///   none-type ::= `none`
 ///
 Type Parser::parseNonFunctionType() {
   switch (getToken().getKind()) {
@@ -370,6 +372,11 @@ Type Parser::parseNonFunctionType() {
   case Token::kw_index:
     consumeToken(Token::kw_index);
     return builder.getIndexType();
+
+  // none-type
+  case Token::kw_none:
+    consumeToken(Token::kw_none);
+    return builder.getNoneType();
 
   // extended type
   case Token::exclamation_identifier:

@@ -513,6 +513,7 @@ non-function-type ::= integer-type
                     | type-alias
                     | complex-type
                     | tuple-type
+                    | none-type
 
 type-list-no-parens ::=  type (`,` type)*
 type-list-parens ::= `(` `)`
@@ -910,6 +911,17 @@ tuple<f32>
 // Many elements.
 tuple<i32, f32, tensor<i1>, i5>
 ```
+
+#### None Type
+
+Syntax:
+
+``` {.ebnf}
+none-type ::= `none`
+```
+
+The `none` type is a unit type, i.e. a type with exactly one possible value,
+where its value does not have a defined dynamic representation.
 
 ## Attributes
 

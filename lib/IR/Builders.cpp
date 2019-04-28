@@ -101,6 +101,8 @@ TupleType Builder::getTupleType(ArrayRef<Type> elementTypes) {
   return TupleType::get(elementTypes, context);
 }
 
+NoneType Builder::getNoneType() { return NoneType::get(context); }
+
 //===----------------------------------------------------------------------===//
 // Attributes.
 //===----------------------------------------------------------------------===//
