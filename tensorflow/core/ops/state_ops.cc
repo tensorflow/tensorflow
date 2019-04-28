@@ -278,26 +278,6 @@ REGISTER_OP("ScatterNdSub")
     .Attr("use_locking: bool = false")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 
-REGISTER_OP("ScatterNdMin")
-    .Input("ref: Ref(T)")
-    .Input("indices: Tindices")
-    .Input("updates: T")
-    .Output("output_ref: Ref(T)")
-    .Attr("T: {half, bfloat16, float, double, int32, int64}")
-    .Attr("Tindices: {int32, int64}")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
-
-REGISTER_OP("ScatterNdMax")
-    .Input("ref: Ref(T)")
-    .Input("indices: Tindices")
-    .Input("updates: T")
-    .Output("output_ref: Ref(T)")
-    .Attr("T: {half, bfloat16, float, double, int32, int64}")
-    .Attr("Tindices: {int32, int64}")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn(shape_inference::ScatterNdUpdateShape);    
-
 REGISTER_OP("CountUpTo")
     .Input("ref: Ref(T)")
     .Output("output: T")
