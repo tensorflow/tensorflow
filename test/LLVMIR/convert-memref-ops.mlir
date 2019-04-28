@@ -1,4 +1,4 @@
-// RUN: mlir-opt -convert-to-llvmir %s | FileCheck %s
+// RUN: mlir-opt -lower-to-llvm %s | FileCheck %s
 
 
 // CHECK-LABEL: func @check_arguments(%arg0: !llvm<"float*">, %arg1: !llvm<"{ float*, i64, i64 }">, %arg2: !llvm<"{ float*, i64 }">)

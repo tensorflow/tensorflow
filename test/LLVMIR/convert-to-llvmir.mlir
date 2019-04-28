@@ -1,4 +1,4 @@
-// RUN: mlir-opt -convert-to-llvmir %s | FileCheck %s
+// RUN: mlir-opt -lower-to-llvm %s | FileCheck %s
 
 // CHECK-LABEL: func @empty() {
 // CHECK-NEXT:  llvm.return

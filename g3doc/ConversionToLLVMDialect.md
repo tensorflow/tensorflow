@@ -4,7 +4,7 @@ Conversion to the [LLVM IR Dialect](Dialects/LLVM.md) can be performed by the
 specialized dialect conversion pass by running
 
 ```sh
-mlir-opt -convert-to-llvmir <filename.mlir>
+mlir-opt -lower-to-llvm <filename.mlir>
 ```
 
 It performs type and operation conversions for a subset of operations from

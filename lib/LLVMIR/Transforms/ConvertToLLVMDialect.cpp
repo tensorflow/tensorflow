@@ -1168,4 +1168,4 @@ std::unique_ptr<DialectConversion> mlir::createStdToLLVMConverter() {
 }
 
 static PassRegistration<LLVMLoweringPass>
-    pass("convert-to-llvmir", "Convert all functions to the LLVM IR dialect");
+    pass("lower-to-llvm", "Convert all functions to the LLVM IR dialect");

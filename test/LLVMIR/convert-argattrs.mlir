@@ -1,4 +1,4 @@
-// RUN: mlir-opt -convert-to-llvmir %s | FileCheck %s
+// RUN: mlir-opt -lower-to-llvm %s | FileCheck %s
 
 
 // CHECK-LABEL: func @check_attributes(%arg0: !llvm<"float*"> {dialect.a: true, dialect.b: 4}) {
