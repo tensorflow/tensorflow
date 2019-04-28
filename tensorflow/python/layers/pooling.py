@@ -202,7 +202,7 @@ class AveragePooling2D(keras_layers.AveragePooling2D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.average_pooling2d instead.')
+    instructions='Use keras.layers.AveragePooling2D instead.')
 @tf_export(v1=['layers.average_pooling2d'])
 def average_pooling2d(inputs,
                       pool_size, strides,
@@ -276,7 +276,7 @@ class MaxPooling2D(keras_layers.MaxPooling2D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.max_pooling2d instead.')
+    instructions='Use keras.layers.MaxPooling2D instead.')
 @tf_export(v1=['layers.max_pooling2d'])
 def max_pooling2d(inputs,
                   pool_size, strides,
@@ -352,7 +352,7 @@ class AveragePooling3D(keras_layers.AveragePooling3D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.average_pooling3d instead.')
+    instructions='Use keras.layers.AveragePooling3D instead.')
 @tf_export(v1=['layers.average_pooling3d'])
 def average_pooling3d(inputs,
                       pool_size, strides,
@@ -430,7 +430,7 @@ class MaxPooling3D(keras_layers.MaxPooling3D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.max_pooling3d instead.')
+    instructions='Use keras.layers.MaxPooling3D instead.')
 @tf_export(v1=['layers.max_pooling3d'])
 def max_pooling3d(inputs,
                   pool_size, strides,
