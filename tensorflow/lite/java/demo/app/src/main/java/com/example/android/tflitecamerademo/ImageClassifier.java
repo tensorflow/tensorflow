@@ -201,8 +201,10 @@ public abstract class ImageClassifier {
       gpuDelegate.close();
       gpuDelegate = null;
     }
-    if (nnapiDelegate != null)
-      gpuDelegate = null;
+    if (nnapiDelegate != null) {
+      nnapiDelegate.close();
+      nnapiDelegate = null;
+    }
     tfliteModel = null;
   }
 

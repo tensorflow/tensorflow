@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifndef TENSORFLOW_LITE_DELEGATES_NNPAI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
-#define TENSORFLOW_LITE_DELEGATES_NNAPI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
+#define TENSORFLOW_LITE_DELEGATES_NNPAI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
 
 #include <jni.h>
 
