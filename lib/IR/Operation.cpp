@@ -22,6 +22,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include <numeric>
 using namespace mlir;
@@ -957,4 +958,11 @@ bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
 void impl::printCastOp(Operation *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << " : "
      << op->getOperand(0)->getType() << " to " << op->getResult(0)->getType();
+}
+
+Value *impl::foldCastOp(Operation *op) {
+  // Identity cast
+  if (op->getOperand(0)->getType() == op->getResult(0)->getType())
+    return op->getOperand(0);
+  return nullptr;
 }

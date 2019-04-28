@@ -2059,9 +2059,8 @@ Examples:
 
 Convert a memref from one type to an equivalent type without changing any data
 elements. The source and destination types must both be memref types with the
-same element type, same mappings, same address space, and same rank, yet the
-source and destination types may not be the same. The operation is invalid if
-converting to a mismatching constant dimension.
+same element type, same mappings, same address space, and same rank.  The
+operation is invalid if converting to a mismatching constant dimension.
 
 #### 'mulf' operation
 
@@ -2239,10 +2238,9 @@ Examples:
 
 Convert a tensor from one type to an equivalent type without changing any data
 elements. The source and destination types must both be tensor types with the
-same element type, and the source and destination types may not be the same.
-They must either have the same rank, or one may be an unknown rank. The
-operation is invalid if converting to a mismatching constant dimension.
-
+same element type. If both are ranked, then the rank should be the same and
+static dimensions should match. The operation is invalid if converting to a
+mismatching constant dimension.
 
 #### 'xor' operation
 

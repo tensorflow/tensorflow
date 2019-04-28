@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/StandardOps/Ops.h"
+
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -27,6 +28,7 @@
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
@@ -1642,40 +1644,44 @@ void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // MemRefCastOp
 //===----------------------------------------------------------------------===//
 
+bool MemRefCastOp::areCastCompatible(Type a, Type b) {
+  auto aT = a.dyn_cast<MemRefType>();
+  auto bT = b.dyn_cast<MemRefType>();
+
+  if (!aT || !bT)
+    return false;
+  if (aT.getElementType() != bT.getElementType())
+    return false;
+  if (aT.getAffineMaps() != bT.getAffineMaps())
+    return false;
+  if (aT.getMemorySpace() != bT.getMemorySpace())
+    return false;
+
+  // They must have the same rank, and any specified dimensions must match.
+  if (aT.getRank() != bT.getRank())
+    return false;
+
+  for (unsigned i = 0, e = aT.getRank(); i != e; ++i) {
+    int64_t aDim = aT.getDimSize(i), bDim = bT.getDimSize(i);
+    if (aDim != -1 && bDim != -1 && aDim != bDim)
+      return false;
+  }
+
+  return true;
+}
+
 void MemRefCastOp::print(OpAsmPrinter *p) {
   *p << "memref_cast " << *getOperand() << " : " << getOperand()->getType()
      << " to " << getType();
 }
 
 LogicalResult MemRefCastOp::verify() {
-  auto opType = getOperand()->getType().dyn_cast<MemRefType>();
-  auto resType = getType().dyn_cast<MemRefType>();
-  if (!opType || !resType)
-    return emitOpError("requires input and result types to be memrefs");
-
-  if (opType == resType)
-    return emitOpError("requires the input and result type to be different");
-
-  if (opType.getElementType() != resType.getElementType())
-    return emitOpError(
-        "requires input and result element types to be the same");
-
-  if (opType.getAffineMaps() != resType.getAffineMaps())
-    return emitOpError("requires input and result mappings to be the same");
-
-  if (opType.getMemorySpace() != resType.getMemorySpace())
-    return emitOpError(
-        "requires input and result memory spaces to be the same");
-
-  // They must have the same rank, and any specified dimensions must match.
-  if (opType.getRank() != resType.getRank())
-    return emitOpError("requires input and result ranks to match");
-
-  for (unsigned i = 0, e = opType.getRank(); i != e; ++i) {
-    int64_t opDim = opType.getDimSize(i), resultDim = resType.getDimSize(i);
-    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
-      return emitOpError("requires static dimensions to match");
-  }
+  auto opType = getOperand()->getType();
+  auto resType = getType();
+  if (!areCastCompatible(opType, resType))
+    return emitError(llvm::formatv(
+        "operand type {0} and result type {1} are cast incompatible", opType,
+        resType));
 
   return success();
 }
@@ -2091,40 +2097,47 @@ void XOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // TensorCastOp
 //===----------------------------------------------------------------------===//
 
+bool TensorCastOp::areCastCompatible(Type a, Type b) {
+  auto aT = a.dyn_cast<TensorType>();
+  auto bT = b.dyn_cast<TensorType>();
+  if (!aT || !bT)
+    return false;
+
+  if (aT.getElementType() != bT.getElementType())
+    return false;
+
+  // If the either are unranked, then the cast is valid.
+  auto aRType = aT.dyn_cast<RankedTensorType>();
+  auto bRType = bT.dyn_cast<RankedTensorType>();
+  if (!aRType || !bRType)
+    return true;
+
+  // If they are both ranked, they have to have the same rank, and any specified
+  // dimensions must match.
+  if (aRType.getRank() != bRType.getRank())
+    return false;
+
+  for (unsigned i = 0, e = aRType.getRank(); i != e; ++i) {
+    int64_t aDim = aRType.getDimSize(i), bDim = bRType.getDimSize(i);
+    if (aDim != -1 && bDim != -1 && aDim != bDim)
+      return false;
+  }
+
+  return true;
+}
+
 void TensorCastOp::print(OpAsmPrinter *p) {
   *p << "tensor_cast " << *getOperand() << " : " << getOperand()->getType()
      << " to " << getType();
 }
 
 LogicalResult TensorCastOp::verify() {
-  auto opType = getOperand()->getType().dyn_cast<TensorType>();
-  auto resType = getType().dyn_cast<TensorType>();
-  if (!opType || !resType)
-    return emitOpError("requires input and result types to be tensors");
-
-  if (opType == resType)
-    return emitOpError("requires the input and result type to be different");
-
-  if (opType.getElementType() != resType.getElementType())
-    return emitOpError(
-        "requires input and result element types to be the same");
-
-  // If the source or destination are unranked, then the cast is valid.
-  auto opRType = opType.dyn_cast<RankedTensorType>();
-  auto resRType = resType.dyn_cast<RankedTensorType>();
-  if (!opRType || !resRType)
-    return success();
-
-  // If they are both ranked, they have to have the same rank, and any specified
-  // dimensions must match.
-  if (opRType.getRank() != resRType.getRank())
-    return emitOpError("requires input and result ranks to match");
-
-  for (unsigned i = 0, e = opRType.getRank(); i != e; ++i) {
-    int64_t opDim = opRType.getDimSize(i), resultDim = resRType.getDimSize(i);
-    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
-      return emitOpError("requires static dimensions to match");
-  }
+  auto opType = getOperand()->getType();
+  auto resType = getType();
+  if (!areCastCompatible(opType, resType))
+    return emitError(llvm::formatv(
+        "operand type {0} and result type {1} are cast incompatible", opType,
+        resType));
 
   return success();
 }

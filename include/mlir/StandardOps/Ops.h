@@ -787,6 +787,10 @@ public:
   using CastOp::CastOp;
   static StringRef getOperationName() { return "std.memref_cast"; }
 
+  /// Return true if `a` and `b` are valid operand and result pairs for
+  /// the operation.
+  static bool areCastCompatible(Type a, Type b);
+
   /// The result of a memref_cast is always a memref.
   MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
@@ -894,10 +898,9 @@ public:
 
 /// The "tensor_cast" operation converts a tensor from one type to an equivalent
 /// type without changing any data elements.  The source and destination types
-/// must both be tensor types with the same element type, and the source and
-/// destination types may not be the same.  They must either have the same rank,
-/// or one may be an unknown rank.  The operation is invalid if converting to a
-/// mismatching constant dimension.
+/// must both be tensor types with the same element type.  If both are ranked
+/// then the rank should be the same and static dimensions should match.  The
+/// operation is invalid if converting to a mismatching constant dimension.
 ///
 /// Convert from unknown rank to rank 2 with unknown dimension sizes.
 ///    %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
@@ -907,6 +910,10 @@ public:
   using CastOp::CastOp;
 
   static StringRef getOperationName() { return "std.tensor_cast"; }
+
+  /// Return true if `a` and `b` are valid operand and result pairs for
+  /// the operation.
+  static bool areCastCompatible(Type a, Type b);
 
   /// The result of a tensor_cast is always a tensor.
   TensorType getType() { return getResult()->getType().cast<TensorType>(); }

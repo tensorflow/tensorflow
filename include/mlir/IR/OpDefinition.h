@@ -830,6 +830,7 @@ void buildCastOp(Builder *builder, OperationState *result, Value *source,
                  Type destType);
 bool parseCastOp(OpAsmParser *parser, OperationState *result);
 void printCastOp(Operation *op, OpAsmPrinter *p);
+Value *foldCastOp(Operation *op);
 } // namespace impl
 
 /// This template is used for operations that are cast operations, that have a
@@ -855,6 +856,8 @@ public:
   void print(OpAsmPrinter *p) {
     return impl::printCastOp(this->getOperation(), p);
   }
+
+  Value *fold() { return impl::foldCastOp(this->getOperation()); }
 };
 
 } // end namespace mlir

@@ -510,3 +510,24 @@ func @lowered_affine_ceildiv() -> (index, index) {
   %15 = select %8, %13, %14 : index
   return %7, %15 : index, index
 }
+
+// Checks that NOP casts are removed.
+// CHECK-LABEL: cast_values
+func @cast_values(%arg0: tensor<*xi32>, %arg1: memref<?xi32>) -> (tensor<2xi32>, memref<2xi32>) {
+
+  // NOP casts
+  %0 = tensor_cast %arg0 : tensor<*xi32> to tensor<*xi32>
+  %1 = memref_cast %arg1 : memref<?xi32> to memref<?xi32>
+
+  // CHECK-NEXT: %0 = tensor_cast %arg0 : tensor<*xi32> to tensor<2xi32>
+  // CHECK-NEXT: %1 = memref_cast %arg1 : memref<?xi32> to memref<2xi32>
+  %2 = tensor_cast %0 : tensor<*xi32> to tensor<2xi32>
+  %3 = memref_cast %1 : memref<?xi32> to memref<2xi32>
+
+  // NOP casts
+  %4 = tensor_cast %2 : tensor<2xi32> to tensor<2xi32>
+  %5 = memref_cast %3 : memref<2xi32> to memref<2xi32>
+
+  // CHECK-NEXT: return %0, %1 : tensor<2xi32>, memref<2xi32>
+  return %4, %5 : tensor<2xi32>, memref<2xi32>
+}
