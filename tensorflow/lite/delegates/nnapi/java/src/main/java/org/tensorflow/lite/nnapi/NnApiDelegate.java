@@ -15,11 +15,14 @@ limitations under the License.
 
 package org.tensorflow.lite.nnapi;
 
+import java.io.Closeable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.Tensor;
 
 /** {@link Delegate} for NNAPI inference. */
-public class NnApiDelegate implements Delegate {
+public class NnApiDelegate implements Delegate, Closeable {
+
+  private static final long INVALID_DELEGATE_HANDLE = 0;
 
   private long delegateHandle;
 
@@ -30,6 +33,17 @@ public class NnApiDelegate implements Delegate {
   @Override
   public long getNativeHandle() {
     return delegateHandle;
+  }
+
+  /**
+   * The NNAPI delegate is singleton. Nothing to delete
+   * for now, so mark the handle invalid only.
+   */
+  @Override
+  public void close() {
+    if (delegateHandle != INVALID_DELEGATE_HANDLE) {
+      delegateHandle = INVALID_DELEGATE_HANDLE;
+    }
   }
 
   private static native long createDelegate();
