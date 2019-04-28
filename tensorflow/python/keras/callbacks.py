@@ -1170,8 +1170,6 @@ class LearningRateScheduler(Callback):
       verbose: int. 0: quiet, 1: update messages.
   
   ```python
-  # Firstly, let's create a function which 
-  # maps a given epoch to a learning rate.
   # This function keeps the learning rate 
   # at 0.001 for the first ten epochs and  
   # decreases it exponentially after that.
