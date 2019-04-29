@@ -9,7 +9,20 @@ set(LLVM_OPTIONAL_SOURCES
   Utils.cpp
   ViewType.cpp
   DialectConstruction.cpp
+  DialectRegistration.cpp
   )
+
+set(LIBS
+  MLIRAffineOps
+  MLIRAnalysis
+  MLIREDSC
+  MLIRLLVMIR
+  MLIRParser
+  MLIRPass
+  MLIRStandardOps
+  MLIRSupport
+  MLIRTransforms
+)
 
 add_llvm_library(Linalg1
   Analysis.cpp
@@ -22,22 +35,33 @@ add_llvm_library(Linalg1
   Utils.cpp
   ViewType.cpp
   )
-
 target_link_libraries(Linalg1
   PUBLIC
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
-    )
+    ${LIBS}
+  )
+
+add_llvm_library(Linalg1LLVMConversion
+  ConvertToLLVMDialect.cpp
+  )
 
 add_llvm_library(Linalg1DialectConstruction
   DialectConstruction.cpp
   )
+target_link_libraries(Linalg1DialectConstruction PUBLIC Linalg1)
 
-target_link_libraries(Linalg1DialectConstruction
-  PUBLIC Linalg1)
+add_executable(linalg1-opt
+  DialectRegistration.cpp
+  )
+llvm_update_compile_flags(linalg1-opt)
+whole_archive_link(linalg1-opt
+  Linalg1LLVMConversion
+  Linalg1DialectConstruction
+  ${LIBS}
+  )
+target_link_libraries(linalg1-opt
+  Linalg1
+  Linalg1LLVMConversion
+  Linalg1DialectConstruction
+  MLIRMlirOptLib
+  ${LIBS}
+  LLVMSupport)

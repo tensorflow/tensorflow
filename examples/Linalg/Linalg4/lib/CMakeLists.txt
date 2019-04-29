@@ -12,4 +12,5 @@ target_link_libraries(Linalg4
     MLIRParser
     MLIRPass
     MLIRTransforms
+    Linalg3
     )

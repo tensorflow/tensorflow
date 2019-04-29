@@ -17,6 +17,7 @@ add_llvm_library(Linalg3
 
 target_link_libraries(Linalg3
   PUBLIC
+    MLIRAffineOps
     MLIRAnalysis
     MLIRDialect
     MLIREDSC
@@ -25,6 +26,7 @@ target_link_libraries(Linalg3
     MLIRParser
     MLIRPass
     MLIRTransforms
+    Linalg2
     )
 
 add_llvm_library(Linalg3DialectConstruction

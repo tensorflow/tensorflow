@@ -13,11 +13,11 @@ add_llvm_example(linalg-example-2
 
 target_link_libraries(linalg-example-2
   PRIVATE
-    Linalg1
     Linalg2
     Linalg2DialectConstruction
     )
 
 whole_archive_link(linalg-example-2
+  MLIRAffineOps
   MLIRStandardOps
   )

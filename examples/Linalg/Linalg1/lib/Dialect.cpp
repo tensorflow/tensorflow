@@ -24,18 +24,37 @@
 #include "linalg1/Ops.h"
 #include "linalg1/Types.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/StandardTypes.h"
 #include "llvm/Support/raw_ostream.h"
 
 using llvm::raw_ostream;
 using llvm::StringRef;
-using mlir::Location;
-using mlir::Type;
+using namespace mlir;
 
 using namespace linalg;
 
 Type LinalgDialect::parseType(StringRef spec, Location loc) const {
-  llvm_unreachable("Unhandled linalg dialect parsing");
-  return Type();
+  MLIRContext *context = getContext();
+  if (spec == "range")
+    return RangeType::get(getContext());
+
+  StringRef str = spec;
+  if (str.consume_front("view<")) {
+    // Just count the number of ? to get the rank, the type must be f32 for now.
+    unsigned rank = 0;
+    while (str.consume_front("?x"))
+      ++rank;
+    if (str.consume_front("bf16>"))
+      return ViewType::get(context, FloatType::getBF16(context), rank);
+    if (str.consume_front("f16>"))
+      return ViewType::get(context, FloatType::getF16(context), rank);
+    if (str.consume_front("f32>"))
+      return ViewType::get(context, FloatType::getF32(context), rank);
+    if (str.consume_front("f64>"))
+      return ViewType::get(context, FloatType::getF64(context), rank);
+  }
+  return (context->emitError(loc, "unknown Linalg type: " + spec), nullptr);
 }
 
 /// RangeType prints as just "range".

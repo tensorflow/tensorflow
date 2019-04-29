@@ -229,7 +229,7 @@ enables constant folding and dead code elimination in the `canonicalizerPass`.
 
 Similarly to Toy, the dialect must be registered so that the pretty-printer and
 verifier can be enabled. Without registration, only the custom op form can be
-printed. Beware of ops printed in custom op form, when a short-hand form exists,
+printed. Beware of ops printed in custom op form, when a shorthand form exists,
 because there is a high chance the IR verification is not enabled.
 
 To register the Linalg dialect, call
@@ -248,8 +248,13 @@ have been declared so far.
 
 ## Putting it all together
 
-The
-[example](https://github.com/tensorflow/mlir/blob/master/examples/Linalg/Linalg1/Example.cpp)
-demonstrates how to construct some simple IR snippets that pass through the
-verifier checks. We introduce a custom op called `some_consumer` to ensure that
-dead-code elimination does not optimize these simple examples out of existence.
+We create a `linalg1-opt` executable which links together `Linalg1` and the core
+`MlirOptLib` library to add traditional compiler support for file handling,
+parsing, command-line interface etc. The FileCheck'd test
+[example](https://github.com/tensorflow/mlir/blob/master/test/Examples/Linalg/Linalg1.mlir)
+demonstrates parsing, verification, pretty printing of the IR we have
+constructed so far. We introduce a custom op called `some_consumer` to ensure
+that dead-code elimination does not optimize these simple examples out of
+existence, in the case an extra -canonicalize option is passed to `linalg1-opt`.
+When called with `lower-linalg-to-llvm`, the test uses the
+[LLVM conversion](LLVMConversion.md) mechanisms.

@@ -58,6 +58,8 @@ void linalg::SliceOp::build(Builder *b, OperationState *result, Value *view,
 }
 
 mlir::LogicalResult linalg::SliceOp::verify() {
+  if (!getAttr(getSlicingDimAttrName()))
+    return emitOpError("slice op expects a dim attribute");
   unsigned dim = getSlicingDim();
   if (dim >= getParentRank())
     return emitOpError("slicing dim must be in the [0 .. parent_rank) range");
@@ -72,36 +74,61 @@ mlir::LogicalResult linalg::SliceOp::verify() {
   return mlir::success();
 }
 
-// Parsing of the linalg dialect is not supported in this tutorial.
 bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
-  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
+  OpAsmParser::OperandType viewInfo;
+  SmallVector<OpAsmParser::OperandType, 1> indexingInfo;
+  SmallVector<Type, 8> types;
+  if (parser->parseOperand(viewInfo) ||
+      parser->parseOperandList(indexingInfo, 1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
+    return true;
+
+  if (indexingInfo.size() != 1)
+    return parser->emitError(parser->getNameLoc(), "expected 1 indexing type");
+
+  ViewType viewType = types.front().dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(),
+                             "view type expected as first type");
+
+  IndexType indexType = types.back().dyn_cast<IndexType>();
+  RangeType rangeType = types.back().dyn_cast<RangeType>();
+  if (!indexType && !rangeType) {
+    llvm::errs() << types.back();
+    return parser->emitError(parser->getNameLoc(),
+                             "indexing must be of range or index type");
+  }
+
+  unsigned rank = viewType.getRank();
+  if (indexType)
+    --rank;
+  ViewType resultViewType =
+      ViewType::get(viewType.getContext(), viewType.getElementType(), rank);
+
+  return parser->resolveOperand(viewInfo, viewType, result->operands) ||
+         parser->resolveOperands(indexingInfo[0], types.back(),
+                                 result->operands) ||
+         parser->addTypeToList(resultViewType, result->types);
 }
 
 // A SliceOp prints as:
 //
 // ```{.mlir}
-//   linalg.slice %0[*, %i0]  : !linalg.view<?xf32>
+//   linalg.slice %0[%i0] {dim: 0} : !linalg.view<?xf32>, index
 // ```
 //
 // Where %0 is an ssa-value holding a `view<?x?xf32>`, %i0 is an ssa-value
 // holding an index.
 void linalg::SliceOp::print(OpAsmPrinter *p) {
-  unsigned dim = getSlicingDim();
-  *p << getOperationName() << " " << *getParentView() << "[";
-  for (unsigned idx = 0, rank = getParentRank(); idx < rank; ++idx) {
-    if (idx != dim) {
-      *p << "*";
-    } else {
-      auto *v = getIndexing();
-      if (isa_and_nonnull<RangeOp>(v->getDefiningOp())) {
-        *p << *v << "..";
-      } else {
-        *p << *v;
-      }
-    }
-    *p << ((idx == rank - 1) ? "" : ", ");
-  }
-  *p << "] : " << getViewType();
+  *p << getOperationName() << " " << *getParentView() << "[" << *getIndexing()
+     << "]";
+  *p << " {dim: ";
+  p->printAttribute(getAttr("dim"));
+  *p << "}";
+  p->printOptionalAttrDict(getAttrs(), {"dim"});
+  *p << " : " << getParentViewType() << ", " << getIndexing()->getType();
 }
 
 ViewType linalg::SliceOp::getViewType() { return getType().cast<ViewType>(); }

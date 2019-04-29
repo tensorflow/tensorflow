@@ -58,9 +58,9 @@ LogicalResult linalg::ViewOp::verify() {
   if (llvm::empty(getOperands()))
     return emitOpError(
         "requires at least a memref operand followed by 'rank' indices");
-  auto memrefType = getOperand(0)->getType().dyn_cast<MemRefType>();
-  unsigned memrefRank = memrefType.getRank();
-  if (!memrefType)
+  auto memRefType = getOperand(0)->getType().dyn_cast<MemRefType>();
+  unsigned memrefRank = memRefType.getRank();
+  if (!memRefType)
     return emitOpError("first operand must be of MemRefType");
   unsigned index = 0;
   for (auto indexing : getIndexings()) {
@@ -89,15 +89,50 @@ LogicalResult linalg::ViewOp::verify() {
   return success();
 }
 
-// Parsing of the linalg dialect is not supported in this tutorial.
 bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
-  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
+  OpAsmParser::OperandType memRefInfo;
+  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
+  SmallVector<Type, 8> types;
+  if (parser->parseOperand(memRefInfo) ||
+      parser->parseOperandList(indexingsInfo, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
+    return true;
+
+  if (types.size() != 2 + indexingsInfo.size())
+    return parser->emitError(parser->getNameLoc(),
+                             "unexpected number of types ");
+  MemRefType memRefType = types[0].dyn_cast<MemRefType>();
+  if (!memRefType)
+    return parser->emitError(parser->getNameLoc(),
+                             "memRef type expected for first type");
+  if (indexingsInfo.size() != memRefType.getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected " + Twine(memRefType.getRank()) +
+                                 " indexings");
+  ViewType viewType = types.back().dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(), "view type expected");
+
+  ArrayRef<Type> indexingTypes = ArrayRef<Type>(types).drop_front().drop_back();
+  if (indexingTypes.size() != memRefType.getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected " + Twine(memRefType.getRank()) +
+                                 " indexing types");
+  return parser->resolveOperand(memRefInfo, memRefType, result->operands) ||
+         (!indexingsInfo.empty() &&
+          parser->resolveOperands(indexingsInfo, indexingTypes,
+                                  indexingsInfo.front().location,
+                                  result->operands)) ||
+         parser->addTypeToList(viewType, result->types);
 }
 
 // A ViewOp prints as:
 //
 // ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg.view<?x?xf32>
+//   linalg.view %0[%1, %2] :
+//     memref-type, [indexing-types], !linalg.view<?x?xf32>
 // ```
 //
 // Where %0 is an ssa-value holding a MemRef, %1 and %2 are ssa-value each
@@ -109,7 +144,12 @@ void linalg::ViewOp::print(OpAsmPrinter *p) {
   for (auto indexing : getIndexings()) {
     *p << *indexing << ((index++ == numRanges - 1) ? "" : ", ");
   }
-  *p << "] : " << getType();
+  p->printOptionalAttrDict(getAttrs());
+  *p << "] : " << getSupportingMemRef()->getType().cast<MemRefType>();
+  for (auto indexing : getIndexings()) {
+    *p << ", " << indexing->getType();
+  }
+  *p << ", " << getType();
 }
 
 Type linalg::ViewOp::getElementType() { return getViewType().getElementType(); }

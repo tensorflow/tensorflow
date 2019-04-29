@@ -30,4 +30,9 @@ add_llvm_library(MLIRTransforms
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms
   )
 add_dependencies(MLIRTransforms MLIRStandardOpsIncGen)
-target_link_libraries(MLIRTransforms MLIRVectorOps)
+target_link_libraries(MLIRTransforms
+  MLIRAffineOps
+  MLIRAnalysis
+  MLIRPass
+  MLIRVectorOps
+  )

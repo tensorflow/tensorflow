@@ -29,20 +29,17 @@ add_llvm_example(linalg-execution-3
 
 target_link_libraries(linalg-example-3
   PRIVATE
-    Linalg1
-    Linalg2
     Linalg3
     Linalg3DialectConstruction
     )
 
 whole_archive_link(linalg-example-3
+  MLIRAffineOps
   MLIRStandardOps
   )
 
 target_link_libraries(linalg-conversion-3
   PRIVATE
-    Linalg1
-    Linalg2
     Linalg3
     Linalg3DialectConstruction
     )
@@ -54,8 +51,6 @@ whole_archive_link(linalg-conversion-3
 target_link_libraries(linalg-execution-3
   PRIVATE
     MLIRExecutionEngine
-    Linalg1
-    Linalg2
     Linalg3
     Linalg3DialectConstruction
     )

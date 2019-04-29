@@ -42,6 +42,7 @@
 #include "linalg1/ConvertToLLVMDialect.h"
 #include "linalg1/LLVMIntrinsics.h"
 #include "linalg1/Ops.h"
+#include "linalg1/Passes.h"
 
 using namespace mlir;
 
@@ -513,3 +514,17 @@ void linalg::convertToLLVM(mlir::Module &module) {
   (void)r;
   assert(succeeded(r) && "second conversion failed");
 }
+
+namespace {
+struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
+  void runOnModule() { linalg::convertToLLVM(getModule()); }
+};
+} // namespace
+
+ModulePassBase *linalg::createLowerLinalgToLLVMPass() {
+  return new LowerLinalgToLLVMPass();
+}
+
+static PassRegistration<LowerLinalgToLLVMPass>
+    pass("lower-linalg-to-llvm",
+         "Lower the operations from the linalg dialect into the LLVM dialect");

@@ -13,6 +13,7 @@ add_llvm_example(linalg-example-4
 
 target_link_libraries(linalg-example-4
   PRIVATE
+    MLIRAffineOps
     MLIRAnalysis
     MLIRDialect
     MLIREDSC
@@ -21,14 +22,12 @@ target_link_libraries(linalg-example-4
     MLIRParser
     MLIRPass
     MLIRTransforms
-    Linalg1
-    Linalg2
-    Linalg3
     Linalg4
     Linalg3DialectConstruction
     )
 
 whole_archive_link(linalg-example-4
+  MLIRAffineOps
   MLIRStandardOps
   )
 

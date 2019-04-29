@@ -26,18 +26,15 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
-using mlir::Builder;
-using mlir::IndexType;
-using mlir::OpAsmParser;
-using mlir::OpAsmPrinter;
-using mlir::OperationState;
-using mlir::Value;
+using llvm::SmallVector;
+using namespace mlir;
+using namespace linalg;
 
 // Minimal example for a new RangeOp operating on RangeType.
 void linalg::RangeOp::build(Builder *b, OperationState *result, Value *min,
                             Value *max, Value *step) {
   result->addOperands({min, max, step});
-  result->addTypes({linalg::RangeType::get(b->getContext())});
+  result->addTypes({RangeType::get(b->getContext())});
 }
 
 // Verification is simply that a RangeOp takes 3 index ssa-value.
@@ -51,9 +48,15 @@ mlir::LogicalResult linalg::RangeOp::verify() {
   return mlir::success();
 }
 
-// Parsing of the linalg dialect is not supported in this tutorial.
 bool linalg::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
-  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
+  SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
+  RangeType type;
+  auto indexTy = parser->getBuilder().getIndexType();
+  return parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
+         parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
+         parser->parseOperand(rangeInfo[2]) || parser->parseColonType(type) ||
+         parser->resolveOperands(rangeInfo, indexTy, result->operands) ||
+         parser->addTypeToList(type, result->types);
 }
 
 // A RangeOp prints as:
@@ -63,5 +66,7 @@ bool linalg::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
 // ```
 void linalg::RangeOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *getMin() << ":" << *getMax() << ":"
-     << *getStep() << " : " << getType();
+     << *getStep();
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << getType();
 }
