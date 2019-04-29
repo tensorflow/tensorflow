@@ -6,4 +6,4 @@ add_llvm_library(MLIRIR
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
   )
 add_dependencies(MLIRIR MLIRSupport LLVMSupport)
-target_link_libraries(MLIRIR LLVMSupport)
+target_link_libraries(MLIRIR MLIRSupport LLVMSupport)
