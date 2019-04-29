@@ -26,7 +26,7 @@ ifeq ($(TARGET),aarch64)
        
   LIBS := \
     -lstdc++ \
-    -lpthread \
+    -Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
     -lm \
     -ldl
 

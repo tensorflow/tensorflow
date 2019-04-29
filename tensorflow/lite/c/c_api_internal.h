@@ -44,11 +44,12 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 // need. Access to the external contexts is controled by one of the
 // corresponding support files.
 typedef enum {
-  kTfLiteEigenContext = 0,       // include eigen_support.h to use.
-  kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
-  kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
-  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
-  kTfLiteMaxExternalContexts = 4
+  kTfLiteEigenContext = 0,          // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,       // include gemm_support.h to use.
+  kTfLiteEdgeTpuContext = 2,        // Placeholder for Edge TPU support.
+  kTfLiteCpuBackendContext = 3,     // include cpu_backend_support.h to use.
+  kTfLiteKernelBackendContext = 4,  // inlude backend_context.h to use.
+  kTfLiteMaxExternalContexts = 5
 } TfLiteExternalContextType;
 
 struct TfLiteContext;

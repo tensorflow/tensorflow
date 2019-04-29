@@ -19,4 +19,4 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
 
-CC_PREFIX=aarch64-linux-gnu- make -j 3 -f tensorflow/lite/tools/make/Makefile TARGET=aarch64 TARGET_ARCH=armv8-a
+CC_PREFIX=aarch64-linux-gnu- make -j 3 -f tensorflow/lite/tools/make/Makefile TARGET=aarch64 TARGET_ARCH=armv8-a $@

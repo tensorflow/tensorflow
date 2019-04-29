@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//third_party/acl:build_defs.bzl", "if_acl")
 
 package(default_visibility = [
     "//visibility:public",
@@ -186,6 +187,61 @@ cc_library(
         ":freebsd": tflite_deps_intel,
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "acl_backend",
+    srcs = if_acl([
+            "backends/acl/backend.cc",
+            "backends/acl/conv2d.cc",
+            "backends/acl/depthwise_conv2d.cc",
+            "backends/acl/utils.cc",
+            ],
+            ["backends/acl/backend_disabled.cc"]
+    ),
+    hdrs = [
+        "backends/backend_interface.h",
+        "backends/backend_kernel.h",
+        "backends/acl/backend.h",
+    ] + if_acl([
+            "backends/acl/conv2d.h",
+            "backends/acl/depthwise_conv2d.h",
+            "backends/acl/utils.h",
+        ],
+        [],
+    ),
+    copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
+    ] + if_acl([
+            ":quantization_util",
+            ":tensor",
+            ":tensor_utils",
+            ":types",
+        ],
+        []
+    ),
+)
+
+cc_library(
+    name = "backends",
+    srcs = [
+        "backends/backend_context.cc",
+        "backends/backend_support.cc",
+    ],
+    hdrs = [
+        "backends/backend_context.h",
+        "backends/backend_interface.h",
+        "backends/backend_support.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:op_macros",
+        ":acl_backend",
+    ],
 )
 
 cc_library(

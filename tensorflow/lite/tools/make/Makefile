@@ -39,6 +39,8 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
+-I$(MAKEFILE_DIR)/downloads/ComputeLibrary/ \
+-I$(MAKEFILE_DIR)/downloads/ComputeLibrary/include \
 -I$(OBJDIR)
 # This is at the end so any globally-installed frameworks like protobuf don't
 # override local versions in the source tree.
@@ -116,6 +118,8 @@ ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/*.cc) \
+$(wildcard tensorflow/lite/kernels/internal/backends/*.cc) \
+$(wildcard tensorflow/lite/kernels/internal/backends/*/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
 $(PROFILER_SRCS) \
@@ -149,7 +153,7 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI=true
+BUILD_WITH_NNAPI=$(USE_NNAPI)
 ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_NNAPI=false
 endif
@@ -178,6 +182,12 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
+ifeq ($(USE_ACL),true)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/kernels/internal/backends/acl/backend_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += $(wildcard tensorflow/lite/kernels/internal/backends/acl/*.cc)
+	CORE_CC_EXCLUDE_SRCS := $(filter-out tensorflow/lite/kernels/internal/backends/acl/backend_disabled.cc, $(CORE_CC_EXCLUDE_SRCS))
+endif
 
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
@@ -195,7 +205,16 @@ BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
-    $(BENCHMARK_ALL_SRCS))
+	$(BENCHMARK_ALL_SRCS))
+
+# Label image sources
+LABEL_IMAGE_SRCS_DIR := tensorflow/lite/examples/label_image
+LABEL_IMAGE_ALL_SRCS := \
+	$(wildcard $(LABEL_IMAGE_SRCS_DIR)/*.cc) \
+
+LABEL_IMAGE_SRCS := $(filter-out \
+	$(wildcard $(LABEL_IMAGE_SRCS_DIR)/*_test.cc), \
+	$(LABEL_IMAGE_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -203,8 +222,20 @@ BENCHMARK_SRCS := $(filter-out \
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
+# ACL dependencies
+ifeq ($(USE_ACL), true)
+	LDFLAGS += \
+		-L$(MAKEFILE_DIR)/downloads/ComputeLibrary/build
+
+	LIBS += \
+		-static -larm_compute-static \
+		-static -larm_compute_core-static
+endif
+
+
 ALL_SRCS := \
 	$(MINIMAL_SRCS) \
+	$(LABEL_IMAGE_SRCS) \
 	$(PROFILER_SRCS) \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
@@ -220,6 +251,7 @@ LIBDIR := $(GENDIR)lib/
 LIB_PATH := $(LIBDIR)$(LIB_NAME)
 BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
+LABEL_IMAGE_BINARY := $(BINDIR)label_image
 MINIMAL_BINARY := $(BINDIR)minimal
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
@@ -228,6 +260,9 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
 MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
+
+LABEL_IMAGE_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
@@ -245,7 +280,7 @@ $(OBJDIR)%.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)
+all: $(LIB_PATH)  $(MINIMAL_BINARY) $(LABEL_IMAGE_BINARY) $(BENCHMARK_BINARY)
 
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
@@ -268,6 +303,14 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 minimal: $(MINIMAL_BINARY)
+
+$(LABEL_IMAGE_BINARY): $(LABEL_IMAGE_OBJS) $(LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(LABEL_IMAGE_BINARY) $(LABEL_IMAGE_OBJS) \
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+label_image: $(LABEL_IMAGE_BINARY)
 
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_OBJS)
 	@mkdir -p $(dir $@)

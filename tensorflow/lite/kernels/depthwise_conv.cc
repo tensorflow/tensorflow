@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 
@@ -25,6 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/internal/backends/backend_kernel.h"
+#include "tensorflow/lite/kernels/internal/backends/backend_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
@@ -66,10 +69,13 @@ struct OpData {
   // Per channel output multiplier and shift.
   std::vector<int32_t> per_channel_output_multiplier;
   std::vector<int> per_channel_output_shift;
+
+  std::unique_ptr<internal::backends::IBackendKernel> backend_kernel;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   cpu_backend_support::IncrementUsageCounter(context);
+  internal::backends::IncrementUsageCounter(context);
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
@@ -78,6 +84,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 
 void Free(TfLiteContext* context, void* buffer) {
   cpu_backend_support::DecrementUsageCounter(context);
+  internal::backends::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -171,7 +178,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   outputSize->data[1] = out_height;
   outputSize->data[2] = out_width;
   outputSize->data[3] = channels_out;
-  return context->ResizeTensor(context, output, outputSize);
+
+  auto output_status = context->ResizeTensor(context, output, outputSize);
+
+  // Check if a backend kernel can be used
+  auto backend_ctx = internal::backends::GetFromContext(context);
+  if (backend_ctx != nullptr) {
+    data->backend_kernel = backend_ctx->backend_kernel(
+        TfLiteBuiltinOperator::kTfLiteBuiltinDepthwiseConv2d);
+    if (data->backend_kernel.get() != nullptr) {
+      if (data->backend_kernel->prepare(context, node)) {
+        data->backend_kernel = nullptr;
+      }
+    }
+  }
+
+  return output_status;
 }
 
 template <KernelType kernel_type>
@@ -298,6 +320,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  // Dispatch backend kernel if exists
+  if (data->backend_kernel.get() != nullptr) {
+    return data->backend_kernel->invoke(context, node);
+  }
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);

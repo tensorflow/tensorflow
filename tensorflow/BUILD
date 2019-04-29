@@ -397,6 +397,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_acl_support",
+    values = {"define": "with_acl_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "override_eigen_strong_inline",
     values = {"define": "override_eigen_strong_inline=true"},
     visibility = ["//visibility:public"],

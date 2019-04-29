@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
+#include "tensorflow/lite/kernels/internal/backends/backend_kernel.h"
+#include "tensorflow/lite/kernels/internal/backends/backend_support.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
 #ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
@@ -95,6 +97,8 @@ struct OpData {
   bool need_im2col;
 
   bool supports_multithreaded_kernel;
+
+  std::unique_ptr<internal::backends::IBackendKernel> backend_kernel;
 };
 
 inline PaddingType RuntimePaddingType(TfLitePadding padding) {
@@ -116,12 +120,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   eigen_support::IncrementUsageCounter(context);
   cpu_backend_support::IncrementUsageCounter(context);
+  internal::backends::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
   eigen_support::DecrementUsageCounter(context);
   cpu_backend_support::DecrementUsageCounter(context);
+  internal::backends::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -263,20 +269,6 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
 
-  const bool is_hybrid =
-      (input->type == kTfLiteFloat32 &&
-       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8));
-
-  // The multi-threaded kernel supports neither dilation nor hybrid kernels.
-  data->supports_multithreaded_kernel =
-      (kernel_type == kMultithreadOptimized) &&
-      (context->recommended_num_threads != 1) && !is_hybrid &&
-      (params->dilation_width_factor == 1) &&
-      (params->dilation_height_factor == 1);
-
-  TF_LITE_ENSURE_STATUS(
-      AllocateTemporaryTensorsIfRequired(context, node, is_hybrid));
-
   int channels_in = filter->dims->data[3];
   int channels_out = filter->dims->data[0];
   int width = input->dims->data[2];
@@ -325,6 +317,34 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   auto output_status = context->ResizeTensor(context, output, output_size);
 
   if (output_status != kTfLiteOk) return output_status;
+
+  // Check if a backend kernel can be used
+  auto backend_ctx = internal::backends::GetFromContext(context);
+  if (backend_ctx != nullptr) {
+    data->backend_kernel = backend_ctx->backend_kernel(
+        TfLiteBuiltinOperator::kTfLiteBuiltinConv2d);
+    if (data->backend_kernel.get() != nullptr) {
+      TfLiteStatus status = data->backend_kernel->prepare(context, node);
+      if (status == kTfLiteOk) {
+        return kTfLiteOk;
+      }
+    }
+  }
+  data->backend_kernel = nullptr;
+
+  const bool is_hybrid =
+      (input->type == kTfLiteFloat32 &&
+       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8));
+
+  // The multi-threaded kernel supports neither dilation nor hybrid kernels.
+  data->supports_multithreaded_kernel =
+      (kernel_type == kMultithreadOptimized) &&
+      (context->recommended_num_threads != 1) && !is_hybrid &&
+      (params->dilation_width_factor == 1) &&
+      (params->dilation_height_factor == 1);
+
+  TF_LITE_ENSURE_STATUS(
+      AllocateTemporaryTensorsIfRequired(context, node, is_hybrid));
 
   if (data->need_im2col) {
     node->temporaries->data[data->im2col_index] = data->im2col_id;
@@ -670,6 +690,11 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  // Dispatch backend kernel if exists
+  if (data->backend_kernel.get() != nullptr) {
+    return data->backend_kernel->invoke(context, node);
+  }
 
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];

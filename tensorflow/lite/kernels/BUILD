@@ -374,6 +374,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:audio_utils",
+        "//tensorflow/lite/kernels/internal:backends",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
         "//tensorflow/lite/kernels/internal:optimized_base",

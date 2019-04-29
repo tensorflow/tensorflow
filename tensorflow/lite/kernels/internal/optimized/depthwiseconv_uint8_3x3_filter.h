@@ -5780,10 +5780,10 @@ struct WorkspacePrefetchWrite<
     for (; i < (size - 15); i += 64) {
       int8* ptr = workspace + i;
       asm volatile("prfm pstl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-      vst1_lane_u32(reinterpret_cast<uint32_t*>(ptr), fill_data_vec, 0);
+      vst1_lane_u32(reinterpret_cast<uint32_t*>(ptr), vreinterpret_u32_s8(fill_data_vec), 0);
     }
     vst1_lane_u32(reinterpret_cast<uint32_t*>(workspace + size - 4),
-                  fill_data_vec, 0);
+                  vreinterpret_u32_s8(fill_data_vec), 0);
   }
 };
 #endif  // USE_NEON &&__aarch64__
