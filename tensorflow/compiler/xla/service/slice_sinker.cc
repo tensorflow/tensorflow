@@ -30,8 +30,8 @@ namespace {
 // slices are taking from tensors with the same dimensions.
 bool SameSliceConfiguration(const HloInstruction* slice_1,
                             const HloInstruction* slice_2) {
-  CHECK(slice_1->opcode() == HloOpcode::kSlice);
-  CHECK(slice_2->opcode() == HloOpcode::kSlice);
+  CHECK_EQ(slice_1->opcode(), HloOpcode::kSlice);
+  CHECK_EQ(slice_2->opcode(), HloOpcode::kSlice);
   CHECK(absl::c_equal(slice_1->operand(0)->shape().dimensions(),
                       slice_2->operand(0)->shape().dimensions()));
   return absl::c_equal(slice_1->slice_starts(), slice_2->slice_starts())
@@ -74,8 +74,8 @@ FindSourceOperandsOfSlicesForElementwiseOperation(const HloInstruction* inst) {
 }
 
 // Given an instruction with a slice of slice_sources[i] as its ith operand,
-// returns true if peer_candidate is a peer of the instruction that meets the
-// following requirements:
+// returns true if peer_candidate hasn't been transformed by and is a peer of
+// the instruction that meets the following requirements:
 // 1) Peer_candidate has the same opcode as the given instruction.
 // 2) The ith operand of peer_candidate is a slice of slice_sources[i].
 // 3) All operands of peer_candidate are slices taken from the same indices.
@@ -158,21 +158,21 @@ absl::optional<std::vector<HloInstruction*>> FindPeerElementwiseOperations(
       absl::make_optional(peer_operations) : absl::nullopt;
 }
 
-// Generate a new elementwise operation using the slice_sources as operands,
+// Generates a new elementwise operation using the slice_sources as operands,
 // and replaces the uses of elementwise operation_on_slices with slices of the
 // new elementwise operations.
 Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
     const std::vector<HloInstruction*>& operation_on_slices) {
-  // Generate operation on slice source.
+  // Generates operation on slice source.
   const Shape shape = slice_sources[0]->shape();
   PrimitiveType element_type = operation_on_slices[0]->shape().element_type();
   Shape new_shape = ShapeUtil::ChangeElementType(shape, element_type);
 
   HloComputation* computation = operation_on_slices[0]->parent();
-  auto operation_on_slice_source = computation->AddInstruction(
+  auto operation_on_slice_sources = computation->AddInstruction(
       operation_on_slices[0]->CloneWithNewOperands(new_shape, slice_sources));
-  VLOG(10) << "Add operation_on_slice_source: "
-           << operation_on_slice_source->ToString();
+  VLOG(10) << "Add operation_on_slice_sources: "
+           << operation_on_slice_sources->ToString();
 
   // Replace each operation on slices with a slice of the operation on the slice
   // sources.
@@ -180,7 +180,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
     const HloInstruction* operand_slice = user->operand(0);
     auto user_slice = computation->AddInstruction(
         operand_slice->CloneWithNewOperands(user->shape(),
-                                            {operation_on_slice_source}));
+                                            {operation_on_slice_sources}));
     VLOG(10) << "Add NewSlice: " << user_slice->ToString()
              << " Replace: " << user->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
@@ -192,7 +192,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 
 // There are two purposes of this pass.
 //
-// Eliminate redundant work that occurs when two slices overlap. For example:
+// Eliminates redundant work that occurs when two slices overlap. For example:
 //   p = f32[10] parameter(0)
 //   a = f32[9] slice(p), slice=[0:9]
 //   aa = add(a, a)
@@ -206,7 +206,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 //   aa = f32[9] slice(add), slice=[0:9]
 //   bb = f32[8] slice(add), slice=[2:10]
 //   ...
-// Merge elementwise when two slices are "adjacent".
+// Merges elementwise when two slices are "adjacent".
 //   p = f32[10] parameter(0)
 //   a = f32[6] slice(p), slice=[0:6]
 //   aa = add(a, a)
@@ -243,7 +243,7 @@ StatusOr<bool> SliceSinker::Run(HloModule* module) {
           || instruction->user_count() == 0) {
         continue;
       }
-      VLOG(10) << "Merge inst: " << instruction->ToString();
+      VLOG(10) << "Merges inst: " << instruction->ToString();
       // If the current operation is an elementwise operation on similar slices,
       // return the source operands of the slices. This check condition-1
       // described above.
