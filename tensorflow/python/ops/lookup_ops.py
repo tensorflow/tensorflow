@@ -252,22 +252,6 @@ class StaticHashTable(InitializableLookupTableBase):
       tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
   print(table.lookup(input_tensor))
   ```
-
-  When running in graph mode, you must evaluate the tensor returned by
-  `tf.tables_initializer()` before evaluating the tensor returned by 
-  this class's `lookup()` method. Example usage in graph mode:
-
-  ```python
-  keys_tensor = tf.constant([1, 2])
-  vals_tensor = tf.constant([3, 4])
-  input_tensor = tf.constant([1, 5])
-  table = tf.lookup.StaticHashTable(
-      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
-  out = table.lookup(input_tensor)
-  with tf.Session() as sess:
-      sess.run(tf.tables_initializer())
-      print(sess.run(out))
-  ```
   """
 
   def __init__(self, initializer, default_value, name=None):
@@ -332,6 +316,38 @@ class StaticHashTable(InitializableLookupTableBase):
 
 @tf_export(v1=["lookup.StaticHashTable"])
 class StaticHashTableV1(StaticHashTable):
+  """A generic hash table implementation. The table is immutable once
+  initialized.
+
+  When running in graph mode, you must evaluate the tensor returned by
+  `tf.tables_initializer()` before evaluating the tensor returned by 
+  this class's `lookup()` method. Example usage in graph mode:
+
+  ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  out = table.lookup(input_tensor)
+  with tf.Session() as sess:
+      sess.run(tf.tables_initializer())
+      print(sess.run(out))
+  ```
+
+  In eager mode, no special code is needed to initialize the table.
+  Example usage in eager mode:
+
+  ```python
+  tf.enable_eager_execution()
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
+  ```
+  """
 
   @property
   def initializer(self):
