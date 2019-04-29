@@ -38,30 +38,25 @@ ROCmPlatform::~ROCmPlatform() {}
 void ROCmPlatform::InspectNumaNodes() {
   // To get NUMA node information, we need to create all executors, so we can
   // examine their device descriptions to see their bus assignments.
-  static bool initialized = false;
-  static mutex numa_mutex(LINKER_INITIALIZED);
-  mutex_lock lock(numa_mutex);
-  if (initialized) {
-    return;
-  }
-
-  StreamExecutorConfig config;
-  for (int i = 0; i < VisibleDeviceCount(); i++) {
-    config.ordinal = i;
-    StreamExecutor* exec = GetExecutor(config).ValueOrDie();
-    if (i == 0) {
-      // NUMA nodes may not start at 0, so set the minimum node  based on the
-      // first executor we see.
-      min_numa_node_ = exec->GetDeviceDescription().numa_node();
-      limit_numa_node_ = min_numa_node_ + 1;
-    } else {
-      min_numa_node_ =
-          std::min(min_numa_node_, exec->GetDeviceDescription().numa_node());
-      limit_numa_node_ = std::max(limit_numa_node_,
-                                  exec->GetDeviceDescription().numa_node() + 1);
+  std::once_flag once;
+  std::call_once(once, [&] {
+    StreamExecutorConfig config;
+    for (int i = 0; i < VisibleDeviceCount(); i++) {
+      config.ordinal = i;
+      StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+      if (i == 0) {
+        // NUMA nodes may not start at 0, so set the minimum node  based on the
+        // first executor we see.
+        min_numa_node_ = exec->GetDeviceDescription().numa_node();
+        limit_numa_node_ = min_numa_node_ + 1;
+      } else {
+        min_numa_node_ =
+            std::min(min_numa_node_, exec->GetDeviceDescription().numa_node());
+        limit_numa_node_ = std::max(
+            limit_numa_node_, exec->GetDeviceDescription().numa_node() + 1);
+      }
     }
-  }
-  initialized = true;
+  });
 }
 
 int ROCmPlatform::BusCount() {

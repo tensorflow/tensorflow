@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
 
@@ -305,17 +305,10 @@ static port::Status InternalInit() {
 /* static */ port::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as hipInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status init_retval;
-  static bool set = false;
-  static mutex* init_mu = new mutex;
-
-  mutex_lock lock(*init_mu);
-  if (!set) {
-    init_retval = InternalInit();
-    set = true;
-  }
-
-  return init_retval;
+  static port::Status* init_retval = [&] {
+    init_retval = new Status(InternalInit());
+  }();
+  return *init_retval;
 }
 
 /* static */ port::Status GpuDriver::GetDevice(int device_ordinal,

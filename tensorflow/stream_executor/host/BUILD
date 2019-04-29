@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -67,6 +68,7 @@ cc_library(
     deps = [
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
