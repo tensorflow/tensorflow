@@ -88,9 +88,7 @@ bool IsPeerOperation(const HloInstruction* inst,
     return false;
   }
 
-  // Check opcode and operand count.
-  if (peer_candidate->opcode() != inst->opcode() ||
-      peer_candidate->operand_count() != inst->operand_count())
+  if (peer_candidate->opcode() != inst->opcode())
     return false;
 
   const HloInstruction* operand_slice0 = peer_candidate->operand(0);
@@ -213,7 +211,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 //   aa = add(a, a)
 //   b = f32[4] slice(p), slice=[6:10]
 //   bb = add(b, b)
-// ...
+//   ...
 // Here we’re not doing any redundant work, but transforming this graph to  the
 // following graph allows us to run fewer kernels:
 //   p = f32[10] parameter(0)
