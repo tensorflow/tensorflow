@@ -39,11 +39,20 @@ from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
 
 
+def next_feed_id():
+  result = 'feed' + str(next_feed_id.feed_count)
+  next_feed_id.feed_count += 1
+  return result
+
+
+next_feed_id.feed_count = 0
+
+
 class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedRepeatNonTuple(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def body(v, x):
       v = v + x
@@ -72,7 +81,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(
         10, shape=[4, 4], repeat=False)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def body(v, x):
       v = v + x
@@ -107,7 +116,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -140,7 +149,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -173,7 +182,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     # Note how the parameters are swapped around.
     def body(v1, v2, b, a):
@@ -203,7 +212,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedMultipleRepeats(self):
     dataset = tu.create_single_increasing_dataset(2, shape=[4, 4])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def body(v, x):
       v = v + x
@@ -230,7 +239,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedWhileLoopNonTuple(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def cond(i, v):
       return i < 20
@@ -269,7 +278,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def cond(i, v):
       return i < 20
@@ -301,7 +310,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedMultipleRuns(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def program(iters):
       def body(v, x):
@@ -339,9 +348,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset2 = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
     infeed_queue1 = ipu_infeed_queue.IPUInfeedQueue(
-        dataset1, feed_name="feed1")
+        dataset1, feed_name=next_feed_id())
     infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(
-        dataset2, feed_name="feed2")
+        dataset2, feed_name=next_feed_id())
 
     def program(iters, infeed_queue):
       def body(v, x):
@@ -376,13 +385,13 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
     dataset = dataset.batch(10, drop_remainder=False)
     with self.assertRaisesRegexp(ValueError, 'Output shape \(\?,'):
-      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
   def testTrainingLoopWithInfeed(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
     def my_net(iters):
       def body(loss, x):
@@ -417,7 +426,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
   def testSingleOutfeedRepeatNonTuple(self):
 
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
 
     def body(v):
       outfeed = outfeed_queue.enqueue(v)
@@ -450,8 +459,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedOutfeedRepeatNonTuple(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
 
     def body(v, x):
       v = v + x
@@ -493,8 +502,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -549,8 +558,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(outfeed_all=False)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        next_feed_id(), outfeed_all=False)
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -591,8 +601,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -657,8 +667,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(outfeed_all=False)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        next_feed_id(), outfeed_all=False)
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -693,8 +704,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
 
     def my_net(iters):
       def body(loss, x):
@@ -737,8 +748,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(outfeed_all=False)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        next_feed_id(), outfeed_all=False)
 
     def my_net(iters):
       def body(loss, x):

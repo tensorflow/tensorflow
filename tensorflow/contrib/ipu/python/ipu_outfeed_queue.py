@@ -36,22 +36,22 @@ class IPUOutfeedQueue:
     """
 
   def __init__(self,
+               feed_name,
                outfeed_all=True,
                device_ordinal=0,
-               replication_factor=1,
-               feed_name="default_outfeed"):
+               replication_factor=1):
     """Creates an IPUOutfeedQueue object.
 
         Args:
+            feed_name: a user provided name for the outfeed operation.  Must be
+            unique within all IPUOutfeedQueue and IPUInfeedQueue
+            operations.
             outfeed_all: a bool value indicating whether all enqueued
             elements should be stored or only the last one.
             device_ordinal: ordinal of the device on which this queue will be
             used.
             replication_factor: the number of replicated graphs this Outfeed
             will be used in.
-            feed_name: a user provided name for the outfeed operation.  Must be
-                       unique within all IPUOutfeedQueue and IPUInfeedQueue
-                       operations.
 
         Raises:
           ValueError: if the types or values are incorrect
@@ -72,7 +72,7 @@ class IPUOutfeedQueue:
     self._device_ordinal = device_ordinal
     self._outfeed_mode = 'all' if outfeed_all else 'get_last'
     self._replication_factor = replication_factor
-    self._feed_name = feed_name
+    self._feed_name = str(feed_name)
 
     self._enqueued = False
     self._structure = None

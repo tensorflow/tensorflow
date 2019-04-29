@@ -158,7 +158,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
   def testSimpleXlaCompileTrainingInLoop(self):
     dataset = tu.create_dual_increasing_dataset(3)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed4")
 
     def my_net():
       def my_model(loss, x, y):
@@ -208,7 +208,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
     dataset = tu.create_dual_increasing_dataset(
         3, data_shape=[16, 2, 8], label_shape=[16, 2, 256])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed1")
 
     def my_net():
       def my_model(loss, x, y):
@@ -254,7 +254,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
   def testSimpleXlaCompileTrainingInLoopWithParam(self):
     dataset = tu.create_dual_increasing_dataset(3)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed2")
 
     def my_net(lr):
       def my_model(loss, x, y):
@@ -353,7 +353,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
     dataset = tu.create_dual_increasing_dataset(3)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed3")
 
     def my_net():
       def my_model(loss, x, y):
