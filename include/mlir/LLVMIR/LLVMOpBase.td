@@ -29,14 +29,18 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+def LLVM_Dialect : Dialect {
+  let name = "llvm";
+}
+
 // LLVM IR type wrapped in MLIR.
 def LLVM_Type : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMType>()">,
                      "LLVM dialect type">;
 
 // Base class for LLVM operations. Defines the interface to the llvm::IRBuilder
 // used to translate to LLVM IR proper.
-class LLVM_OpBase<string mnemonic, list<OpTrait> traits = []> :
-    Op<mnemonic, traits> {
+class LLVM_OpBase<Dialect dialect, string mnemonic, list<OpTrait> traits = []> :
+    Op<dialect, mnemonic, traits> {
   // A pattern for constructing the LLVM IR Instruction (or other Value) that
   // corresponds to this op.  This pattern can use `builder` to refer to an
   // `llvm::IRBuilder<>` instance, $-names of arguments and results and the

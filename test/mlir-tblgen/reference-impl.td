@@ -5,7 +5,13 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-def X_AddOp : Op<"x.add">,
+def X_Dialect : Dialect {
+  let name = "x";
+}
+class X_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<X_Dialect, mnemonic, traits>;
+
+def X_AddOp : X_Op<"add">,
     Arguments<(ins Tensor:$A, Tensor:$B)>,
     Results<(outs Tensor: $C)> {
     // TODO: extract referenceImplementation to Op.

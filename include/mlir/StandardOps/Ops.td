@@ -28,14 +28,18 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+def Standard_Dialect : Dialect {
+  let name = "std";
+}
+
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
 class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<mnemonic, !listconcat(traits, [NoSideEffect, SameValueType])>,
-    Results<(outs AnyType)> {
+    Op<Standard_Dialect, mnemonic,
+       !listconcat(traits, [NoSideEffect, SameValueType])> {
 
-  let opName = mnemonic;
+  let results = (outs AnyType);
 
   let parser = [{
     return impl::parseBinaryOp(parser, result);
@@ -69,84 +73,84 @@ class FloatArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
     ArithmeticOp<mnemonic, traits>,
     Arguments<(ins FloatLike:$lhs, FloatLike:$rhs)>;
 
-def AddFOp : FloatArithmeticOp<"std.addf"> {
+def AddFOp : FloatArithmeticOp<"addf"> {
   let summary = "floating point addition operation";
   let hasConstantFolder = 0b1;
 }
 
-def AddIOp : IntArithmeticOp<"std.addi", [Commutative]> {
+def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let summary = "integer addition operation";
   let hasFolder = 1;
   let hasConstantFolder = 0b1;
 }
 
-def AndOp : IntArithmeticOp<"std.and", [Commutative]> {
+def AndOp : IntArithmeticOp<"and", [Commutative]> {
   let summary = "integer binary and";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
 }
 
-def DivFOp : FloatArithmeticOp<"std.divf"> {
+def DivFOp : FloatArithmeticOp<"divf"> {
   let summary = "floating point division operation";
 }
 
-def DivISOp : IntArithmeticOp<"std.divis"> {
+def DivISOp : IntArithmeticOp<"divis"> {
   let summary = "signed integer division operation";
   let hasConstantFolder = 0b1;
 }
 
-def DivIUOp : IntArithmeticOp<"std.diviu"> {
+def DivIUOp : IntArithmeticOp<"diviu"> {
   let summary = "unsigned integer division operation";
   let hasConstantFolder = 0b1;
 }
 
-def MulFOp : FloatArithmeticOp<"std.mulf"> {
+def MulFOp : FloatArithmeticOp<"mulf"> {
   let summary = "foating point multiplication operation";
   let hasConstantFolder = 0b1;
 }
 
-def MulIOp : IntArithmeticOp<"std.muli", [Commutative]> {
+def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
 }
 
-def OrOp : IntArithmeticOp<"std.or", [Commutative]> {
+def OrOp : IntArithmeticOp<"or", [Commutative]> {
   let summary = "integer binary or";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
 }
 
-def RemFOp : FloatArithmeticOp<"std.remf"> {
+def RemFOp : FloatArithmeticOp<"remf"> {
   let summary = "floating point division remainder operation";
 }
 
-def RemISOp : IntArithmeticOp<"std.remis"> {
+def RemISOp : IntArithmeticOp<"remis"> {
   let summary = "signed integer division remainder operation";
   let hasConstantFolder = 0b1;
 }
 
-def RemIUOp : IntArithmeticOp<"std.remiu"> {
+def RemIUOp : IntArithmeticOp<"remiu"> {
   let summary = "unsigned integer division remainder operation";
   let hasConstantFolder = 0b1;
 }
 
-def ShlISOp : IntArithmeticOp<"std.shlis"> {
+def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
 }
 
-def SubFOp : FloatArithmeticOp<"std.subf"> {
+def SubFOp : FloatArithmeticOp<"subf"> {
   let summary = "floating point subtraction operation";
   let hasConstantFolder = 0b1;
 }
 
-def SubIOp : IntArithmeticOp<"std.subi"> {
+def SubIOp : IntArithmeticOp<"subi"> {
   let summary = "integer subtraction operation";
   let hasConstantFolder = 0b1;
   let hasCanonicalizer = 0b1;
 }
 
-def XOrOp : IntArithmeticOp<"std.xor", [Commutative]> {
+def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
   let hasConstantFolder = 0b1;
   let hasCanonicalizer = 0b1;

@@ -2,9 +2,15 @@
 
 include "mlir/IR/OpBase.td"
 
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
 def MoreConstraint : AttrConstraint<CPred<"MoreConstraint">, "more constraint">;
 
-def OpA : Op<"op_a", []> {
+def OpA : NS_Op<"op_a", []> {
   let arguments = (ins
     I32Attr:$required_attr,
     OptionalAttr<I32Attr>:$optional_attr,

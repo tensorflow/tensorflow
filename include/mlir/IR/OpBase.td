@@ -193,6 +193,21 @@ def IsStaticShapeTensorTypePred :
   CPred<"$_self.cast<TensorType>().hasStaticShape()">;
 
 //===----------------------------------------------------------------------===//
+// Dialect definitions
+//===----------------------------------------------------------------------===//
+
+class Dialect {
+  // The name of the dialect.
+  string name = ?;
+
+  // Short summary of the dialect.
+  string summary = ?;
+
+  // The description of the dialect.
+  string description = ?;
+}
+
+//===----------------------------------------------------------------------===//
 // Type definitions
 //===----------------------------------------------------------------------===//
 
@@ -808,7 +823,10 @@ class OpBuilder<string p, code b = ""> {
 }
 
 // Base class for all ops.
-class Op<string mnemonic, list<OpTrait> props = []> {
+class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
+  // The dialect of the op.
+  Dialect opDialect = dialect;
+
   // The mnemonic of the op.
   string opName = mnemonic;
 

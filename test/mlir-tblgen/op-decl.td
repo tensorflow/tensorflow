@@ -2,7 +2,13 @@
 
 include "mlir/IR/OpBase.td"
 
-def NS_AOp : Op<"a_op", [NoSideEffect]> {
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
+def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
   let arguments = (ins
     I32:$a,
     Variadic<F32>:$b,
@@ -51,21 +57,21 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // Check op trait for different number of operands
 // ---
 
-def NS_BOp : Op<"op_with_no_operand", []> {
+def NS_BOp : NS_Op<"op_with_no_operand", []> {
   let arguments = (ins);
 }
 
 // CHECK-LABEL: NS::BOp declarations
 // CHECK: OpTrait::NOperands<0>::Impl
 
-def NS_COp : Op<"op_with_one_operand", []> {
+def NS_COp : NS_Op<"op_with_one_operand", []> {
   let arguments = (ins I32:$operand);
 }
 
 // CHECK-LABEL: NS::COp declarations
 // CHECK: OpTrait::NOperands<1>::Impl
 
-def NS_DOp : Op<"op_with_two_operands", []> {
+def NS_DOp : NS_Op<"op_with_two_operands", []> {
   let arguments = (ins I32:$input1, I32:$input2);
 }
 
@@ -75,12 +81,12 @@ def NS_DOp : Op<"op_with_two_operands", []> {
 // Check leading underscore in op name
 // ---
 
-def NS__AOp : Op<"_op_with_leading_underscore", []>;
+def NS__AOp : NS_Op<"_op_with_leading_underscore", []>;
 
 // CHECK-LABEL: NS::_AOp declarations
 // CHECK: class _AOp : public Op<_AOp
 
-def _BOp : Op<"_op_with_leading_underscore_and_no_namespace", []>;
+def _BOp : NS_Op<"_op_with_leading_underscore_and_no_namespace", []>;
 
 // CHECK-LABEL: _BOp declarations
 // CHECK: class _BOp : public Op<_BOp

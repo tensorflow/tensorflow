@@ -28,12 +28,16 @@ include "mlir/IR/OpBase.td"
 include "mlir/Quantization/QuantPredicates.td"
 #endif // OP_BASE
 
+def quant_Dialect : Dialect {
+  let name = "quant";
+}
+
 //===----------------------------------------------------------------------===//
 // Base classes
 //===----------------------------------------------------------------------===//
 
 class quant_Op<string mnemonic, list<OpTrait> traits> :
-    Op<!strconcat("quant.", mnemonic), traits>;
+    Op<quant_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // Quantization casts

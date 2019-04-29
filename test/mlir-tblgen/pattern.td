@@ -2,12 +2,18 @@
 
 include "mlir/IR/OpBase.td"
 
-def OpA : Op<"op_a", []> {
+def Test_Dialect : Dialect {
+  let name = "";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
+def OpA : NS_Op<"op_a", []> {
   let arguments = (ins I32:$operand, I32Attr:$attr);
   let results = (outs I32:$result);
 }
 
-def OpB : Op<"op_b", []> {
+def OpB : NS_Op<"op_b", []> {
   let arguments = (ins I32:$operand, I32Attr:$attr);
   let results = (outs I32:$result);
 }

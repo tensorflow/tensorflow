@@ -2,16 +2,22 @@
 
 include "mlir/IR/OpBase.td"
 
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
 def CreateOperand : NativeCodeCall<"buildOperand($0, $1)">;
 def CreateArrayAttr : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 def CreateOpResult : NativeCodeCall<"buildOp($0, $1)">;
 
-def NS_AOp : Op<"a_op", []> {
+def NS_AOp : NS_Op<"a_op", []> {
   let arguments = (ins I32:$input1, I32:$input2, I32Attr:$attr);
   let results = (outs I32:$output);
 }
 
-def NS_BOp : Op<"b_op", []> {
+def NS_BOp : NS_Op<"b_op", []> {
   let arguments = (ins I32:$input, I32Attr:$attr);
   let results = (outs I32:$output);
 }

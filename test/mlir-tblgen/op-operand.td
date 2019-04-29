@@ -2,7 +2,13 @@
 
 include "mlir/IR/OpBase.td"
 
-def OpA : Op<"one_normal_operand_op", []> {
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
+def OpA : NS_Op<"one_normal_operand_op", []> {
   let arguments = (ins I32:$input);
 }
 
@@ -21,7 +27,7 @@ def OpA : Op<"one_normal_operand_op", []> {
 // CHECK:        if (!((this->getOperation()->getOperand(0)->getType().isInteger(32))))
 // CHECK-NEXT:     return emitOpError("operand #0 must be 32-bit integer");
 
-def OpB : Op<"one_variadic_operand_op", []> {
+def OpB : NS_Op<"one_variadic_operand_op", []> {
   let arguments = (ins Variadic<I32>:$input);
 }
 
@@ -30,7 +36,7 @@ def OpB : Op<"one_variadic_operand_op", []> {
 // CHECK-NOT:     assert
 // CHECK:         tblgen_state->addOperands(input);
 
-def OpC : Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
+def OpC : NS_Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
   let arguments = (ins Variadic<Tensor>:$input1, Variadic<Tensor>:$input2);
 }
 
@@ -48,7 +54,7 @@ def OpC : Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
 // CHECK-NEXT: tblgen_state->addOperands(input1);
 // CHECK-NEXT: tblgen_state->addOperands(input2);
 
-def OpD : Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> {
+def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> {
   let arguments = (ins Variadic<Tensor>:$input1, Tensor:$input2, Variadic<Tensor>:$input3);
 }
 
@@ -72,7 +78,7 @@ def OpD : Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> {
 // CHECK-NEXT: tblgen_state->operands.push_back(input2);
 // CHECK-NEXT: tblgen_state->addOperands(input3);
 
-def OpE : Op<"one_variadic_among_multi_normal_inputs_op", []> {
+def OpE : NS_Op<"one_variadic_among_multi_normal_inputs_op", []> {
   let arguments = (ins Tensor:$input1, Tensor:$input2, Variadic<Tensor>:$input3, Tensor:$input4, Tensor:$input5);
 }
 

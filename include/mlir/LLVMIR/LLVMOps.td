@@ -30,7 +30,7 @@ include "mlir/LLVMIR/LLVMOpBase.td"
 // this class is specialized below for both cases and should not be used
 // directly.
 class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_OpBase<!strconcat("llvm.", mnemonic), traits> {
+    LLVM_OpBase<LLVM_Dialect, mnemonic, traits> {
 }
 
 class LLVM_Builder<string builder> {

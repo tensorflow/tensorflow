@@ -51,7 +51,7 @@ public:
   explicit Operator(const llvm::Record *def) : Operator(*def) {}
 
   // Returns the operation name.
-  StringRef getOperationName() const;
+  std::string getOperationName() const;
 
   // Returns this op's dialect name.
   StringRef getDialectName() const;

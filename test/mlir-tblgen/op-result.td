@@ -2,7 +2,13 @@
 
 include "mlir/IR/OpBase.td"
 
-def OpA : Op<"one_normal_result_op", []> {
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
+def OpA : NS_Op<"one_normal_result_op", []> {
   let results = (outs I32:$result);
 }
 
@@ -18,7 +24,7 @@ def OpA : Op<"one_normal_result_op", []> {
 // CHECK:         if (!((this->getOperation()->getResult(0)->getType().isInteger(32))))
 // CHECK-NEXT:      return emitOpError("result #0 must be 32-bit integer");
 
-def OpB : Op<"same_input_output_type_op", [SameValueType]> {
+def OpB : NS_Op<"same_input_output_type_op", [SameValueType]> {
   let arguments = (ins I32:$x);
   let results = (outs I32:$y);
 }
@@ -29,7 +35,7 @@ def OpB : Op<"same_input_output_type_op", [SameValueType]> {
 // CHECK: void OpB::build(Builder *, OperationState *tblgen_state, Value *x)
 // CHECK:   tblgen_state->addTypes({x->getType()});
 
-def OpC : Op<"three_normal_result_op", []> {
+def OpC : NS_Op<"three_normal_result_op", []> {
   let results = (outs I32:$x, /*unnamed*/I32, I32:$z);
 }
 
@@ -40,7 +46,7 @@ def OpC : Op<"three_normal_result_op", []> {
 // CHECK-NEXT:   tblgen_state->types.push_back(z)
 
 def IntegerTypeAttr : TypeAttrBase<"IntegerType", "Integer type attribute">;
-def OpD : Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
+def OpD : NS_Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
   let arguments = (ins I32:$x, IntegerTypeAttr:$attr, F32Attr:$f32);
   let results = (outs Tensor:$y);
 }
@@ -49,7 +55,7 @@ def OpD : Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
 // CHECK: void OpD::build(Builder *, OperationState *tblgen_state, Value *x, TypeAttr attr, FloatAttr f32)
 // CHECK: tblgen_state->addTypes({attr.getValue()});
 
-def OpE : Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
+def OpE : NS_Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
   let arguments = (ins I32:$x, F32Attr:$attr);
   let results = (outs Tensor:$y);
 }
@@ -58,7 +64,7 @@ def OpE : Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
 // CHECK: void OpE::build(Builder *, OperationState *tblgen_state, Value *x, FloatAttr attr)
 // CHECK: tblgen_state->addTypes({attr.getType()});
 
-def OpF : Op<"one_variadic_result_op", []> {
+def OpF : NS_Op<"one_variadic_result_op", []> {
   let results = (outs Variadic<I32>:$x);
 }
 
@@ -70,7 +76,7 @@ def OpF : Op<"one_variadic_result_op", []> {
 // CHECK-NOT:     assert
 // CHECK:         tblgen_state->addTypes(x);
 
-def OpG : Op<"one_normal_and_one_variadic_result_op", []> {
+def OpG : NS_Op<"one_normal_and_one_variadic_result_op", []> {
 
   let results = (outs I32:$x, Variadic<I32>:$y);
 }
@@ -87,7 +93,7 @@ def OpG : Op<"one_normal_and_one_variadic_result_op", []> {
 // CHECK-NEXT:    tblgen_state->addTypes(resultTypes);
 
 
-def OpH : Op<"all_variadic_results_op", [SameVariadicResultSize]> {
+def OpH : NS_Op<"all_variadic_results_op", [SameVariadicResultSize]> {
   let results = (outs Variadic<Tensor>:$output1, Variadic<Tensor>:$output2);
 }
 
@@ -106,7 +112,7 @@ def OpH : Op<"all_variadic_results_op", [SameVariadicResultSize]> {
 // CHECK-NEXT:    tblgen_state->addTypes(output1);
 // CHECK-NEXT:    tblgen_state->addTypes(output2);
 
-def OpI : Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
+def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
   let results = (outs Variadic<Tensor>:$output1, Tensor:$output2, Variadic<Tensor>:$output3);
 }
 
@@ -130,7 +136,7 @@ def OpI : Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
 // CHECK-NEXT:    tblgen_state->types.push_back(output2);
 // CHECK-NEXT:    tblgen_state->addTypes(output3);
 
-def OpJ : Op<"one_variadic_among_multi_normal_results_op", []> {
+def OpJ : NS_Op<"one_variadic_among_multi_normal_results_op", []> {
   let results = (outs Tensor:$output1, Tensor:$output2, Variadic<Tensor>:$output3, Tensor:$output4, Tensor:$output5);
 }
 
@@ -152,7 +158,7 @@ def OpJ : Op<"one_variadic_among_multi_normal_results_op", []> {
 // Test that if the only operand is variadic, we acess the first value in the
 // pack to set result type
 // ---
-def OpK : Op<"only_input_is_variadic_with_same_value_type_op", [SameValueType]> {
+def OpK : NS_Op<"only_input_is_variadic_with_same_value_type_op", [SameValueType]> {
   let arguments = (ins Variadic<Tensor>:$input);
   let results = (outs Tensor:$result);
 }

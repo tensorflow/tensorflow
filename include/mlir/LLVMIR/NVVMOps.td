@@ -25,8 +25,12 @@
 
 include "mlir/LLVMIR/LLVMOpBase.td"
 
+def NVVM_Dialect : Dialect {
+  let name = "nvvm";
+}
+
 class NVVM_Op<string mnemonic, list<OpTrait> traits = []> :
-  LLVM_OpBase<!strconcat("nvvm.", mnemonic), traits> {
+  LLVM_OpBase<NVVM_Dialect, mnemonic, traits> {
 }
 
 class NVVM_SpecialRegisterOp<string mnemonic,

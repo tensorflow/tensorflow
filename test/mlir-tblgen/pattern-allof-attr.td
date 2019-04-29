@@ -2,6 +2,12 @@
 
 include "mlir/IR/OpBase.td"
 
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
 def FirstConstraint : AttrConstraint<CPred<"FirstConstraint">,
   "first constraint">;
 def SecondConstraint : AttrConstraint<CPred<"SecondConstraint">,
@@ -9,7 +15,7 @@ def SecondConstraint : AttrConstraint<CPred<"SecondConstraint">,
 def ThirdConstraint : AttrConstraint<CPred<"ThirdConstraint">,
   "third constraint">;
 
-def OpA : Op<"op_a", []> {
+def OpA : NS_Op<"op_a", []> {
   let arguments = (ins
     I32Attr:$attr
   );

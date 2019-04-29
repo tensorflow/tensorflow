@@ -27,13 +27,16 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+def Linalg_Dialect : Dialect {
+  let name = "linalg";
+}
+
 // Whether a type is a ViewType.
 def LinalgIsViewTypePred : CPred<"$_self.isa<ViewType>()">;
 def View : Type<LinalgIsViewTypePred, "view">;
 
 class ParametricNativeOpTrait<string prop, string parameters> :
-  NativeOpTrait<prop # parameters>
-{}
+  NativeOpTrait<prop # parameters>;
 
 class ParametricIntNativeOpTrait<string prop, list<int> parameters> :
   ParametricNativeOpTrait<
@@ -45,35 +48,32 @@ class ParametricIntNativeOpTrait<string prop, list<int> parameters> :
                       sum,
                       param,
                       sum # "," # !cast<string>(param)),
-               ">::Impl")>
-{}
+               ">::Impl")>;
 
 // The Linalg `NInputsAndOutputs` trait provides the API for ops that are known
 // to have a specified number of inputs and outputs, all passed as operands.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class NInputsAndOutputs<int n_ins, int n_outs> :
-  ParametricIntNativeOpTrait<"NInputsAndOutputs", [n_ins, n_outs]>
-{}
+  ParametricIntNativeOpTrait<"NInputsAndOutputs", [n_ins, n_outs]>;
 
 // The linalg `NLoopTypes` trait provides the API for ops that are known to have
 // a specified number of parallel (n_par), reduction (n_red) and window (n_win)
 // loops.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class NLoopTypes<int n_par, int n_red, int n_win> :
-ParametricIntNativeOpTrait<"NLoopTypes", [n_par, n_red, n_win]>
-{}
+  ParametricIntNativeOpTrait<"NLoopTypes", [n_par, n_red, n_win]>;
 
 // The linalg `ViewRanks` trait the API for ops that are known to have a
 // specified list of view ranks.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class ViewRanks<list<int> ranks> :
-ParametricIntNativeOpTrait<"ViewRanks", ranks>
-{}
+  ParametricIntNativeOpTrait<"ViewRanks", ranks>;
 
 // Base Tablegen class for Linalg ops.
 class LinalgOp<string mnemonic, list<OpTrait> props> :
-Op<!strconcat("linalg.", mnemonic), props> {
-  let arguments = (ins Variadic<View>); // default variadic builder
+    Op<Linalg_Dialect, mnemonic, props> {
+  // The default variadic builder.
+  let arguments = (ins Variadic<View>);
 
   let parser = [{ return impl::parseLinalgLibraryOp(parser, result); }];
 
@@ -85,12 +85,12 @@ Op<!strconcat("linalg.", mnemonic), props> {
 ////////////////////////////////////////////////////////////////////////////////
 def DotOp : LinalgOp<"dot", [NInputsAndOutputs<2, 1>,
                              NLoopTypes<0, 1, 0>,
-                             ViewRanks<[1, 1, 0]>]> {}
+                             ViewRanks<[1, 1, 0]>]>;
 def MatvecOp : LinalgOp<"matvec", [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<1, 1, 0>,
-                                   ViewRanks<[2, 1, 1]>]> {}
+                                   ViewRanks<[2, 1, 1]>]>;
 def MatmulOp : LinalgOp<"matmul", [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<2, 1, 0>,
-                                   ViewRanks<[2, 2, 2]>]> {}
+                                   ViewRanks<[2, 2, 2]>]>;
 
 #endif // LINALG_OPS

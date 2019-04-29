@@ -30,6 +30,10 @@ include "mlir/IR/OpBase.td"
 
 include "mlir/Quantization/QuantPredicates.td"
 
+def fxpmath_Dialect : Dialect {
+  let name = "fxpmath";
+}
+
 //===----------------------------------------------------------------------===//
 // Attributes
 //===----------------------------------------------------------------------===//
@@ -86,7 +90,7 @@ def fxpmath_CompareFnAttr : EnumAttr<"ComparisonFn",
 //===----------------------------------------------------------------------===//
 
 class fxpmath_Op<string mnemonic, list<OpTrait> traits> :
-    Op<!strconcat("fxpmath.", mnemonic), traits>;
+    Op<fxpmath_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // Fixed-point (fxp) arithmetic ops used by kernels.

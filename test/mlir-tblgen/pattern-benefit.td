@@ -4,15 +4,21 @@ include "mlir/IR/OpBase.td"
 
 def IfEqual : Constraint<CPred<"<notused>">>;
 
+def Test_Dialect : Dialect {
+  let name = "x";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<Test_Dialect, mnemonic, traits>;
+
 // Define ops to rewrite.
 def U: Type<CPred<"true">, "U">;
-def X_AddOp : Op<"x.add"> {
+def X_AddOp : NS_Op<"add"> {
   let arguments = (ins U, U);
 }
-def Y_AddOp : Op<"y.add"> {
+def Y_AddOp : NS_Op<"add"> {
   let arguments = (ins U, U, U);
 }
-def Z_AddOp : Op<"z.add"> {
+def Z_AddOp : NS_Op<"add"> {
   let arguments = (ins U);
 }
 

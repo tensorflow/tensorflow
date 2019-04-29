@@ -2,6 +2,12 @@
 
 include "mlir/IR/OpBase.td"
 
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
 def SomeAttr : Attr<CPred<"some-condition">, "some attribute kind"> {
   let storageType = "some-attr-kind";
   let returnType = "some-return-type";
@@ -12,7 +18,7 @@ def SomeAttr : Attr<CPred<"some-condition">, "some attribute kind"> {
 // Test required, optional, default-valued attributes
 // ---
 
-def AOp : Op<"a_op", []> {
+def AOp : NS_Op<"a_op", []> {
   let arguments = (ins
       SomeAttr:$aAttr,
       DefaultValuedAttr<SomeAttr, "4.2">:$bAttr,
@@ -72,7 +78,7 @@ def SomeTypeAttr : TypeAttrBase<"SomeType", "some type attribute">;
 // Test common attribute kinds' constraints
 // ---
 
-def BOp : Op<"b_op", []> {
+def BOp : NS_Op<"b_op", []> {
   let arguments = (ins
     AnyAttr:$any_attr,
     BoolAttr:$bool_attr,
@@ -106,7 +112,7 @@ def BOp : Op<"b_op", []> {
 // Test building constant values for array attribute kinds
 // ---
 
-def COp : Op<"c_op", []> {
+def COp : NS_Op<"c_op", []> {
   let arguments = (ins
     DefaultValuedAttr<I32ArrayAttr, "{1, 2}">:$i32_array_attr,
     DefaultValuedAttr<I64ArrayAttr, "{3, 4}">:$i64_array_attr,
@@ -126,7 +132,7 @@ def COp : Op<"c_op", []> {
 // Test mixing operands and attributes in arbitrary order
 // ---
 
-def MixOperandsAndAttrs : Op<"mix_operands_and_attrs", []> {
+def MixOperandsAndAttrs : NS_Op<"mix_operands_and_attrs", []> {
   let arguments = (ins F32Attr:$attr, F32:$operand, F32Attr:$otherAttr, F32:$otherArg);
 }
 

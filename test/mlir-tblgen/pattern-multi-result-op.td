@@ -2,17 +2,23 @@
 
 include "mlir/IR/OpBase.td"
 
-def ThreeResultOp : Op<"three_result_op", []> {
+def Test_Dialect : Dialect {
+  let name = "test";
+}
+class NS_Op<string mnemonic, list<OpTrait> traits> :
+    Op<Test_Dialect, mnemonic, traits>;
+
+def ThreeResultOp : NS_Op<"three_result_op", []> {
   let arguments = (ins I32:$input);
   let results = (outs I32:$r1, I32:$r2, I32:$r3);
 }
 
-def TwoResultOp : Op<"two_result_op", []> {
+def TwoResultOp : NS_Op<"two_result_op", []> {
   let arguments = (ins I32:$input);
   let results = (outs I32:$r1, I32:$r2);
 }
 
-def OneResultOp : Op<"one_result_op", []> {
+def OneResultOp : NS_Op<"one_result_op", []> {
   let arguments = (ins I32:$input);
   let results = (outs I32:$r1);
 }
@@ -54,7 +60,7 @@ def : Pattern<(ThreeResultOp $input), [
 
 // Test more result patterns than needed for replacement
 // ---
-def AdditionalOp : Op<"additional_one_result_op", []> {
+def AdditionalOp : NS_Op<"additional_one_result_op", []> {
   let arguments = (ins I32:$input);
   let results = (outs I32:$r1);
 }

@@ -28,6 +28,7 @@
 
 using namespace mlir;
 
+using llvm::formatv;
 using mlir::tblgen::Operator;
 
 bool tblgen::DagLeaf::isUnspecified() const {

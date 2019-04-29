@@ -46,8 +46,13 @@ tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
   populateOpStructure();
 }
 
-StringRef tblgen::Operator::getOperationName() const {
-  return def.getValueAsString("opName");
+std::string tblgen::Operator::getOperationName() const {
+  auto *dialect = def.getValueAsDef("opDialect");
+  assert(dialect && "op defined without dialect");
+  auto prefix = dialect->getValueAsString("name");
+  if (prefix.empty())
+    return def.getValueAsString("opName");
+  return llvm::formatv("{0}.{1}", prefix, def.getValueAsString("opName"));
 }
 
 StringRef tblgen::Operator::getDialectName() const { return dialectName; }
