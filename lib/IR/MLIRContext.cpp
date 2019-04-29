@@ -909,7 +909,8 @@ SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
                                    SDBMConstantExpr stripeFactor) {
   assert(var && "expected SDBM variable expression");
   assert(stripeFactor && "expected non-null stripe factor");
-  assert(stripeFactor.getValue() > 0 && "non-positive stripe factor");
+  if (stripeFactor.getValue() <= 0)
+    llvm::report_fatal_error("non-positive stripe factor");
 
   MLIRContextImpl &impl = var.getContext()->getImpl();
   auto key = std::make_tuple(var, stripeFactor);

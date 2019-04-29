@@ -23,6 +23,7 @@ set(LIBS
   MLIRGPU
   MLIRLinalg
   MLIRLLVMIR
+  MLIRNVVMIR
   MLIRParser
   MLIRPass
   MLIRQuantization
