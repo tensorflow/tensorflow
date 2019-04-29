@@ -70,8 +70,6 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-
 namespace tensorflow {
 __host__ __device__ inline tensorflow::bfloat16 GpuLdg(
     const tensorflow::bfloat16* address) {

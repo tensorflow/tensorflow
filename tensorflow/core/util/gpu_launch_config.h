@@ -367,6 +367,8 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
 }
 #endif // GOOGLE_CUDA
 
+#define GetGpuStream(context) context->eigen_gpu_device().stream()
+
 namespace detail {
 template <typename... Ts, size_t... Is>
 std::array<void*, sizeof...(Ts)> GetArrayOfElementPointersImpl(

@@ -827,7 +827,7 @@ void ReduceImpl(OpKernelContext* ctx, OUT_T out, IN_T in, int in_rank,
                 int in_dim0, int in_dim1, int in_dim2, int out_rank,
                 const ReductionAxes& reduction_axes, Op op) {
   T init = reduction_op_helper::IdentityValue<T, Op>()();
-  const gpuStream_t& cu_stream = GetGPUStream(ctx);
+  const gpuStream_t& cu_stream = GetGpuStream(ctx);
   if (out_rank == 0) {
     const int in_size = in_dim0 * in_dim1 * in_dim2;
     LaunchScalarReduction(ctx, out, in, in_size, op, init, cu_stream);

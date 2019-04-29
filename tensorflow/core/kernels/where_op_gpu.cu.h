@@ -149,7 +149,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::Scalar num_true) {
-    const gpuStream_t& cu_stream = GetGPUStream(ctx);
+    const gpuStream_t& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
     const T* input_data = input.data();
@@ -277,7 +277,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return Status::OK();
     }
 
-    const gpuStream_t& cu_stream = GetGPUStream(ctx);
+    const gpuStream_t& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
 
