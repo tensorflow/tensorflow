@@ -37,13 +37,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* seq_lengths = GetInput(context, node, kSeqLengthsTensor);
   TF_LITE_ENSURE_EQ(context, NumDimensions(seq_lengths), 1);
 
-  if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
-      input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
-      input->type != kTfLiteInt64) {
-    context->ReportError(context,
-                         "Type '%s' is not supported by reverse_sequence.",
-                         TfLiteTypeGetName(input->type));
-    return kTfLiteError;
+  switch (input->type) {
+    case kTfLiteInt32:
+    case kTfLiteFloat32:
+    case kTfLiteUInt8:
+    case kTfLiteInt16:
+    case kTfLiteInt64:
+      break;
+    default:
+      context->ReportError(context,
+                           "Type '%s' is not supported by reverse_sequence.",
+                           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
   }
 
   if (seq_lengths->type != kTfLiteInt32 && seq_lengths->type != kTfLiteInt64) {

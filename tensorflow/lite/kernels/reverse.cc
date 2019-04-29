@@ -38,12 +38,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(axis), 1);
   TF_LITE_ENSURE(context, NumDimensions(input) >= NumElements(axis));
 
-  if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
-      input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
-      input->type != kTfLiteInt64) {
-    context->ReportError(context, "Type '%s' is not supported by reverse.",
+  switch (input->type) {
+    case kTfLiteInt32:
+    case kTfLiteFloat32:
+    case kTfLiteUInt8:
+    case kTfLiteInt16:
+    case kTfLiteInt64:
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by reverse.",
                          TfLiteTypeGetName(input->type));
-    return kTfLiteError;
+      return kTfLiteError;
   }
 
   if (axis->type != kTfLiteInt32) {

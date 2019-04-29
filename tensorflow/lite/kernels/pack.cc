@@ -42,12 +42,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumDimensions(input0) >= data->axis);
   TF_LITE_ENSURE(context, data->axis >= 0);
 
-  if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
-      input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt8 &&
-      input0->type != kTfLiteInt16 && input0->type != kTfLiteInt64) {
-    context->ReportError(context, "Type '%s' is not supported by pack.",
-                         TfLiteTypeGetName(input0->type));
-    return kTfLiteError;
+  switch (input0->type) {
+    case kTfLiteInt32:
+    case kTfLiteFloat32:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+    case kTfLiteInt16:
+    case kTfLiteInt64:
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by pack.",
+                           TfLiteTypeGetName(input0->type));
+      return kTfLiteError;
   }
   // Make sure all inputs have the same shape and type.
   for (int i = 1; i < data->values_count; ++i) {

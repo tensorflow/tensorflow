@@ -62,13 +62,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
-  const TfLiteType type = input1->type;
-  if (type != kTfLiteInt32 && type != kTfLiteFloat32 && type != kTfLiteInt64) {
-    context->ReportError(context, "Type '%s' is not supported by floor_mod.",
-                         TfLiteTypeGetName(type));
-    return kTfLiteError;
+  switch (input1->type) {
+    case kTfLiteInt32:
+    case kTfLiteFloat32:
+    case kTfLiteInt64:
+      output->type = input1->type;
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by floor_mod.",
+                           TfLiteTypeGetName(input1->type));
+      return kTfLiteError;
   }
-  output->type = type;
 
   data->requires_broadcast = !HaveSameShapes(input1, input2);
 
