@@ -22,6 +22,8 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
@@ -145,11 +147,44 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
 
 def _dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
+  assert isinstance(init_state, tuple)
 
   if extra_test is not None:
-    raise NotImplementedError(
-        'break and return statements are not yet supported in '
-        'for/Dataset loops.')
+    assert init_state, 'Lowering should always add state.'
+    return _dataset_for_stmt_with_extra_test(ds, extra_test, body, init_state)
+
+  return _dataset_for_stmt_no_extra_test(ds, body, init_state)
+
+
+def _dataset_for_stmt_with_extra_test(ds, extra_test, body, init_state):
+  """Overload of _dataset_for_stmt with early stopping. See for_stmt."""
+
+  def scan_body(state, iterate):
+    extra_cond = extra_test(*state)
+    new_state = control_flow_ops.cond(
+        extra_cond, lambda: body(iterate, *state), lambda: state)
+    aug_state = new_state, extra_cond
+    # Note: new_state is the actual state of scan; aug_state is its output
+    # (hence the redundancy).
+    return new_state, aug_state
+
+  def take_while_predicate(new_state, extra_cond):
+    del new_state
+    return extra_cond
+
+  def reduce_body(old_state, aug_state):
+    del old_state
+    new_state, extra_cond = aug_state
+    del extra_cond
+    return new_state
+
+  ds = ds.apply(scan_ops.scan(init_state, scan_body))
+  ds = ds.apply(take_while_ops.take_while(take_while_predicate))
+  return ds.reduce(init_state, reduce_body)
+
+
+def _dataset_for_stmt_no_extra_test(ds, body, init_state):
+  """Overload of _dataset_for_stmt without early stopping. See for_stmt."""
 
   def reduce_body(state, iterate):
     new_state = body(iterate, *state)
@@ -158,7 +193,7 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
   if init_state:
     return ds.reduce(init_state, reduce_body)
 
-  # Workaround for Datset.reduce not allowing empty state tensors - create
+  # Workaround for Dataset.reduce not allowing empty state tensors - create
   # a dummy state variable that remains unused.
   def reduce_body_with_dummy_state(state, iterate):
     reduce_body((), iterate)

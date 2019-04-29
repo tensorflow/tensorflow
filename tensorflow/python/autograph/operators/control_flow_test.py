@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -64,6 +65,27 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         init_state=(constant_op.constant(0, dtype=dtypes.int64),))
     self.assertEqual(self.evaluate(s), (10,))
+
+  def test_dataset_with_extra_test(self):
+    s = control_flow.for_stmt(
+        dataset_ops.Dataset.range(5),
+        extra_test=lambda s: s < 3,
+        body=lambda i, s: (s + i,),
+        init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    self.assertEqual(self.evaluate(s), (3,))
+
+  def test_dataset_with_extra_test_no_extra_iterations(self):
+
+    def guarded_body(i, s):
+      with ops.control_dependencies((control_flow_ops.Assert(i < 3, (i,)),)):
+        return s + i,
+
+    s = control_flow.for_stmt(
+        dataset_ops.Dataset.range(5),
+        extra_test=lambda s: s < 3,
+        body=guarded_body,
+        init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    self.assertEqual(self.evaluate(s), (3,))
 
   @test_util.run_v2_only
   def test_dataset_no_state(self):
