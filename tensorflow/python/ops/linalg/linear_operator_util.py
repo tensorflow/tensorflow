@@ -193,11 +193,11 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
           bcast_batch_shape,
           mat.get_shape()[:-2])
     if bcast_batch_shape.is_fully_defined():
-      # The [1, 1] at the end will broadcast with anything.
-      bcast_shape = bcast_batch_shape.concatenate([1, 1])
       for i, mat in enumerate(batch_matrices):
         if mat.get_shape()[:-2] != bcast_batch_shape:
-          batch_matrices[i] = _broadcast_to_shape(mat, bcast_shape)
+          bcast_shape = array_ops.concat(
+              [bcast_batch_shape.as_list(), array_ops.shape(mat)[-2:]], axis=0)
+          batch_matrices[i] = array_ops.broadcast_to(mat, bcast_shape)
       return batch_matrices
 
     # Since static didn't work, do dynamic, which always copies data.
@@ -206,15 +206,13 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
       bcast_batch_shape = array_ops.broadcast_dynamic_shape(
           bcast_batch_shape,
           array_ops.shape(mat)[:-2])
-    bcast_shape = array_ops.concat([bcast_batch_shape, [1, 1]], axis=0)
     for i, mat in enumerate(batch_matrices):
-      batch_matrices[i] = _broadcast_to_shape(mat, bcast_shape)
+      batch_matrices[i] = array_ops.broadcast_to(
+          mat,
+          array_ops.concat(
+              [bcast_batch_shape, array_ops.shape(mat)[-2:]], axis=0))
 
     return batch_matrices
-
-
-def _broadcast_to_shape(x, shape):
-  return x + array_ops.zeros(shape=shape, dtype=x.dtype)
 
 
 def cholesky_solve_with_broadcast(chol, rhs, name=None):
