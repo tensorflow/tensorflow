@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/kernels/gru_cell.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -55,13 +57,17 @@ void GruImpl(const TfLiteTensor* input, const TfLiteTensor* input_state,
   float* activation_data = GetTensorData<float>(activation);
   const RuntimeShape concat_shape = GetTensorShape(concat);
   float* concat_data = GetTensorData<float>(concat);
+  tflite::FullyConnectedParams fc_params;
+  fc_params.float_activation_min = std::numeric_limits<float>::lowest();
+  fc_params.float_activation_max = std::numeric_limits<float>::max();
   for (int i = 0; i < n_time; ++i) {
-    gru_cell::GruCell(
-        input_shape, input_data, state_shape, input_state_data,
-        gate_weight_shape, gate_weight_data, gate_bias_shape, gate_bias_data,
-        candidate_weight_shape, candidate_weight_data, candidate_bias_shape,
-        candidate_bias_data, output_shape, output_data, output_state_data,
-        activation_shape, activation_data, concat_shape, concat_data);
+    gru_cell::GruCell(input_shape, input_data, state_shape, input_state_data,
+                      gate_weight_shape, gate_weight_data, gate_bias_shape,
+                      gate_bias_data, candidate_weight_shape,
+                      candidate_weight_data, candidate_bias_shape,
+                      candidate_bias_data, output_shape, output_data,
+                      output_state_data, activation_shape, activation_data,
+                      concat_shape, concat_data, fc_params);
     input_data += n_batch_input;
     output_data += n_batch_output;
     input_state_data = output_state_data;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/kernels/gru_cell.h"
 
-#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -40,7 +39,8 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
              const float* candidate_bias, const RuntimeShape& output_shape,
              float* output, float* output_state,
              const RuntimeShape& activation_shape, float* activation,
-             const RuntimeShape& concat_shape, float* concat) {
+             const RuntimeShape& concat_shape, float* concat,
+             const tflite::FullyConnectedParams& fc_params) {
   const int n_batch = input_shape.Dims(0);
   const int n_input = input_shape.Dims(1);
   const int n_output = state_shape.Dims(1);
@@ -59,9 +59,6 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
                 &(concat_arrays_data[0]), concat_shape, concat);
 
   // [r u] = [x h] * gate_weight + gate_bias
-  tflite::FullyConnectedParams fc_params;
-  fc_params.float_activation_min = std::numeric_limits<float>::lowest();
-  fc_params.float_activation_max = std::numeric_limits<float>::max();
   FullyConnected(fc_params, concat_shape, concat, gate_weight_shape,
                  gate_weight, gate_bias_shape, gate_bias, activation_shape,
                  activation);

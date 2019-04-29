@@ -110,6 +110,7 @@ TEST(GRUTest, SimpleTest) {
                 {2 * n_output},
                 {n_output, n_input + n_output},
                 {n_output}});
+  // All data is randomly generated.
   m.SetInput({0.89495724, 0.34482682, 0.68505806, 0.7135783, 0.3167085,
               0.93647677, 0.47361764, 0.39643127});
   m.SetInputState(

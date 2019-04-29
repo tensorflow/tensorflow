@@ -33,7 +33,8 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
              const float* candidate_bias, const RuntimeShape& output_shape,
              float* output, float* output_state,
              const RuntimeShape& activation_shape, float* activation,
-             const RuntimeShape& concat_shape, float* concat);
+             const RuntimeShape& concat_shape, float* concat,
+             const tflite::FullyConnectedParams& fc_params);
 
 }  // namespace gru_cell
 }  // namespace experimental
