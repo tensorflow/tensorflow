@@ -1088,17 +1088,6 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
-                                                    HloModule* module) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  // TODO(b/122263061): This function appears to be incorrect, saying that
-  // live-range interference is occurring when it isn't.  We've disabled it for
-  // now while we investigate.
-  // TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
-  return Status::OK();
-}
-
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1183,10 +1172,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  DependencyHloOrdering dep_ordering(module);
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
-
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
+  TF_RETURN_IF_ERROR(
+      RemoveUnnecessaryCopies(DependencyHloOrdering(module), module));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
 
@@ -1196,8 +1183,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
-  TF_DCHECK_OK(
-      VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
 
   if (VLOG_IS_ON(1)) {
     int64 num_total_copies = 0;
