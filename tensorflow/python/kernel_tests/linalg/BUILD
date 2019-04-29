@@ -310,7 +310,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "linear_operator_low_rank_update_test",
-    size = "large",
+    size = "medium",
     srcs = ["linear_operator_low_rank_update_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/linalg",
