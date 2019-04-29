@@ -171,7 +171,7 @@ bool IsIm2ColRequired(TfLiteTensor* input, TfLiteConvParams* params,
 
   switch (kernel_type) {
     case kReference:
-      if (input->type == kTfLiteFloat32) {
+      if (is_hybrid) {
         return true;
       } else {
         return false;
