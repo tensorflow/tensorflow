@@ -208,7 +208,7 @@ def predict_distributed(model,
         callbacks=callbacks)
 
 
-def _per_device_execution_function(model, mode):
+def _per_replica_execution_function(model, mode):
   exec_func = model._make_execution_function(mode)
   return (exec_func.inputs, exec_func.outputs, exec_func.updates_op,
           exec_func.session_kwargs)
@@ -252,7 +252,7 @@ def _make_train_step_fn(model, mode, strategy, output_labels):
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_execution_function,
+         _per_replica_execution_function,
          args=(distributed_training_utils.get_distributed_model(model, mode),
                mode))
     (all_inputs, all_outputs, all_updates,
@@ -498,7 +498,7 @@ def experimental_tpu_test_loop(model,
         _build_model, args=(model, mode, inputs, targets)))
 
     (_, outputs, updates, _) = (
-        _per_device_execution_function(
+        _per_replica_execution_function(
             distributed_training_utils.get_distributed_model(model, mode),
             mode))
     with ops.control_dependencies([updates]):
@@ -649,7 +649,7 @@ def experimental_tpu_predict_loop(model,
         _build_model, args=(model, mode, inputs)))
 
     (_, outputs, updates, _) = (
-        _per_device_execution_function(
+        _per_replica_execution_function(
             distributed_training_utils.get_distributed_model(model, mode),
             mode))
 
@@ -662,7 +662,7 @@ def experimental_tpu_predict_loop(model,
   predict_input_data = iterator.get_next()
   per_replica_outputs = current_strategy.experimental_run_v2(
       _predict_step_fn, args=(predict_input_data,))
-  output_tensors = distributed_training_utils.flatten_perdevice_values(
+  output_tensors = distributed_training_utils.flatten_per_replica_values(
       current_strategy, per_replica_outputs)
 
   if verbose >= 1:
