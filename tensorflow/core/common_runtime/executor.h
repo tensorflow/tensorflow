@@ -198,7 +198,7 @@ class ExecutorBarrier {
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
-        status = status_group_.as_status();
+        status = status_group_.as_summary_status();
       }
     }
 
@@ -210,6 +210,9 @@ class ExecutorBarrier {
 
     if (done != nullptr) {
       delete this;
+      if (!status.ok()) {
+        VLOG(1) << "ExecutorBarrier finished with bad status: " << status;
+      }
       done(status);
     }
   }
