@@ -2952,6 +2952,33 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     train()
 
+  def testEarlyStoppingTrainingLoopInFunction(self):
+    self.skipTest('b/131596092')
+    layer = core.Dense(2)
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
+        .repeat(10)
+        .batch(32))
+    optimizer = adam.Adam()
+
+    @def_function.function
+    def train():
+      for x, y in dataset:
+        with backprop.GradientTape() as tape:
+          out = layer(x)
+          loss = math_ops.reduce_mean(
+              nn_ops.sparse_softmax_cross_entropy_with_logits(
+                  logits=out, labels=y))
+        layer_variables = layer.trainable_variables
+        gradients = tape.gradient(loss, layer_variables)
+        optimizer.apply_gradients(zip(gradients, layer_variables))
+        if optimizer.iterations > 3:
+          break
+
+    train()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(
