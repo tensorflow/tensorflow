@@ -395,6 +395,13 @@ public:
     blocks.splice(blocks.end(), other.getBlocks());
   }
 
+  /// Check that this does not use any value defined outside it.
+  /// Emit errors if `noteEmitter` is provided; this callback is used to point
+  /// to the operation containing the region, the actual error is reported at
+  /// the operation with an offending use.
+  bool
+  isIsolatedAbove(llvm::function_ref<void(const Twine &)> noteEmitter = {});
+
 private:
   RegionType blocks;
 

@@ -697,6 +697,22 @@ public:
   }
 };
 
+/// This verifiers that all operands used in N-th region of the given operation
+/// are defined within that region.
+template <unsigned RegionIdx> class NthRegionIsIsolatedAbove {
+public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType,
+                                NthRegionIsIsolatedAbove<RegionIdx>::Impl> {
+  public:
+    static LogicalResult verifyTrait(Operation *op) {
+      auto noteEmitter = [op](const Twine &message) { op->emitNote(message); };
+      return op->getRegion(RegionIdx).isIsolatedAbove(noteEmitter) ? success()
+                                                                   : failure();
+    }
+  };
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//

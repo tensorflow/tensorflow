@@ -353,6 +353,55 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
     it->walk(remapOperands);
 }
 
+// Check that the given `region` does not use any value defined outside its
+// ancestor region `limit`.  That is, given `A{B{C{}}}` with limit `B`, `C` is
+// allowed to use values defined in `B` but not those defined in `A`.
+// Emit errors if `emitOpNote` is provided; this callback is used to point to
+// the operation containing the region, the actual error is reported at the
+// operation with an offending use.
+static bool
+isRegionIsolatedAbove(Region &region, Region &limit,
+                      llvm::function_ref<void(const Twine &)> emitOpNote = {}) {
+  assert(limit.isAncestor(&region) &&
+         "expected isolation limit to be an ancestor of the given region");
+
+  // List of regions to analyze.  Each region is processed independently, with
+  // respect to the common `limit` region, so we can look at them in any order.
+  // Therefore, use a simple vector and push/pop back the current region.
+  SmallVector<Region *, 8> pendingRegions;
+  pendingRegions.push_back(&region);
+
+  // Traverse all operations in the region.
+  while (!pendingRegions.empty()) {
+    for (Block &block : *pendingRegions.pop_back_val()) {
+      for (Operation &op : block) {
+        for (Value *operand : op.getOperands()) {
+          // Check that any value that is used by an operation is defined in the
+          // same region as either an operation result or a block argument.
+          if (operand->getContainingRegion()->isProperAncestor(&limit)) {
+            if (emitOpNote) {
+              op.emitOpError("using value defined outside the region");
+              emitOpNote("required by region isolation constraints");
+            }
+            return false;
+          }
+        }
+        // Schedule any regions the operations contain for further checking.
+        pendingRegions.reserve(pendingRegions.size() + op.getNumRegions());
+        for (Region &subRegion : op.getRegions())
+          pendingRegions.push_back(&subRegion);
+      }
+    }
+  }
+
+  return true;
+}
+
+bool Region::isIsolatedAbove(
+    llvm::function_ref<void(const Twine &)> noteEmitter) {
+  return isRegionIsolatedAbove(*this, *this, noteEmitter);
+}
+
 Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {
   size_t Offset(
       size_t(&((Region *)nullptr->*Region::getSublistAccess(nullptr))));
