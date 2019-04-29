@@ -25,24 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-#ifndef TENSORFLOW_USE_ROCM
-  #define CREATE_CUDA_FUNCTION_ALIAS(func, cuda_alias) \
-  template <typename... Args> \
-  auto cuda_alias(Args&&... args) -> decltype(func(std::forward<Args>(args)...)) { \
-    return cuda_alias(std::forward<Args>(args)...); \
-  }
-#else
-  #define CREATE_CUDA_FUNCTION_ALIAS(func, cuda_alias)
-#endif
-
-#ifndef TENSORFLOW_USE_ROCM
-  #define CREATE_CUDA_TYPE_ALIAS(type, cuda_alias) \
-  using cuda_alias = type;
-#else
-  #define CREATE_CUDA_TYPE_ALIAS(type, cuda_alias)
-#endif
 
 // Usage of GetGpuLaunchConfig, GetGpu2DLaunchConfig, and
 // GetGpu3DLaunchConfig:
@@ -204,7 +188,7 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
-CREATE_CUDA_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
 
 // Calculate the Gpu launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
@@ -246,7 +230,7 @@ inline GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   config.block_count = block_count;
   return config;
 }
-CREATE_CUDA_FUNCTION_ALIAS(GetGpuLaunchConfigFixedBlockSize, GetCudaLaunchConfigFixedBlockSize);
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfigFixedBlockSize, GetCudaLaunchConfigFixedBlockSize);
 
 struct Gpu2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
@@ -287,6 +271,7 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
 // This variant takes the resource limits of func into account to maximize
 // occupancy.
 using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
+CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
@@ -357,7 +342,7 @@ inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
   config.block_count = dim3(blocksx, blocksy, blocksz);
   return config;
 }
-CREATE_CUDA_FUNCTION_ALIAS(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(
@@ -366,13 +351,13 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(
   return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
                                dynamic_shared_memory_size, block_size_limit);
 }
-CREATE_CUDA_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
 #if GOOGLE_CUDA
 // Returns a raw reference to the current cuda stream.  Required by a
 // number of kernel calls (for which StreamInterface* does not work), i.e.
 // CUB and certain cublas primitives.
-inline const cudaStream_t& GetGpuStream(OpKernelContext* context) {
+inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
   const cudaStream_t* ptr = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
                                                 ->stream()
@@ -380,7 +365,6 @@ inline const cudaStream_t& GetGpuStream(OpKernelContext* context) {
                                                 ->GpuStreamMemberHack()));
   return *ptr;
 }
-CREATE_CUDA_FUNCTION_ALIAS(GetGpuStream, GetCudaStream);
 #endif // GOOGLE_CUDA
 
 namespace detail {
