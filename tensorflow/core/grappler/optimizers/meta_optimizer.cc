@@ -224,10 +224,14 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
+
+#ifndef INTEL_MKL
   if (cfg_.scoped_allocator_optimization()) {
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
+#endif
+
   return InitializeCustomGraphOptimizers(std::set<string>(), optimizers);
 }
 
@@ -392,11 +396,13 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
+#ifndef INTEL_MKL
       // Some must run only on the last iteration.
       if (optimizer->name() == "scoped_allocator_optimizer") {
         if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
         continue;
       }
+#endif
       if (optimizer->name() == "xla-fusion") {
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
@@ -440,11 +446,13 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     optimized_graph, &optimization_result));
   }
 
+#ifndef INTEL_MKL
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
     TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &optimized_item,
                                     optimized_graph, &optimization_result));
   }
+#endif
 
   // Compress the constants in the final graph.
   TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
@@ -735,7 +743,9 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.auto_parallel().enable() ||
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+#ifndef INTEL_MKL
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+#endif
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
          !rewrite_cfg.optimizers().empty() ||

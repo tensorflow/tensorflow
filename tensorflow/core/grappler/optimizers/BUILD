@@ -1,6 +1,11 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_kernel_library",
+)
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Platform specific build config
@@ -576,6 +581,7 @@ cc_library(
     hdrs = [
         "meta_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",
