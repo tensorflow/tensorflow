@@ -43,6 +43,8 @@ class BatchToSpaceNDOpModel : public SingleOpModel {
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
   }
+
+  int32_t GetOutputSize() { return GetTensorSize(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
@@ -129,6 +131,15 @@ TEST(BatchToSpaceNDOpTest, BatchOneConstTest) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1, 2, 3, 4}));
 }
 
+TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8EmptyOutput) {
+  BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 2, 2},
+                               TensorType_INT8);
+  m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 0, 1}));
+  EXPECT_THAT(m.GetOutputSize(), 0);
+}
+
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
   BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
@@ -159,6 +170,16 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, -1, 0});
   ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "crops.2. >= 0 was not true.";
+}
+
+TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
+  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1}, TensorType_INT8);
+  m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({2, 2});
+  m.SetCrops({2, 2, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 4, 1}));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ::testing::IsEmpty());
 }
 
 #ifdef GTEST_HAS_DEATH_TEST
