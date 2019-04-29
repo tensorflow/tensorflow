@@ -383,24 +383,33 @@ void TestSomeGemm(int rows, int depth, int cols,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = rows;
   lhs_params.cols = depth;
-  if (!use_golden && !std::is_floating_point<LhsScalar>::value) {
-    lhs_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<LhsScalar>::value) {
+    lhs_params.zero_point = 1;
+    if (!use_golden) {
+      lhs_params.zero_point += random_engine() % 8;
+    }
   }
 
   MatrixParams<RhsScalar> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = depth;
   rhs_params.cols = cols;
-  if (!use_golden && !std::is_floating_point<RhsScalar>::value) {
-    rhs_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<RhsScalar>::value) {
+    rhs_params.zero_point = 1;
+    if (!use_golden) {
+      rhs_params.zero_point += random_engine() % 8;
+    }
   }
 
   MatrixParams<DstScalar> dst_params;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = rows;
   dst_params.cols = cols;
-  if (!use_golden && !std::is_floating_point<DstScalar>::value) {
-    dst_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<DstScalar>::value) {
+    dst_params.zero_point = 1;
+    if (!use_golden) {
+      dst_params.zero_point += random_engine() % 8;
+    }
   }
 
   GemmParams<AccumScalar, DstScalar> params;
@@ -464,7 +473,7 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Float) {
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Uint8) {
   TestSomeGemm<std::uint8_t, std::uint8_t, std::int32_t, std::uint8_t>(
-      5, 2, 3, {3, 7, 11, 16, 20, 7, 16, 24, 33, 41, 10, 24, 37, 50, 63});
+      5, 2, 3, {2, 4, 6, 7, 9, 3, 10, 16, 22, 29, 4, 15, 26, 37, 48});
 }
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
@@ -474,7 +483,7 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8Int16) {
   TestSomeGemm<std::int8_t, std::int8_t, std::int32_t, std::int16_t>(
-      3, 5, 4, {32, 76, 120, 75, 191, 306, 118, 306, 493, 162, 421, 680});
+      3, 5, 4, {19, 48, 77, 48, 149, 250, 76, 249, 422, 105, 350, 595});
 }
 
 template <typename tLhsScalar, typename tRhsScalar, typename tAccumScalar,
