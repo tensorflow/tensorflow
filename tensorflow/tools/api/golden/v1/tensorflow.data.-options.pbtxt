@@ -8,10 +8,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_numa_aware"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "experimental_optimization"
     mtype: "<type \'property\'>"
   }

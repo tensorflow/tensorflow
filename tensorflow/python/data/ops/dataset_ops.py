@@ -2028,12 +2028,6 @@ class Options(options_lib.OptionsBase):
       "Whether the outputs need to be produced in deterministic order. If None,"
       " defaults to True.")
 
-  experimental_numa_aware = options_lib.create_option(
-      name="experimental_numa_aware",
-      ty=bool,
-      docstring=
-      "Whether to use NUMA-aware operations. If None, defaults to False.")
-
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
       ty=optimization_options.OptimizationOptions,
@@ -2064,8 +2058,6 @@ class Options(options_lib.OptionsBase):
     result = []
     result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
 
-    if self.experimental_numa_aware:
-      result.append("make_numa_aware")
     if self.experimental_deterministic is False:
       result.append("make_sloppy")
     exp_stats_options = self.experimental_stats
