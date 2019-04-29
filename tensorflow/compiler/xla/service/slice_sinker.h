@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace xla {
 
-// An HLO pass that sinks slice instructions used by a group of elementwise
+// An HLO pass that sinks slice operations used by a group of elementwise
 // instructions and merges the group of elementwise instructions.
 class SliceSinker: public HloModulePass {
  public:

@@ -32,8 +32,8 @@ bool SameSliceConfiguration(const HloInstruction* slice_1,
                             const HloInstruction* slice_2) {
   CHECK(slice_1->opcode() == HloOpcode::kSlice);
   CHECK(slice_2->opcode() == HloOpcode::kSlice);
-  CHECK(absl::c_equal(slice_1->shape().dimensions(),
-                      slice_2->shape().dimensions()));
+  CHECK(absl::c_equal(slice_1->operand(0)->shape().dimensions(),
+                      slice_2->operand(0)->shape().dimensions()));
   return absl::c_equal(slice_1->slice_starts(), slice_2->slice_starts())
       && absl::c_equal(slice_1->slice_limits(), slice_2->slice_limits())
       && absl::c_equal(slice_1->slice_strides(), slice_2->slice_strides());
@@ -59,9 +59,9 @@ FindSourceOperandsOfSlicesForElementwiseOperation(const HloInstruction* inst) {
   const HloInstruction* slice0 = inst->operand(0);
   if (absl::c_any_of(absl::MakeSpan(inst->operands()).subspan(1),
       [slice0](const HloInstruction* slice) {
-        return !SameSliceConfiguration(slice0, slice)
-            || !ShapeUtil::CompatibleIgnoringElementType(
-                slice0->operand(0)->shape(), slice->operand(0)->shape());
+        return !ShapeUtil::CompatibleIgnoringElementType(
+                   slice0->operand(0)->shape(), slice->operand(0)->shape())
+            || !SameSliceConfiguration(slice0, slice);
       })) {
     return absl::nullopt;
   }
@@ -82,21 +82,22 @@ FindSourceOperandsOfSlicesForElementwiseOperation(const HloInstruction* inst) {
 bool IsPeerOperation(const HloInstruction* inst,
     const HloInstruction* peer_candidate,
     absl::Span<HloInstruction* const> slice_sources) {
-  // Check opcode, user count and operand count.
+  // Instructions that have already been transformed have user_count 0. Avoid
+  // transforming such instructions again.
+  if (peer_candidate->user_count() == 0) {
+    return false;
+  }
+
+  // Check opcode and operand count.
   if (peer_candidate->opcode() != inst->opcode() ||
-      peer_candidate->user_count() == 0 ||
       peer_candidate->operand_count() != inst->operand_count())
     return false;
 
-  // Checks slices:
   const HloInstruction* operand_slice0 = peer_candidate->operand(0);
-  for (int64 j = 0; j < slice_sources.size(); ++j) {
-    // The operands of each operation are slices taken from the same indices of
-    // bigger tensors with the same dimensions. The corresponding operands of
-    // all operations are slices taken from the same bigger tensors.
-    const HloInstruction* operand_slice = peer_candidate->operand(j);
+  for (int64 i = 0; i < slice_sources.size(); ++i) {
+    const HloInstruction* operand_slice = peer_candidate->operand(i);
     if (operand_slice->opcode() != HloOpcode::kSlice ||
-        operand_slice->operand(0) != slice_sources[j] ||
+        operand_slice->operand(0) != slice_sources[i] ||
         !SameSliceConfiguration(operand_slice0, operand_slice)) {
       return false;
       break;
@@ -108,7 +109,21 @@ bool IsPeerOperation(const HloInstruction* inst,
 // Compares the cost of implementing one elementwise operations on the
 // slice_sources with the cost of implementing all the individual elementwise
 // operations in operations_on_slices and returns true if the former is less
-// expensive.
+// expensive. Currently we don't support the following transformation because we
+// don't have such a use case yet.
+// Transform
+//   p = f32[20] parameter(0)
+//   a = f32[8] slice(p), slice=[0:8]
+//   aa = add(a, a)
+//   b = f32[7] slice(p), slice=[2:9]
+//   bb = add(b, b)
+//
+// to
+//   p = f32[20] parameter(0)
+//   x = f32[9] slice(p), slice=[0:8]
+//   xx = add(x,x)
+//   aa = f32[8] slice(xx), slice=[0:8]
+//   bb = f32[7] slice(xx), slice=[2:9]
 bool ShouldReplace(const std::vector<HloInstruction*>& slice_sources,
     const std::vector<HloInstruction*>& operations_on_slices) {
   int64 sum = 0;
@@ -118,10 +133,8 @@ bool ShouldReplace(const std::vector<HloInstruction*>& slice_sources,
   return sum >= xla::ShapeUtil::ElementsIn(slice_sources[0]->shape());
 }
 
-// Collects the peer operations of inst included inst. The operands of each
-// operation in group have the same opcode and they are slices taken from the
-// same indices of bigger tensors with the same dimensions. The corresponding
-// operands of all operations are slices taken from the same bigger tensors.
+// Collects the peer operations of inst including inst itself. See
+// IsPeerOperation for the definition of peer operation.
 absl::optional<std::vector<HloInstruction*>> FindPeerElementwiseOperations(
     const HloInstruction* inst,
     const std::vector<HloInstruction*>& slice_sources) {
@@ -136,30 +149,22 @@ absl::optional<std::vector<HloInstruction*>> FindPeerElementwiseOperations(
 
     // A user of the slice is a candidate of peer operations on slices.
     for (HloInstruction* user : operand_slice0->users()) {
-      // Given an instruction with a slice of slice_sources[i] as its ith
-      // operand, finds its peer operations on slices and returns a vector that
-      // includes the peer operations as well as the given instruction. If no
-      // peer operation is found, returns nullopt. See IsPeerOperation for the
-      // definition of peer operation.
-      if (!IsPeerOperation(inst, user, slice_sources)) {
-        continue;
+      if (IsPeerOperation(inst, user, slice_sources)) {
+        peer_operations.push_back(user);
       }
-
-      peer_operations.push_back(user);
     }
   }
 
-  // Calculates the costs. If cost is more than profit, returns nullopt.
   return ShouldReplace(slice_sources, peer_operations) ?
       absl::make_optional(peer_operations) : absl::nullopt;
 }
 
-// Generates a new elementwise operation using the slice_sources as operands,
+// Generate a new elementwise operation using the slice_sources as operands,
 // and replaces the uses of elementwise operation_on_slices with slices of the
 // new elementwise operations.
 Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
     const std::vector<HloInstruction*>& operation_on_slices) {
-  // Generates operation on slice source.
+  // Generate operation on slice source.
   const Shape shape = slice_sources[0]->shape();
   PrimitiveType element_type = operation_on_slices[0]->shape().element_type();
   Shape new_shape = ShapeUtil::ChangeElementType(shape, element_type);
@@ -170,16 +175,15 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
   VLOG(10) << "Add operation_on_slice_source: "
            << operation_on_slice_source->ToString();
 
-  // Replaces the peer operations with the new operation's slices.
+  // Replace each operation on slices with a slice of the operation on the slice
+  // sources.
   for (HloInstruction* user : operation_on_slices) {
     const HloInstruction* operand_slice = user->operand(0);
-    // Generates slices of the new operation.
     auto user_slice = computation->AddInstruction(
         operand_slice->CloneWithNewOperands(user->shape(),
                                             {operation_on_slice_source}));
     VLOG(10) << "Add NewSlice: " << user_slice->ToString()
              << " Replace: " << user->ToString();
-    // Replaces peer operations with new operation's slices.
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
   return Status::OK();
@@ -190,32 +194,32 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 // There are two purposes of this pass.
 //
 // Eliminate redundant work that occurs when two slices overlap. For example:
-// p = f32[10] parameter(0)
-// a = f32[9] slice(p), slice=[0:9]
-// aa = add(a, a)
-// b = f32[8] slice(p), slice=[2:10]
-// bb = add(b, b)
-// ...
+//   p = f32[10] parameter(0)
+//   a = f32[9] slice(p), slice=[0:9]
+//   aa = add(a, a)
+//   b = f32[8] slice(p), slice=[2:10]
+//   bb = add(b, b)
+//   ...
 // Here we do 17 scalar add operations, while we actually only need to do 10 if
 // we can transform the code to the following:
-// p = f32[10] parameter(0)
-// add = add(p, p)
-// aa = f32[9] slice(add), slice=[0:9]
-// bb = f32[8] slice(add), slice=[2:10]
-// ...
+//   p = f32[10] parameter(0)
+//   add = add(p, p)
+//   aa = f32[9] slice(add), slice=[0:9]
+//   bb = f32[8] slice(add), slice=[2:10]
+//   ...
 // Merge elementwise when two slices are "adjacent".
-// p = f32[10] parameter(0)
-// a = f32[6] slice(p), slice=[0:6]
-// aa = add(a, a)
-// b = f32[4] slice(p), slice=[6:10]
-// bb = add(b, b)
+//   p = f32[10] parameter(0)
+//   a = f32[6] slice(p), slice=[0:6]
+//   aa = add(a, a)
+//   b = f32[4] slice(p), slice=[6:10]
+//   bb = add(b, b)
 // ...
 // Here we’re not doing any redundant work, but transforming this graph to  the
 // following graph allows us to run fewer kernels:
-// p = f32[10] parameter(0)
-// add = add(p, p)
-// aa = f32[6] slice(add), slice=[0:6]
-// bb = f32[4] slice(add), slice=[6:10]
+//   p = f32[10] parameter(0)
+//   add = add(p, p)
+//   aa = f32[6] slice(add), slice=[0:6]
+//   bb = f32[4] slice(add), slice=[6:10]
 //
 // As can be seen from the examples, the group of elementwise operations being
 // transformed meet the following requirements:
@@ -241,16 +245,17 @@ StatusOr<bool> SliceSinker::Run(HloModule* module) {
         continue;
       }
       VLOG(10) << "Merge inst: " << instruction->ToString();
-      // If operation is an elementwise operation on similar slices, return the
-      // source operands of the slices. This check condition-1 described above.
+      // If the current operation is an elementwise operation on similar slices,
+      // return the source operands of the slices. This check condition-1
+      // described above.
       absl::optional<std::vector<HloInstruction*>> source_operands_of_slices =
           FindSourceOperandsOfSlicesForElementwiseOperation(instruction);
       if (!source_operands_of_slices.has_value()) {
         continue;
       }
       // If we can find a group of elementwise operations on similar slices that
-      // meet condition 2~4 and includes operation, return such a group of
-      // operations.
+      // meet condition 2~4, return such a group of operations including the
+      // current operation.
       absl::optional<std::vector<HloInstruction*>> peer_elementwise_operations =
           FindPeerElementwiseOperations(instruction,
                                         source_operands_of_slices.value());
