@@ -256,8 +256,7 @@ class MarkForCompilationPassImpl {
   // Nodes that XLA can compile are put in `compilation_candidates_`.
   Status FindCompilationCandidates();
 
-  bool CompilationDisallowedByXlaCompileAttr(Node* node,
-                                             const DeviceType& jit_device_type);
+  bool CompilationDisallowedByXlaCompileAttr(Node* node);
 
   // Populates `clusters_`.
   Status BuildInitialClusterSet();
@@ -869,7 +868,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     VLOG(4) << "Device type for " << node->name() << ": "
             << device_type.type_string();
 
-    if (CompilationDisallowedByXlaCompileAttr(node, device_type)) {
+    if (CompilationDisallowedByXlaCompileAttr(node)) {
       VLOG(2) << "Not clustering " << node->name()
               << ": disallowed by _XlaCompile attribute";
       continue;
@@ -955,14 +954,8 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
-    Node* node, const DeviceType& device_type) {
+    Node* node) {
   if (debug_options_.ignore_xla_compile_attr) {
-    return false;
-  }
-
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    VLOG(2) << "Rejecting " << node->name() << ": could not find JIT device.";
     return false;
   }
 
