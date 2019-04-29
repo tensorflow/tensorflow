@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/thread_options.h"
 
 namespace stream_executor {
