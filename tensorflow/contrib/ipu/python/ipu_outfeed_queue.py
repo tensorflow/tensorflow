@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Contains class for creating output outfeeds into TF graphs targeting the IPU."""
+"""Contains class for creating output outfeeds into TF graphs targeting the
+ IPU."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,13 +27,13 @@ from copy import deepcopy
 class IPUOutfeedQueue:
   """Generates and adds outfeed enqueue/dequeue operations to the graph.
 
-    The queue has two modes of operation - outfeed all or outfeed last.
-    In outfeed all mode every element that is enqueued will be stored
-    for a subsequent dequeue. All of the enqueued elements will be returned
-    when the dequeue operation is run.
+  The queue has two modes of operation - outfeed all or outfeed last.
+  In outfeed all mode every element that is enqueued will be stored
+  for a subsequent dequeue. All of the enqueued elements will be returned
+  when the dequeue operation is run.
 
-    In outfeed last mode only the last enqueued element is stored. The dequeue
-    operation will in this case return a single element.
+  In outfeed last mode only the last enqueued element is stored. The dequeue
+  operation will in this case return a single element.
     """
 
   def __init__(self,
@@ -42,19 +43,19 @@ class IPUOutfeedQueue:
                replication_factor=1):
     """Creates an IPUOutfeedQueue object.
 
-        Args:
-            feed_name: a user provided name for the outfeed operation.  Must be
-            unique within all IPUOutfeedQueue and IPUInfeedQueue
-            operations.
-            outfeed_all: a bool value indicating whether all enqueued
-            elements should be stored or only the last one.
-            device_ordinal: ordinal of the device on which this queue will be
-            used.
-            replication_factor: the number of replicated graphs this Outfeed
-            will be used in.
+    Args:
+        feed_name: a user provided name for the outfeed operation.  Must be
+        unique within all IPUOutfeedQueue and IPUInfeedQueue
+        operations.
+        outfeed_all: a bool value indicating whether all enqueued
+        elements should be stored or only the last one.
+        device_ordinal: ordinal of the device on which this queue will be
+        used.
+        replication_factor: the number of replicated graphs this Outfeed
+        will be used in.
 
-        Raises:
-          ValueError: if the types or values are incorrect
+    Raises:
+      ValueError: if the types or values are incorrect
       """
     if type(outfeed_all) is not bool:
       raise ValueError("Expcted value True or False for outfeed_all")
@@ -80,71 +81,77 @@ class IPUOutfeedQueue:
 
   def enqueue(self, tensors):
     """Enqueue a tensor, tuple or a dictionary of tensors for being outfed
-         from the IPU graph. This operation is placed on the IPU device.
-         This function returns an Operation which needs be executed (by either
-         returning it or using tf.control_dependencies(...))
+    from the IPU graph. This operation is placed on the IPU device.
+    This function returns an Operation which needs be executed (by either
+    returning it or using tf.control_dependencies(...))
 
-        Examples:
-        1. Outfeed returning a single tensor:
-        ```
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    Examples:
+    1. Outfeed returning a single tensor:
 
-        def body(v):
-          v = v + 1
-          outfeed = outfeed_queue.enqueue(v)
-          return (v, outfeed)
+    .. code-block:: python
 
-        def my_net(v):
-          r = loops.repeat(20, body, (v))
-          return r
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
-        with ipu.ops.ipu_scope("/device:IPU:0"):
-          res = ipu_compiler.compile(my_net, inputs=[v])
+       def body(v):
+         v = v + 1
+         outfeed = outfeed_queue.enqueue(v)
+         return (v, outfeed)
 
-        ...
-        ...
-        ```
-        2. Outfeed returning a tuple of tensors:
-        ```
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       def my_net(v):
+         r = loops.repeat(20, body, (v))
+         return r
 
-        def body(v):
-          v = v + 1
-          x = v * 2
-          outfeed = outfeed_queue.enqueue((v, x))
-          return (v, outfeed)
+       with ipu.ops.ipu_scope("/device:IPU:0"):
+         res = ipu_compiler.compile(my_net, inputs=[v])
 
-        def my_net(v):
-          r = loops.repeat(20, body, (v))
-          return r
+       ...
+       ...
 
-        with ipu.ops.ipu_scope("/device:IPU:0"):
-          res = ipu_compiler.compile(my_net, inputs=[v])
+     2. Outfeed returning a tuple of tensors:
 
-        ...
-        ...
-        ```
-        3. Outfeed returning a dictionary of tensors:
-        ```
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+     .. code-block:: python
 
-        def body(v):
-          v = v + 1
-          x = v * 2
-          outfeed = outfeed_queue.enqueue({"output_1": v,
-                                           "output_2": x})
-          return (v, outfeed)
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
-        def my_net(v):
-          r = loops.repeat(20, body, (v))
-          return r
+       def body(v):
+         v = v + 1
+         x = v * 2
+         outfeed = outfeed_queue.enqueue((v, x))
+         return (v, outfeed)
 
-        with ipu.ops.ipu_scope("/device:IPU:0"):
-          res = ipu_compiler.compile(my_net, inputs=[v])
+       def my_net(v):
+         r = loops.repeat(20, body, (v))
+         return r
 
-        ...
-        ...
-        ```
+       with ipu.ops.ipu_scope("/device:IPU:0"):
+         res = ipu_compiler.compile(my_net, inputs=[v])
+
+       ...
+       ...
+
+     3. Outfeed returning a dictionary of tensors:
+
+     .. code-block:: python
+
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+
+       def body(v):
+         v = v + 1
+         x = v * 2
+         outfeed = outfeed_queue.enqueue({"output_1": v,
+                                          "output_2": x})
+         return (v, outfeed)
+
+       def my_net(v):
+         r = loops.repeat(20, body, (v))
+         return r
+
+       with ipu.ops.ipu_scope("/device:IPU:0"):
+         res = ipu_compiler.compile(my_net, inputs=[v])
+
+       ...
+       ...
+
       """
     if self.enqueued:
       raise ValueError("An outfeed can only be enqueued once.")
@@ -164,13 +171,15 @@ class IPUOutfeedQueue:
 
   def dequeue(self):
     """Generate host side operation to dequeue the outfeed values. The
-      operation generated by this function will block if called prior
-      to any enqueues.
+    operation generated by this function will block if called prior
+    to any enqueues.
 
-      The return value of this operation depends on the enqueued tensors,
-      replication factor and the execution mode.
-      1. Outfeed returning a single tensor:
-        ```
+    The return value of this operation depends on the enqueued tensors,
+    replication factor and the execution mode.
+    1. Outfeed returning a single tensor:
+
+    .. code-block:: python
+
         outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
 
         def body(input):
@@ -193,20 +202,22 @@ class IPUOutfeedQueue:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
         ```
-      In this example the tensor `output` is of shape [4, 4] and it's enqueued
-      into the outfeed with replication_factor = 2. If the Outfeed mode is
-      outfeed_all == True, then the shape of the resulting `outfed` tensor will
-      be [20, 2, 4, 4], where the first dimension represents the number of times
-      we have enqueued a tensor to the outfeed - in this example the loop is
-      repeated 20 times, and therefore we get 20 values back from the outfeed.
-      The second dimension is the replication_factor, which allows us to see the
-      individual values from each replicated graph. If the Outfeed mode is
-      outfeed_all == False, then the shape of the resulting `outfed` tensor will
-      be [2, 4, 4], which represents the value of the output tensor the last
-      time it was enqueued during execution for each of the replicated graphs.
+    In this example the tensor `output` is of shape [4, 4] and it's enqueued
+    into the outfeed with replication_factor = 2. If the Outfeed mode is
+    outfeed_all == True, then the shape of the resulting `outfed` tensor will
+    be [20, 2, 4, 4], where the first dimension represents the number of times
+    we have enqueued a tensor to the outfeed - in this example the loop is
+    repeated 20 times, and therefore we get 20 values back from the outfeed.
+    The second dimension is the replication_factor, which allows us to see the
+    individual values from each replicated graph. If the Outfeed mode is
+    outfeed_all == False, then the shape of the resulting `outfed` tensor will
+    be [2, 4, 4], which represents the value of the output tensor the last
+    time it was enqueued during execution for each of the replicated graphs.
 
-      2. Outfeed returning a tuple of tensors:
-        ```
+    2. Outfeed returning a tuple of tensors:
+
+    .. code-block:: python
+
         outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         def body(input):
@@ -230,22 +241,24 @@ class IPUOutfeedQueue:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
         ```
-      In this example we outfeed a tuple of tensors, `output` and `sum`, where
-      the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
-      outfeed_all == True, then the resulting outfed is a two-tuple of tensors
-      with shapes ([20, 4, 4], [20, 1]), where the first dimension in each of
-      the tensors represents the number of times we have enqueued these tensors
-      to the outfeed - in this example the loop is repeated 20 times, and
-      therefore we get 20 values back from the outfeed for each of the tensors
-      in the tuple. If the Outfeed mode is outfeed_all == False, then the
-      `outfed` is a two tuple of tensors with shapes ([4, 4], [1]), which
-      represents the values of the `output` and `sum` tensors the last time
-      they were enqueued during execution.
-      Note that `replication_factor` here is the default (=1), which means that
-      the extra replication dimension is not added.
+    In this example we outfeed a tuple of tensors, `output` and `sum`, where
+    the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
+    outfeed_all == True, then the resulting outfed is a two-tuple of tensors
+    with shapes ([20, 4, 4], [20, 1]), where the first dimension in each of
+    the tensors represents the number of times we have enqueued these tensors
+    to the outfeed - in this example the loop is repeated 20 times, and
+    therefore we get 20 values back from the outfeed for each of the tensors
+    in the tuple. If the Outfeed mode is outfeed_all == False, then the
+    `outfed` is a two tuple of tensors with shapes ([4, 4], [1]), which
+    represents the values of the `output` and `sum` tensors the last time
+    they were enqueued during execution.
+    Note that `replication_factor` here is the default (=1), which means that
+    the extra replication dimension is not added.
 
-      3. Outfeed returning a dictionary of tensors:
-        ```
+    3. Outfeed returning a dictionary of tensors:
+
+    .. code-block:: python
+
         outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=8)
 
         def body(input):
@@ -270,22 +283,22 @@ class IPUOutfeedQueue:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
         ```
-      In this example we outfeed a dictionary of tensors, `output` and `sum`,
-      where the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
-      outfeed_all == True, then the resulting outfed is a dictionary of tensors
-      with shapes: {"x": [40, 8, 4, 4], "y": [40, 8, 1]}, where the first
-      dimension in each of the tensors represents the number of times we have
-      enqueued these tensors to the outfeed - in this example the loop is
-      repeated 40 times, and therefore we get 40 values back from the outfeed
-      for each of the tensors in the tuple. The second dimension is the
-      replication_factor, which allows us to see the individual values from each
-      replicated graph. If the Outfeed mode is outfeed_all == False, then the
-      `outfed` is a dictionary of tensors with shapes:
-      {"x": [8, 4, 4], "y": [8, 1]}, which represents the values of
-      the `output` and `sum` tensors the last time they were enqueued during
-      execution for each of the replicated graphs.
+    In this example we outfeed a dictionary of tensors, `output` and `sum`,
+    where the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
+    outfeed_all == True, then the resulting outfed is a dictionary of tensors
+    with shapes: {"x": [40, 8, 4, 4], "y": [40, 8, 1]}, where the first
+    dimension in each of the tensors represents the number of times we have
+    enqueued these tensors to the outfeed - in this example the loop is
+    repeated 40 times, and therefore we get 40 values back from the outfeed
+    for each of the tensors in the tuple. The second dimension is the
+    replication_factor, which allows us to see the individual values from each
+    replicated graph. If the Outfeed mode is outfeed_all == False, then the
+    `outfed` is a dictionary of tensors with shapes:
+    {"x": [8, 4, 4], "y": [8, 1]}, which represents the values of
+    the `output` and `sum` tensors the last time they were enqueued during
+    execution for each of the replicated graphs.
 
-      """
+    """
 
     # None shape in beginning of list indicates that an unknown number of
     # outfeed elements will be returned

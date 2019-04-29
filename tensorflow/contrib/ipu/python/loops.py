@@ -13,6 +13,7 @@
 # limitations under the License.
 # =============================================================================
 """Library for constructing a loop, suitable for IPUs."""
+
 # This implementation is based on:
 # tensorflow/python/tpu/training_loop.py
 # which creates the loops for the TPUs.

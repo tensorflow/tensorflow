@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Popops CrossReplicaSum operator."""
+
 from tensorflow.compiler.plugin.poplar.ops import gen_popops_ops
 
 

@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
+"""
+Utility functions for assisting in sharding graphs across multiple IPUs.
+"""
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
@@ -21,6 +24,15 @@ _XLA_SHARDING = '_XlaSharding'
 
 
 def has_attr(o, attr_name):
+  """Test for the presence of a specific attribute.
+
+  Args:
+    o: An operation.
+    attr_name: The name of an attribute to test for.
+
+  Returns:
+    True if the operation has the given attribute.
+  """
   for i in o.node_def.attr.items():
     if i[0] == attr_name:
       return True
@@ -28,6 +40,12 @@ def has_attr(o, attr_name):
 
 
 def dependencies(roots):
+  """Find a list of ancestor operations for a given set of root operations
+
+  Args:
+    roots: The root operations from which to start.
+
+  """
   working = roots
   op_set = set()
   while len(working) > 0:
@@ -42,6 +60,12 @@ def dependencies(roots):
 
 
 def get_shard_from_colocation(op):
+  """Find the shard number from an op which shares co-location information with
+  the given operation.
+
+  Args:
+    op: The operation to apply sharding to.
+  """
   g = op.graph
   for c in op.colocation_groups():
     try:
@@ -60,6 +84,12 @@ def get_shard_from_colocation(op):
 
 
 def propagate_sharding(g):
+  """Move the sharding from the forward pass operations onto their co-located
+  backward pass operations.
+
+  Args:
+    g: The graph.
+  """
   changed = True
   while changed:
     changed = False

@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Functions related to compiling TF code for the Graphcore IPU backend."""
+"""@package tensorflow.contrib.ipu.python.ipu_compiler
+Functions related to compiling TF code for the Graphcore IPU backend."""
 
 from __future__ import absolute_import
 from __future__ import division

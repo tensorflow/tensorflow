@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Contains class for creating input infeeds into TF graphs targeting the IPU."""
+"""@package tensorflow.contrib.ipu.python.ipu_infeed_queue
+Contains class for creating input infeeds into TF graphs targeting the IPU."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

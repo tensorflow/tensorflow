@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""An optimizer wrapper for replicating sharding information from the forward
-   pass to the backward pass."""
+"""
+An optimizer wrapper for replicating sharding information from the forward
+pass to the backward pass."""
 
 from tensorflow.python.training import optimizer
 from tensorflow.python.framework import ops
