@@ -59,6 +59,7 @@ cc_library(
             "//tensorflow/stream_executor/platform",
         ],
     ) + tf_additional_cuda_platform_deps() + [
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -110,7 +111,11 @@ cc_library(
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": ["cudart_stub"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub"],
         "//conditions:default": ["//tensorflow/core:cuda"],
-    }) + ["@com_google_absl//absl/strings:str_format"],
+    }) + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
