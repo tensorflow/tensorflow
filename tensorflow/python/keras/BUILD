@@ -1329,9 +1329,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "topology_test",
+    name = "network_test",
     size = "medium",
-    srcs = ["engine/topology_test.py"],
+    srcs = ["engine/network_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
