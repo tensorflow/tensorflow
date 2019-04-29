@@ -386,5 +386,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/130035424)
     ],
 )
