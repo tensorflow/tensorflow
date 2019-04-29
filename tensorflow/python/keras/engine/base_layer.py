@@ -379,7 +379,7 @@ class Layer(module.Module):
         initializer=initializer,
         dtype=dtype,
         constraint=constraint,
-        trainable=trainable and self.trainable,
+        trainable=trainable,
         partitioner=partitioner,
         use_resource=use_resource,
         collections=collections,

@@ -17,123 +17,113 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 namespace operator_property {
-TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
-                                 OperatorProperty* property) {
-  // Set up default values.
-  property->per_axis = false;
-  property->per_axis_index = 0;
-  property->arbitrary_inputs = false;
-  property->input_indexes = {};
-  property->output_indexes = {};
-  property->biases = {};
-  property->restrict_same_input_output_scale = false;
-  property->restriction_on_output = false;
-  property->restricted_value_on_output = {0.0, 0.0};
-  property->version = 0;
+OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
+  OperatorProperty property;
   switch (op) {
     case BuiltinOperator_ADD:
-      property->input_indexes = {0, 1};
-      property->output_indexes = {0};
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_ARG_MAX:
-      property->input_indexes = {0};
+      property.input_indexes = {0};
       // ArgMax has no quantizable output.
-      property->version = 2;
-      return kTfLiteOk;
+      property.version = 2;
+      break;
     case BuiltinOperator_AVERAGE_POOL_2D:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->restrict_same_input_output_scale = true;
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_CONCATENATION:
-      property->arbitrary_inputs = true;
-      property->input_indexes = {};
-      property->output_indexes = {0};
-      property->restrict_same_input_output_scale = true;
-      property->version = 2;
-      return kTfLiteOk;
+      property.arbitrary_inputs = true;
+      property.input_indexes = {};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_CONV_2D:
-      property->per_axis = true;
-      property->per_axis_index = 0;
-      property->input_indexes = {0, 1};
-      property->output_indexes = {0};
-      property->biases = {2};
-      property->version = 2;
-      return kTfLiteOk;
+      property.per_axis = true;
+      property.per_axis_index = 0;
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.biases = {2};
+      property.version = 2;
+      break;
     case BuiltinOperator_DEPTHWISE_CONV_2D:
-      property->per_axis = true;
-      property->per_axis_index = 3;
-      property->input_indexes = {0, 1};
-      property->output_indexes = {0};
-      property->biases = {2};
-      property->version = 3;
-      return kTfLiteOk;
+      property.per_axis = true;
+      property.per_axis_index = 3;
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.biases = {2};
+      property.version = 3;
+      break;
     case BuiltinOperator_FULLY_CONNECTED:
-      property->input_indexes = {0, 1};
-      property->output_indexes = {0};
-      property->biases = {2};
-      property->version = 4;
-      return kTfLiteOk;
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.biases = {2};
+      property.version = 4;
+      break;
     case BuiltinOperator_MAX_POOL_2D:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->restrict_same_input_output_scale = true;
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_MEAN:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_MUL:
-      property->input_indexes = {0, 1};
-      property->output_indexes = {0};
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_PAD:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->version = 2;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_QUANTIZE:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->version = 1;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 1;
+      break;
     case BuiltinOperator_RESHAPE:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->restrict_same_input_output_scale = true;
-      property->version = 1;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_SQUEEZE:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
-      property->restrict_same_input_output_scale = true;
-      property->version = 1;
-      return kTfLiteOk;
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_SOFTMAX:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
+      property.input_indexes = {0};
+      property.output_indexes = {0};
       // Softmax requires output with 1/256 as scale and -128 as zero point.
-      property->restriction_on_output = true;
-      property->restricted_value_on_output = {1 / 256.0, -128};
-      property->version = 2;
-      return kTfLiteOk;
+      property.restriction_on_output = true;
+      property.restricted_value_on_output = {1 / 256.0, -128};
+      property.version = 2;
+      break;
     case BuiltinOperator_TANH:
-      property->input_indexes = {0};
-      property->output_indexes = {0};
+      property.input_indexes = {0};
+      property.output_indexes = {0};
       // Tanh requires output with 1/128 as scale and 0 as zero point.
-      property->restriction_on_output = true;
-      property->restricted_value_on_output = {1 / 128.0, 0};
-      property->version = 2;
-      return kTfLiteOk;
+      property.restriction_on_output = true;
+      property.restricted_value_on_output = {1 / 128.0, 0};
+      property.version = 2;
+      break;
     default:
-      return kTfLiteError;
+      // No quantized implementation exists for this operation.
+      property.quantizable = false;
   }
-  return kTfLiteError;
+  return property;
 }
 
 }  // namespace operator_property

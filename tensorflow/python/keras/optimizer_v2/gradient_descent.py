@@ -60,7 +60,7 @@ class SGD(optimizer_v2.OptimizerV2):
   """
 
   def __init__(self,
-               learning_rate=0.001,
+               learning_rate=0.01,
                momentum=0.0,
                nesterov=False,
                name="SGD",

@@ -16,8 +16,10 @@ limitations under the License.
 #include <unistd.h>
 
 #include "absl/base/casts.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_event.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -33,8 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -140,7 +140,8 @@ void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   LOG(FATAL) << "Feature not supported on ROCM platform (UnloadKernel)";
 }
 
-port::Status GpuExecutor::Init(DeviceOptions device_options) {
+port::Status GpuExecutor::Init(int device_ordinal,
+                               DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
   auto status = GpuDriver::Init();
@@ -210,9 +211,9 @@ static string GetBinaryDir(bool strip_exe) {
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
     string ret = exe_path;
-    std::vector<string> components = port::Split(exe_path, '/');
+    std::vector<string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
-    return port::Join(components, "/");
+    return absl::StrJoin(components, "/");
   }
   return exe_path;
 }
@@ -818,7 +819,7 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device_)) {
+  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
     return false;
   }
 
@@ -869,7 +870,7 @@ static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
-CreateDeviceDescriptionInternal(int device_ordinal) {
+GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
   if (!status.ok()) {
@@ -898,7 +899,7 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
     string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
-    pci_bus_id = port::Lowercase(pci_bus_id);
+    pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
     builder.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
@@ -934,7 +935,7 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(&block_dim_limit);
+    FillBlockDimLimit(device, &block_dim_limit);
     builder.set_block_dim_limit(block_dim_limit);
   }
 
@@ -968,11 +969,6 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
   builder.set_registers_per_core_limit(64 * 1024);
 
   return builder.Build();
-}
-
-port::StatusOr<std::unique_ptr<DeviceDescription>>
-GpuExecutor::CreateDeviceDescription() const {
-  return CreateDeviceDescriptionInternal(device_ordinal_);
 }
 
 }  // namespace gpu

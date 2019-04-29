@@ -24,10 +24,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-
 #include <stdlib.h>
 #include <string.h>
+
 #include <algorithm>
 #include <list>
 #include <map>
@@ -36,6 +35,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -313,24 +313,6 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
   GPUProcessState::singleton()->EnableGPUDevice();
-  pending_cap_ = options.config.gpu_options().experimental().pending_cap();
-  timestamped_allocator_ =
-      options.config.gpu_options().experimental().timestamped_allocator();
-  if (timestamped_allocator_ || pending_cap_ > 0) {
-    SharedCounter* timing_counter = nullptr;
-    if (timestamped_allocator_) {
-      // In this case the SharedCounter was already created and set in the
-      // associated Allocator, with ownership by GPUProcessState.
-      // The GPUKernelTracker will use this SharedCounter, instead of
-      // owning its own.
-      timing_counter =
-          GPUProcessState::singleton()->GPUAllocatorCounter(tf_gpu_id);
-      DCHECK(timing_counter);
-    } else {
-      DCHECK_GT(pending_cap_, 0);
-    }
-    kernel_tracker_.reset(new GPUKernelTracker(Env::Default(), timing_counter));
-  }
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
@@ -379,7 +361,6 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   }
 
   executor_ = executor_status.ValueOrDie();
-  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
 
   if (max_streams_ < 1) {
     return errors::InvalidArgument("Invalid value for max_streams.");
@@ -393,6 +374,39 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         i, streams_.back()->compute, streams_.back()->host_to_device,
         streams_.back()->device_to_host, streams_.back()->device_to_device));
   }
+
+  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
+
+  GPUKernelTracker::Params tracker_params(
+      options.config.gpu_options().experimental().kernel_tracker_max_interval(),
+      options.config.gpu_options().experimental().kernel_tracker_max_bytes(),
+      options.config.gpu_options().experimental().kernel_tracker_max_pending());
+  timestamped_allocator_ =
+      options.config.gpu_options().experimental().timestamped_allocator();
+  pending_cap_ = tracker_params.max_pending;
+  if (timestamped_allocator_ ||
+      (tracker_params.max_interval > 0 || tracker_params.max_bytes > 0 ||
+       tracker_params.max_pending > 0)) {
+    if (max_streams_ > 1) {
+      LOG(FATAL) << "max_streams > 1 was specified together with "
+                    "timestamped_allocator and/or kernel tracking.  This is an "
+                    "unsupported combination.";
+    }
+    SharedCounter* timing_counter = nullptr;
+    if (timestamped_allocator_) {
+      // In this case the SharedCounter was already created and set in the
+      // associated Allocator, with ownership by GPUProcessState.
+      // The GPUKernelTracker will use this SharedCounter, instead of
+      // owning its own.
+      timing_counter =
+          GPUProcessState::singleton()->GPUAllocatorCounter(tf_gpu_id_);
+      DCHECK(timing_counter);
+    }
+    kernel_tracker_.reset(new GPUKernelTracker(
+        tracker_params, Env::Default(), streams_[0]->compute, timing_counter,
+        timestamped_allocator_ ? gpu_allocator_ : nullptr, em_.get()));
+  }
+
   gpu_device_info_ = new GpuDeviceInfo;
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
@@ -569,9 +583,11 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
       if (idc->stream() != stream) stream->ThenWaitFor(idc->stream());
     }
   }
-  if (pending_cap_ > 0) {
-    DCHECK(kernel_tracker_);
-    kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
+  if (kernel_tracker_.get()) {
+    context->set_record_memory_consumption(true);
+    if (pending_cap_ > 0) {
+      kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
+    }
   }
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->Compute(context);
@@ -593,10 +609,12 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
     if (kernel_tracker_) {
       GPUKernelTracker* tracker = kernel_tracker_.get();
       DCHECK(tracker);
-      uint64 queued_count = tracker->RecordQueued();
-      em_->ThenExecute(stream, [op_kernel, tracker, queued_count]() {
-        tracker->RecordTerminated(queued_count);
-      });
+      uint64 queued_count = tracker->MaybeQueue(context);
+      if (queued_count > 0) {
+        em_->ThenExecute(stream, [tracker, queued_count]() {
+          tracker->RecordTerminated(queued_count);
+        });
+      }
     }
   } else {
     if (vlog_1) {
@@ -661,8 +679,17 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       done(err);
       return err;
     }
-    auto* copy =
-        new Tensor(GetAllocator(alloc_attrs), from.dtype(), from.shape());
+    AllocationAttributes allocation_attr;
+    uint64 safe_alloc_frontier = 0;
+    std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+      safe_alloc_frontier = SafeAllocFrontier(safe_alloc_frontier);
+      return safe_alloc_frontier;
+    };
+    if (timestamped_allocator_) {
+      allocation_attr.freed_by_func = &freed_by_func;
+    }
+    auto* copy = new Tensor(GetAllocator(alloc_attrs), from.dtype(),
+                            from.shape(), allocation_attr);
 
     // If the tensor is not initialized, we likely ran out of memory.
     if (!copy->IsInitialized()) {
@@ -687,8 +714,9 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
         std::move(done), std::placeholders::_1);
 
     tracing::ScopedAnnotation annotation("MakeTensorFromProto");
-    device_contexts_[0]->CopyCPUTensorToDevice(&from, this, copy,
-                                               std::move(wrapped_done));
+    device_contexts_[0]->CopyCPUTensorToDevice(
+        &from, this, copy, std::move(wrapped_done),
+        !timestamped_allocator_ /*sync_dst_compute*/);
     return Status::OK();
   }
 }
@@ -894,8 +922,8 @@ int64 MinSystemMemory(int64 available_memory) {
 #endif
 
 #if defined(ANDROID_TEGRA)
-  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM
-  // and Video RAM
+  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for
+  // RAM and Video RAM
   min_system_memory = 1 << 30;
 #endif
   return min_system_memory;
@@ -1048,8 +1076,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
   std::vector<PlatformGpuId> valid_platform_gpu_ids;
   // If we aren't going to use any GPUs, don't initialize them.
   // We don't want to call ParseVisibleDeviceList if num_gpus_to_use is 0,
-  // because it treats an empty gpu_options.visible_device_list as 'all GPUs are
-  // visible'.
+  // because it treats an empty gpu_options.visible_device_list as 'all GPUs
+  // are visible'.
   if (num_gpus_to_use > 0) {
     TF_RETURN_IF_ERROR(ParseVisibleDeviceList(gpu_options.visible_device_list(),
                                               &visible_gpu_order));
@@ -1237,8 +1265,9 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
     cc_minor = 0;
   }
   // LINT.IfChange
-  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
-                         desc.name(), ", pci bus id: ", desc.pci_bus_id(),
+  return strings::StrCat("device: ", platform_gpu_id.value(),
+                         ", name: ", desc.name(),
+                         ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 #elif TENSORFLOW_USE_ROCM
@@ -1279,13 +1308,14 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   if (!stats) {
     return errors::Internal("No allocator statistics");
   }
-  // 'memory_limit' is the required memory size, but if the allocator with given
-  // tf_gpu_id was created before, we'll use it instead of creating a new one
-  // (as TF gpu device is a shared resource), in which case the actual memory
-  // limit represented by 'stats.bytes_limit' used by that allocator may be
-  // different (which should be an error).
+  // 'memory_limit' is the required memory size, but if the allocator with
+  // given tf_gpu_id was created before, we'll use it instead of creating a
+  // new one (as TF gpu device is a shared resource), in which case the actual
+  // memory limit represented by 'stats.bytes_limit' used by that allocator
+  // may be different (which should be an error).
   //
-  // TODO(laigd): report error if memory_limit doesn't match stats->bytes_limit.
+  // TODO(laigd): report error if memory_limit doesn't match
+  // stats->bytes_limit.
   int64 bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
@@ -1725,9 +1755,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   return Status::OK();
 }
 
-uint64 BaseGPUDevice::SafeAllocFrontier() {
+uint64 BaseGPUDevice::SafeAllocFrontier(uint64 old_value) {
   if (timestamped_allocator_) {
-    return kernel_tracker_->LastTerminatedCount();
+    return kernel_tracker_->LastTerminatedCount(old_value);
   } else {
     return 0;
   }
@@ -1740,19 +1770,50 @@ int BaseGPUDevice::PendingKernels() {
   return 0;
 }
 
-uint64 GPUKernelTracker::RecordQueued() {
+uint64 GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
   mutex_lock l(mu_);
+  ++ops_since_last_;
+  int64 mem_used =
+      ctx->persistent_memory_allocated() + ctx->temp_memory_allocated();
+  VLOG(2) << "kernel: " << ctx->op_kernel().name() << " mem_used: " << mem_used;
+  mem_since_last_ += mem_used;
+  int weight = 1;
+  // Note that if all {max_bytes, max_interval, max_pending} are zero then
+  // we we track every single kernel with no pending cap.  This can happen
+  // if timestamped_allocator alone was specified.
+  if ((mem_since_last_ < params_.max_bytes) &&
+      (ops_since_last_ < params_.max_interval)) {
+    return 0;
+  } else {
+    weight = std::min(
+        params_.max_pending,
+        std::max(1, mem_since_last_ / std::max(16386, params_.max_bytes)));
+    mem_since_last_ = 0;
+    ops_since_last_ = 0;
+  }
   uint64 queued_count = timing_counter_->next();
+  RecordQueued(queued_count, weight);
+  return queued_count;
+}
+
+void GPUKernelTracker::RecordQueued(uint64 queued_count, int weight) {
   VLOG(2) << "RecordQueued queued_count=" << queued_count
           << " first_available_=" << first_available_
           << " last_completed_=" << last_completed_
           << " num_pending_=" << num_pending_;
   pending_kernels_[first_available_].queued_count = queued_count;
+  pending_kernels_[first_available_].weight = weight;
   pending_kernels_[first_available_].terminated = false;
   ++first_available_;
-  ++num_pending_;
+  num_pending_ += weight;
   if (first_available_ >= pending_kernels_.size()) {
-    first_available_ = 0;
+    if (last_completed_ >= 0) {
+      // wrap
+      first_available_ = 0;
+    } else {
+      // enlarge the ring buffer
+      pending_kernels_.resize(2 * pending_kernels_.size());
+    }
   }
   if (first_available_ == last_completed_) {
     // Ring buffer is full: double it.  All of the same valid PendingKernel
@@ -1771,12 +1832,30 @@ uint64 GPUKernelTracker::RecordQueued() {
             << " num_pending_=" << num_pending_;
   }
   DCHECK_NE(first_available_, last_completed_) << "exhausted pending_kernels";
-  return queued_count;
+}
+
+// Called by LastTerminatedCount() when new_value is equal to old_value.  This
+// case can occur where an allocation failed and waited for memory to be freed,
+// then when it retried the safe allocation frontier had not advanced because no
+// tracking event had matured.  Maybe GPU progress has stalled waiting on an i/o
+// event, or maybe we're tracking at too infrequent an interval.  In any case if
+// the GPU compute queue is actually empty it's safe to advance the safe
+// frontier so that this request can allocate from unrestricted (and better
+// compacted) memory.  So queue an event on the compute stream to ensure the
+// frontier does advance.
+void GPUKernelTracker::MaybeQueueProgressEvent() {
+  mutex_lock l(mu_);
+  if (num_pending_ == 0) {
+    uint64 new_count = timing_counter_->next();
+    RecordQueued(new_count, 1);
+    em_->ThenExecute(stream_,
+                     [this, new_count]() { RecordTerminated(new_count); });
+  }
 }
 
 void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   mutex_lock l(mu_);
-  VLOG(2) << "RecordTerminated queued_count=" << queued_count
+  VLOG(2) << this << " RecordTerminated queued_count=" << queued_count
           << " first_available_=" << first_available_
           << " last_completed_=" << last_completed_
           << " num_pending_=" << num_pending_ << " LC="
@@ -1788,26 +1867,31 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   // Starting just past the last completed entry, find the entry with
   // this queued_count and mark it done.
   int index = (last_completed_ + 1) % pending_kernels_.size();
+  int weight = 1;
   while (true) {
     if (index == first_available_) {
       // This should never happen.
       LOG(FATAL) << "Failed to find " << queued_count  // Crash OK
-                 << " in queue";
+                 << " in queue, last_completed_=" << last_completed_
+                 << " index=" << index
+                 << " first_available_=" << first_available_
+                 << " pending_kernels_.size()=" << pending_kernels_.size();
     }
     if (pending_kernels_[index].queued_count == queued_count) {
       pending_kernels_[index].terminated = true;
+      weight = pending_kernels_[index].weight;
       break;
     }
     index = (index + 1) % pending_kernels_.size();
   }
   // Next move last_completed_ forward past all completed kernels.  In theory
   // kernels should always complete in queued order so we should be able to
-  // advance the completed frontier to the last queued PendingKernel.  In
-  // practice we occassionally see the termination callbacks arrive out of order
-  // probably because of thread scheduling.  Eventually we may support out-of-
-  // order completion involving multple compute streams so here we follow a
-  // conservative approach and wait for every single callback to arrive before
-  // advancing the frontier.
+  // advance the completed frontier to the just-completed PendingKernel.  In
+  // practice we occasionally see the termination callbacks arrive out of
+  // order probably because of thread scheduling.  Eventually we may support
+  // out-of- order completion involving multple compute streams so here we
+  // follow a conservative approach and wait for every single callback to
+  // arrive before advancing the frontier.
   while (true) {
     int next_index = (last_completed_ + 1) % pending_kernels_.size();
     if (next_index == first_available_) break;
@@ -1817,21 +1901,16 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
       break;
     }
   }
-  // Last decrease num_pending before maybe waking a waiter.
-  --num_pending_;
-  pending_decreased_.notify_one();
-}
-
-uint64 GPUKernelTracker::LastTerminatedCount() {
-  mutex_lock l(mu_);
-  if (last_completed_ < 0) {
-    // This is an edge case that can be encountered only at the beginning of
-    // execution.  There's not yet a safe threshold count. We don't want to
-    // return 0 since that bypasses the count mechanism in BFCAllocator, so
-    // return the least non-zero value.
-    return 1;
+  if (last_completed_ >= 0) {
+    int64 v = pending_kernels_[last_completed_].queued_count;
+    last_terminated_count_ = v;
+    if (allocator_) {
+      allocator_->SetSafeFrontier(v);
+    }
   }
-  return pending_kernels_[last_completed_].queued_count;
+  // Last decrease num_pending before maybe waking a waiter.
+  num_pending_ -= weight;
+  pending_decreased_.notify_all();
 }
 
 }  // namespace tensorflow

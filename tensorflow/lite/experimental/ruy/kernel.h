@@ -42,11 +42,11 @@ void RunKernel(
     const Spec& spec, int start_row, int start_col, int end_row, int end_col,
     Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
-  using LhsLayout = typename Kernel::LhsLayout;
-  using RhsLayout = typename Kernel::RhsLayout;
 #if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
+  using LhsLayout = typename Kernel::LhsLayout;
+  using RhsLayout = typename Kernel::RhsLayout;
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
     int block_end_col = std::min(col + RhsLayout::kCols, end_col);
     for (int row = start_row; row < end_row; row += LhsLayout::kCols) {

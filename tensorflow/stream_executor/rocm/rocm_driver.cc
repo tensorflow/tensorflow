@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
@@ -115,15 +114,9 @@ string ToString(hipError_t result) {
 // stack-limited threads (such as those spawned by a default-argument
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
-static mutex driver_executor_threadpool_mu(LINKER_INITIALIZED);
-static port::ThreadPool* InitializeDriverExecutor() {
-  return new port::ThreadPool(port::Env::Default(), port::ThreadOptions(),
-                              "rocm_driver", 1);
-}
-
 port::ThreadPool* GetDriverExecutor() {
-  mutex_lock lock(driver_executor_threadpool_mu);
-  static port::ThreadPool* thread_pool = InitializeDriverExecutor();
+  static port::ThreadPool* thread_pool = new port::ThreadPool(
+      port::Env::Default(), port::ThreadOptions(), "rocm_driver", 1);
   return thread_pool;
 }
 

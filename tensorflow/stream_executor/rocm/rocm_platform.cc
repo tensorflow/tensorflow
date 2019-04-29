@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
@@ -108,6 +107,11 @@ int ROCmPlatform::VisibleDeviceCount() const {
 }
 
 const string& ROCmPlatform::Name() const { return name_; }
+
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+ROCmPlatform::DescriptionForDevice(int ordinal) const {
+  return GpuExecutor::CreateDeviceDescription(ordinal);
+}
 
 port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;

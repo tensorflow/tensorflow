@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -52,6 +53,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
+
+_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
+                                        'keras api usage', 'method')
 
 
 @keras_export('keras.models.Model', 'keras.Model')
@@ -215,6 +219,7 @@ class Model(network.Network):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    _keras_api_gauge.get_cell('compile').set(True)
     run_eagerly = kwargs.pop('run_eagerly', None)
 
     self._run_eagerly = run_eagerly
@@ -682,6 +687,7 @@ class Model(network.Network):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
+    _keras_api_gauge.get_cell('train').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -959,6 +965,7 @@ class Model(network.Network):
     Raises:
         ValueError: in case of invalid arguments.
     """
+    _keras_api_gauge.get_cell('evaluate').set(True)
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if K.in_multi_worker_mode():
@@ -1111,6 +1118,7 @@ class Model(network.Network):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
+    _keras_api_gauge.get_cell('predict').set(True)
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       return training_distributed.predict_distributed(self,
@@ -1501,6 +1509,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`fit_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
+    _keras_api_gauge.get_cell('train').set(True)
     return training_generator.fit_generator(
         self,
         generator,
@@ -1573,6 +1582,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`evaluate_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
+    _keras_api_gauge.get_cell('evaluate').set(True)
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -1629,6 +1639,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`predict_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
+    _keras_api_gauge.get_cell('predict').set(True)
     return training_generator.predict_generator(
         self,
         generator,
@@ -2901,12 +2912,11 @@ class DistributedCallbackModel(Model):
   def __getattr__(self, item):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
-    if item in ('_setattr_tracking', '_layers'):
-      return super(DistributedCallbackModel, self).__getattr__(item)
-
-    logging.warning('You are accessing attribute ' + item + ' of the '
-                    'DistributedCallbackModel that may not have been set '
-                    'correctly.')
+    if item not in ('_setattr_tracking', '_layers'):
+      logging.warning('You are accessing attribute ' + item + ' of the '
+                      'DistributedCallbackModel that may not have been set '
+                      'correctly.')
+    return super(DistributedCallbackModel, self).__getattr__(item)
 
 
 def _is_symbolic_tensor(x):

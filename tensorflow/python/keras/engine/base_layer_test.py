@@ -392,6 +392,22 @@ class BaseLayerTest(keras_parameterized.TestCase):
         [l.name for l in model.layers],
         ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
 
+  def test_add_trainable_weight_on_frozen_layer(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=(), trainable=True)
+
+      def call(self, inputs):
+        return self.w * inputs
+
+    layer = TestLayer()
+    layer.trainable = False
+    layer.build(None)
+    layer.trainable = True
+    self.assertListEqual(layer.trainable_weights, [layer.w])
+
 
 class SymbolicSupportTest(test.TestCase):
 

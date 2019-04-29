@@ -4438,8 +4438,7 @@ def make_unroll_batch_matmul_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
   make_zip_of_tests(
-      options, test_parameters, build_graph, build_inputs,
-      expected_tf_failures=len(broadcast_shape_params))
+      options, test_parameters, build_graph, build_inputs)
 
 
 @register_make_test_function()

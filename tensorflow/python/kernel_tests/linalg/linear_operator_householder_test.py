@@ -19,10 +19,10 @@ from __future__ import print_function
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_householder as householder
 from tensorflow.python.ops.linalg import linear_operator_test_util
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -65,8 +65,7 @@ class LinearOperatorHouseholderTest(
     operator = householder.LinearOperatorHouseholder(lin_op_reflection_axis)
 
     mat = reflection_axis[..., array_ops.newaxis]
-    matrix = -2 * linear_operator_util.matmul_with_broadcast(
-        mat, mat, adjoint_b=True)
+    matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     matrix = array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 

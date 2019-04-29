@@ -24,7 +24,9 @@ limitations under the License.
 #else
 #include <unistd.h>
 #endif
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
@@ -42,8 +44,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -210,9 +210,9 @@ static string GetBinaryDir(bool strip_exe) {
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
     string ret = exe_path;
-    std::vector<string> components = port::Split(exe_path, '/');
+    std::vector<string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
-    return port::Join(components, "/");
+    return absl::StrJoin(components, "/");
   }
   return exe_path;
 }
@@ -712,8 +712,8 @@ port::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   } else {
     return port::Status(
         port::error::INTERNAL,
-        port::Printf("error recording waiting for CUDA event on stream %p",
-                     stream));
+        absl::StrFormat("error recording waiting for CUDA event on stream %p",
+                        stream));
   }
 }
 
@@ -982,7 +982,7 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   }
 
   string filename =
-      port::Printf("/sys/bus/pci/devices/%s/numa_node", pci_bus_id.c_str());
+      absl::StrFormat("/sys/bus/pci/devices/%s/numa_node", pci_bus_id);
 
   // We have to use fopen/fread here so that the device properties can be
   // populated before InitGoogle procedure has been completed (at which point we
@@ -1042,10 +1042,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   {
     int driver_version = 0;
     (void)GpuDriver::GetDriverVersion(&driver_version);
-    string augmented_driver_version = port::Printf(
+    string augmented_driver_version = absl::StrFormat(
         "%d (%s)", driver_version,
-        cuda::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
-            .c_str());
+        cuda::DriverVersionStatusToString(Diagnostician::FindDsoVersion()));
     builder.set_driver_version(augmented_driver_version);
   }
 
@@ -1053,7 +1052,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
-    pci_bus_id = port::Lowercase(pci_bus_id);
+    pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
     builder.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.

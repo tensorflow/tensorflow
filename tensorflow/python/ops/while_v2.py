@@ -32,7 +32,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
@@ -883,19 +882,6 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
-
-
-# TODO(srbs): This method should be in control_flow_util but that introduces
-# a circular dependency ops -> control_flow_util -> ops.
-def _is_in_xla_context():
-  """Returns whether the current context is inside an XLA context."""
-  outer_graph = ops.get_default_graph()
-  # The `_control_flow_context` is not copied when building a FuncGraph so
-  # we look it up from the base graph.
-  while isinstance(outer_graph, func_graph_module.FuncGraph):
-    outer_graph = outer_graph.outer_graph
-  cur_ctxt = outer_graph._get_control_flow_context()  # pylint: disable=protected-access
-  return control_flow_util.GetContainingXLAContext(cur_ctxt) is not None
 
 
 def _graph_name(graph):

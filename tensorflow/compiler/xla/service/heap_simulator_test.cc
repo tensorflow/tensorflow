@@ -259,7 +259,8 @@ class HeapSimulatorTracker {
   // Constructor for testing a single entry computation.
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
-      const std::vector<HloInstruction*>& instruction_sequence) {
+      const std::vector<HloInstruction*>& instruction_sequence,
+      const std::vector<HloInstruction*>& must_alias_set = {}) {
     HloModuleConfig config;
     module_ = absl::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
@@ -272,10 +273,19 @@ class HeapSimulatorTracker {
     auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = absl::make_unique<DecreasingSizeRunsHeap>(
         absl::make_unique<HeapCallRecorder>(&actual_calls_));
+    BufferValueFlatSet must_alias_buffer_value_set;
+
+    for (HloInstruction* hlo : must_alias_set) {
+      must_alias_buffer_value_set.insert(
+          points_to_analysis_->GetBufferDefinedAt(hlo, {}).ValueOrDie());
+    }
+
+    HeapSimulator::Options options;
+    options.must_alias_sets = {must_alias_buffer_value_set};
     result_ =
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
-                           *points_to_analysis_, zero_size)
+                           *points_to_analysis_, zero_size, options)
             .ConsumeValueOrDie();
   }
 
@@ -408,6 +418,46 @@ TEST_F(HeapSimulatorTest, Multiply) {
       {kFree, tracker.BufferAt(mul, {})},
       {kFinish, nullptr},
   });
+}
+
+TEST_F(HeapSimulatorTest, MustAliasBuffers) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32scalar_, "paramA"));
+  auto paramX = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec4_, "paramX"));
+  auto paramY = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec4_, "paramY"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  auto add_1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, mul, paramY));
+
+  auto add_2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, mul, paramY));
+
+  auto add_3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, add_1, add_2));
+
+  // Check that mul and add_2 are collocated as requested by the user.
+  HeapSimulatorTracker tracker(
+      TestName(), builder.Build(),
+      {paramA, paramX, mul, paramY, add_1, add_2, add_3}, {mul, add_2});
+  tracker.ExpectCallSequence({
+      {kAlloc, tracker.BufferAt(paramA, {})},
+      {kAlloc, tracker.BufferAt(paramX, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(add_1, {})},
+      // All params and outputs are freed at the end.
+      {kFree, tracker.BufferAt(paramA, {})},
+      {kFree, tracker.BufferAt(paramX, {})},
+      {kFree, tracker.BufferAt(mul, {})},
+      {kFree, tracker.BufferAt(paramY, {})},
+      {kFree, tracker.BufferAt(add_1, {})},
+      {kFinish, nullptr},
+  });
+  tracker.ExpectSharedBuffers(add_2, {}, mul, {});
 }
 
 TEST_F(HeapSimulatorTest, MultiplyAdd) {

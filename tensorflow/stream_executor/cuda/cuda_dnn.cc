@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -307,7 +306,7 @@ port::Status CudnnSupport::Init() {
     CudnnVersion loaded_version;
     TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
-      const tensorflow::string error = absl::StrCat(
+      const string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
           ".  CuDNN library major and minor version needs to match or have "

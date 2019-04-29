@@ -18,6 +18,12 @@ classmethods to convert a model based on the original model format:
 *   `TFLiteConverter.from_concrete_functions()`: Converts
     [concrete functions](concrete_function.md).
 
+Note: The TensorFlow Lite 2.0 alpha had a different version of the
+`TFLiteConverter` API which only contained the classmethod
+[`from_concrete_function`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter#from_concrete_function).
+The API detailed in this document can be installed using the
+[`tf-nightly-2.0-preview`](#installing_the_tensorflow_20_nightly_) pip install.
+
 This document contains [example usages](#examples) of the API, a detailed list
 of [changes in the API between 1.X and 2.0](#differences), and
 [instructions](#versioning) on running the different versions of TensorFlow.

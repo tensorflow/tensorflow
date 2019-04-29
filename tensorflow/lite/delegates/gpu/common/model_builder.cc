@@ -118,7 +118,7 @@ Status SetAllDimensions<Linear>(const TfLiteIntArray* dimensions,
 template <>
 Status SetAllDimensions<HWC>(const TfLiteIntArray* dimensions, HWC* shape) {
   if (dimensions->size != 4) {
-    return InvalidArgumentError("Dimensions are not BHWC");
+    return InvalidArgumentError("Dimensions are not HWC");
   }
   if (dimensions->data[0] != 1) {
     return UnimplementedError("Batch size is not equal to 1.");

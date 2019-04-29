@@ -829,9 +829,6 @@ def _make_execution_function(model, mode):
   if distributed_function:
     return distributed_function
 
-  logging.info(
-      'Creating the execution function without cloning for model {} and '
-      'mode {}.'.format(model, mode))
   distribution_function = _make_execution_function_without_cloning(model, mode)
   set_distributed_function(model, mode, distribution_function)
   return distribution_function

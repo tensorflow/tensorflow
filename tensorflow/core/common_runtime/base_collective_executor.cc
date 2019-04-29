@@ -165,8 +165,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
     return t;
   }
 
-  Tensor Scalar(Allocator* a) const override {
-    Tensor t(a, dt_, TensorShape({}));
+  Tensor Scalar(Allocator* a, const AllocationAttributes& attr) const override {
+    Tensor t(a, dt_, TensorShape({}), attr);
     return t;
   }
 

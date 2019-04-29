@@ -703,12 +703,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8) {
         EvalHybrid<kernel_type>(context, node, params, data, input, filter,
                                 bias, im2col, hwcn_weights, output);
-      } else if (data->supports_multithreaded_kernel) {
+      } else {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
                                im2col, hwcn_weights, output);
-      } else {
-        EvalFloat<kGenericOptimized>(context, node, params, data, input, filter,
-                                     bias, im2col, hwcn_weights, output);
       }
       break;
     case kTfLiteUInt8:

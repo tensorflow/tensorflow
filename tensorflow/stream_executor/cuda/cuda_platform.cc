@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_platform.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -22,7 +24,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -126,7 +127,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
 
   return port::Status(
       port::error::NOT_FOUND,
-      port::Printf("Executor for bus %d not found.", bus_ordinal));
+      absl::StrFormat("Executor for bus %d not found.", bus_ordinal));
 }
 
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
@@ -179,9 +180,9 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   if (!init_status.ok()) {
     return port::Status(
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str()));
+            config.ordinal, init_status.ToString()));
   }
 
   return std::move(executor);

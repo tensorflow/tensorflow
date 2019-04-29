@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/executor_cache.h"
 
-#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "absl/strings/str_format.h"
 
 namespace stream_executor {
 
@@ -71,16 +71,18 @@ port::StatusOr<StreamExecutor*> ExecutorCache::Get(
     if (it != cache_.end()) {
       entry = &it->second;
     } else {
-      return port::Status(port::error::NOT_FOUND,
-                          port::Printf("No executors registered for ordinal %d",
-                                       config.ordinal));
+      return port::Status(
+          port::error::NOT_FOUND,
+          absl::StrFormat("No executors registered for ordinal %d",
+                          config.ordinal));
     }
   }
   tf_shared_lock lock{entry->configurations_mutex};
   if (entry->configurations.empty()) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::Printf("No executors registered for ordinal %d", config.ordinal));
+        absl::StrFormat("No executors registered for ordinal %d",
+                        config.ordinal));
   }
   for (const auto& iter : entry->configurations) {
     if (iter.first.plugin_config == config.plugin_config &&
