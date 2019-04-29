@@ -88,8 +88,9 @@ bool IsPeerOperation(const HloInstruction* inst,
     return false;
   }
 
-  if (peer_candidate->opcode() != inst->opcode())
+  if (peer_candidate->opcode() != inst->opcode()) {
     return false;
+  }
 
   const HloInstruction* operand_slice0 = peer_candidate->operand(0);
   for (int64 i = 0; i < slice_sources.size(); ++i) {
