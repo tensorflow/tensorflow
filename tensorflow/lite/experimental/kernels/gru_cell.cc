@@ -40,7 +40,8 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
              float* output, float* output_state,
              const RuntimeShape& activation_shape, float* activation,
              const RuntimeShape& concat_shape, float* concat,
-             const tflite::FullyConnectedParams& fc_params) {
+             const tflite::FullyConnectedParams& fc_params,
+             tflite::CpuBackendContext* cpu_backend_context) {
   const int n_batch = input_shape.Dims(0);
   const int n_input = input_shape.Dims(1);
   const int n_output = state_shape.Dims(1);
@@ -61,7 +62,7 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
   // [r u] = [x h] * gate_weight + gate_bias
   FullyConnected(fc_params, concat_shape, concat, gate_weight_shape,
                  gate_weight, gate_bias_shape, gate_bias, activation_shape,
-                 activation);
+                 activation, cpu_backend_context);
 
   // [r u] = sigmoid([r u])
   auto ru = MapAsArrayWithLastDimAsRows(activation, activation_shape);
@@ -78,7 +79,7 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
   // c = [x hr] * candidate_weight + candidate_bias
   FullyConnected(fc_params, concat_shape, concat, candidate_weight_shape,
                  candidate_weight, candidate_bias_shape, candidate_bias,
-                 output_shape, output);
+                 output_shape, output, cpu_backend_context);
 
   auto c = MapAsArrayWithLastDimAsRows(output, output_shape);
   // output = (1 - u) .* tanh(c) + u .* h

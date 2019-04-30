@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_GRU_CELL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_GRU_CELL_H_
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 
 namespace tflite {
@@ -34,7 +35,8 @@ void GruCell(const RuntimeShape& input_shape, const float* input,
              float* output, float* output_state,
              const RuntimeShape& activation_shape, float* activation,
              const RuntimeShape& concat_shape, float* concat,
-             const tflite::FullyConnectedParams& fc_params);
+             const tflite::FullyConnectedParams& fc_params,
+             tflite::CpuBackendContext* cpu_backend_context);
 
 }  // namespace gru_cell
 }  // namespace experimental

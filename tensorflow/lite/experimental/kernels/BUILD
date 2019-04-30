@@ -102,6 +102,7 @@ cc_library(
         ":gru_cell",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_support",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:tensor",
