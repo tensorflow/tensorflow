@@ -1261,7 +1261,8 @@ def set_windows_build_flags(environ_cp):
   write_to_bazelrc('build --copt=-w --host_copt=-w')
   # Fix winsock2.h conflicts
   write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN')
+      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
+      '--copt=-DNOGDI --host_copt=-DNOGDI')
   # Output more verbose information when something goes wrong
   write_to_bazelrc('build --verbose_failures')
   # The host and target platforms are the same in Windows build. So we don't
