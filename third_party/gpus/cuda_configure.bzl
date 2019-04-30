@@ -983,8 +983,9 @@ def _create_local_cuda_repository(repository_ctx):
             out_dir = "cuda/extras/CUPTI/include",
         ),
     ]
+    included_files = _read_dir(repository_ctx, cuda_include_path)
 
-    if cublas_include_path != cuda_include_path:
+    if not any([file.endswith("cublas.h") for file in included_files]):
         copy_rules.append(make_copy_files_rule(
             repository_ctx,
             name = "cublas-include",
@@ -1023,7 +1024,6 @@ def _create_local_cuda_repository(repository_ctx):
     ))
 
     # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
-    included_files = _read_dir(repository_ctx, cuda_include_path)
     if not any([file.endswith("cudnn.h") for file in included_files]):
         copy_rules.append(make_copy_files_rule(
             repository_ctx,
