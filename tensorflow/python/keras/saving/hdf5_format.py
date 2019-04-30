@@ -228,8 +228,8 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
           optimizer_config, custom_objects=custom_objects)
 
       # Recover loss functions and metrics.
-      loss_config = convert_custom_objects(training_config['loss'])
-      loss = losses.deserialize(loss_config, custom_objects=custom_objects)
+      loss = losses.deserialize(training_config['loss'],
+                                custom_objects=custom_objects)
       metrics = convert_custom_objects(training_config['metrics'])
       weighted_metrics = convert_custom_objects(
           training_config.get('weighted_metrics', None))
