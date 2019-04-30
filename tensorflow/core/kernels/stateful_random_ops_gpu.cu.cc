@@ -98,7 +98,7 @@ __global__ void SkipKernel(int64 delta, StateElementType* state_data) {
 
 void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
                                            Tensor* state_tensor) {
-  SkipKernel<<<1, 1, 0, d.stream()>>>(
+  GPU_LAUNCH_KERNEL(SkipKernel, 1, 1, 0, d.stream(),
       delta, state_tensor->flat<StateElementType>().data());
 }
 

@@ -137,7 +137,7 @@ __device__ inline unsigned GpuLaneId() {
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
 #endif  // __clang__
 #elif TENSORFLOW_USE_ROCM
-  land_id = __lane_id();
+  lane_id = __lane_id();
 #endif
   return lane_id;
 }
@@ -794,7 +794,6 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a / value; });
 }
 
-#if GOOGLE_CUDA
 // Operator overloads for complex numbers.
 #if GOOGLE_CUDA
 __device__ inline std::complex<float> operator+(const std::complex<float>& a,

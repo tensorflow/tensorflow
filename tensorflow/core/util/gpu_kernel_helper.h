@@ -42,20 +42,22 @@ limitations under the License.
                      stream, __VA_ARGS__);
 #endif
 
-// Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
-#define CUDA_1D_KERNEL_LOOP(i, n) \
-  for (int i : ::tensorflow::CudaGridRangeX<int>(n))
-// Deprecated, use 'for(int i : CudaGridRange?(n))' instead.
-#define CUDA_AXIS_KERNEL_LOOP(i, n, axis) \
-  for (int i : ::tensorflow::CudaGridRange##axis<int>(n))
+// Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
+#define GPU_1D_KERNEL_LOOP(i, n) \
+  for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+// Deprecated, use 'for(int i : GpuGridRange?(n))' instead.
+#define GPU_AXIS_KERNEL_LOOP(i, n, axis) \
+  for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
+#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
 
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
+#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
