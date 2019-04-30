@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_state.h"
 
 #include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -73,8 +74,11 @@ class BufferAllocStats {
 const char* kTupleContainer = "tuples";
 
 int64 get_uid() {
-  uint64 unsigned_rand = random::New64() & INT64_MAX;
-  return static_cast<int64>(unsigned_rand);
+  int64 uid;
+  do {
+    uid = random::New64() & INT64_MAX;
+  } while (uid == XRTTupleAllocation::InvalidKey());
+  return uid;
 }
 
 BufferAllocStats* GetAllocStats() {
