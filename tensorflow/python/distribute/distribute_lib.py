@@ -433,9 +433,27 @@ class Strategy(object):
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
-    Data from the given dataset will be distributed evenly across all the
-    compute replicas. This function assumes that the input dataset is batched
-    by the global batch size.
+    In a multi-worker setting, we will first attempt to distribute the dataset
+    by attempting to detect whether the dataset is being created out of
+    ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
+    attempting to shard the input files. Note that there has to be at least one
+    input file per worker. If you have less than one input file per worker, we
+    suggest that you should disable distributing your dataset using the method
+    below.
+
+    If that attempt is unsuccessful (e.g. the dataset is created from a
+    Dataset.range), we will shard the dataset evenly at the end by appending a
+    `.shard` operation to the end of the processing pipeline. This will cause
+    the entire preprocessing pipeline for all the data to be run on every
+    worker, and each worker will do redundant work. We will print a warning
+    if this method of sharding is selected.
+
+    You can disable dataset distribution using the `auto_shard` option in
+    `tf.data.experimental.DistributeOptions`.
+
+    Within each host, we will also split the data among all the worker devices
+    (if more than one a present), and this will happen even if multi-worker
+    sharding is disabled using the method above.
 
     The following is an example:
 
@@ -443,7 +461,8 @@ class Strategy(object):
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset
-    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
@@ -454,8 +473,8 @@ class Strategy(object):
     ```
 
     Args:
-      dataset: `tf.data.Dataset` that will be distributed evenly across all
-        replicas.
+      dataset: `tf.data.Dataset` that will be sharded across all replicas using
+        the rules stated above.
 
     Returns:
       A `DistributedDataset` which returns inputs for each step of the

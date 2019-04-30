@@ -8,6 +8,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_distribute"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_optimization"
     mtype: "<type \'property\'>"
   }
