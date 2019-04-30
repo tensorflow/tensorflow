@@ -335,10 +335,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
     return "\n".join(inc_entries)
 
 def enable_cuda(repository_ctx):
-    if "TF_NEED_CUDA" in repository_ctx.os.environ:
-        enable_cuda = repository_ctx.os.environ["TF_NEED_CUDA"].strip()
-        return enable_cuda == "1"
-    return False
+    """Returns whether to build with CUDA support."""
+    return int(repository_ctx.os.environ.get("TF_NEED_CUDA", False))
 
 def matches_version(environ_version, detected_version):
     """Checks whether the user-specified version matches the detected version.
