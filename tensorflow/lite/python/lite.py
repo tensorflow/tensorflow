@@ -157,7 +157,12 @@ class TFLiteConverterBase(object):
 
   def _grappler_config(self, target_ops):
     is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == target_ops
-    return _get_grappler_config(enable_layout_optimizer=is_only_flex_enabled)
+    if is_only_flex_enabled:
+      # The layout optimizer turns NHCW to NCHW. This provides performance
+      # optimizations when Flex mode is enabled. However, this is not compatible
+      # with builtin ops.
+      return _get_grappler_config(["layout"])
+    return None
 
   def _validate_representative_dataset(self):
     if self.representative_dataset:
@@ -339,12 +344,15 @@ class TFLiteConverterV2(TFLiteConverterBase):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(
-        frozen_func.graph.as_graph_def(),
-        input_tensors,
-        output_tensors,
-        self._grappler_config(self.target_spec.supported_ops),
-        graph=frozen_func.graph)
+    graph_def = frozen_func.graph.as_graph_def()
+    config = self._grappler_config(self.target_spec.supported_ops)
+    if config:
+      graph_def = _run_graph_optimizations(
+          graph_def,
+          input_tensors,
+          output_tensors,
+          config,
+          graph=frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
@@ -862,14 +870,15 @@ class TFLiteConverter(TFLiteConverterBase):
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
-    optimized_graph = None
-    if self.inference_type == constants.QUANTIZED_UINT8:
-      optimized_graph = self._graph_def
-    else:
+    optimized_graph = self._graph_def
+    if self.inference_type != constants.QUANTIZED_UINT8:
       try:
-        optimized_graph = _run_graph_optimizations(
-            self._graph_def, self._input_tensors, self._output_tensors,
-            self._grappler_config(self.target_ops))
+        config = self._grappler_config(self.target_ops)
+        if config:
+          optimized_graph = _run_graph_optimizations(self._graph_def,
+                                                     self._input_tensors,
+                                                     self._output_tensors,
+                                                     config)
       except Exception:
         optimized_graph = self._graph_def
 
