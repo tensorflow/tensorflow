@@ -37,11 +37,10 @@ def _tpl(repository_ctx, tpl, substitutions):
 def _create_dummy_repository(repository_ctx):
     """Create a dummy TensorRT repository."""
     _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_false"})
-
     _tpl(repository_ctx, "BUILD", {
-        "%{tensorrt_genrules}": "",
-        "%{tensorrt_headers}": "[]",
-        "%{tensorrt_libs}": "[]",
+        "%{copy_rules}": "",
+        "\":tensorrt_include\"": "",
+        "\":tensorrt_lib\"": "",
     })
 
 def enable_tensorrt(repository_ctx):
@@ -95,7 +94,6 @@ def _tensorrt_configure_impl(repository_ctx):
     # Set up BUILD file.
     _tpl(repository_ctx, "BUILD", {
         "%{copy_rules}": "\n".join(copy_rules),
-        "%{tensorrt_libs}": str(libraries),
     })
 
 tensorrt_configure = repository_rule(
