@@ -195,25 +195,6 @@ bool IsIm2ColRequired(TfLiteTensor* input, TfLiteConvParams* params,
   }
 }
 
-// Check if hwcn_weights needs to be allocated, as some version of optimized
-// Conv dont use it. If any change is supporting hwcn_weights in any of the Conv
-// versions, then it should be updated here as well
-bool IsHWCNWeightRequired(TfLiteTensor* input, OpData* data, bool is_hybrid,
-                          KernelType kernel_type) {
-  bool need_hwcn_weights =
-      (input->type == kTfLiteFloat32 && data->supports_multithreaded_kernel);
-
-  // Return early as basic requirement is not met
-  if (!need_hwcn_weights) return need_hwcn_weights;
-
-  switch (kernel_type) {
-    case kMultithreadOptimized:
-      return need_hwcn_weights;
-    default:
-      return false;
-  }
-}
-
 // Allocate temporary tensors (`im2col`, `hwcn_weights` if necessary).
 // Note: `context->AddTensors` might invalidate pointers to existing tensors.
 // Therefore the logic to add tensors are isolated into this function.
@@ -242,7 +223,7 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   // This path is only used for float processing, so only create the buffer if
   // we're running with that data type.
   data->need_hwcn_weights =
-      IsHWCNWeightRequired(input, data, is_hybrid, kernel_type);
+      input->type == kTfLiteFloat32 && data->supports_multithreaded_kernel;
 
   // We don't always need to allocate im2col. It is only used in some versions
   // of the optimized Conv. This test just mimics something that happens inside
