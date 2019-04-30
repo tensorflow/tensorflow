@@ -3125,7 +3125,6 @@ void PrintToPythonStdout(const char* msg) {
     for (int i = 0; i < len; i += CHUNK_SIZE) {
       PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
     }
-    PySys_WriteStdout("\n");
 
     // Force flushing to make sure print newlines aren't interleaved in
     // some colab environments
