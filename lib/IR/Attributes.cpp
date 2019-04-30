@@ -30,8 +30,11 @@ Attribute::Kind Attribute::getKind() const {
   return static_cast<Kind>(attr->getKind());
 }
 
+/// Return the type of this attribute.
+Type Attribute::getType() const { return attr->getType(); }
+
 bool Attribute::isOrContainsFunction() const {
-  return attr->isOrContainsFunctionCache;
+  return attr->isOrContainsFunctionCache();
 }
 
 // Given an attribute that could refer to a function attribute in the remapping
@@ -79,19 +82,6 @@ UnitAttr UnitAttr::get(MLIRContext *context) {
 // NumericAttr
 //===----------------------------------------------------------------------===//
 
-Type NumericAttr::getType() const {
-  if (auto boolAttr = dyn_cast<BoolAttr>())
-    return boolAttr.getType();
-  if (auto intAttr = dyn_cast<IntegerAttr>())
-    return intAttr.getType();
-  if (auto floatAttr = dyn_cast<FloatAttr>())
-    return floatAttr.getType();
-  if (auto elemAttr = dyn_cast<ElementsAttr>())
-    return elemAttr.getType();
-
-  llvm_unreachable("unhandled NumericAttr subclass");
-}
-
 bool NumericAttr::kindof(Kind kind) {
   return BoolAttr::kindof(kind) || IntegerAttr::kindof(kind) ||
          FloatAttr::kindof(kind) || ElementsAttr::kindof(kind);
@@ -108,8 +98,6 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
 }
 
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
-
-Type BoolAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr
@@ -134,10 +122,6 @@ APInt IntegerAttr::getValue() const {
 }
 
 int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
-
-Type IntegerAttr::getType() const {
-  return static_cast<ImplType *>(attr)->type;
-}
 
 //===----------------------------------------------------------------------===//
 // FloatAttr
@@ -184,8 +168,6 @@ FloatAttr FloatAttr::get(Type type, double value) {
 APFloat FloatAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
 }
-
-Type FloatAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
 double FloatAttr::getValueAsDouble() const {
   const auto &semantics = getType().cast<FloatType>().getFloatSemantics();
@@ -281,14 +263,16 @@ Function *FunctionAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-FunctionType FunctionAttr::getType() const { return getValue()->getType(); }
+FunctionType FunctionAttr::getType() const {
+  return Attribute::getType().cast<FunctionType>();
+}
 
 //===----------------------------------------------------------------------===//
 // ElementsAttr
 //===----------------------------------------------------------------------===//
 
 VectorOrTensorType ElementsAttr::getType() const {
-  return static_cast<ImplType *>(attr)->type;
+  return Attribute::getType().cast<VectorOrTensorType>();
 }
 
 /// Return the value at the given index. If index does not refer to a valid
@@ -315,8 +299,8 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
 SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
                                          Attribute elt) {
-  assert(elt.cast<NumericAttr>().getType() == type.getElementType() &&
-         "value should be of the given type");
+  assert(elt.getType() == type.getElementType() &&
+         "value should be of the given element type");
   return AttributeUniquer::get<SplatElementsAttr>(
       type.getContext(), Attribute::Kind::SplatElements, type, elt);
 }

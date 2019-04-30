@@ -47,7 +47,6 @@ struct AffineMapAttributeStorage;
 struct IntegerSetAttributeStorage;
 struct TypeAttributeStorage;
 struct FunctionAttributeStorage;
-struct ElementsAttributeStorage;
 struct SplatElementsAttributeStorage;
 struct DenseElementsAttributeStorage;
 struct DenseIntElementsAttributeStorage;
@@ -125,6 +124,9 @@ public:
   /// Return the classification for this attribute.
   Kind getKind() const;
 
+  /// Return the type of this attribute.
+  Type getType() const;
+
   /// Return true if this field is, or contains, a function attribute.
   bool isOrContainsFunction() const;
 
@@ -177,8 +179,6 @@ class NumericAttr : public Attribute {
 public:
   using Attribute::Attribute;
 
-  Type getType() const;
-
   static bool kindof(Kind kind);
 };
 
@@ -191,8 +191,6 @@ public:
   static BoolAttr get(bool value, MLIRContext *context);
 
   bool getValue() const;
-
-  Type getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Bool; }
@@ -210,8 +208,6 @@ public:
   APInt getValue() const;
   // TODO(jpienaar): Change callers to use getValue instead.
   int64_t getInt() const;
-
-  Type getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
@@ -237,8 +233,6 @@ public:
   /// This function is used to convert the value to a double, even if it loses
   /// precision.
   double getValueAsDouble() const;
-
-  Type getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Float; }
@@ -353,7 +347,6 @@ public:
 class ElementsAttr : public NumericAttr {
 public:
   using NumericAttr::NumericAttr;
-  using ImplType = detail::ElementsAttributeStorage;
 
   VectorOrTensorType getType() const;
 

@@ -920,24 +920,11 @@ void ConstantOp::build(Builder *builder, OperationState *result, Type type,
   result->types.push_back(type);
 }
 
-// Extracts and returns a type of an attribute if it has one.  Returns a null
-// type otherwise.  Currently, NumericAttrs and FunctionAttrs have types.
-static Type getAttributeType(Attribute attr) {
-  assert(attr && "expected non-null attribute");
-  if (auto numericAttr = attr.dyn_cast<NumericAttr>())
-    return numericAttr.getType();
-  if (auto functionAttr = attr.dyn_cast<FunctionAttr>())
-    return functionAttr.getType();
-  return {};
-}
-
 /// Builds a constant with the specified attribute value and type extracted
 /// from the attribute.  The attribute must have a type.
 void ConstantOp::build(Builder *builder, OperationState *result,
                        Attribute value) {
-  Type t = getAttributeType(value);
-  assert(t && "expected an attribute with a type");
-  return build(builder, result, t, value);
+  return build(builder, result, value.getType(), value);
 }
 
 void ConstantOp::print(OpAsmPrinter *p) {
@@ -1018,9 +1005,7 @@ LogicalResult ConstantOp::verify() {
     return success();
   }
 
-  auto attrType = getAttributeType(value);
-  if (!attrType)
-    return emitOpError("requires 'value' attribute to have a type");
+  auto attrType = value.getType();
   if (attrType != type)
     return emitOpError("requires the type of the 'value' attribute to match "
                        "that of the operation result");
