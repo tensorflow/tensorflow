@@ -100,9 +100,9 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
   }
 
   if (slice_size_big > std::numeric_limits<Index>::max()) {
-    return errors::InvalidArgument(
-        "slice size is too large for indexing: ", slice_size_big, " > ",
-        std::numeric_limits<Index>::max());
+    return errors::InvalidArgument("slice size is too large for indexing: ",
+                                   slice_size_big, " > ",
+                                   std::numeric_limits<Index>::max());
   }
 
   const Index slice_size = static_cast<Index>(slice_size_big);

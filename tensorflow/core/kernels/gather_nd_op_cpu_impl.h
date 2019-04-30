@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
+#define TF_CALL_DATASET_TYPES(m) TF_CALL_ALL_TYPES(m) TF_CALL_QUANTIZED_TYPES(m)
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -151,7 +153,7 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
   REGISTER_GATHER_ND_FULL(type, int32); \
   REGISTER_GATHER_ND_FULL(type, int64)
 
-TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_DATASET_TYPES(REGISTER_GATHER_ND_CPU);
 
 }  // namespace functor
 
