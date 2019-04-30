@@ -285,8 +285,6 @@ void TrMul(TrMulParams* params, Context* context) {
   allocator->Allocate(1, &atomic_n);
   TrMulTask* tasks;
   allocator->Allocate(thread_count, &tasks);
-  Task** tasks_ptrs;
-  allocator->Allocate(thread_count, &tasks_ptrs);
 
   // Initialize allocated data.
   for (int i = 0; i < num_blocks_of_rows; i++) {
@@ -298,8 +296,7 @@ void TrMul(TrMulParams* params, Context* context) {
   atomic_n->store(thread_count);
 
   for (int i = 0; i < thread_count; i++) {
-    tasks_ptrs[i] = static_cast<Task*>(tasks + i);
-    new (tasks_ptrs[i])
+    new (tasks + i)
         TrMulTask(params, block_map, atomic_n, i, lhs_packed, rhs_packed,
                   &context->per_thread_states[i]->tuning_resolver,
                   &context->per_thread_states[i]->allocator, trace);
@@ -309,7 +306,7 @@ void TrMul(TrMulParams* params, Context* context) {
   TraceRecordExecute(trace);
   TraceStartRecordingBlockAndThreadFields(block_map, thread_count, trace);
 
-  context->workers_pool.Execute(thread_count, tasks_ptrs);
+  context->workers_pool.Execute(thread_count, tasks);
 
   // Finish up.
   for (int i = 0; i < thread_count; i++) {
