@@ -204,8 +204,8 @@ inline int GetThreadCount(Context* context, int rows, int cols, int depth) {
   return clamp(guess, 1, context->max_num_threads);
 }
 
-LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
-                               int depth) {
+inline LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
+                                      int depth) {
   if (thread_count == 1 &&
       (rows + cols) * depth < kCacheFriendlyLoopThreshold) {
     return LoopStructure::kSimple;
@@ -221,7 +221,7 @@ inline Tuning GetTuning(Context* context) {
   return tuning_resolver->Resolve();
 }
 
-void TrMul(TrMulParams* params, Context* context) {
+inline void TrMul(TrMulParams* params, Context* context) {
   gemmlowp::ScopedProfilingLabel label("TrMul");
 
   PMatrix& packed_lhs = params->packed_lhs;
