@@ -932,6 +932,36 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_TRANSPOSE>;
         }
         break;
+      case kTfLiteBuiltinAbs:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_ABS>;
+        }
+        break;
+      case kTfLiteBuiltinExp:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_EXP>;
+        }
+        break;
+      case kTfLiteBuiltinLog:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_LOG>;
+        }
+        break;
+      case kTfLiteBuiltinRsqrt:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_RSQRT>;
+        }
+        break;
+      case kTfLiteBuiltinSin:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_SIN>;
+        }
+        break;
+      case kTfLiteBuiltinSqrt:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_SQRT>;
+        }
+        break;
       case kTfLiteBuiltinRnn:
         // NNAPI only support float32 weights.
         if (version == 1 && node->inputs->size == 5 &&

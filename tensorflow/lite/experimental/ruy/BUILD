@@ -388,3 +388,7 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
+
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+tflite_portable_test_suite()

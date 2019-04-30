@@ -123,25 +123,6 @@ py_test(
 )
 
 py_test(
-    name = "make_numa_aware_test",
-    srcs = ["make_numa_aware_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_test(
     name = "map_and_batch_fusion_test",
     srcs = ["map_and_batch_fusion_test.py"],
     srcs_version = "PY2AND3",

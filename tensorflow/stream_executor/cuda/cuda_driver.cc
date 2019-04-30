@@ -17,27 +17,29 @@ limitations under the License.
 
 #include <stdint.h>
 #include <stdlib.h>
+
 #include <map>
 #include <set>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/base/const_init.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/notification.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
@@ -64,19 +66,19 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(CUcontext context) {
-    tf_shared_lock lock(mu_);
+    absl::ReaderMutexLock lock(&mu_);
     return Live()->find(context) != Live()->end();
   }
 
   // Adds context to the live set, or returns it if it's already present.
   static GpuContext* Add(CUcontext context) {
     CHECK(context != nullptr);
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto insert_result = Live()->insert(std::make_pair(context, nullptr));
     auto it = insert_result.first;
     if (insert_result.second) {
       // context was not present in the map.  Add it.
-      it->second = MakeUnique<GpuContext>(context, next_id_++);
+      it->second = absl::make_unique<GpuContext>(context, next_id_++);
     }
     return it->second.get();
   }
@@ -84,7 +86,7 @@ class CreatedContexts {
   // Removes context from the live set.
   static void Remove(CUcontext context) {
     CHECK(context != nullptr);
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto it = Live()->find(context);
     CHECK(it != Live()->end()) << context;
     Live()->erase(it);
@@ -99,11 +101,11 @@ class CreatedContexts {
   }
 
   // Lock that guards access-to/mutation-of the live set.
-  static mutex mu_;
+  static absl::Mutex mu_;
   static int64 next_id_;
 };
 
-/* static */ mutex CreatedContexts::mu_{LINKER_INITIALIZED};
+/* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats CUresult to output prettified values into a log stream.
@@ -321,17 +323,10 @@ static port::Status InternalInit() {
 /* static */ port::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status init_retval;
-  static bool set = false;
-  static mutex* init_mu = new mutex;
-
-  mutex_lock lock(*init_mu);
-  if (!set) {
-    init_retval = InternalInit();
-    set = true;
-  }
-
-  return init_retval;
+  static port::Status* init_retval = [] {
+    return new port::Status(InternalInit());
+  }();
+  return *init_retval;
 }
 
 /* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
@@ -580,7 +575,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::LoadPtx(GpuContext* context,
                                      const char* ptx_contents,
                                      CUmodule* module) {
-  port::Notification notification;
+  absl::Notification notification;
   bool ret = true;
   GetDriverExecutor()->Schedule([context, ptx_contents, module, &ret,
                                  &notification]() {

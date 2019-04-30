@@ -80,9 +80,9 @@ def set_weights(distribution_strategy, dist_model, weights):
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                   grouped_updates=None, grouped_session_args=None,
                   with_loss_tensor=False):
-  """Unwrap and return the list of values contained in the PerDevice parameters.
+  """Unwrap the list of values contained in the PerReplica parameters.
 
-  This function calls `flatten_perdevice_values` to parse each of the input
+  This function calls `flatten_per_replica_values` to parse each of the input
   parameters into a list of values on the different devices. If we set
   `with_loss_tensor` to be True, we also call `reduce` on the list of losses on
   the different devices to give us one loss tensor.
@@ -90,31 +90,31 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   Args:
     distribution_strategy: DistributionStrategy used to distribute training and
         validation.
-    grouped_inputs: PerDevice inputs returned from the train or test function
+    grouped_inputs: PerReplica inputs returned from the train or test function
         that we ran on each device.
-    grouped_outputs: PerDevice outputs returned from the train or test function
+    grouped_outputs: PerReplica outputs returned from the train or test function
         that we ran on each device.
-    grouped_updates: PerDevice updates returned from the train or test function
+    grouped_updates: PerReplica updates returned from the train or test function
         that we ran on each device.
-    grouped_session_args: PerDevice session args returned from the train or
+    grouped_session_args: PerReplica session args returned from the train or
         test function that we ran on each device.
     with_loss_tensor: Boolean that indicates if we need to add the reduced loss
         tensor as one of the outputs.
 
   Returns:
-    Values of each of the PerDevice parameters.
+    Values of each of the PerReplica parameters.
 
   """
   # Unwrap per device values returned from each model's train function.
   # This will be used to construct the main train function.
-  all_inputs = flatten_perdevice_values(distribution_strategy,
-                                        grouped_inputs)
+  all_inputs = flatten_per_replica_values(distribution_strategy,
+                                          grouped_inputs)
   all_outputs = unwrap_outputs(distribution_strategy, grouped_outputs,
                                with_loss_tensor)
 
   if grouped_updates:
-    all_updates = flatten_perdevice_values(distribution_strategy,
-                                           grouped_updates)
+    all_updates = flatten_per_replica_values(distribution_strategy,
+                                             grouped_updates)
   else:
     all_updates = None
 
@@ -122,12 +122,12 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   if grouped_session_args:
     grouped_feed_dict = grouped_session_args.get('feed_dict')
     if grouped_feed_dict:
-      all_session_args['feed_dict'] = flatten_perdevice_values(
+      all_session_args['feed_dict'] = flatten_per_replica_values(
           distribution_strategy, grouped_feed_dict)
 
     grouped_fetches = grouped_session_args.get('fetches')
     if grouped_fetches:
-      all_session_args['fetches'] = flatten_perdevice_values(
+      all_session_args['fetches'] = flatten_per_replica_values(
           distribution_strategy, grouped_fetches)
 
   # TODO(priyag): Return only non empty/None values
@@ -136,9 +136,9 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
 
 def unwrap_outputs(distribution_strategy, grouped_outputs,
                    with_loss_tensor=False):
-  """Unwrap the list of outputs contained in the PerDevice parameters.
+  """Unwrap the list of outputs contained in the PerReplica parameters.
 
-  This function calls `flatten_perdevice_values` to parse each of the input
+  This function calls `flatten_per_replica_values` to parse each of the input
   parameters into a list of outputs on the different devices. If we set
   `with_loss_tensor` to be True, we also call `reduce` on the list of losses on
   the different devices to give us one loss tensor.
@@ -146,73 +146,74 @@ def unwrap_outputs(distribution_strategy, grouped_outputs,
   Args:
     distribution_strategy: DistributionStrategy used to distribute training and
         validation.
-    grouped_outputs: PerDevice outputs returned from the train or test function
+    grouped_outputs: PerReplica outputs returned from the train or test function
         that we ran on each device.
     with_loss_tensor: Boolean that indicates if we need to add the reduced loss
         tensor as one of the outputs.
 
   Returns:
-    Values of each of the PerDevice outputs.
+    Values of each of the PerReplica outputs.
 
   """
   if not with_loss_tensor:
-    return flatten_perdevice_values(distribution_strategy,
-                                    grouped_outputs)
+    return flatten_per_replica_values(distribution_strategy,
+                                      grouped_outputs)
 
   if not isinstance(grouped_outputs, list):
     grouped_outputs = [grouped_outputs]
   # reduce loss tensor before adding it to the list of fetches
   loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
                                       grouped_outputs[0], axis=None)
-  all_outputs = flatten_perdevice_values(distribution_strategy,
-                                         grouped_outputs[1:])
+  all_outputs = flatten_per_replica_values(distribution_strategy,
+                                           grouped_outputs[1:])
   return [loss] + all_outputs
 
 
-def flatten_perdevice_values(distribution_strategy, perdevice_values):
-  """Unwraps and flattens a nest of PerDevice parameters.
+def flatten_per_replica_values(distribution_strategy, per_replica_values):
+  """Unwraps and flattens a nest of PerReplica parameters.
 
-  PerDevice values have one value associated with each device. Each entry in
-  the PerDevice dict has a device `key` and the corresponding value on the
-  device as the `value`. In this function we take a PerDevice value or a list of
-  PerDevice values and return all the values in the PerDevice dict.
+  PerReplica values have one value associated with each device. Each entry in
+  the PerReplica dict has a device `key` and the corresponding value on the
+  device as the `value`. In this function we take a PerReplica value or a list
+  of PerReplica values and return all the values in the PerReplica dict.
 
   Args:
     distribution_strategy: DistributionStrategy used to distribute training and
       validation.
-    perdevice_values: List of PerDevice object or a single PerDevice object.
+    per_replica_values: List of PerReplica object or a single PerReplica object.
 
   Returns:
-    List of values of all the PerDevice objects.
+    List of values of all the PerReplica objects.
 
   """
-  # This function takes a PerDevice object or a list of PerDevice objects and
+  # pylint: disable=g-complex-comprehension
+  # This function takes a PerReplica object or a list of PerReplica objects and
   # returns all the values associated with it.
-  return [e for flattened in nest.flatten(perdevice_values)
+  return [e for flattened in nest.flatten(per_replica_values)
           for e in distribution_strategy.unwrap(flattened)]
 
 
-def unwrap_perdevice_values(distribution_strategy, perdevice_values):
-  """Unwraps a nest of PerDevice parameters.
+def unwrap_per_replica_values(distribution_strategy, per_replica_values):
+  """Unwraps a nest of PerReplica parameters.
 
-  PerDevice values have one value associated with each device. Each entry in
-  the PerDevice dict has a device `key` and the corresponding value on the
-  device as the `value`. In this function we take a PerDevice value or a list of
-  PerDevice values, transform all the values in each PerDevice dict to a list
-  and return a list of such lists.
+  PerReplica values have one value associated with each device. Each entry in
+  the PerReplica dict has a device `key` and the corresponding value on the
+  device as the `value`. In this function we take a PerReplica value or a list
+  of PerReplica values, transform all the values in each PerReplica dict to a
+  list and return a list of such lists.
 
   Args:
     distribution_strategy: DistributionStrategy used to distribute training and
       validation.
-    perdevice_values: List of PerDevice object or a single PerDevice object.
+    per_replica_values: List of PerReplica object or a single PerReplica object.
 
   Returns:
-    List of lists of values of all the PerDevice objects.
+    List of lists of values of all the PerReplica objects.
 
   """
   flats = [
       distribution_strategy.unwrap(flattened)
-      for flattened in nest.flatten(perdevice_values)
+      for flattened in nest.flatten(per_replica_values)
   ]
   return list(zip(*flats))
 
@@ -267,15 +268,15 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y,
     distribution_strategy: The current DistributionStrategy used to call
         `fit`/`evaluate`.
     x: Input Dataset DistributedValue object. For example, when we use
-        `MirroredStrategy` this is a PerDevice object with a tensor for each
+        `MirroredStrategy` this is a PerReplica object with a tensor for each
         device set in the dict. x can also be a tuple or dict. The keys of the
         dict should match the names of the input layers of the model.
     y: Target Dataset DistributedValue object. For example, when we use
-        `MirroredStrategy` this is a PerDevice object with a tensor for each
+        `MirroredStrategy` this is a PerReplica object with a tensor for each
         device set in the dict. y can also be a tuple or dict. The keys of the
         dict should match the names of the output layers of the model.
     sample_weights: Sample weights Dataset DistributedValue object. For example,
-        when we use `MirroredStrategy` this is a PerDevice object with a tensor
+        when we use `MirroredStrategy` this is a PerReplica object with a tensor
         for each device set in the dict.
 
   Returns:
@@ -292,16 +293,16 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y,
 
   # If each element of x and y are not tensors, we cannot standardize and
   # validate the input and targets.
-  x_values_list = validate_per_device_inputs(distribution_strategy, x)
+  x_values_list = validate_per_replica_inputs(distribution_strategy, x)
 
   if y is not None:
-    y_values_list = validate_per_device_inputs(distribution_strategy, y)
+    y_values_list = validate_per_replica_inputs(distribution_strategy, y)
   else:
     y_values_list = None
 
   if sample_weights is not None:
-    sample_weights_list = validate_per_device_inputs(distribution_strategy,
-                                                     sample_weights)
+    sample_weights_list = validate_per_replica_inputs(distribution_strategy,
+                                                      sample_weights)
   else:
     sample_weights_list = None
 
@@ -309,27 +310,27 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y,
   return x_values_list, y_values_list, sample_weights_list
 
 
-def validate_per_device_inputs(distribution_strategy, x):
-  """Validates PerDevice dataset input list.
+def validate_per_replica_inputs(distribution_strategy, x):
+  """Validates PerReplica dataset input list.
 
   Args:
     distribution_strategy: The current DistributionStrategy used to call
       `fit`, `evaluate` and `predict`.
-    x: A list of PerDevice objects that represent the input or
+    x: A list of PerReplica objects that represent the input or
       target values.
 
   Returns:
-    List containing the first element of each of the PerDevice objects in
+    List containing the first element of each of the PerReplica objects in
     the input list.
 
   Raises:
-    ValueError: If any of the objects in the `per_device_list` is not a tensor.
+    ValueError: If any of the objects in the `per_replica_list` is not a tensor.
 
   """
-  # Convert the inputs and targets into a list of PerDevice objects.
-  per_device_list = nest.flatten(x)
+  # Convert the inputs and targets into a list of PerReplica objects.
+  per_replica_list = nest.flatten(x)
   x_values_list = []
-  for x in per_device_list:
+  for x in per_replica_list:
     if not tensor_util.is_tensor(x):
       raise ValueError('Dataset input to the model should be tensors instead '
                        'they are of type {}'.format(type(x)))
@@ -619,8 +620,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   if isinstance(inputs, dict):
     inputs = [inputs[key] for key in model._feed_input_names]
   if is_distributing_by_cloning(model):
-    inputs = flatten_perdevice_values(strategy, inputs)
-    targets = flatten_perdevice_values(strategy, targets)
+    inputs = flatten_per_replica_values(strategy, inputs)
+    targets = flatten_per_replica_values(strategy, targets)
   else:
     # TODO(b/129653859):  Simplify after PerReplica can be the input of
     # `def_function.function`.
@@ -632,8 +633,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # `[[1, 2], [3, 4]]` and there are two replicas, then we want
     # `[[1, 3], [2, 4]]` (see `values_test.testWrapAListOfTwoTuples`) so that
     # we arrive at a `PerReplica(d0: 1, d1: 2)` and a `PerReplica(d0:3, d1:4)`.
-    inputs = unwrap_perdevice_values(strategy, inputs)
-    targets = unwrap_perdevice_values(strategy, targets)
+    inputs = unwrap_per_replica_values(strategy, inputs)
+    targets = unwrap_per_replica_values(strategy, targets)
 
   # Expand 1-dimensional inputs.
   # TODO(b/124535720): Remove once this standarize data logic is shared with
@@ -939,17 +940,17 @@ def _make_execution_function_with_cloning(model, mode):
 def _make_graph_execution_function(model, mode):
   """Makes function to run one step of distributed model in graph mode."""
 
-  def _per_device_function(model):
+  def _per_replica_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
 
   strategy = model._distribution_strategy
   with strategy.scope():
     # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
+    # `_per_replica_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_function, args=(get_distributed_model(model, mode),))
+         _per_replica_function, args=(get_distributed_model(model, mode),))
 
     # Initialize the variables in the replicated model. This is necessary for
     # multi-worker training because on some workers, initialization is not
@@ -979,7 +980,7 @@ def _make_graph_execution_function(model, mode):
 
 def _make_eager_execution_function(model, mode):
   """Makes function to run one step of distributed model eager execution."""
-  def _per_device_function(model):
+  def _per_replica_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs)
 
@@ -994,9 +995,9 @@ def _make_eager_execution_function(model, mode):
     # lift to a separate graph when creating the per-replica functions.
     with K._scratch_graph(global_graph):
       # Create train ops on each of the devices when we call
-      # `_per_device_fit_function`.
+      # `_per_replica_fit_function`.
       grouped = strategy.extended.call_for_each_replica(
-          _per_device_function, args=(get_distributed_model(model, mode),))
+          _per_replica_function, args=(get_distributed_model(model, mode),))
       grouped_inputs, grouped_outputs = grouped
 
       # Unwrap all the per device values returned from `call_for_each_replica`.
@@ -1038,8 +1039,8 @@ def _copy_weights_to_original_model(model, mode):
     model.set_weights(updated_weights)
 
 
-def _per_device_aggregate_batch(batch_outs, model, mode):
-  """Aggregates the per-device batch-level outputs from a distributed step."""
+def _per_replica_aggregate_batch(batch_outs, model, mode):
+  """Aggregates the per-replica batch-level outputs from a distributed step."""
   if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):

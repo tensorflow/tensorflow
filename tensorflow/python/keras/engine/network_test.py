@@ -41,7 +41,7 @@ except ImportError:
   yaml = None
 
 
-class TopologyConstructionTest(keras_parameterized.TestCase):
+class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_get_updates(self):

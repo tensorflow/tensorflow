@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
+
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -39,9 +41,10 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  HloModuleConfig config;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, kRedzoneSize,
-                             kRedzonePattern);
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, kRedzonePattern);
 
   se::Stream stream(stream_exec);
   stream.Init();

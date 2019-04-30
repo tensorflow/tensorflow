@@ -57,6 +57,34 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // device while another thread is using it.
 tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
 
+// Creates a type-safe kernel which can be launched with stream.ThenLaunch.
+//
+// The kernel has a provided name, and is based from provided PTX in ptx,
+// and (optional) compiled PTX in cubin_data.
+// The canonical storage for both ptx and cubin_data should outlive the
+// lifetime of the kernel.
+//
+// This is a preferred API since it provides type safety for kernel launches.
+template <typename... Args>
+StatusOr<std::unique_ptr<se::TypedKernel<Args...>>> CreateTypedKernel(
+    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
+    absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec) {
+  se::MultiKernelLoaderSpec loader_spec(num_args);
+  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+
+  if (!cubin_data.empty()) {
+    loader_spec.AddCudaCubinInMemory(
+        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
+  }
+
+  auto kernel_base = absl::make_unique<se::TypedKernel<Args...>>(stream_exec);
+  if (!stream_exec->GetKernel(loader_spec, kernel_base.get())) {
+    return InternalError("Unable to load kernel '%s'", kernel_name);
+  }
+
+  return std::move(kernel_base);
+}
+
 // Creates a kernel with a provided name, based from provided PTX in ptx.
 // The kernel should be executed using the provided executor.
 // The argument cubin_data represents compiled PTX and may be left empty.

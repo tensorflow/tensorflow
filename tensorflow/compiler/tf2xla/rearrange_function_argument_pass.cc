@@ -309,6 +309,43 @@ Status MaybeRewriteWhileNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
     TF_RETURN_IF_ERROR(
         FunctionDefToBodyHelper(*fdef, AttrSlice(), fld, &fbody));
 
+    // Check that resource _Arg nodes for While node are always returned with
+    // the same index, and we don't have cases like this:
+    // tf.while_loop(
+    //     cond,
+    //     lambda resource_var1, resource_var2: [resource_var2, resource_var1],
+    //     [resource_var1, resource_var2])
+    if (attr_name == "body") {
+      for (int i = 0; i < fbody->ret_nodes.size(); i++) {
+        Node* n = fbody->ret_nodes[i];
+        DataType dtype;
+        TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+        if (dtype != DT_RESOURCE) {
+          continue;
+        }
+
+        Node* input_node;
+        TF_RETURN_IF_ERROR(n->input_node(0, &input_node));
+        while (input_node->IsIdentity()) {
+          TF_RETURN_IF_ERROR(input_node->input_node(0, &input_node));
+        }
+        if (input_node->IsArg()) {
+          int index;
+          TF_RETURN_IF_ERROR(GetNodeAttr(input_node->def(), "index", &index));
+          if (index != i) {
+            return errors::Unimplemented("While node ", n->DebugString(),
+                                         " has resource _Retval[", i,
+                                         "] coming from _Arg[", index, "]");
+          }
+        } else {
+          return errors::Unimplemented("Encountered node ",
+                                       input_node->DebugString(),
+                                       " while tracing _Arg node for _Retval[",
+                                       i, "] of while node ", n->DebugString());
+        }
+      }
+    }
+
     RearrangeArgNodes(&fbody->arg_nodes, index_mapping);
     if (attr_name == "body") {
       for (int i = 0; i < fbody->ret_nodes.size(); i++) {

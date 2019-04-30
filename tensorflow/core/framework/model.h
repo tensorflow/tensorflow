@@ -481,10 +481,10 @@ class Model {
       std::shared_ptr<Node> node);
 
   // Collects the output time for the given node.
-  int64 OutputTime(std::shared_ptr<Node> node);
+  double OutputTime(std::shared_ptr<Node> node);
 
   // Collects the processing time for the given node.
-  int64 TotalProcessingTime(std::shared_ptr<Node> node);
+  double TotalProcessingTime(std::shared_ptr<Node> node);
 
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to

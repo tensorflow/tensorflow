@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -372,14 +373,20 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
   CHECK(!s.ok());
-  local_->StartAbort(s);
+  // Use a "derived" status as the status for the rendezvous. Derived
+  // status messages are ignored when aggregating errors across devices: this
+  // allows us to prefer our original status message over any cancellation
+  // related errors.
+  Status derived_status = StatusGroup::MakeDerived(s);
+
+  local_->StartAbort(derived_status);
   {
     // Aborts all active RecvTensor calls.
     mutex_lock l(mu_);
     if (status_.ok()) {
-      status_ = s;
+      status_ = derived_status;
       for (BaseRecvTensorCall* call : active_) {
-        call->StartAbort(s);
+        call->StartAbort(derived_status);
       }
       active_.clear();
     }

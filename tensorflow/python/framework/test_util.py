@@ -1570,6 +1570,31 @@ def disable_all_xla(description):
   return disable_all_impl
 
 
+# The description is just for documentation purposes.
+def no_xla_auto_jit(description):  # pylint: disable=unused-argument
+
+  def no_xla_auto_jit_impl(func):
+    """This test is not intended to be run with XLA auto jit enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Skip test if using XLA is forced.
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return no_xla_auto_jit_impl
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
