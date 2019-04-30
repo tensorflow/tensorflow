@@ -3349,7 +3349,7 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
 
 # half_pixel_centers not supported by XLA
-@test_util.disable_all_xla("b/127616992")
+@test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
