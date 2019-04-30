@@ -949,7 +949,6 @@ tf_cuda_library(
         "util/batch_util.h",
         "util/bcast.h",
         "util/matmul_bcast.h",
-        "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -2931,7 +2930,6 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = [
-        "util/cuda_device_functions.h",
         "util/gpu_device_functions.h",
     ],
     visibility = ["//visibility:public"],
