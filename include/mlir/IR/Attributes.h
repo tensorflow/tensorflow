@@ -38,7 +38,6 @@ class VectorOrTensorType;
 namespace detail {
 
 struct AttributeStorage;
-struct UnitAttributeStorage;
 struct BoolAttributeStorage;
 struct IntegerAttributeStorage;
 struct FloatAttributeStorage;
@@ -165,7 +164,6 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 class UnitAttr : public Attribute {
 public:
   using Attribute::Attribute;
-  using ImplType = detail::UnitAttributeStorage;
 
   static UnitAttr get(MLIRContext *context);
 

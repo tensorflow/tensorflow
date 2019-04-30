@@ -26,7 +26,9 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-Attribute::Kind Attribute::getKind() const { return attr->kind; }
+Attribute::Kind Attribute::getKind() const {
+  return static_cast<Kind>(attr->getKind());
+}
 
 bool Attribute::isOrContainsFunction() const {
   return attr->isOrContainsFunctionCache;
@@ -66,6 +68,14 @@ Attribute Attribute::remapFunctionAttrs(
 }
 
 //===----------------------------------------------------------------------===//
+// UnitAttr
+//===----------------------------------------------------------------------===//
+
+UnitAttr UnitAttr::get(MLIRContext *context) {
+  return AttributeUniquer::get<UnitAttr>(context, Attribute::Kind::Unit);
+}
+
+//===----------------------------------------------------------------------===//
 // NumericAttr
 //===----------------------------------------------------------------------===//
 
@@ -91,6 +101,12 @@ bool NumericAttr::kindof(Kind kind) {
 // BoolAttr
 //===----------------------------------------------------------------------===//
 
+BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
+  // Note: The context is also used within the BoolAttrStorage.
+  return AttributeUniquer::get<BoolAttr>(context, Attribute::Kind::Bool,
+                                         context, value);
+}
+
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 Type BoolAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
@@ -98,6 +114,20 @@ Type BoolAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 //===----------------------------------------------------------------------===//
 // IntegerAttr
 //===----------------------------------------------------------------------===//
+
+IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
+  return AttributeUniquer::get<IntegerAttr>(
+      type.getContext(), Attribute::Kind::Integer, type, value);
+}
+
+IntegerAttr IntegerAttr::get(Type type, int64_t value) {
+  // This uses 64 bit APInts by default for index type.
+  if (type.isIndex())
+    return get(type, APInt(64, value));
+
+  auto intType = type.cast<IntegerType>();
+  return get(type, APInt(intType.getWidth(), value));
+}
 
 APInt IntegerAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -112,6 +142,44 @@ Type IntegerAttr::getType() const {
 //===----------------------------------------------------------------------===//
 // FloatAttr
 //===----------------------------------------------------------------------===//
+
+FloatAttr FloatAttr::get(Type type, const APFloat &value) {
+  assert(&type.cast<FloatType>().getFloatSemantics() == &value.getSemantics() &&
+         "FloatAttr type doesn't match the type implied by its value");
+  return AttributeUniquer::get<FloatAttr>(type.getContext(),
+                                          Attribute::Kind::Float, type, value);
+}
+
+static FloatAttr getFloatAttr(Type type, double value,
+                              llvm::Optional<Location> loc) {
+  if (!type.isa<FloatType>()) {
+    if (loc)
+      type.getContext()->emitError(*loc, "expected floating point type");
+    return nullptr;
+  }
+
+  // Treat BF16 as double because it is not supported in LLVM's APFloat.
+  // TODO(b/121118307): add BF16 support to APFloat?
+  if (type.isBF16() || type.isF64())
+    return FloatAttr::get(type, APFloat(value));
+
+  // This handles, e.g., F16 because there is no APFloat constructor for it.
+  bool unused;
+  APFloat val(value);
+  val.convert(type.cast<FloatType>().getFloatSemantics(),
+              APFloat::rmNearestTiesToEven, &unused);
+  return FloatAttr::get(type, val);
+}
+
+FloatAttr FloatAttr::getChecked(Type type, double value, Location loc) {
+  return getFloatAttr(type, value, loc);
+}
+
+FloatAttr FloatAttr::get(Type type, double value) {
+  auto res = getFloatAttr(type, value, /*loc=*/llvm::None);
+  assert(res && "failed to construct float attribute");
+  return res;
+}
 
 APFloat FloatAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -134,6 +202,11 @@ double FloatAttr::getValueAsDouble() const {
 // StringAttr
 //===----------------------------------------------------------------------===//
 
+StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
+  return AttributeUniquer::get<StringAttr>(context, Attribute::Kind::String,
+                                           bytes);
+}
+
 StringRef StringAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
@@ -141,6 +214,11 @@ StringRef StringAttr::getValue() const {
 //===----------------------------------------------------------------------===//
 // ArrayAttr
 //===----------------------------------------------------------------------===//
+
+ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
+  return AttributeUniquer::get<ArrayAttr>(context, Attribute::Kind::Array,
+                                          value);
+}
 
 ArrayRef<Attribute> ArrayAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
@@ -150,6 +228,11 @@ ArrayRef<Attribute> ArrayAttr::getValue() const {
 // AffineMapAttr
 //===----------------------------------------------------------------------===//
 
+AffineMapAttr AffineMapAttr::get(AffineMap value) {
+  return AttributeUniquer::get<AffineMapAttr>(
+      value.getResult(0).getContext(), Attribute::Kind::AffineMap, value);
+}
+
 AffineMap AffineMapAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
@@ -157,6 +240,11 @@ AffineMap AffineMapAttr::getValue() const {
 //===----------------------------------------------------------------------===//
 // IntegerSetAttr
 //===----------------------------------------------------------------------===//
+
+IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
+  return AttributeUniquer::get<IntegerSetAttr>(
+      value.getConstraint(0).getContext(), Attribute::Kind::IntegerSet, value);
+}
 
 IntegerSet IntegerSetAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
@@ -166,11 +254,28 @@ IntegerSet IntegerSetAttr::getValue() const {
 // TypeAttr
 //===----------------------------------------------------------------------===//
 
+TypeAttr TypeAttr::get(Type value, MLIRContext *context) {
+  return AttributeUniquer::get<TypeAttr>(context, Attribute::Kind::Type, value);
+}
+
 Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 //===----------------------------------------------------------------------===//
 // FunctionAttr
 //===----------------------------------------------------------------------===//
+
+FunctionAttr FunctionAttr::get(Function *value, MLIRContext *context) {
+  assert(value && "Cannot get FunctionAttr for a null function");
+  return AttributeUniquer::get<FunctionAttr>(context, Attribute::Kind::Function,
+                                             value);
+}
+
+/// This function is used by the internals of the Function class to null out
+/// attributes referring to functions that are about to be deleted.
+void FunctionAttr::dropFunctionReference(Function *value) {
+  AttributeUniquer::erase<FunctionAttr>(value->getContext(),
+                                        Attribute::Kind::Function, value);
+}
 
 Function *FunctionAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
@@ -208,6 +313,14 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 // SplatElementsAttr
 //===----------------------------------------------------------------------===//
 
+SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
+                                         Attribute elt) {
+  assert(elt.cast<NumericAttr>().getType() == type.getElementType() &&
+         "value should be of the given type");
+  return AttributeUniquer::get<SplatElementsAttr>(
+      type.getContext(), Attribute::Kind::SplatElements, type, elt);
+}
+
 Attribute SplatElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->elt;
 }
@@ -236,6 +349,70 @@ APInt DenseElementsAttr::RawElementIterator::operator*() const {
 //===----------------------------------------------------------------------===//
 // DenseElementsAttr
 //===----------------------------------------------------------------------===//
+
+DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+                                         ArrayRef<char> data) {
+  assert((type.getSizeInBits() <= data.size() * APInt::APINT_WORD_SIZE) &&
+         "Input data bit size should be larger than that type requires");
+
+  Attribute::Kind kind;
+  switch (type.getElementType().getKind()) {
+  case StandardTypes::BF16:
+  case StandardTypes::F16:
+  case StandardTypes::F32:
+  case StandardTypes::F64:
+    kind = Attribute::Kind::DenseFPElements;
+    break;
+  case StandardTypes::Integer:
+    kind = Attribute::Kind::DenseIntElements;
+    break;
+  default:
+    llvm_unreachable("unexpected element type");
+  }
+  return AttributeUniquer::get<DenseElementsAttr>(type.getContext(), kind, type,
+                                                  data);
+}
+
+DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+                                         ArrayRef<Attribute> values) {
+  assert(type.getElementType().isIntOrFloat() &&
+         "expected int or float element type");
+  assert(values.size() == type.getNumElements() &&
+         "expected 'values' to contain the same number of elements as 'type'");
+
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
+  auto eltType = type.getElementType();
+  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+
+  // Compress the attribute values into a character buffer.
+  SmallVector<char, 8> data(APInt::getNumWords(bitWidth * values.size()) *
+                            APInt::APINT_WORD_SIZE);
+  APInt intVal;
+  for (unsigned i = 0, e = values.size(); i < e; ++i) {
+    switch (eltType.getKind()) {
+    case StandardTypes::BF16:
+    case StandardTypes::F16:
+    case StandardTypes::F32:
+    case StandardTypes::F64:
+      assert(eltType == values[i].cast<FloatAttr>().getType() &&
+             "expected attribute value to have element type");
+      intVal = values[i].cast<FloatAttr>().getValue().bitcastToAPInt();
+      break;
+    case StandardTypes::Integer:
+      assert(eltType == values[i].cast<IntegerAttr>().getType() &&
+             "expected attribute value to have element type");
+      intVal = values[i].cast<IntegerAttr>().getValue();
+      break;
+    default:
+      llvm_unreachable("unexpected element type");
+    }
+    assert(intVal.getBitWidth() == bitWidth &&
+           "expected value to have same bitwidth as element type");
+    writeBits(data.data(), i * bitWidth, intVal);
+  }
+  return get(type, data);
+}
 
 /// Returns the number of elements held by this attribute.
 size_t DenseElementsAttr::size() const { return getType().getNumElements(); }
@@ -457,6 +634,15 @@ DenseFPElementsAttr::iterator DenseFPElementsAttr::end() const {
 // OpaqueElementsAttr
 //===----------------------------------------------------------------------===//
 
+OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
+                                           VectorOrTensorType type,
+                                           StringRef bytes) {
+  assert(TensorType::isValidElementType(type.getElementType()) &&
+         "Input element type should be a valid tensor element type");
+  return AttributeUniquer::get<OpaqueElementsAttr>(
+      type.getContext(), Attribute::Kind::OpaqueElements, type, dialect, bytes);
+}
+
 StringRef OpaqueElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->bytes;
 }
@@ -482,6 +668,16 @@ bool OpaqueElementsAttr::decode(ElementsAttr &result) {
 //===----------------------------------------------------------------------===//
 // SparseElementsAttr
 //===----------------------------------------------------------------------===//
+
+SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
+                                           DenseIntElementsAttr indices,
+                                           DenseElementsAttr values) {
+  assert(indices.getType().getElementType().isInteger(64) &&
+         "expected sparse indices to be 64-bit integer values");
+  return AttributeUniquer::get<SparseElementsAttr>(
+      type.getContext(), Attribute::Kind::SparseElements, type, indices,
+      values);
+}
 
 DenseIntElementsAttr SparseElementsAttr::getIndices() const {
   return static_cast<ImplType *>(attr)->indices;

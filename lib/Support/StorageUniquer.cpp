@@ -105,6 +105,23 @@ struct StorageUniquerImpl {
     return result = initializeStorage(kind, ctorFn);
   }
 
+  /// Erase an instance of a complex derived type.
+  void erase(unsigned kind, unsigned hashValue,
+             llvm::function_ref<bool(const BaseStorage *)> isEqual,
+             llvm::function_ref<void(BaseStorage *)> cleanupFn) {
+    LookupKey lookupKey{kind, hashValue, isEqual};
+
+    // Acquire a writer-lock so that we can safely erase the type instance.
+    llvm::sys::SmartScopedWriter<true> typeLock(mutex);
+    auto existing = storageTypes.find_as(lookupKey);
+    if (existing == storageTypes.end())
+      return;
+
+    // Cleanup the storage and remove it from the map.
+    cleanupFn(existing->storage);
+    storageTypes.erase(existing);
+  }
+
   //===--------------------------------------------------------------------===//
   // Instance Storage
   //===--------------------------------------------------------------------===//
@@ -178,4 +195,13 @@ auto StorageUniquer::getImpl(
     unsigned kind, std::function<BaseStorage *(StorageAllocator &)> ctorFn)
     -> BaseStorage * {
   return impl->getOrCreate(kind, ctorFn);
+}
+
+/// Implementation for erasing an instance of a derived type with complex
+/// storage.
+void StorageUniquer::eraseImpl(
+    unsigned kind, unsigned hashValue,
+    llvm::function_ref<bool(const BaseStorage *)> isEqual,
+    std::function<void(BaseStorage *)> cleanupFn) {
+  impl->erase(kind, hashValue, isEqual, cleanupFn);
 }

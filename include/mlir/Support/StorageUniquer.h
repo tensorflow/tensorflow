@@ -55,6 +55,12 @@ struct StorageUniquerImpl;
 ///      that builds a unique instance of the derived storage. The arguments to
 ///      this function are an allocator to store any uniqued data and the key
 ///      type for this storage.
+///
+///    - Provide a cleanup method:
+///        'void cleanup()'
+///      that is called when erasing a storage instance. This should cleanup any
+///      fields of the storage as necessary and not attempt to free the memory
+///      of the storage itself.
 class StorageUniquer {
 public:
   StorageUniquer();
@@ -114,7 +120,7 @@ public:
 
   /// Gets a uniqued instance of 'Storage'. 'initFn' is an optional parameter
   /// that can be used to initialize a newly inserted storage instance. This
-  /// overload is used for derived types that have complex storage or uniquing
+  /// function is used for derived types that have complex storage or uniquing
   /// constraints.
   template <typename Storage, typename... Args>
   Storage *getComplex(std::function<void(Storage *)> initFn, unsigned kind,
@@ -146,7 +152,7 @@ public:
 
   /// Gets a uniqued instance of 'Storage'. 'initFn' is an optional parameter
   /// that can be used to initialize a newly inserted storage instance. This
-  /// overload is used for derived types that use no additional storage or
+  /// function is used for derived types that use no additional storage or
   /// uniquing outside of the kind.
   template <typename Storage>
   Storage *getSimple(std::function<void(Storage *)> initFn, unsigned kind) {
@@ -157,6 +163,28 @@ public:
       return storage;
     };
     return static_cast<Storage *>(getImpl(kind, ctorFn));
+  }
+
+  /// Erases a uniqued instance of 'Storage'. This function is used for derived
+  /// types that have complex storage or uniquing constraints.
+  template <typename Storage, typename... Args>
+  void eraseComplex(unsigned kind, Args &&... args) {
+    // Construct a value of the derived key type.
+    auto derivedKey = getKey<Storage>(args...);
+
+    // Create a hash of the kind and the derived key.
+    unsigned hashValue = getHash<Storage>(kind, derivedKey);
+
+    // Generate an equality function for the derived storage.
+    std::function<bool(const BaseStorage *)> isEqual =
+        [&derivedKey](const BaseStorage *existing) {
+          return static_cast<const Storage &>(*existing) == derivedKey;
+        };
+
+    // Attempt to erase the storage instance.
+    eraseImpl(kind, hashValue, isEqual, [](BaseStorage *storage) {
+      static_cast<Storage *>(storage)->cleanup();
+    });
   }
 
 private:
@@ -170,6 +198,12 @@ private:
   /// default storage.
   BaseStorage *getImpl(unsigned kind,
                        std::function<BaseStorage *(StorageAllocator &)> ctorFn);
+
+  /// Implementation for erasing an instance of a derived type with complex
+  /// storage.
+  void eraseImpl(unsigned kind, unsigned hashValue,
+                 llvm::function_ref<bool(const BaseStorage *)> isEqual,
+                 std::function<void(BaseStorage *)> cleanupFn);
 
   /// The internal implementation class.
   std::unique_ptr<detail::StorageUniquerImpl> impl;

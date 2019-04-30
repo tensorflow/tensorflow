@@ -28,33 +28,79 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/StorageUniquer.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 namespace detail {
-
 /// Base storage class appearing in an attribute.
-struct AttributeStorage {
-  AttributeStorage(Attribute::Kind kind, bool isOrContainsFunctionCache = false)
-      : kind(kind), isOrContainsFunctionCache(isOrContainsFunctionCache) {}
-
-  Attribute::Kind kind : 8;
+struct AttributeStorage : public StorageUniquer::BaseStorage {
+  AttributeStorage(bool isOrContainsFunctionCache = false)
+      : isOrContainsFunctionCache(isOrContainsFunctionCache) {}
 
   /// This field is true if this is, or contains, a function attribute.
   bool isOrContainsFunctionCache : 1;
 };
 
-/// An attribute representing a unit value.
-struct UnitAttributeStorage : public AttributeStorage {
-  UnitAttributeStorage() : AttributeStorage(Attribute::Kind::Unit) {}
+// A utility class to get, or create, unique instances of attributes within an
+// MLIRContext. This class manages all creation and uniquing of attributes.
+class AttributeUniquer {
+public:
+  /// Get an uniqued instance of attribute T. This overload is used for
+  /// derived attributes that have complex storage or uniquing constraints.
+  template <typename T, typename... Args>
+  static typename std::enable_if<
+      !std::is_same<typename T::ImplType, AttributeStorage>::value, T>::type
+  get(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
+    return ctx->getAttributeUniquer().getComplex<typename T::ImplType>(
+        /*initFn=*/{}, static_cast<unsigned>(kind),
+        std::forward<Args>(args)...);
+  }
+
+  /// Get an uniqued instance of attribute T. This overload is used for
+  /// derived attributes that use the AttributeStorage directly and thus need no
+  /// additional storage or uniquing.
+  template <typename T, typename... Args>
+  static typename std::enable_if<
+      std::is_same<typename T::ImplType, AttributeStorage>::value, T>::type
+  get(MLIRContext *ctx, Attribute::Kind kind) {
+    return ctx->getAttributeUniquer().getSimple<AttributeStorage>(
+        /*initFn=*/{}, static_cast<unsigned>(kind));
+  }
+
+  /// Erase a uniqued instance of attribute T. This overload is used for
+  /// derived attributes that have complex storage or uniquing constraints.
+  template <typename T, typename... Args>
+  static typename std::enable_if<
+      !std::is_same<typename T::ImplType, AttributeStorage>::value>::type
+  erase(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
+    return ctx->getAttributeUniquer().eraseComplex<typename T::ImplType>(
+        static_cast<unsigned>(kind), std::forward<Args>(args)...);
+  }
 };
+
+using AttributeStorageAllocator = StorageUniquer::StorageAllocator;
 
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
-  BoolAttributeStorage(Type type, bool value)
-      : AttributeStorage(Attribute::Kind::Bool), type(type), value(value) {}
-  const Type type;
+  using KeyTy = std::pair<MLIRContext *, bool>;
+
+  BoolAttributeStorage(Type type, bool value) : type(type), value(value) {}
+
+  /// We only check equality for and hash with the boolean key parameter.
+  bool operator==(const KeyTy &key) const { return key.second == value; }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_value(key.second);
+  }
+
+  static BoolAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                         const KeyTy &key) {
+    return new (allocator.allocate<BoolAttributeStorage>())
+        BoolAttributeStorage(IntegerType::get(1, key.first), key.second);
+  }
+
+  Type type;
   bool value;
 };
 
@@ -62,14 +108,37 @@ struct BoolAttributeStorage : public AttributeStorage {
 struct IntegerAttributeStorage final
     : public AttributeStorage,
       public llvm::TrailingObjects<IntegerAttributeStorage, uint64_t> {
+  using KeyTy = std::pair<Type, APInt>;
+
   IntegerAttributeStorage(Type type, size_t numObjects)
-      : AttributeStorage(Attribute::Kind::Integer), type(type),
-        numObjects(numObjects) {
+      : type(type), numObjects(numObjects) {
     assert((type.isIndex() || type.isa<IntegerType>()) && "invalid type");
   }
 
-  const Type type;
-  size_t numObjects;
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(type, getValue());
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, llvm::hash_value(key.second));
+  }
+
+  /// Construct a new storage instance.
+  static IntegerAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, const KeyTy &key) {
+    Type type;
+    APInt value;
+    std::tie(type, value) = key;
+
+    auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
+    auto size =
+        IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+    auto rawMem = allocator.allocate(size, alignof(IntegerAttributeStorage));
+    auto result = ::new (rawMem) IntegerAttributeStorage(type, elements.size());
+    std::uninitialized_copy(elements.begin(), elements.end(),
+                            result->getTrailingObjects<uint64_t>());
+    return result;
+  }
 
   /// Returns an APInt representing the stored value.
   APInt getValue() const {
@@ -78,19 +147,47 @@ struct IntegerAttributeStorage final
     return APInt(type.getIntOrFloatBitWidth(),
                  {getTrailingObjects<uint64_t>(), numObjects});
   }
+
+  Type type;
+  size_t numObjects;
 };
 
 /// An attribute representing a floating point value.
 struct FloatAttributeStorage final
     : public AttributeStorage,
       public llvm::TrailingObjects<FloatAttributeStorage, uint64_t> {
+  using KeyTy = std::pair<Type, APFloat>;
+
   FloatAttributeStorage(const llvm::fltSemantics &semantics, Type type,
                         size_t numObjects)
-      : AttributeStorage(Attribute::Kind::Float), semantics(semantics),
-        type(type.cast<FloatType>()), numObjects(numObjects) {}
-  const llvm::fltSemantics &semantics;
-  const FloatType type;
-  size_t numObjects;
+      : semantics(semantics), type(type.cast<FloatType>()),
+        numObjects(numObjects) {}
+
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key.first == type && key.second.bitwiseIsEqual(getValue());
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, llvm::hash_value(key.second));
+  }
+
+  /// Construct a new storage instance.
+  static FloatAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                          const KeyTy &key) {
+    const auto &apint = key.second.bitcastToAPInt();
+
+    // Here one word's bitwidth equals to that of uint64_t.
+    auto elements = ArrayRef<uint64_t>(apint.getRawData(), apint.getNumWords());
+
+    auto byteSize =
+        FloatAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+    auto rawMem = allocator.allocate(byteSize, alignof(FloatAttributeStorage));
+    auto result = ::new (rawMem) FloatAttributeStorage(
+        key.second.getSemantics(), key.first, elements.size());
+    std::uninitialized_copy(elements.begin(), elements.end(),
+                            result->getTrailingObjects<uint64_t>());
+    return result;
+  }
 
   /// Returns an APFloat representing the stored value.
   APFloat getValue() const {
@@ -98,95 +195,266 @@ struct FloatAttributeStorage final
                      {getTrailingObjects<uint64_t>(), numObjects});
     return APFloat(semantics, val);
   }
+
+  const llvm::fltSemantics &semantics;
+  FloatType type;
+  size_t numObjects;
 };
 
 /// An attribute representing a string value.
 struct StringAttributeStorage : public AttributeStorage {
-  StringAttributeStorage(StringRef value)
-      : AttributeStorage(Attribute::Kind::String), value(value) {}
+  using KeyTy = StringRef;
+
+  StringAttributeStorage(StringRef value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static StringAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                           const KeyTy &key) {
+    return new (allocator.allocate<StringAttributeStorage>())
+        StringAttributeStorage(allocator.copyInto(key));
+  }
+
   StringRef value;
 };
 
 /// An attribute representing an array of other attributes.
 struct ArrayAttributeStorage : public AttributeStorage {
+  using KeyTy = ArrayRef<Attribute>;
+
   ArrayAttributeStorage(bool hasFunctionAttr, ArrayRef<Attribute> value)
-      : AttributeStorage(Attribute::Kind::Array, hasFunctionAttr),
-        value(value) {}
+      : AttributeStorage(hasFunctionAttr), value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static ArrayAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                          const KeyTy &key) {
+    // Check to see if any of the elements have a function attr.
+    bool hasFunctionAttr = llvm::any_of(
+        key, [](Attribute elt) { return elt.isOrContainsFunction(); });
+
+    // Initialize the memory using placement new.
+    return new (allocator.allocate<ArrayAttributeStorage>())
+        ArrayAttributeStorage(hasFunctionAttr, allocator.copyInto(key));
+  }
+
   ArrayRef<Attribute> value;
 };
 
 // An attribute representing a reference to an affine map.
 struct AffineMapAttributeStorage : public AttributeStorage {
-  AffineMapAttributeStorage(AffineMap value)
-      : AttributeStorage(Attribute::Kind::AffineMap), value(value) {}
+  using KeyTy = AffineMap;
+
+  AffineMapAttributeStorage(AffineMap value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static AffineMapAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<AffineMapAttributeStorage>())
+        AffineMapAttributeStorage(key);
+  }
+
   AffineMap value;
 };
 
 // An attribute representing a reference to an integer set.
 struct IntegerSetAttributeStorage : public AttributeStorage {
-  IntegerSetAttributeStorage(IntegerSet value)
-      : AttributeStorage(Attribute::Kind::IntegerSet), value(value) {}
+  using KeyTy = IntegerSet;
+
+  IntegerSetAttributeStorage(IntegerSet value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static IntegerSetAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<IntegerSetAttributeStorage>())
+        IntegerSetAttributeStorage(key);
+  }
+
   IntegerSet value;
 };
 
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
-  TypeAttributeStorage(Type value)
-      : AttributeStorage(Attribute::Kind::Type), value(value) {}
+  using KeyTy = Type;
+
+  TypeAttributeStorage(Type value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static TypeAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                         KeyTy key) {
+    return new (allocator.allocate<TypeAttributeStorage>())
+        TypeAttributeStorage(key);
+  }
+
   Type value;
 };
 
 /// An attribute representing a reference to a function.
 struct FunctionAttributeStorage : public AttributeStorage {
+  using KeyTy = Function *;
+
   FunctionAttributeStorage(Function *value)
-      : AttributeStorage(Attribute::Kind::Function,
-                         /*isOrContainsFunctionCache=*/true),
-        value(value) {}
+      : AttributeStorage(/*isOrContainsFunctionCache=*/true), value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static FunctionAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<FunctionAttributeStorage>())
+        FunctionAttributeStorage(key);
+  }
+
+  /// Storage cleanup function.
+  void cleanup() {
+    // Null out the function reference in the attribute to avoid dangling
+    // pointers.
+    value = nullptr;
+  }
+
   Function *value;
 };
 
 /// A base attribute representing a reference to a vector or tensor constant.
 struct ElementsAttributeStorage : public AttributeStorage {
-  ElementsAttributeStorage(Attribute::Kind kind, VectorOrTensorType type)
-      : AttributeStorage(kind), type(type) {}
+  ElementsAttributeStorage(VectorOrTensorType type) : type(type) {}
   VectorOrTensorType type;
 };
 
 /// An attribute representing a reference to a vector or tensor constant,
 /// inwhich all elements have the same value.
 struct SplatElementsAttributeStorage : public ElementsAttributeStorage {
+  using KeyTy = std::pair<VectorOrTensorType, Attribute>;
+
   SplatElementsAttributeStorage(VectorOrTensorType type, Attribute elt)
-      : ElementsAttributeStorage(Attribute::Kind::SplatElements, type),
-        elt(elt) {}
+      : ElementsAttributeStorage(type), elt(elt) {}
+
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key == std::make_pair(type, elt);
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, key.second);
+  }
+
+  /// Construct a new storage instance.
+  static SplatElementsAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<SplatElementsAttributeStorage>())
+        SplatElementsAttributeStorage(key.first, key.second);
+  }
+
   Attribute elt;
 };
 
 /// An attribute representing a reference to a dense vector or tensor object.
 struct DenseElementsAttributeStorage : public ElementsAttributeStorage {
-  DenseElementsAttributeStorage(Attribute::Kind kind, VectorOrTensorType type,
-                                ArrayRef<char> data)
-      : ElementsAttributeStorage(kind, type), data(data) {}
+  using KeyTy = std::pair<VectorOrTensorType, ArrayRef<char>>;
+
+  DenseElementsAttributeStorage(VectorOrTensorType ty, ArrayRef<char> data)
+      : ElementsAttributeStorage(ty), data(data) {}
+
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const { return key == KeyTy(type, data); }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, key.second);
+  }
+
+  /// Construct a new storage instance.
+  static DenseElementsAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    // If the data buffer is non-empty, we copy it into the allocator.
+    ArrayRef<char> data = key.second;
+    if (!data.empty()) {
+      // Rounding up the allocate size to multiples of APINT_WORD_SIZE, so
+      // the `readBits` will not fail when it accesses multiples of
+      // APINT_WORD_SIZE each time.
+      size_t sizeToAllocate =
+          llvm::alignTo(data.size(), APInt::APINT_WORD_SIZE);
+      auto *rawCopy = (char *)allocator.allocate(sizeToAllocate, 64);
+      std::uninitialized_copy(data.begin(), data.end(), rawCopy);
+      data = {rawCopy, data.size()};
+    }
+    return new (allocator.allocate<DenseElementsAttributeStorage>())
+        DenseElementsAttributeStorage(key.first, data);
+  }
+
   ArrayRef<char> data;
 };
 
 /// An attribute representing a reference to a tensor constant with opaque
 /// content.
 struct OpaqueElementsAttributeStorage : public ElementsAttributeStorage {
+  using KeyTy = std::tuple<VectorOrTensorType, Dialect *, StringRef>;
+
   OpaqueElementsAttributeStorage(VectorOrTensorType type, Dialect *dialect,
                                  StringRef bytes)
-      : ElementsAttributeStorage(Attribute::Kind::OpaqueElements, type),
-        dialect(dialect), bytes(bytes) {}
+      : ElementsAttributeStorage(type), dialect(dialect), bytes(bytes) {}
+
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key == std::make_tuple(type, dialect, bytes);
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(std::get<0>(key), std::get<1>(key),
+                              std::get<2>(key));
+  }
+
+  /// Construct a new storage instance.
+  static OpaqueElementsAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    // TODO(b/131468830): Provide a way to avoid copying content of large opaque
+    // tensors This will likely require a new reference attribute kind.
+    return new (allocator.allocate<OpaqueElementsAttributeStorage>())
+        OpaqueElementsAttributeStorage(std::get<0>(key), std::get<1>(key),
+                                       allocator.copyInto(std::get<2>(key)));
+  }
+
   Dialect *dialect;
   StringRef bytes;
 };
 
 /// An attribute representing a reference to a sparse vector or tensor object.
 struct SparseElementsAttributeStorage : public ElementsAttributeStorage {
+  using KeyTy =
+      std::tuple<VectorOrTensorType, DenseIntElementsAttr, DenseElementsAttr>;
+
   SparseElementsAttributeStorage(VectorOrTensorType type,
                                  DenseIntElementsAttr indices,
                                  DenseElementsAttr values)
-      : ElementsAttributeStorage(Attribute::Kind::SparseElements, type),
-        indices(indices), values(values) {}
+      : ElementsAttributeStorage(type), indices(indices), values(values) {}
+
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key == std::make_tuple(type, indices, values);
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(std::get<0>(key), std::get<1>(key),
+                              std::get<2>(key));
+  }
+
+  /// Construct a new storage instance.
+  static SparseElementsAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<SparseElementsAttributeStorage>())
+        SparseElementsAttributeStorage(std::get<0>(key), std::get<1>(key),
+                                       std::get<2>(key));
+  }
+
   DenseIntElementsAttr indices;
   DenseElementsAttr values;
 };

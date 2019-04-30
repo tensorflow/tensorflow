@@ -98,6 +98,10 @@ public:
   /// This should not be used directly.
   StorageUniquer &getTypeUniquer();
 
+  /// Returns the storage uniquer used for constructing attribute storage
+  /// instances. This should not be used directly.
+  StorageUniquer &getAttributeUniquer();
+
 private:
   const std::unique_ptr<MLIRContextImpl> impl;
 
