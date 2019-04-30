@@ -143,6 +143,7 @@ cc_library(
 cc_test(
     name = "cpu_backend_gemm_test",
     srcs = ["cpu_backend_gemm_test.cc"],
+    tags = ["notsan"],
     deps = [
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest",
