@@ -713,17 +713,16 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinResizeBilinear:
         if (version == 1) {
-          // TODO(131255866): relax the constraint after tests on the drivers.
-          if (android_sdk_version < kMinSdkVersionForNNAPI12) {
-            // Some NNAPI 1.1 drivers don't support this operator properly.
-            return nullptr;
-          }
           const auto& input = context->tensors[node->inputs->data[0]];
           if (input.dims->size != 4) return nullptr;
           if (input.type != kTfLiteFloat32 && input.type != kTfLiteUInt8) {
             return nullptr;
           }
-
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              input.type != kTfLiteFloat32) {
+            // NNAPI 1.0 & 11 only supports float input.
+            return nullptr;
+          }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             const int output_id = mapping_args.node->outputs->data[0];
