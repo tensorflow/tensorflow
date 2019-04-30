@@ -73,7 +73,7 @@ using TranslateFunction =
     std::function<bool(StringRef, StringRef, MLIRContext *)>;
 
 // Storage for the translation function wrappers that survive the parser.
-static llvm::SmallVector<TranslateFunction, 8> wrapperStorage;
+static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
 
 // Custom parser for TranslateFunction.
 // Wraps TranslateToMLIRFunctions and TranslateFromMLIRFunctions into

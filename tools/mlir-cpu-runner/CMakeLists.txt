@@ -5,6 +5,7 @@ set(LIBS
   MLIRExecutionEngine
   MLIRIR
   MLIRParser
+  MLIRTargetLLVMIR
   MLIRTransforms
   MLIRSupport
   LLVMCore
