@@ -36,8 +36,7 @@ struct BenchmarkShape {
 };
 
 template <typename TestSetType>
-std::vector<TestResult<DstScalar>> BenchmarkPackedLinearRCC(
-    const BenchmarkShape& shape) {
+std::vector<TestResult<DstScalar>> BenchmarkRCC(const BenchmarkShape& shape) {
   TestSetType test_set;
   test_set.rows = shape.rows;
   test_set.depth = shape.depth;
@@ -104,7 +103,7 @@ void Benchmark() {
 
   for (int i = 0; i < shapes.size(); i++) {
     const auto& shape = shapes[i];
-    const auto& results = BenchmarkPackedLinearRCC<TestSetType>(shape);
+    const auto& results = BenchmarkRCC<TestSetType>(shape);
     if (i == 0) {
       if (benchmark_cubic) {
         printf("size");
