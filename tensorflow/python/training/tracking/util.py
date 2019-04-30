@@ -18,8 +18,11 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import os
 import weakref
+
+import six
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -38,6 +41,7 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as v1_saver_lib
 from tensorflow.python.training.saving import functional_saver
@@ -51,6 +55,50 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
+
+
+class _ObjectGraphProtoPrettyPrinter(object):
+  """Lazily traverses an object graph proto to pretty print names.
+
+  If no calls to `node_names` are made this object has no performance
+  overhead. On the other hand, it will only traverse the object graph once, so
+  repeated naming is cheap after the first.
+  """
+
+  def __init__(self, object_graph_proto):
+    self._object_graph_proto = object_graph_proto
+    self._node_name_cache = None
+
+  @property
+  def node_names(self):
+    """Lazily creates a mapping from node id to ("path", "to", "root")."""
+    if self._node_name_cache is not None:
+      return self._node_name_cache
+    path_to_root = object_identity.ObjectIdentityDictionary()
+    path_to_root[0] = ("(root)",)
+    to_visit = collections.deque([0])
+    while to_visit:
+      node_id = to_visit.popleft()
+      obj = self._object_graph_proto.nodes[node_id]
+      for child in obj.children:
+        if child.node_id not in path_to_root:
+          path_to_root[child.node_id] = (
+              path_to_root[node_id] + (child.local_name,))
+          to_visit.append(child.node_id)
+
+    node_names = {}
+    for node_id, path_to_root in path_to_root.items():
+      node_names[node_id] = ".".join(path_to_root)
+
+    for node_id, node in enumerate(self._object_graph_proto.nodes):
+      for slot_reference in node.slot_variables:
+        node_names[slot_reference.slot_variable_node_id] = (
+            "{}'s state '{}' for {}".format(
+                node_names[node_id],
+                slot_reference.slot_name,
+                node_names[slot_reference.original_variable_node_id]))
+    self._node_name_cache = node_names
+    return node_names
 
 
 class _CheckpointRestoreCoordinator(object):
@@ -76,9 +124,9 @@ class _CheckpointRestoreCoordinator(object):
     """
     self.object_graph_proto = object_graph_proto
     self.restore_uid = ops.uid()
-    # Maps from objects to lists of attributes which were in the checkpoint but
-    # not loaded into any object, for error checking.
-    self.unused_attributes = weakref.WeakKeyDictionary()
+    # Maps from proto ids to lists of attributes which were in the checkpoint
+    # but not loaded into any object, for error checking.
+    self.unused_attributes = {}
     # Dictionary mapping from an id in the protocol buffer flat array to
     # Trackable Python objects. This mapping may be deferred if a
     # checkpoint is restored before all dependencies have been tracked. Uses
@@ -86,6 +134,7 @@ class _CheckpointRestoreCoordinator(object):
     # (as objects with deferred dependencies will generally have references to
     # this object).
     self.object_by_proto_id = weakref.WeakValueDictionary()
+    self.matched_proto_ids = set()
     # A set of all Python objects we've seen as dependencies, even if we didn't
     # use them (for example because of inconsistent references when
     # loading). Used to make status assertions fail when loading checkpoints
@@ -113,6 +162,9 @@ class _CheckpointRestoreCoordinator(object):
     # deferred_slot_restorations if the optimizer hasn't been created when that
     # happens.
     self.slot_restorations = {}
+    # Controls whether errors are printed in __del__ if some objects did not
+    # match.
+    self.expect_partial = False
     for node_index, node in enumerate(self.object_graph_proto.nodes):
       for slot_reference in node.slot_variables:
         # `node` refers to an `Optimizer`, since only these have slot variables.
@@ -164,6 +216,36 @@ class _CheckpointRestoreCoordinator(object):
           assert name not in self.restore_ops_by_name
           self.restore_ops_by_name[name] = restore_op
     return restore_ops
+
+  def __del__(self):
+    if self.expect_partial:
+      return
+    if logging is None:
+      # The logging module may have been unloaded when __del__ is called.
+      log_fn = print
+    else:
+      log_fn = logging.warning
+    printed_warning = False
+    pretty_printer = _ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
+    for node_id in range(len(self.object_graph_proto.nodes)):
+      if node_id not in self.matched_proto_ids:
+        log_fn("Unresolved object in checkpoint: {}"
+               .format(pretty_printer.node_names[node_id]))
+        printed_warning = True
+    for node_id, attribute_name in self.unused_attributes.items():
+      log_fn(("Unused attribute in object {}: {}"
+              .format(pretty_printer.node_names[node_id], attribute_name)))
+      printed_warning = True
+    if printed_warning:
+      log_fn(
+          "A checkpoint was restored (e.g. tf.train.Checkpoint.restore or "
+          "tf.keras.Model.load_weights) but not all checkpointed values were "
+          "used. See above for specific issues. Use expect_partial() on the "
+          "load status object, e.g. "
+          "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
+          "warnings, or use assert_consumed() to make the check explicit. See "
+          "https://www.tensorflow.org/alpha/guide/checkpoints#loading_mechanics"
+          " for details.")
 
 
 class _NameBasedRestoreCoordinator(object):
@@ -503,6 +585,10 @@ class _LoadStatus(object):
     """Runs restore ops from the checkpoint, or initializes variables."""
     pass
 
+  def expect_partial(self):
+    """Silence warnings about incomplete checkpoint restores."""
+    return self
+
 
 def streaming_restore(status, session=None):
   """When graph building, runs restore ops as soon as they come in.
@@ -562,21 +648,31 @@ class CheckpointLoadStatus(_LoadStatus):
         or if there are any checkpointed values which have not been matched to
         Python objects.
     """
+    pretty_printer = _ObjectGraphProtoPrettyPrinter(
+        self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if trackable is None:
-        raise AssertionError("Unresolved object in checkpoint: %s" % (node,))
+        raise AssertionError("Unresolved object in checkpoint {}: {}"
+                             .format(pretty_printer.node_names[node_id], node))
     if self._checkpoint.slot_restorations:
       # Sanity check; this collection should be clear if everything has been
       # restored.
       raise AssertionError("Unresolved slot restorations: %s" %
                            (self._checkpoint.slot_restorations,))
     if self._checkpoint.unused_attributes:
+      unused_attribute_messages = []
+      for node_id, attribute in six.iteritems(
+          self._checkpoint.unused_attributes):
+        obj = self._checkpoint.object_by_proto_id[node_id]
+        unused_attribute_messages.append(
+            "{} ({}): {}"
+            .format(pretty_printer.node_names[node_id], obj, attribute))
       raise AssertionError(
           ("Unused attributes in these objects (the attributes exist in the "
-           "checkpoint but not in the objects): %s") %
-          (list(self._checkpoint.unused_attributes.items()),))
+           "checkpoint but were not restored):\n{}")
+          .format("\n".join(unused_attribute_messages)))
     return self
 
   def assert_existing_objects_matched(self):
@@ -680,6 +776,11 @@ class CheckpointLoadStatus(_LoadStatus):
              < self._checkpoint.restore_uid)]
     self.run_restore_ops(session=session)
     session.run(initializers_for_non_restored_variables)
+
+  def expect_partial(self):
+    """Silence warnings about incomplete checkpoint restores."""
+    self._checkpoint.expect_partial = True
+    return self
 
 
 class InitializationOnlyStatus(_LoadStatus):
@@ -1477,6 +1578,11 @@ class CheckpointV1(tracking.AutoTrackable):
           checkpoint which haven't been created in Python and some Python
           objects may not have a checkpointed value.
 
+      * `expect_partial()`: Silence warnings about incomplete checkpoint
+          restores. Warnings are otherwise printed for unused parts of the
+          checkpoint file or object when the `Checkpoint` object is deleted
+          (often at program shutdown).
+
       * `initialize_or_restore(session=None)`:
           When graph building, runs variable initializers if `save_path` is
           `None`, but otherwise runs restore operations. If no `session` is
@@ -1774,6 +1880,11 @@ class Checkpoint(tracking.AutoTrackable):
           sanity checking in library code where objects may exist in the
           checkpoint which haven't been created in Python and some Python
           objects may not have a checkpointed value.
+
+      * `expect_partial()`: Silence warnings about incomplete checkpoint
+          restores. Warnings are otherwise printed for unused parts of the
+          checkpoint file or object when the `Checkpoint` object is deleted
+          (often at program shutdown).
     """
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables
