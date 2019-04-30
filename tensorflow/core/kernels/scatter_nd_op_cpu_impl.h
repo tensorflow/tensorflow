@@ -85,18 +85,18 @@ class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
 template <typename Input, typename Update, typename Output>
 class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input value/* input */, Update update,
+  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
                                           Output output) {
-    output = value.cwiseMax(update);
+    output = output.cwiseMax(update);
   }
 };
 
 template <typename Input, typename Update, typename Output>
 class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input value/* input */, Update update,
+  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
                                           Output output) {
-    output = value.cwiseMin(update);
+    output = output.cwiseMin(update);
   }
 };
 
@@ -187,6 +187,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MINMAX);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
 TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_MATH
+#undef REGISTER_SCATTER_ND_MINMAX
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_INDEX
 #undef REGISTER_SCATTER_ND_FULL
@@ -270,17 +271,18 @@ struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MIN); \
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MAX);
 
-TF_CALL_GPU_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MINMAX_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MINMAX_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MATH_SYCL);
 REGISTER_SCATTER_ND_UPDATE_SYCL(int32);
 REGISTER_SCATTER_ND_MATH_SYCL(int32);
+REGISTER_SCATTER_ND_MINMAX_SYCL(int32);
 
 #undef REGISTER_SCATTER_ND_MATH_SYCL
+#undef REGISTER_SCATTER_ND_MINMAX_SYCL
 #undef REGISTER_SCATTER_ND_UPDATE_SYCL
 #undef REGISTER_SCATTER_ND_INDEX_SYCL
 #undef REGISTER_SCATTER_ND_FULL_SYCL
-
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
