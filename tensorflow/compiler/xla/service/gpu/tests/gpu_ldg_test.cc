@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class GpuLdgTest : public PtxCodegenTest {};
+class GpuLdgTest : public GpuCodegenTest {};
 
 // Parameters are never overwritten, so parameter reads should get ld.global.nc
 // reads.
