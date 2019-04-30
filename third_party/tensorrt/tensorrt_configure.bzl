@@ -18,6 +18,7 @@ load(
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
 _TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
+_TF_NEED_TENSORRT = "TF_NEED_TENSORRT"
 
 _TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin"]
 _TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h", "NvInferPlugin.h"]
@@ -43,6 +44,10 @@ def _create_dummy_repository(repository_ctx):
         "%{tensorrt_libs}": "[]",
     })
 
+def enable_tensorrt(repository_ctx):
+    """Returns whether to build with TensorRT support."""
+    return int(repository_ctx.os.environ.get(_TF_NEED_TENSORRT, False))
+
 def _tensorrt_configure_impl(repository_ctx):
     """Implementation of the tensorrt_configure repository rule."""
     if _TF_TENSORRT_CONFIG_REPO in repository_ctx.os.environ:
@@ -56,7 +61,7 @@ def _tensorrt_configure_impl(repository_ctx):
         )
         return
 
-    if _TF_TENSORRT_VERSION not in repository_ctx.os.environ:
+    if not enable_tensorrt(repository_ctx):
         _create_dummy_repository(repository_ctx)
         return
 
@@ -99,6 +104,7 @@ tensorrt_configure = repository_rule(
         _TENSORRT_INSTALL_PATH,
         _TF_TENSORRT_VERSION,
         _TF_TENSORRT_CONFIG_REPO,
+        _TF_NEED_TENSORRT,
         "TF_CUDA_PATHS",
     ],
 )

@@ -1324,9 +1324,9 @@ def validate_cuda_config(environ_cp):
 
   cuda_libraries = ['cuda', 'cudnn']
   if is_linux():
-    if 'TF_TENSORRT_VERSION' in environ_cp:  # if env variable exists
+    if environ_cp.get('TF_NEED_TENSORRT', None):
       cuda_libraries.append('tensorrt')
-    if environ_cp.get('TF_NCCL_VERSION', None):  # if env variable not empty
+    if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
   proc = subprocess.Popen(
@@ -1453,8 +1453,12 @@ def main():
         cuda_env_names = [
             'TF_CUDA_VERSION', 'TF_CUBLAS_VERSION', 'TF_CUDNN_VERSION',
             'TF_TENSORRT_VERSION', 'TF_NCCL_VERSION', 'TF_CUDA_PATHS',
-            'CUDA_TOOLKIT_PATH'
+            # Items below are for backwards compatibility when not using
+            # TF_CUDA_PATHS.
+            'CUDA_TOOLKIT_PATH', 'CUDNN_INSTALL_PATH', 'NCCL_INSTALL_PATH',
+            'NCCL_HDR_PATH', 'TENSORRT_INSTALL_PATH'
         ]
+        # Note: set_action_env_var above already writes to bazelrc.
         for name in cuda_env_names:
           if name in environ_cp:
             write_action_env_to_bazelrc(name, environ_cp[name])
