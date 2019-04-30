@@ -4895,6 +4895,13 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
 
+  def testNumpyInput(self):
+    """Test case for GitHub issue 28241."""
+    image = np.random.random([512, 512, 1])
+    score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
+    with self.cached_session(use_gpu=True):
+      _ = self.evaluate(score_tensor)
+
 
 class ImageGradientsTest(test_util.TensorFlowTestCase):
 
