@@ -1125,7 +1125,6 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       finally:
         os.close(fd)
         os.remove(fname)
-    pass
 
 if __name__ == '__main__':
   test.main()
