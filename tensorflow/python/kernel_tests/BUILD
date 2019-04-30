@@ -3762,3 +3762,16 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
 )
+
+tf_py_test(
+    name = "tridiagonal_matmul_op_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+    shard_count = 5,
+)

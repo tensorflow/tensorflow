@@ -4277,6 +4277,10 @@ tf_module {
     argspec: "args=[\'x\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "TridiagonalMatMul"
+    argspec: "args=[\'superdiag\', \'maindiag\', \'subdiag\', \'rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TridiagonalSolve"
     argspec: "args=[\'diagonals\', \'rhs\', \'partial_pivoting\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
