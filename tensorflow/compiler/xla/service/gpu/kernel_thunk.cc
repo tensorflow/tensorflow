@@ -45,21 +45,6 @@ KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);
-<<<<<<< HEAD
-  if (!loader_spec_) {
-    loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-    tensorflow::StringPiece text = executable.text();
-    // Convert tensorflow::StringPiece to se::port::StringPiece because
-    // StreamExecutor uses the latter.
-
-    if (!executable.binary().empty()) {
-      loader_spec_->AddCudaCubinInMemory(
-          reinterpret_cast<const char*>(executable.binary().data()),
-          kernel_name_);
-    }
-  }
-=======
->>>>>>> upstream/master
 
   // Load the kernel into the device if necessary.
   //

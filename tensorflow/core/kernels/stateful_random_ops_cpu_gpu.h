@@ -95,16 +95,12 @@ struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
                   typename Distribution::ResultElementType* output_data);
 };
 
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 template <>
 struct RngSkip_Philox<GPUDevice> {
   void operator()(const GPUDevice& device, int64 delta, Tensor* state_tensor);
 };
 
-#endif  // GOOGLE_CUDA
->>>>>>> upstream/master
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

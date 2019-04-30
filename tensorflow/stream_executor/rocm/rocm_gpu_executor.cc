@@ -20,15 +20,12 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-<<<<<<< HEAD
-=======
 #include "absl/strings/str_join.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_event.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_timer.h"
->>>>>>> upstream/master
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
@@ -615,7 +612,7 @@ port::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   } else {
     return port::Status{
         port::error::INTERNAL,
-        port::Printf("error recording waiting for ROCM event on stream %p",
+        absl::StrFormat("error recording waiting for ROCM event on stream %p",
                      stream)};
   }
 }

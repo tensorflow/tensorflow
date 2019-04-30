@@ -2289,14 +2289,9 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
-<<<<<<< HEAD
-    ] + if_cuda(["@cub_archive//:cub"])
-    + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -3550,15 +3545,11 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-<<<<<<< HEAD
-    deps = MATH_DEPS + [":transpose_functor"] + if_cuda(["@cub_archive//:cub"]) + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     deps = MATH_DEPS + [":transpose_functor"] + if_cuda([
         "@cub_archive//:cub",
     ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4103,21 +4094,14 @@ tf_kernel_library(
     deps = NN_DEPS +
          [
            ":redux_functor",
-           ":reduction_ops",
       ] + if_cuda([
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
-<<<<<<< HEAD
-     ]) + if_rocm_is_configured([
-        "@rocprim_archive//:rocprim",
-    ])
-=======
     ]) + if_rocm_is_configured([
         ":reduction_ops",
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4152,18 +4136,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS + [":reduction_ops",] + if_cuda([
+    deps = NN_DEPS + if_cuda([
         "@cub_archive//:cub",
-<<<<<<< HEAD
-	]) + if_rocm([
-	"@rocprim_archive//:rocprim",
-	]),
-=======
     ]) + if_rocm_is_configured([
         ":reduction_ops",
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4195,15 +4173,11 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-<<<<<<< HEAD
-    deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]) + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     deps = NN_DEPS + if_cuda([
         "@cub_archive//:cub",
     ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4226,14 +4200,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-<<<<<<< HEAD
-    ] + if_cuda(["@cub_archive//:cub"])
-    + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4244,14 +4213,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-<<<<<<< HEAD
-    ] + if_cuda(["@cub_archive//:cub"])
-    + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4264,14 +4228,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
-<<<<<<< HEAD
-    ] + if_cuda(["@cub_archive//:cub"])
-    + if_rocm(["@rocprim_archive//:rocprim"]),
-=======
     ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
->>>>>>> upstream/master
 )
 
 tf_cuda_cc_test(

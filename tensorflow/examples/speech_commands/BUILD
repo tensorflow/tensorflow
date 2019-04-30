@@ -35,13 +35,9 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 py_library(
@@ -66,13 +62,9 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 py_binary(
@@ -105,13 +97,9 @@ tf_py_test(
         ":train",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 py_binary(
@@ -154,13 +142,9 @@ tf_py_test(
         ":freeze_main_lib",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2",  "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 py_binary(
@@ -200,13 +184,9 @@ tf_py_test(
         ":wav_to_features_main_lib",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 py_binary(
@@ -246,13 +226,9 @@ tf_py_test(
         ":generate_streaming_test_wav_main_lib",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 tf_cc_binary(
@@ -303,13 +279,9 @@ tf_py_test(
         ":label_wav_main_lib",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm_v2"],
-=======
     tags = [
-        "no_pip",  # b/131330719
+        "no_rocm_v2", "no_pip",  # b/131330719
     ],
->>>>>>> upstream/master
 )
 
 cc_library(

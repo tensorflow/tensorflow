@@ -199,11 +199,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/8.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/8.0.0/include")
 
-<<<<<<< HEAD
-    # Support hcc based off clang 9.0.0.
-=======
     # Support hcc based off clang 9.0.0, included in ROCm2.2
->>>>>>> upstream/master
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/9.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/9.0.0/include")
 

@@ -1476,19 +1476,11 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
 
 bool ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
-<<<<<<< HEAD
-                          float alpha, const DeviceMemory<Eigen::half>& a,
-                          int lda, const DeviceMemory<Eigen::half>& b, int ldb,
-                          float beta, DeviceMemory<Eigen::half>* c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing rocBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
-=======
                           float alpha, const DeviceMemory<Eigen::half> &a,
                           int lda, const DeviceMemory<Eigen::half> &b, int ldb,
                           float beta, DeviceMemory<Eigen::half> *c, int ldc) {
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
->>>>>>> upstream/master
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,

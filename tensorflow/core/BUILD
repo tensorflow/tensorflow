@@ -953,11 +953,7 @@ tf_cuda_library(
         "util/activation_mode.h",
         "util/batch_util.h",
         "util/bcast.h",
-<<<<<<< HEAD
-=======
         "util/matmul_bcast.h",
-        "util/cuda_kernel_helper.h",
->>>>>>> upstream/master
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
