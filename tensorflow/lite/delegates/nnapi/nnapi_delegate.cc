@@ -892,11 +892,14 @@ class NNAPIDelegateKernel {
         if (version == 1 && node->inputs->size == 2 &&
             (android_sdk_version >= kMinSdkVersionForNNAPI11) &&
             (context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||
+             (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+              context->tensors[node->inputs->data[0]].params.zero_point == 0) ||
              android_sdk_version >= kMinSdkVersionForNNAPI12)) {
           // NNAPI does not support specifying the padding value.
           // Before 1.2, NNAPI pads physical zero for quantized tensors, so only
-          // delegate float pad to NNAPI. NNAPI 1.2 onwards pads with
-          // zero-point, so delegate quantized pad as well.
+          // delegate pad with float input or quantized input with zero_point ==
+          // 0 to NNAPI. NNAPI 1.2 onwards pads with zero-point, so delegate
+          // other quantized pad as well.
           return BasicMappingFn<ANEURALNETWORKS_PAD>;
         }
         break;
