@@ -2953,7 +2953,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     train()
 
   def testEarlyStoppingTrainingLoopInFunction(self):
-    self.skipTest('b/131596092')
     layer = core.Dense(2)
     dataset = (
         dataset_ops.DatasetV2.from_tensors(

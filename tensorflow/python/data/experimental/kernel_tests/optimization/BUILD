@@ -55,6 +55,7 @@ py_test(
     srcs = ["filter_with_random_uniform_fusion_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_oss",
         "no_pip",
         "no_windows",

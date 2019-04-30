@@ -870,7 +870,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
           if (!status.ok()) {
-            LOG(ERROR) << "Component function execution failed: " << status;
+            VLOG(2) << "Component function execution failed: " << status;
             refcounted_done->UpdateStatus(status);
           } else {
             for (int i = 0; i < comp_rets->size(); ++i) {
@@ -1000,7 +1000,7 @@ void ProcessFunctionLibraryRuntime::Run(
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    return RunMultiDevice(opts, handle, args, rets, done);
+    return RunMultiDevice(opts, handle, args, rets, std::move(done));
   }
 
   FunctionLibraryRuntime* flr = nullptr;
@@ -1106,6 +1106,12 @@ void ProcessFunctionLibraryRuntime::Run(
                         // Begin unbound arguments.
                         const Status& status) {
             std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
+
+            if (!status.ok()) {
+              done(status);
+              return;
+            }
+
             if (rets->size() != frame->num_retvals()) {
               done(errors::Internal(
                   "Number of return values from function (", rets->size(),
@@ -1118,6 +1124,7 @@ void ProcessFunctionLibraryRuntime::Run(
               Status s = frame->SetRetval(i, (*rets)[i]);
               if (!s.ok()) {
                 done(s);
+                return;
               }
             }
             done(Status::OK());
