@@ -2537,43 +2537,58 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-There are two versions of the Sort instruction: a single-operand and a
-multi-operand version.
+<b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
-<b>`Sort(operand, dimension)`</b>
+Arguments    | Type                | Semantics
+------------ | ------------------- | --------------------
+`operands`   | `ArraySlice<XlaOp>` | The operands to sort.
+`comparator` | `XlaComputation`    | The comparator computation to use.
+`dimension`  | `int64`             | The dimension along which to sort.
+`is_stable`  | `bool`              | Whether stable sorting should be used.
 
-Arguments   | Type    | Semantics
------------ | ------- | --------------------
-`operand`   | `XlaOp` | The operand to sort.
-`dimension` | `int64` | The dimension along which to sort.
+If only one operand is provided:
 
-Sorts the elements in the operand in ascending order along the provided
-dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
-will sort each column independently, and a `dimension` value of 1 will sort each
-row independently. If the operand's elements have floating point type, and the
-operand contains NaN elements, the order of elements in the output is
-implementation-defined.
+* If the operand is a rank-1 tensor (an array), the result is a sorted array.
+  If you want to sort the array into ascending order, the comparator should
+  perform a less-than comparison. Formally, after the array is sorted, it holds
+  for all index positions `i, j` with `i < j` that either
+  `comparator(value[i], value[j]) = comparator(value[j], value[i]) = false` or
+  `comparator(value[i], value[j]) = true`.
 
-<b>`Sort(keys, values, ... values, dimension)`</b>
+* If the operand has higher rank, the operand is sorted along the provided
+  dimension. For example, for a rank-2 tensor (a matrix), a dimension value of
+  `0` will independently sort every column, and a dimension value of `1` will
+  independently sort each row. If no dimension number is provided, then the last
+  dimension is chosen by default. For the dimension which is sorted, the same
+  sorting order applies as in the rank-1 case.
 
-Sorts both the key and one or more value operands. The keys are sorted as in the
-single-operand version. Each of the values inputs is sorted according to the
-order of the corresponding keys. For example, if the three inputs are `keys =
-[3, 1]`, `values0 = [42, 50]`, `values1 = [-3.0, 1.1]`, then the output of the
-sort is the tuple `{[1, 3], [50, 42], [1.1, -3.0]}`.
+If `n > 1` operands are provided:
 
-The sort is not guaranteed to be stable, that is, if the keys array contains
-duplicates, the order of values corresponding to these keys may not be
-preserved.
+* All `n` operands must be tensors with the same dimensions. The element types
+  of the tensors may be different.
 
-Arguments   | Type                   | Semantics
------------ | ---------------------- | ----------------------------------
-`keys`      | `XlaOp`                | The sort keys.
-`values`    | Sequence of N `XlaOp`s | The values to sort.
-`dimension` | `int64`                | The dimension along which to sort.
+* All operands are sorted together, not individually. Conceptually the operands
+  are treated as a tuple. When checking whether the elements of each operand at
+  index positions `i` and `j` need to be swapped, the comparator is called with
+  `2 * n` scalar parameters, where parameter `2 * k` corresponds to the value at
+  position `i` from the `k-th` operand, and parameter `2 * k + 1` corresponds to
+  the value at position `j` from the `k-th` operand. Usually, the comparator
+  would thus compare parameters `2 * k` and `2 * k + 1` with each other and
+  possibly use other parameter pairs as tie breakers.
 
-The `keys` and each of the `values` inputs must have the same dimensions, but
-may have different element types.
+* The result is a tuple that consists of the operands in sorted order (along
+  the provided dimension, as above). The `i-th` operand of the tuple corresponds
+  to the `i-th` operand of Sort.
+
+For example, if there are three operands `operand0 = [3, 1]`,
+`operand1 = [42, 50]`, `operand2 = [-3.0, 1.1]`, and the comparator compares
+only the values of `operand0` with less-than, then the output of the sort is the
+tuple `([1, 3], [50, 42], [1.1, -3.0])`.
+
+If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
+there are elements which are considered to be equal by the comparator, the
+relative order of the equal values is preserved. By default, `is_stable` is set
+to false.
 
 ## Transpose
 
