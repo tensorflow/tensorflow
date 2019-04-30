@@ -36976,9 +36976,8 @@ func MatrixTriangularSolveAdjoint(value bool) MatrixTriangularSolveAttr {
 	}
 }
 
-// Solves systems of linear equations with upper or lower triangular matrices by
+// Solves systems of linear equations with upper or lower triangular matrices by backsubstitution.
 //
-// backsubstitution.
 //
 // `matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
 // square matrices. If `lower` is `True` then the strictly upper triangular part
@@ -36993,6 +36992,36 @@ func MatrixTriangularSolveAdjoint(value bool) MatrixTriangularSolveAttr {
 // If `adjoint` is `False` then the strictly then the  innermost matrices in
 // `output` satisfy matrix equations
 // `adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+//
+// Example:
+// ```python
+//
+// a = tf.constant([[3,  0,  0,  0],
+//                  [2,  1,  0,  0],
+//                  [1,  0,  1,  0],
+//                  [1,  1,  1,  1]], dtype=tf.float32)
+//
+// b = tf.constant([[4],
+//                  [2],
+//                  [4],
+//                  [2]], dtype=tf.float32)
+//
+// x = tf.linalg.triangular_solve(a, b, lower=True)
+// x
+// # <tf.Tensor: id=257, shape=(4, 1), dtype=float32, numpy=
+// # array([[ 1.3333334 ],
+// #        [-0.66666675],
+// #        [ 2.6666665 ],
+// #        [-1.3333331 ]], dtype=float32)>
+//
+// # in python3 one can use `a@x`
+// tf.matmul(a, x)
+// # <tf.Tensor: id=263, shape=(4, 1), dtype=float32, numpy=
+// # array([[4.       ],
+// #        [2.       ],
+// #        [4.       ],
+// #        [1.9999999]], dtype=float32)>
+// ```
 //
 // Arguments:
 //	matrix: Shape is `[..., M, M]`.
