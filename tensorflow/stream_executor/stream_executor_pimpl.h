@@ -70,9 +70,6 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  explicit StreamExecutor(PlatformKind kind,
-                          const PluginConfig &plugin_config = PluginConfig());
-
   StreamExecutor(
       const Platform *platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation);
@@ -598,7 +595,7 @@ class StreamExecutor {
 
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.
-  DeviceDescription *PopulateDeviceDescription() const;
+  std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
   // Adds a task to the port::ThreadPool work queue. These tasks must be
   // fire-and-forget and have no external data or timing dependencies; their

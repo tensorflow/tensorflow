@@ -110,7 +110,8 @@ port::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return port::Status::OK();
 }
 
-DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
@@ -119,7 +120,7 @@ DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
   builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
-  return builder.Build().release();
+  return builder.Build();
 }
 
 }  // namespace interpreter
