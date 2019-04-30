@@ -266,7 +266,11 @@ cc_library(
         "dispatch.h",
         "impl.h",
     ],
-    hdrs = ["ruy.h"],
+    hdrs = [
+        "matrix.h",
+        "path.h",
+        "ruy.h",
+    ],
     visibility = ruy_visibility(),
     deps = [
         ":allocator",
@@ -275,10 +279,8 @@ cc_library(
         ":common",
         ":context",
         ":kernel",
-        ":matrix",
         ":opt_set",
         ":pack",
-        ":path",
         ":size_util",
         ":spec",
         ":thread_pool",
@@ -396,3 +398,7 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
+
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+tflite_portable_test_suite()
