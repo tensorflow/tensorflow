@@ -28,7 +28,7 @@ namespace {
   }
 
   size_t GetCoreNumber() {
-    int64 core_number = DEFAULT_CORE_NUM;
+    int64 core_number;
     Status s = ReadInt64FromEnvVar("SEASTAR_CORE_NUMBER", DEFAULT_CORE_NUM,
                                    &core_number);
     return core_number;

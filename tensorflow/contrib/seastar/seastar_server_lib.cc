@@ -127,7 +127,7 @@ SeastarServer::~SeastarServer() {
 }
 
 Status SeastarServer::Init() {
-  seastar_worker_impl_ = NewSeastarWorker(&worker_env_);
+  seastar_worker_impl_ = NewSeastarWorker(worker_env());
   seastar_worker_service_ =
     NewSeastarWorkerService(seastar_worker_impl_.get()).release();
   seastar_bound_port_ = seastar_port_mgr_->GetLocalSeastarPort();
@@ -211,7 +211,7 @@ Status SeastarServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& option
 
   LOG(INFO) << "SeastarWorkerCacheFactory, name_prefix:" << name_prefix;
   *worker_cache = NewSeastarWorkerCacheWithLocalWorker(
-      channel_cache.release(), seastar_worker_impl_.get(), name_prefix, &worker_env_);
+      channel_cache.release(), seastar_worker_impl_.get(), name_prefix, worker_env());
 
   return Status::OK();
 }
