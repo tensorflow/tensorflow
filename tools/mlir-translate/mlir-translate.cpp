@@ -81,7 +81,13 @@ static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
 struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
   TranslationParser(llvm::cl::Option &opt)
       : llvm::cl::parser<const TranslateFunction *>(opt) {
-    for (const auto &kv : getTranslationToMLIRRegistry()) {
+    const auto &toMLIRRegistry = getTranslationToMLIRRegistry();
+    const auto &fromMLIRRegistry = getTranslationFromMLIRRegistry();
+
+    // Reserve the required capacity upfront so that pointers are not
+    // invalidated on reallocation.
+    wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size());
+    for (const auto &kv : toMLIRRegistry) {
       TranslateToMLIRFunction function = kv.second;
       TranslateFunction wrapper = [function](StringRef inputFilename,
                                              StringRef outputFilename,
@@ -95,7 +101,7 @@ struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
 
       addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
     }
-    for (const auto &kv : getTranslationFromMLIRRegistry()) {
+    for (const auto &kv : fromMLIRRegistry) {
       TranslateFromMLIRFunction function = kv.second;
       TranslateFunction wrapper = [function](StringRef inputFilename,
                                              StringRef outputFilename,
