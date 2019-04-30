@@ -371,7 +371,11 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " colo group: " << colocation_group;
           while (src_device->empty() && colocation_group.empty() &&
                  src_node->IsIdentity()) {
-            src_node = *src_node->in_nodes().begin();
+            // Only follows the real data input of Identity, not control edges.
+            Node* input_node;
+            TF_RETURN_IF_ERROR(src_node->input_node(0, &input_node));
+            src_node = input_node;
+
             src_device = AssignedOrRequestedDeviceName(*src_node);
             GetColocationGroup(src_node, &colocation_group);
             VLOG(3) << "Considering src: " << src_node->name()
