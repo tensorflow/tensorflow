@@ -519,7 +519,8 @@ typedef ::testing::Types<
     TypesTuple<float, float, float, float>,
     TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::uint8_t>,
     TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int8_t>,
-    TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int16_t>>
+    TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int16_t>,
+    TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::int8_t>>
     CpuBackendGemmTestInstantiations;
 
 TYPED_TEST_SUITE(CpuBackendGemmTest, CpuBackendGemmTestInstantiations);

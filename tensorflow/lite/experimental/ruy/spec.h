@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 
 namespace ruy {
 
@@ -83,9 +84,13 @@ struct BasicSpec {
   // multiplier_fixedpoint_perchannel must be nullptr.
   const int* multiplier_exponent_perchannel = nullptr;
   // min clamp bound of destination values.
-  DstScalar clamp_min = std::numeric_limits<DstScalar>::lowest();
+  DstScalar clamp_min = std::is_floating_point<DstScalar>::value
+                            ? -std::numeric_limits<DstScalar>::infinity()
+                            : std::numeric_limits<DstScalar>::lowest();
   // max clamp bound of destination values.
-  DstScalar clamp_max = std::numeric_limits<DstScalar>::max();
+  DstScalar clamp_max = std::is_floating_point<DstScalar>::value
+                            ? std::numeric_limits<DstScalar>::infinity()
+                            : std::numeric_limits<DstScalar>::max();
   // See above enum LoopStructure
   static constexpr LoopStructure kLoopStructure = LoopStructure::kAuto;
   // See above enum LayoutSupport
