@@ -1640,9 +1640,14 @@ cc_library(
     ] + if_dynamic_kernels(
         [],
         otherwise = [
+            "//tensorflow/core/kernels:aggregate_ops",
+            "//tensorflow/core/kernels:bcast_ops",
             "//tensorflow/core/kernels:cast_op",
             "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:identity_op",
             "//tensorflow/core/kernels:random_ops",
+            "//tensorflow/core/kernels:reduction_ops",
+            "//tensorflow/core/kernels:reshape_op",
         ],
     ),
 )
