@@ -671,10 +671,23 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
+  if (!ShapeUtil::IsScalar(conditional->operand(0)->shape())) {
+    return InvalidArgument(
+        "The first operand of conditional must be a scalar. Got %s",
+        conditional->operand(0)->shape().DebugString());
+  }
   const int num_branches = conditional->branch_count();
-  if (conditional->operand(0)->shape().element_type() == PRED) {
+  PrimitiveType operand0_type = conditional->operand(0)->shape().element_type();
+  if (operand0_type == PRED) {
     TF_RET_CHECK(num_branches == 2);
   } else {
+    if (operand0_type != S32) {
+      return InvalidArgument(
+          "The first operand of indexed conditional must be a scalar of S32. "
+          "Got"
+          " type %s.",
+          PrimitiveType_Name(operand0_type));
+    }
     TF_RET_CHECK(num_branches >= 1);
   }
   TF_RETURN_IF_ERROR(CheckOperandCount(conditional, num_branches + 1));
