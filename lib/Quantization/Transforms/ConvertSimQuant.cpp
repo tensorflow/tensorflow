@@ -104,7 +104,7 @@ void ConvertSimulatedQuantPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *createConvertSimulatedQuantPass() {
+FunctionPassBase *mlir::quant::createConvertSimulatedQuantPass() {
   return new ConvertSimulatedQuantPass();
 }
 

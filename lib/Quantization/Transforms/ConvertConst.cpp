@@ -126,7 +126,9 @@ void ConvertConstPass::runOnFunction() {
   applyPatternsGreedily(func, std::move(patterns));
 }
 
-FunctionPassBase *createConvertConstPass() { return new ConvertConstPass(); }
+FunctionPassBase *mlir::quant::createConvertConstPass() {
+  return new ConvertConstPass();
+}
 
 static PassRegistration<ConvertConstPass>
     pass("quant-convert-const",
