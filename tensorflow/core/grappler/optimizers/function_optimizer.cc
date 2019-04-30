@@ -954,7 +954,7 @@ Status ValidateSideEffectsExecution(
             << " will execute after inlining.";
     bool will_execute = false;
 
-    const auto is_control_source = [&](const Node* n) {
+    const auto is_control_source = [&](const Node* n) -> void {
       const auto it = control_sources.find(n);
       if (it != control_sources.end()) {
         VLOG(4) << "Found a path to control source: " << side_effect->name()
@@ -977,9 +977,87 @@ Status ValidateSideEffectsExecution(
   return Status::OK();
 }
 
+// Makes an instance of FunctionBody for inlining from a Node.
+Status MakeFunctionBodyForInlining(const Node& node,
+                                   const FunctionLibraryDefinition& flib_def,
+                                   std::unique_ptr<FunctionBody>* fbody) {
+  // Finds a FunctionDef in a library and verifies that it exists.
+  const auto find_fdef = [&flib_def, &node](
+                             const string& name,
+                             const FunctionDef** fdef) -> Status {
+    if ((*fdef = flib_def.Find(name)) == nullptr) {
+      return errors::Internal(
+          "Was not able to find a function definition (name=", name,
+          ") for a function call: ", SummarizeNode(node));
+    }
+    return Status::OK();
+  };
+
+  // SymbolicGradient is a special "function call" op, which has been
+  // deprecated for a while, but we still support for compatibility reasons.
+  if (node.type_string() == FunctionLibraryDefinition::kGradientOp) {
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(node.attrs(), FunctionLibraryDefinition::kFuncAttr, &func));
+
+    const string grad = flib_def.FindGradient(func.name());
+
+    if (!grad.empty()) {
+      // Function has a custom gradient registered in a library.
+      const FunctionDef* grad_fdef;
+      TF_RETURN_IF_ERROR(find_fdef(grad, &grad_fdef));
+
+      VLOG(4) << "Instantiate a custom SymbolicGradient: gradient=" << grad
+              << " (function=" << func.name() << ")";
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          *grad_fdef, AttrSlice(&func.attr()), &flib_def, fbody));
+
+    } else if (flib_def.Find(func.name()) == nullptr) {
+      // Function is not really a function, but a primitive op.
+      gradient::Creator creator;
+      TF_RETURN_IF_ERROR(gradient::GetOpGradientCreator(func.name(), &creator));
+      if (creator == nullptr) {
+        return errors::InvalidArgument("No gradient is defined for ",
+                                       func.name());
+      }
+      FunctionDef grad_fdef;
+      TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
+
+      VLOG(4) << "Instantiate a SymbolicGradient for a primitive op: "
+              << func.name();
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          grad_fdef, AttrSlice(&func.attr()), &flib_def, fbody));
+
+    } else {
+      // Compute numerical gradient for a function by traversing its body.
+      const FunctionDef* fdef;
+      TF_RETURN_IF_ERROR(find_fdef(func.name(), &fdef));
+
+      VLOG(4) << "Instantiate a SymbolicGradient for a function: "
+              << func.name();
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
+                                                 &flib_def, fbody));
+      *fbody = SymbolicGradient(**fbody);
+    }
+
+  } else {
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node.def(), &func));
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(find_fdef(func.name(), &fdef));
+
+    VLOG(4) << "Instantiate a function call: function=" << func.name();
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBodyHelper(*fdef, node.attrs(), &flib_def, fbody));
+  }
+
+  return Status::OK();
+}
+
 Status InlineFunctionCalls(const GrapplerItem& item,
                            const FunctionLibraryDefinition& flib_def,
                            const GraphDef& input_graph,
+                           std::unordered_set<string>* skip_nodes,
                            GraphDef* output_graph) {
   VLOG(2) << "Inline function calls";
   Graph graph(flib_def);
@@ -997,21 +1075,25 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
 
   // Function inlining always adds new nodes to the end of the list, so we keep
-  // iterating until we are out of the nodes.
+  // iterating until we are out of nodes.
   for (int i = 2; i < graph.num_node_ids(); ++i) {
     Node* n = graph.FindNodeId(i);
+
     if (n == nullptr) continue;  // deleted node
     if (MarkedForTpuCompilation(n)) continue;
     if (MarkedForXlaCompilation(n)) continue;
 
-    // TODO(ezhulenev): Add support for SymbolicGradient and PartitionedCall.
-    const FunctionDef* fdef = flib_def.Find(n->type_string());
-    bool is_function_call = fdef != nullptr;
-    if (!is_function_call) continue;
+    // Skip nodes that are not function calls.
+    if (!IsFunctionCall(flib_def, *n)) continue;
 
+    // TODO(ezhulenev): Inline multi-device functions.
+    if (n->IsPartitionedCall()) continue;
+
+    // Function body that we will inline into the main graph. It can be a
+    // function instantiation, or a gradient function instantiated from
+    // SymbolicGradient op.
     std::unique_ptr<FunctionBody> fbody;
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, n->attrs(), &flib_def, &fbody));
+    TF_RETURN_IF_ERROR(MakeFunctionBodyForInlining(*n, flib_def, &fbody));
 
     InlineFunctionBodyOptions inline_options;
     inline_options.override_device = true;
@@ -1053,127 +1135,6 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   }
 
   graph.ToGraphDef(output_graph);
-  return Status::OK();
-}
-
-Status InlineSymbolicGradient(const NodeDef& node,
-                              FunctionOptimizerContext* ctx,
-                              GraphDef* optimized_graph) {
-  VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
-
-  GraphDef graph_def;
-
-  // Create a node to anchor the gradient inputs
-  NodeDef* inlined_input = graph_def.add_node();
-  inlined_input->set_name("FunctionInputs");
-  inlined_input->set_op("IdentityN");
-  AttrValue::ListValue* type_list =
-      (*inlined_input->mutable_attr())["T"].mutable_list();
-  for (const auto& type : node.attr().at("Tin").list().type()) {
-    type_list->add_type(static_cast<DataType>(type));
-  }
-
-  // Add the gradient node
-  NodeDef* inlined = graph_def.add_node();
-  *inlined = node;
-  inlined->clear_input();
-  for (int i = 0; i < node.attr().at("Tin").list().type_size(); ++i) {
-    inlined->add_input(strings::StrCat(inlined_input->name(), ":", i));
-  }
-
-  // Create a node to anchor the gradient outputs
-  NodeDef* inlined_output = graph_def.add_node();
-  inlined_output->set_name("FunctionOutputs");
-  inlined_output->set_op("IdentityN");
-  type_list = (*inlined_output->mutable_attr())["T"].mutable_list();
-  for (const auto& type : node.attr().at("Tout").list().type()) {
-    type_list->add_type(static_cast<DataType>(type));
-  }
-  for (int i = 0; i < node.attr().at("Tout").list().type_size(); ++i) {
-    inlined_output->add_input(strings::StrCat(inlined->name(), ":", i));
-  }
-
-  // Convert the graphdef to a graph
-  GraphConstructorOptions graph_ctor_opts;
-  graph_ctor_opts.allow_internal_ops = true;
-  graph_ctor_opts.expect_device_spec = false;
-  Graph graph(ctx->function_library());
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
-
-  FunctionLibraryRuntime* flr = ctx->mutable_function_library_runtime();
-
-  // 1. Inline symbolic gradient node.
-  const bool expanded = ExpandInlineFunctions(flr, &graph);
-  if (!expanded) {
-    return errors::Internal("Failed to expand SymbolicGradient op");
-  }
-
-  // TODO(ezhulenev): InlineFunctionBody in common_runtime/function silently
-  // fails to inline function into the graph, and leaves the graph unmodified.
-  // We check that graph has our symbolic gradient inlined, otherwise we return
-  // a error.
-  const auto is_symbolic_gradient_op = [&](const Node* node) {
-    return node->name() == inlined->name() &&
-           node->type_string() == "SymbolicGradient";
-  };
-  for (Node* node : graph.nodes()) {
-    if (is_symbolic_gradient_op(node)) {
-      return errors::Internal("Failed to inline symbolic gradient node: ",
-                              SummarizeNode(*node));
-    }
-  }
-
-  // 2. Recursively inline nested function calls.
-  int iteration = 0;
-  while (ExpandInlineFunctions(flr, &graph)) {
-    if (++iteration >= 50) {
-      VLOG(2) << "Break symbolic gradient inlining loop at iteration #"
-              << iteration;
-      break;
-    }
-  }
-
-  GraphDef inlined_graph_def;
-  graph.ToGraphDef(&inlined_graph_def);
-
-  // Add the default values of attributes to the nodes that have been inlined.
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
-                                               *graph.op_registry(), 0, true));
-
-  // Add the inlined nodes to the graph
-  for (NodeDef& inlined_node : *inlined_graph_def.mutable_node()) {
-    if (inlined_node.name() == "FunctionOutputs") {
-      inlined_node.set_name(node.name());
-      for (int i = 0; i < inlined_node.input_size(); ++i) {
-        inlined_node.set_input(
-            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
-      }
-    } else if (inlined_node.name() == "FunctionInputs") {
-      inlined_node.set_name(
-          AddPrefixToNodeName(inlined_node.name(), node.name()));
-      inlined_node.clear_input();
-      for (int i = 0; i < node.input_size(); ++i) {
-        inlined_node.add_input(node.input(i));
-      }
-    } else {
-      inlined_node.set_name(
-          AddPrefixToNodeName(inlined_node.name(), node.name()));
-      for (int i = 0; i < inlined_node.input_size(); ++i) {
-        inlined_node.set_input(
-            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
-      }
-      // If the node has no input, hook it up to the function input node to make
-      // sure it runs in the same frame as the other nodes of the function body.
-      if (inlined_node.input_size() == 0) {
-        *inlined_node.add_input() = AsControlDependency(
-            AddPrefixToNodeName("FunctionInputs", node.name()));
-      }
-    }
-    inlined_node.set_device(node.device());
-    optimized_graph->add_node()->Swap(&inlined_node);
-  }
-
   return Status::OK();
 }
 
@@ -1940,7 +1901,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   GraphDef graph_after_inlining;
   TF_RETURN_IF_ERROR(InlineFunctionCalls(
       item, FunctionLibraryDefinition(OpRegistry::Global(), graph.library()),
-      graph, &graph_after_inlining));
+      graph, skip_nodes, &graph_after_inlining));
 
   FunctionOptimizerContext ctx(item, opt_level_, graph_after_inlining);
 
@@ -1989,27 +1950,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   } while (0)
 
     // ---------------------------------------------------------------------- //
-    // 1. Inline symbolic gradients into the optimized graph.                 //
-    // ---------------------------------------------------------------------- //
-
-    if (IsSymbolicGradient(*node) && inline_gradients) {
-      // Inline symbolic gradients only if the corresponding function is not
-      // marked as `_noinline`.
-      const auto* f_attr = gtl::FindOrNull(node->attr(), "f");
-      const string f_name = f_attr != nullptr ? f_attr->func().name() : "";
-      const FunctionDef* func = ctx.function_library().Find(f_name);
-      if (func && !MarkedNoInline(*func)) {
-        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
-            InlineSymbolicGradient(*node, &ctx, optimized_graph));
-        continue;
-      } else {
-        VLOG(2) << "Skip SymbolicGradient inlining: function=" << f_name;
-        skip_nodes->insert(node->name());
-      }
-    }
-
-    // ---------------------------------------------------------------------- //
-    // 2. Inline or specialize function calls.                                //
+    // Inline or specialize function calls.                                //
     // ---------------------------------------------------------------------- //
 
     // Find if a node is a function call (direct or indirect).
@@ -2020,7 +1961,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
       const bool is_indirect_func = IsIndirectFunctionCall(*func, *node);
 
-      // 2b. Inline indirect function call if it's inlinable.
+      // Inline indirect function call if it's inlinable.
       if (inline_func && is_indirect_func) {
         Status inlinable = IsInlinableIndirectFunctionCall(ctx, *func, *node);
         if (inlinable.ok()) {
@@ -2033,7 +1974,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
         }
       }
 
-      // 2c. Specialize it to its instantiation context if can't be inlined,
+      // Specialize it to its instantiation context if can't be inlined,
       // and it has something worth specializing.
       bool specialization_worthy = IsParametrized(*func) ||
                                    HasTrulyConstInputs(*node, ctx) ||
@@ -2113,7 +2054,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   // We'll keep running function optimizer pass until we inlined and optimized
   // all function call nodes.
   int iteration = 0;
-  constexpr int kMaxIterations = 50;
+  constexpr int kMaxIterations = 3;
 
   // 1. Run first optimizer pass with GrapplerItem.graph.
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(

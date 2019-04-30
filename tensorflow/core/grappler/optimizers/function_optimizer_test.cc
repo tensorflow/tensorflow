@@ -383,6 +383,13 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_TestFunc) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
+  // SymbolicGradient calls were removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "SymbolicGradient");
+  }
+  // And functions were removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
+
   std::vector<Tensor> expected =
       EvaluateNodes(item.graph, {"out1", "out2"}, {});
   std::vector<Tensor> optimized = EvaluateNodes(output, {"out1", "out2"}, {});
@@ -425,34 +432,12 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(13, output.node_size());
-  EXPECT_EQ("Const", output.node(0).name());
-  EXPECT_EQ("Const_1", output.node(1).name());
-  EXPECT_EQ("SymbolicGradient/FunctionInputs", output.node(2).name());
-  EXPECT_EQ("SymbolicGradient", output.node(3).name());
-  EXPECT_EQ("SymbolicGradient/SymbolicGradient/Identity",
-            output.node(4).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_0",
-            output.node(5).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_1",
-            output.node(6).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/output/_2",
-            output.node(7).name());
-  EXPECT_EQ("SymbolicGradient/SymbolicGradient/Func/_1/dx",
-            output.node(8).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_3",
-            output.node(9).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_4",
-            output.node(10).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/output/_5",
-            output.node(11).name());
-  EXPECT_EQ("out", output.node(12).name());
-  for (int i = 2; i < 4; ++i) {
-    EXPECT_EQ("IdentityN", output.node(i).op());
+  // SymbolicGradient calls were removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "SymbolicGradient");
   }
-  for (int i = 4; i < 11; ++i) {
-    EXPECT_EQ("Identity", output.node(i).op());
-  }
+  // And functions were removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
 
   std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out"}, {});
   std::vector<Tensor> optimized = EvaluateNodes(output, {"out"}, {});
