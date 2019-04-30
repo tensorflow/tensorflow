@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Popnn RNN operators."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -40,12 +41,13 @@ class PopnnLSTM(base_layer.Layer):
 
   Below is a typical workflow:
 
-  ```python
-  with tf.Graph().as_default():
-    lstm = PopnnLSTM(num_units, ...)
+  .. code-block:: python
 
-    outputs, output_states = lstm(inputs, initial_states, training=True)
-  ```
+    with tf.Graph().as_default():
+      lstm = PopnnLSTM(num_units, ...)
+
+      outputs, output_states = lstm(inputs, initial_states, training=True)
+
   """
   # pylint:enable=line-too-long
   _rnn_mode = POPNN_LSTM

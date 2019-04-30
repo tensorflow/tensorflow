@@ -39,7 +39,7 @@ class WhileLoopShardedTest(test_util.TensorFlowTestCase):
   def testSimpleXlaCompileTrainingInLoopWithParam(self):
     dataset = tu.create_dual_increasing_dataset(3)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed")
 
     def my_net(lr):
       def my_model(lr, loss, x, y):

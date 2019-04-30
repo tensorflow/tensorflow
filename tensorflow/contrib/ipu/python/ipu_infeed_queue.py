@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Contains class for creating input infeeds into TF graphs targeting the IPU."""
+"""@package tensorflow.contrib.ipu.python.ipu_infeed_queue
+Contains class for creating input infeeds into TF graphs targeting the IPU."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -87,21 +88,20 @@ class IPUInfeedQueue:
 
   def __init__(self,
                dataset,
+               feed_name,
                device_ordinal=0,
-               replication_factor=1,
-               feed_name="default_infeed"):
+               replication_factor=1):
     """Creates an IPUInfeedQueue object.
 
     Args:
        dataset: a tf.data.Dataset object, all transformations e.g. `shuffle`,
         `repeat`, `batch` must be applied prior to passing in to this function.
         This dataset can no longer be used after creating this queue.
+       feed_name: the name of the infeed queue.  This must be unique between
+                  all IPUInfeedQueues and IPUOutfeedQueues.
        device_ordinal: ordinal of the device on which this queue will be used.
        replication_factor: the number of replicated graphs this infeed will be
          used in.
-       feed_name: the name of the infeed queue.  This must be unique between
-                  all IPUInfeedQueue and IPUOutfeedQueue nodes within the
-                  Tensorflow graph.
 
 
     Raises:

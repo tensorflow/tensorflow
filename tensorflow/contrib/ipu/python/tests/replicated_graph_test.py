@@ -37,6 +37,15 @@ from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
 
 
+def next_feed_id():
+  result = 'feed' + str(next_feed_id.feed_count)
+  next_feed_id.feed_count += 1
+  return result
+
+
+next_feed_id.feed_count = 0
+
+
 class ReplicatedGraphTest(test_util.TensorFlowTestCase):
   def testCreateSimpleReplicatedGraph(self):
     def my_graph(inp):
@@ -100,8 +109,9 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-        dataset, replication_factor=2)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        dataset, feed_name=next_feed_id(), replication_factor=2)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id(), replication_factor=2)
 
     def body(v, x):
       v = popops_cross_replica_sum.cross_replica_sum(v + x)
@@ -151,8 +161,9 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-        dataset, replication_factor=2)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        dataset, feed_name=next_feed_id(), replication_factor=2)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id(), replication_factor=2)
 
     def body(v, x):
       out = popops_cross_replica_sum.cross_replica_sum(v + x)
@@ -213,8 +224,9 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-        dataset, replication_factor=2)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        dataset, feed_name=next_feed_id(), replication_factor=2)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id(), replication_factor=2)
 
     def body(v, x):
       out = popops_cross_replica_sum.cross_replica_sum(v + x)
@@ -335,8 +347,9 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-        dataset, replication_factor=2)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        dataset, feed_name=next_feed_id(), replication_factor=2)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id(), replication_factor=2)
 
     def body(v, x):
       outfeed = outfeed_queue.enqueue(v)

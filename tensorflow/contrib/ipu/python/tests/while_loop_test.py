@@ -228,7 +228,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
     dataset = tu.create_dual_increasing_dataset(
         3, data_shape=[4, 1, 8], label_shape=[4, 1, 128])
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "feed")
 
     def my_net():
       def my_model(loss, x, y):

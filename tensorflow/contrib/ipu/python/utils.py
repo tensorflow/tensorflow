@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Utility functions related to the Graphcore IPU."""
+"""
+Utility functions related to the Graphcore IPU.
+"""
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
@@ -32,8 +34,11 @@ def configure_ipu_system(config, device="cpu"):
   `create_ipu_config` function.
 
   Args:
-    :param config: An IpuOptions configuration protobuf
-    :param device: The CPU device which is local to the IPU hardware
+    config: An IpuOptions configuration protobuf
+    device: The CPU device which is local to the IPU hardware
+
+  Returns:
+    None
   """
   if not (isinstance(config, IpuOptions)):
     raise Exception("`config` must be an IpuOptions instance")
@@ -63,61 +68,43 @@ def create_ipu_config(profiling=False,
   """Create an empty IPU session configuration structure.
 
   Args:
-    :param profiling: Enable compilation reports, and IPU trace events.
-    :param enable_ipu_events: Enable IPU trace events without poplar reports.
-    :param use_poplar_text_report: Enable the poplar textual report summary
-    :param use_poplar_cbor_report: Enable the poplar CBOR reports
-    :param profile_execution: Include Poplar execution profiles in the execution
-                              events.
-    :param report_every_nth_execution: Only produce an execution report on
-                                       every Nth execution.  0=One report
-                                       only.
-    :param max_report_size: The maximum size of Poplar profiles to include in
-                            the profile events.
-    :param report_directory: When set, reports will be written to files in this
-                             directory, instead of being written into the
-                             events.  The events will contain the full paths of
-                             the report files.
-    :param always_rearrange_copies_on_the_host: *** Experimental Flag ***
-                                                The data which is streamed
-                                                to/from the device might be
-                                                stored in different layouts on
-                                                the device and on the host. If
-                                                that is the case the
-                                                rearrangment is performed on the
-                                                device by default. By enabling
-                                                this option the rearrangment
-                                                will be perfomed on the host at
-                                                the expense of latency.
-    :param merge_infeed_io_copies: When true, this flag will merge the streamed
-                                   host->device input copies into one larger
-                                   copy.  This may reduce the time to copy
-                                   data from the host, at the expense of
-                                   increasing the live tensor memory on the
-                                   device.
-    :param disable_graph_convolution_caching: By default, the convolution
-                                              operation searches for an
-                                              equivalent cached operation, and
-                                              uses this  instead of creating a
-                                              new convolution. Setting this flag
-                                              forces the creation of a new
-                                              convolution. This can improve
-                                              runtime at the expense of graph
-                                              size.
-    :param retain_control_dependencies: When set to true, control dependencies
-                                        from the Tensorflow graph are passed
-                                        through to the backend.  This can result
-                                        in a different memory size due to
-                                        differing constraints on the operation
-                                        scheduler.
-    :param max_cross_replica_sum_buffer_size: The maximum number of bytes that
-                                              can be waiting before a cross
-                                              replica sum op is scheduled.
+    profiling: Enable compilation reports, and IPU trace events.
+    enable_ipu_events: Enable IPU trace events without poplar reports.
+    use_poplar_text_report: Enable the poplar textual report summary
+    use_poplar_cbor_report: Enable the poplar CBOR reports
+    profile_execution: Include Poplar execution profiles in the execution
+      events.
+    report_every_nth_execution: Only produce an execution report on every Nth
+      execution.  0 = One report only.
+    max_report_size: The maximum size of Poplar profiles to include in the
+      profile events.
+    report_directory: When set, reports will be written to files in this
+      directory, instead of being written into the events.  The events will
+      contain the full paths of the report files.
+    always_rearrange_copies_on_the_host: *** Experimental Flag ***
+      The data which is streamed to/from the device might be stored in different
+       layouts on the device and on the host. If that is the case the
+       rearrangment is performed on the device by default. By enabling this
+       option the rearrangment will be perfomed on the host at the expense of
+       latency.
+    merge_infeed_io_copies: When true, this flag will merge the streamed
+      host->device input copies into one larger copy.  This may reduce the time
+      to copy data from the host, at the expense of increasing the live tensor
+      memory on the device.
+    disable_graph_convolution_caching: By default, the convolution operation
+      searches for an equivalent cached operation, and uses this  instead of
+      creating a new convolution. Setting this flag forces the creation of a
+      new convolution. This can improve runtime at the expense of graph size.
+    retain_control_dependencies: When set to true, control dependencies from the
+      Tensorflow graph are passed through to the backend.  This can result in a
+      different memory size due to differing constraints on the operation
+      scheduler.
+    max_cross_replica_sum_buffer_size: The maximum number of bytes that can be
+      waiting before a cross replica sum op is scheduled.
 
   Returns:
-
-    :return: An empty IpuOptions configuration protobuf, suitable for using in
-             the creation of the ConfigProto session options.
+    An IpuOptions configuration protobuf, suitable for passing to
+    `configure_ipu_system`
   """
   if profiling and enable_ipu_events:
     raise Exception(
@@ -153,25 +140,25 @@ def create_ipu_config(profiling=False,
 def set_compilation_options(opts, compilation_options=None):
   """Set the IPU compilation options for the session..
 
-    ```python
-    # Create a device with debug execution profile flag set to "compute_sets"
-    opts = create_ipu_config()
-    opts = set_compilation_options(opts,
-        compilation_options={"debug.executionProfile": "compute_sets",
-                             "target.workerStackSizeInBytes": "64"})
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+
+  .. code-block:: python
+
+      # Create a device with debug execution profile flag set to "compute_sets"
+      opts = create_ipu_config()
+      opts = set_compilation_options(opts,
+          compilation_options={"debug.executionProfile": "compute_sets",
+                               "target.workerStackSizeInBytes": "64"})
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param compilation_options: A dictionary of poplar compilation option flags
-                                to be sent to the executor.
-  Returns:
+    opts: An IpuOptions session control protobuf.
+    compilation_options: A dictionary of poplar compilation option flags to be
+      sent to the executor.
 
-    :return: The IpuOptions configuration protobuf, with engine compilation
-             options set.
+  Returns:
+    The IpuOptions configuration protobuf, with engine compilation options set.
   """
   if not (isinstance(compilation_options, dict)):
     raise Exception("`compilation_options` must be a dictionary")
@@ -187,25 +174,26 @@ def set_compilation_options(opts, compilation_options=None):
 
 def set_convolution_options(opts, convolution_options=None):
   """Set the IPU convolution compilation options for the session.
+
   *** This is an experimental function which might be removed in the future. ***
-    ```python
-    # Set "tempMemoryBudget" flag to "1000000"
-    opts = create_ipu_config()
-    opts = set_convolution_options(opts,
-        convolution_options={"tempMemoryBudget": "1000000"})
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+
+  .. code-block:: python
+
+      # Set "tempMemoryBudget" flag to "1000000"
+      opts = create_ipu_config()
+      opts = set_convolution_options(opts,
+          convolution_options={"tempMemoryBudget": "1000000"})
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param convolution_options: A dictionary of poplar option flags for the
-                                convolutions.
-  Returns:
+    opts: An IpuOptions session control protobuf.
+    convolution_options: A dictionary of poplar option flags for the
+      convolutions.
 
-    :return: The IpuOptions configuration protobuf, with convolution options
-             set.
+  Returns:
+    The IpuOptions configuration protobuf, with convolution options set.
   """
   if not (isinstance(convolution_options, dict)):
     raise Exception("`convolution_options` must be a dictionary")
@@ -221,25 +209,26 @@ def set_convolution_options(opts, convolution_options=None):
 
 def set_pooling_options(opts, pooling_options=None):
   """Set the IPU pooling compilation options for the session.
+
   *** This is an experimental function which might be removed in the future. ***
-    ```python
-    # Set "poolUseIntrospectiveMapping" flag to "false"
-    opts = create_ipu_config()
-    opts = set_pooling_options(opts,
-        pooling_options={"poolUseIntrospectiveMapping": "false"})
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+
+  .. code-block:: python
+
+      # Set "poolUseIntrospectiveMapping" flag to "false"
+      opts = create_ipu_config()
+      opts = set_pooling_options(opts,
+          pooling_options={"poolUseIntrospectiveMapping": "false"})
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param pooling_options: A dictionary of poplar option flags for the
-                            pooling operation.
-  Returns:
+    opts: An IpuOptions session control protobuf.
+    pooling_options: A dictionary of poplar option flags for the pooling
+      operation.
 
-    :return: The IpuOptions configuration protobuf, with pooling options
-             set.
+  Returns:
+    The IpuOptions configuration protobuf, with pooling options set.
   """
   if not (isinstance(pooling_options, dict)):
     raise Exception("`pooling_options` must be a dictionary")
@@ -256,25 +245,24 @@ def set_pooling_options(opts, pooling_options=None):
 def set_report_options(opts, report_options=None):
   """Set the options used to influence Poplar report generation.
 
-     The options are added to both the compile and execution report generations.
+  The options are added to both the compile and execution report generations.
 
-    ```python
-    opts = create_ipu_config()
-    opts = set_report_options(opts,
-        report_options={"reportOption1": "false"})
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+  .. code-block:: python
+
+      opts = create_ipu_config()
+      opts = set_report_options(opts,
+          report_options={"reportOption1": "false"})
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param report_options: A dictionary of poplar option flags for the
-                           report generation.
-  Returns:
+    opts: An IpuOptions session control protobuf.
+    report_options: A dictionary of poplar option flags for the report
+      generation.
 
-    :return: The IpuOptions configuration protobuf, with convolution options
-             set.
+  Returns:
+    The IpuOptions configuration protobuf, with convolution options set.
   """
   if not (isinstance(report_options, dict)):
     raise Exception("`report_options` must be a dictionary")
@@ -292,13 +280,11 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
   """Set the IPU Model options.
 
   Args:
-    :param compile_ipu_code: Whether or not to actually compile real IPU code
-                             for modelling.
+    compile_ipu_code: Whether or not to actually compile real IPU code for
+      modelling.
 
   Returns:
-
-    :return: The IpuOptions configuration protobuf, with IPU model options
-             set.
+    The IpuOptions configuration protobuf, with IPU model options set.
   """
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
@@ -309,13 +295,12 @@ def set_recomputation_options(opts, recompute_norm_inputs=True):
   """Set re-computation options.
 
   Args:
-    :param recompute_norm_inputs: Whether or not to re-compute the norm inputs
+    recompute_norm_inputs: Whether or not to re-compute the norm inputs
       during training. Enabling this option can reduce memory usage at the
       expense of extra computation.
 
   Returns:
-
-    :return: The IpuOptions configuration protobuf.
+    The IpuOptions configuration protobuf.
   """
 
   opts.speed_size_config.recompute_norm_inputs = recompute_norm_inputs
@@ -335,13 +320,13 @@ def set_floating_point_behaviour_options(opts,
   See the Poplar API documentation for poplar::FloatingPointBehaviour.
 
   Args:
-    :param inv: If true a floating point invalid operation (defined by IEEE 754)
+    inv: If true a floating point invalid operation (defined by IEEE 754)
                 will cause an exception.
-    :param div0: If true a floating point divide by zero operation will cause an
+    div0: If true a floating point divide by zero operation will cause an
                  exception.
-    :param oflo: If true a floating point overflow will cause an exception.
-    :param esr: Enable stochastic rounding.
-    :param nanoo: Enable Not-a-Number on overflow mode.
+    oflo: If true a floating point overflow will cause an exception.
+    esr: Enable stochastic rounding.
+    nanoo: Enable Not-a-Number on overflow mode.
   """
   opts.floating_point_behaviour.flags_set = True
   opts.floating_point_behaviour.inv = inv
@@ -366,25 +351,27 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
 
   Examples:
 
-    ```python
+
+  .. code-block:: python
+
     # Create a single device, with one IPU
     opts = create_ipu_config()
     opts = auto_select_ipus(opts, num_ipus=1)
     ipu.utils.configure_ipu_system(cfg)
     with tf.Session() as s:
       ...
-    ```
 
-    ```python
+  .. code-block:: python
+
     # Create two devices, with 2 IPUs per device.
     opts = create_ipu_config()
     opts = auto_select_ipus(opts, num_ipus=[2,2])
     ipu.utils.configure_ipu_system(cfg)
     with tf.Session() as s:
       ...
-    ```
 
-    ```python
+  .. code-block:: python
+
     # Create two devices, with 1 IPU in the first device and 2 IPUs
     # in the second device.
     opts = create_ipu_config()
@@ -392,18 +379,17 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
     ipu.utils.configure_ipu_system(cfg)
     with tf.Session() as s:
       ...
-    ```
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param num_ipus: List of IPUs per Tensorflow device
-    :param sharded: Deprecated.
-    :param number_of_replicas: The number of replicas to divide the device into.
-                               This should be a divisor of the number of IPUs.
-  Returns:
+    opts: An IpuOptions session control protobuf.
+    num_ipus: List of IPUs per Tensorflow device
+    sharded: Deprecated.
+    number_of_replicas: The number of replicas to divide the device into. This
+      should be a divisor of the number of IPUs.
 
-    :return: The IpuOptions configuration protobuf, configured for
-             auto-selecting a set of IPU devices.
+  Returns:
+    The IpuOptions configuration protobuf, configured for auto-selecting a set
+    of IPU devices.
   """
   if len(opts.device_config) > 0:
     raise Exception("IPU devices have already been configured.")
@@ -446,171 +432,170 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
   utility `gc-info -l`.  For instance, the following listing shows the device
   configurations available on a system with 16 IPUs.
 
-  ```
-  user@host:~$ gc-info -l
-  Graphcore device listing:
+  .. code-block:: shell
 
-  -+- Id:  [0], type:      [PCIe], PCI Domain: [0000:1a:00.0]
-  -+- Id:  [1], type:      [PCIe], PCI Domain: [0000:1b:00.0]
-  -+- Id:  [2], type:      [PCIe], PCI Domain: [0000:1c:00.0]
-  -+- Id:  [3], type:      [PCIe], PCI Domain: [0000:1d:00.0]
-  -+- Id:  [4], type:      [PCIe], PCI Domain: [0000:60:00.0]
-  -+- Id:  [5], type:      [PCIe], PCI Domain: [0000:61:00.0]
-  -+- Id:  [6], type:      [PCIe], PCI Domain: [0000:62:00.0]
-  -+- Id:  [7], type:      [PCIe], PCI Domain: [0000:63:00.0]
-  -+- Id:  [8], type:      [PCIe], PCI Domain: [0000:b1:00.0]
-  -+- Id:  [9], type:      [PCIe], PCI Domain: [0000:b2:00.0]
-  -+- Id: [10], type:      [PCIe], PCI Domain: [0000:b3:00.0]
-  -+- Id: [11], type:      [PCIe], PCI Domain: [0000:b4:00.0]
-  -+- Id: [12], type:      [PCIe], PCI Domain: [0000:da:00.0]
-  -+- Id: [13], type:      [PCIe], PCI Domain: [0000:db:00.0]
-  -+- Id: [14], type:      [PCIe], PCI Domain: [0000:dc:00.0]
-  -+- Id: [15], type:      [PCIe], PCI Domain: [0000:dd:00.0]
-  -+- Id: [32], type: [Multi IPU]
-   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
-   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
-   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
-   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
-   |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
-   |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
-   |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
-   |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
-   |--- PCIe Id: [11], DNC Id: [8], PCI Domain: [0000:b4:00.0]
-   |--- PCIe Id: [10], DNC Id: [9], PCI Domain: [0000:b3:00.0]
-   |--- PCIe Id:  [9], DNC Id: [10], PCI Domain: [0000:b2:00.0]
-   |--- PCIe Id:  [8], DNC Id: [11], PCI Domain: [0000:b1:00.0]
-   |--- PCIe Id: [15], DNC Id: [12], PCI Domain: [0000:dd:00.0]
-   |--- PCIe Id: [14], DNC Id: [13], PCI Domain: [0000:dc:00.0]
-   |--- PCIe Id: [13], DNC Id: [14], PCI Domain: [0000:db:00.0]
-   |--- PCIe Id: [12], DNC Id: [15], PCI Domain: [0000:da:00.0]
-  -+- Id: [33], type: [Multi IPU]
-   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
-   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
-   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
-   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
-   |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
-   |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
-   |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
-   |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
-  -+- Id: [34], type: [Multi IPU]
-   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
-   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
-   |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
-   |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
-   |--- PCIe Id: [15], DNC Id: [4], PCI Domain: [0000:dd:00.0]
-   |--- PCIe Id: [14], DNC Id: [5], PCI Domain: [0000:dc:00.0]
-   |--- PCIe Id: [13], DNC Id: [6], PCI Domain: [0000:db:00.0]
-   |--- PCIe Id: [12], DNC Id: [7], PCI Domain: [0000:da:00.0]
-  -+- Id: [35], type: [Multi IPU]
-   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
-   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
-   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
-   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
-  -+- Id: [36], type: [Multi IPU]
-   |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
-   |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
-   |--- PCIe Id:  [1], DNC Id: [2], PCI Domain: [0000:1b:00.0]
-   |--- PCIe Id:  [0], DNC Id: [3], PCI Domain: [0000:1a:00.0]
-  -+- Id: [37], type: [Multi IPU]
-   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
-   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
-   |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
-   |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
-  -+- Id: [38], type: [Multi IPU]
-   |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
-   |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
-   |--- PCIe Id: [13], DNC Id: [2], PCI Domain: [0000:db:00.0]
-   |--- PCIe Id: [12], DNC Id: [3], PCI Domain: [0000:da:00.0]
-  -+- Id: [39], type: [Multi IPU]
-   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
-   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
-  -+- Id: [40], type: [Multi IPU]
-   |--- PCIe Id:  [5], DNC Id: [0], PCI Domain: [0000:61:00.0]
-   |--- PCIe Id:  [4], DNC Id: [1], PCI Domain: [0000:60:00.0]
-  -+- Id: [41], type: [Multi IPU]
-   |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
-   |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
-  -+- Id: [42], type: [Multi IPU]
-   |--- PCIe Id:  [1], DNC Id: [0], PCI Domain: [0000:1b:00.0]
-   |--- PCIe Id:  [0], DNC Id: [1], PCI Domain: [0000:1a:00.0]
-  -+- Id: [43], type: [Multi IPU]
-   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
-   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
-  -+- Id: [44], type: [Multi IPU]
-   |--- PCIe Id:  [9], DNC Id: [0], PCI Domain: [0000:b2:00.0]
-   |--- PCIe Id:  [8], DNC Id: [1], PCI Domain: [0000:b1:00.0]
-  -+- Id: [45], type: [Multi IPU]
-   |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
-   |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
-  -+- Id: [46], type: [Multi IPU]
-   |--- PCIe Id: [13], DNC Id: [0], PCI Domain: [0000:db:00.0]
-   |--- PCIe Id: [12], DNC Id: [1], PCI Domain: [0000:da:00.0]
-  ```
+      user@host:~$ gc-info -l
+      Graphcore device listing:
+
+      -+- Id:  [0], type:      [PCIe], PCI Domain: [0000:1a:00.0]
+      -+- Id:  [1], type:      [PCIe], PCI Domain: [0000:1b:00.0]
+      -+- Id:  [2], type:      [PCIe], PCI Domain: [0000:1c:00.0]
+      -+- Id:  [3], type:      [PCIe], PCI Domain: [0000:1d:00.0]
+      -+- Id:  [4], type:      [PCIe], PCI Domain: [0000:60:00.0]
+      -+- Id:  [5], type:      [PCIe], PCI Domain: [0000:61:00.0]
+      -+- Id:  [6], type:      [PCIe], PCI Domain: [0000:62:00.0]
+      -+- Id:  [7], type:      [PCIe], PCI Domain: [0000:63:00.0]
+      -+- Id:  [8], type:      [PCIe], PCI Domain: [0000:b1:00.0]
+      -+- Id:  [9], type:      [PCIe], PCI Domain: [0000:b2:00.0]
+      -+- Id: [10], type:      [PCIe], PCI Domain: [0000:b3:00.0]
+      -+- Id: [11], type:      [PCIe], PCI Domain: [0000:b4:00.0]
+      -+- Id: [12], type:      [PCIe], PCI Domain: [0000:da:00.0]
+      -+- Id: [13], type:      [PCIe], PCI Domain: [0000:db:00.0]
+      -+- Id: [14], type:      [PCIe], PCI Domain: [0000:dc:00.0]
+      -+- Id: [15], type:      [PCIe], PCI Domain: [0000:dd:00.0]
+      -+- Id: [32], type: [Multi IPU]
+       |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+       |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+       |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+       |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+       |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
+       |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
+       |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
+       |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
+       |--- PCIe Id: [11], DNC Id: [8], PCI Domain: [0000:b4:00.0]
+       |--- PCIe Id: [10], DNC Id: [9], PCI Domain: [0000:b3:00.0]
+       |--- PCIe Id:  [9], DNC Id: [10], PCI Domain: [0000:b2:00.0]
+       |--- PCIe Id:  [8], DNC Id: [11], PCI Domain: [0000:b1:00.0]
+       |--- PCIe Id: [15], DNC Id: [12], PCI Domain: [0000:dd:00.0]
+       |--- PCIe Id: [14], DNC Id: [13], PCI Domain: [0000:dc:00.0]
+       |--- PCIe Id: [13], DNC Id: [14], PCI Domain: [0000:db:00.0]
+       |--- PCIe Id: [12], DNC Id: [15], PCI Domain: [0000:da:00.0]
+      -+- Id: [33], type: [Multi IPU]
+       |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+       |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+       |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+       |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+       |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
+       |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
+       |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
+       |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
+      -+- Id: [34], type: [Multi IPU]
+       |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+       |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+       |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
+       |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
+       |--- PCIe Id: [15], DNC Id: [4], PCI Domain: [0000:dd:00.0]
+       |--- PCIe Id: [14], DNC Id: [5], PCI Domain: [0000:dc:00.0]
+       |--- PCIe Id: [13], DNC Id: [6], PCI Domain: [0000:db:00.0]
+       |--- PCIe Id: [12], DNC Id: [7], PCI Domain: [0000:da:00.0]
+      -+- Id: [35], type: [Multi IPU]
+       |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+       |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+       |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+       |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+      -+- Id: [36], type: [Multi IPU]
+       |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
+       |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
+       |--- PCIe Id:  [1], DNC Id: [2], PCI Domain: [0000:1b:00.0]
+       |--- PCIe Id:  [0], DNC Id: [3], PCI Domain: [0000:1a:00.0]
+      -+- Id: [37], type: [Multi IPU]
+       |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+       |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+       |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
+       |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
+      -+- Id: [38], type: [Multi IPU]
+       |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
+       |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
+       |--- PCIe Id: [13], DNC Id: [2], PCI Domain: [0000:db:00.0]
+       |--- PCIe Id: [12], DNC Id: [3], PCI Domain: [0000:da:00.0]
+      -+- Id: [39], type: [Multi IPU]
+       |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+       |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+      -+- Id: [40], type: [Multi IPU]
+       |--- PCIe Id:  [5], DNC Id: [0], PCI Domain: [0000:61:00.0]
+       |--- PCIe Id:  [4], DNC Id: [1], PCI Domain: [0000:60:00.0]
+      -+- Id: [41], type: [Multi IPU]
+       |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
+       |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
+      -+- Id: [42], type: [Multi IPU]
+       |--- PCIe Id:  [1], DNC Id: [0], PCI Domain: [0000:1b:00.0]
+       |--- PCIe Id:  [0], DNC Id: [1], PCI Domain: [0000:1a:00.0]
+      -+- Id: [43], type: [Multi IPU]
+       |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+       |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+      -+- Id: [44], type: [Multi IPU]
+       |--- PCIe Id:  [9], DNC Id: [0], PCI Domain: [0000:b2:00.0]
+       |--- PCIe Id:  [8], DNC Id: [1], PCI Domain: [0000:b1:00.0]
+      -+- Id: [45], type: [Multi IPU]
+       |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
+       |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
+      -+- Id: [46], type: [Multi IPU]
+       |--- PCIe Id: [13], DNC Id: [0], PCI Domain: [0000:db:00.0]
+       |--- PCIe Id: [12], DNC Id: [1], PCI Domain: [0000:da:00.0]
 
   Examples based on the listing above:
 
-    ```python
-    # Create a single device with 1 IPU at PCI address 0000:1a:00.0 by using IPU
-    # configuration index 0
-    opts = create_ipu_config()
-    opts = select_ipus(opts, indices=[0])
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+  .. code-block:: python
 
-    ```python
-    # Create a single device with 1 IPU at PCI address 0000:b1:00.0 by using IPU
-    # configuration index 8
-    opts = create_ipu_config()
-    opts = select_ipus(opts, indices=[8])
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+      # Create a single device with 1 IPU at PCI address 0000:1a:00.0 by using
+      # IPU configuration index 0
+      opts = create_ipu_config()
+      opts = select_ipus(opts, indices=[0])
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
-    ```python
-    # Create two Tensorflow devices, with one IPU each, being devices at indices
-    # 0 and 1
-    opts = create_ipu_config()
-    opts = select_ipus(opts, indices=[0, 1])
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+  .. code-block:: python
 
-    ```python
-    # Create two Tensorflow devices, with four IPUs each. The device
-    # configurations at indices 37 (0000:b4:00.0, 0000:b3:00.0, 0000:b2:00.0,
-    # 000:b1:00.0) and 38 (0000:dd:00.0, 0000:dc:00.0, 0000:db:00.0,
-    # 00:da:00.0)
-    opts = create_ipu_config()
-    opts = select_ipus(opts, indices=[37, 38])
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+      # Create a single device with 1 IPU at PCI address 0000:b1:00.0 by using
+      # IPU configuration index 8
+      opts = create_ipu_config()
+      opts = select_ipus(opts, indices=[8])
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
-    ```python
-    # Create four Tensorflow devices each with one IPU, at addresses
-    # 0000:1a:00.0, 0000:1b:00.0, 0000:1c:00.0, 0000:1d:00.0.
-    opts = create_ipu_config()
-    opts = select_ipus(opts, indices=[0, 1, 2, 3])
-    ipu.utils.configure_ipu_system(cfg)
-    with tf.Session() as s:
-      ...
-    ```
+  .. code-block:: python
+
+      # Create two Tensorflow devices, with one IPU each, being devices at
+      # indices 0 and 1
+      opts = create_ipu_config()
+      opts = select_ipus(opts, indices=[0, 1])
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
+
+  .. code-block:: python
+
+      # Create two Tensorflow devices, with four IPUs each. The device
+      # configurations at indices 37 (0000:b4:00.0, 0000:b3:00.0, 0000:b2:00.0,
+      # 000:b1:00.0) and 38 (0000:dd:00.0, 0000:dc:00.0, 0000:db:00.0,
+      # 00:da:00.0)
+      opts = create_ipu_config()
+      opts = select_ipus(opts, indices=[37, 38])
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
+
+  .. code-block:: python
+
+      # Create four Tensorflow devices each with one IPU, at addresses
+      # 0000:1a:00.0, 0000:1b:00.0, 0000:1c:00.0, 0000:1d:00.0.
+      opts = create_ipu_config()
+      opts = select_ipus(opts, indices=[0, 1, 2, 3])
+      ipu.utils.configure_ipu_system(cfg)
+      with tf.Session() as s:
+        ...
 
   Args:
-    :param opts: An IpuOptions session control protobuf.
-    :param indicies: List of IPU configuration indicies.
-    :param sharded: Deprecated.
-    :param number_of_replicas: The number of replicas to divide the device into.
-                               This should be a divisor of the number of IPUs.
+    opts: An IpuOptions session control protobuf.
+    indicies: List of IPU configuration indicies.
+    sharded: Deprecated.
+    number_of_replicas: The number of replicas to divide the device into. This
+      should be a divisor of the number of IPUs.
   Returns:
-
-    :return: The IpuOptions configuration protobuf, with a number of devices
-             selected by IPU configuration index.
+    The IpuOptions configuration protobuf, with a number of devices selected by
+    IPU configuration index.
   """
 
   if len(opts.device_config) > 0:
@@ -639,11 +624,13 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
 def extract_all_strings_from_event_trace(events):
   """Extract a concatenation of all data strings from an IPU event trace.
 
-  :param events: An array of IPU events as returned from the
-                 `ipu_compile_summary` operation.
+  Args:
+    events: An array of IPU events as returned from the `ipu_compile_summary`
+      operation.
 
-  :return: A string containing the concatenation of all of the data fields of
-           the events.
+  Returns:
+    A string containing the concatenation of all of the data fields of the
+    events.
 
   """
   result = ""
@@ -685,8 +672,11 @@ def extract_all_strings_from_event_trace(events):
 def extract_all_types_from_event_trace(events):
   """Return a list of the types of each event in an event trace tensor
 
-  :param events: A tensor containing a list of IPU events as protobuf strings
-  :return: A list containing the type of each event
+  Args:
+    events: A tensor containing a list of IPU events as protobuf strings
+
+  Returns:
+    A list containing the type of each event
   """
   result = []
   for e in events:
@@ -697,8 +687,12 @@ def extract_all_types_from_event_trace(events):
 
 def extract_all_events(events):
   """Extract a list containing each event as an event object
-  :param events: A tensor containing a list of IPU events as protobuf strings
-  :return: A list containing IpuTraceEvent objects
+
+  Args:
+    events: A tensor containing a list of IPU events as protobuf strings
+
+  Returns:
+    A list containing IpuTraceEvent objects
   """
   result = []
   for e in events:
@@ -709,8 +703,12 @@ def extract_all_events(events):
 
 def extract_all_io_events(events):
   """Extract a list of all of the IO events from an IPU event trace tensor
-  :param events: A tensor containing a list of IPU events as protobuf strings
-  :return: A list containing only IO events as IpuTraceEvent objects
+
+  Args:
+    events: A tensor containing a list of IPU events as protobuf strings
+
+  Returns:
+    A list containing only IO events as IpuTraceEvent objects
   """
   result = []
   for e in events:
@@ -730,8 +728,12 @@ def extract_all_io_events(events):
 
 def extract_compile_reports(events):
   """Get a list of all compiler reports in the event list.
-  :param events: A list of trace event serialized protobufs
-  :return: A list of tuples containing the module namd and report."""
+
+  Args:
+    events: A list of trace event serialized protobufs
+
+  Returns:
+    A list of tuples containing the module namd and report."""
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
@@ -748,8 +750,12 @@ def extract_compile_reports(events):
 
 def extract_execute_reports(events):
   """Get a list of all compiler reports in the event list.
-  :param events: A list of trace event serialized protobufs
-  :return: A list of tuples containing the module namd and report."""
+
+  Args:
+    events: A list of trace event serialized protobufs
+
+  Returns:
+    A list of tuples containing the module namd and report."""
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
@@ -766,8 +772,12 @@ def extract_execute_reports(events):
 
 def extract_graphviz_from_compilation_event(evt):
   """Return the final optimized XLA graph from a COMPILE_BEGIN event.
-  :param evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
-  :return: A DOT file string of the main XLA computation.
+
+  Args:
+    evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
+
+  Returns:
+    A DOT file string of the main XLA computation.
   """
   if evt.type != IpuTraceEvent.COMPILE_BEGIN:
     raise Exception("`evt` must be a COMPILE_BEGIN event")
@@ -777,8 +787,12 @@ def extract_graphviz_from_compilation_event(evt):
 def get_memory_size_from_events(events):
   """Get the total memory consumption for the first compilation in the list
   of events.
-  :param events: A list of IpuTraceEvent objects.
-  :return: The total size as an integer, or None.
+
+  Args:
+    events: A list of IpuTraceEvent objects.
+
+  Returns:
+    The total size as an integer, or None.
   """
   for evt in events:
     if evt.type == IpuTraceEvent.COMPILE_END:
@@ -796,9 +810,12 @@ def move_variable_initialization_to_cpu(graph=None):
   """For all variables in the VARIABLES collection, move any initialization
   ops onto the CPU.
 
-  :param graph: Operations are moved around on this graph.  The default graph
-                will be used if not specified.
-  :return: None
+  Args:
+    graph: Operations are moved around on this graph.  The default graph will be
+           used if not specified.
+
+  Returns:
+    None
   """
   if not graph:
     graph = ops.get_default_graph()

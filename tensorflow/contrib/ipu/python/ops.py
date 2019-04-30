@@ -31,9 +31,10 @@ def ipu_compile_summary(name, op, collections=None):
     name: A name for the summary
     op: An operation to make this summary dependent upon
     collections: Optional collections to add the summary into
-
+    
   Returns:
-    The new summary operation.
+    The new summary operation
+
   """
 
   with ops.device("cpu"):
@@ -57,6 +58,18 @@ def ipu_compile_summary(name, op, collections=None):
 
 @tf_contextlib.contextmanager
 def ipu_jit_scope(ipu_scope):
+  """Provides a scope for compilation of operations.
+
+  If you would like to compile several sets of operations together, then this
+  can provide that mechanism.
+
+  Args:
+    ipu_scope: A name to differentiate between different JIT scopes
+
+  Returns:
+     A context
+  """
+
   scope = "jit_scope_ipu_" + str(ipu_scope)
   attrs = {
       "_XlaCompile": attr_value_pb2.AttrValue(b=True),
@@ -72,6 +85,15 @@ def ipu_jit_scope(ipu_scope):
 
 @tf_contextlib.contextmanager
 def ipu_scope(device):
+  """Provides a scope for placing operations onto a particular IPU/IPU cluster.
+
+  Args:
+    device: The name of the Tensorflow device, eg '/device:IPU:0'
+
+  Returns:
+    A context
+  """
+
   with variable_scope('', use_resource=True):
     with ops.device(device):
       with ipu_jit_scope(0) as scope:
@@ -80,6 +102,17 @@ def ipu_scope(device):
 
 @tf_contextlib.contextmanager
 def ipu_shard(index):
+  """Control sharding for a set of operations.
+
+  Provides a scope which targets operations onto a particular shard (IPU) of a
+  multi-IPU sharded device.
+
+  Args:
+    index: The index of the IPU on which to place the enclosed operations.
+
+  Returns:
+     A context
+  """
 
   ipus = []
   if hasattr(index, '__iter__'):

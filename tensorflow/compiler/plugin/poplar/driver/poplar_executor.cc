@@ -1401,8 +1401,16 @@ void PoplarExecutor::CreateInfeedDatasetIterator(
     std::unique_ptr<tensorflow::data::IteratorBase> iterator,
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
     const std::vector<xla::Shape>& shapes) {
-  infeed_dataset_iterators_[id] = absl::make_unique<InfeedDatasetIterator>(
-      std::move(iterator), std::move(iterator_ctx), shapes);
+  auto itr = infeed_dataset_iterators_.find(id);
+  if (itr != infeed_dataset_iterators_.end()) {
+    LOG(FATAL)
+        << "Feed with id='" << id
+        << "' already exists. Consider renaming the feed. The poplar backend "
+           "requires feed ops to have unique names.";
+  } else {
+    infeed_dataset_iterators_[id] = absl::make_unique<InfeedDatasetIterator>(
+        std::move(iterator), std::move(iterator_ctx), shapes);
+  }
 }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
