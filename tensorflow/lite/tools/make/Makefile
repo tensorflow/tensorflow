@@ -239,11 +239,15 @@ $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
+lib: $(LIB_PATH)
+
 $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(MINIMAL_BINARY) $(MINIMAL_OBJS) \
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+minimal: $(MINIMAL_BINARY)
 
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_OBJS)
 	@mkdir -p $(dir $@)
