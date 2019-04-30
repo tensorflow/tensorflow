@@ -4477,8 +4477,7 @@ void Reverse(bool* axes, const RuntimeShape& input_shape,
              const Scalar* input_data, const RuntimeShape& output_shape,
              Scalar* output_data, Scalar* input_copy_data) {
   gemmlowp::ScopedProfilingLabel label("Reverse");
-  int axes_size = input_shape.DimensionsCount();
-  int axis = 0;
+  const int axes_size = input_shape.DimensionsCount();
 
   // Here on kernel will work on copy of input data
   int64_t total_size = input_shape.FlatSize();
@@ -4487,21 +4486,20 @@ void Reverse(bool* axes, const RuntimeShape& input_shape,
   // Currently as Tensorflow limits Dimension to 8,
   // So the cost for below loop is minimum
   for (int axis_i = 0; axis_i < axes_size; ++axis_i) {
-    if (axes[axis_i] == false) {
+    if (!axes[axis_i]) {
       continue;
     }
-    axis = axis_i;
     int outer_size = 1;
-    for (int i = 0; i < axis; ++i) {
+    for (int i = 0; i < axis_i; ++i) {
       outer_size *= input_shape.Dims(i);
     }
 
     int copy_size = 1;
-    for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    for (int i = axis_i + 1; i < input_shape.DimensionsCount(); ++i) {
       copy_size *= input_shape.Dims(i);
     }
 
-    const int dims_at_axis = input_shape.Dims(axis);
+    const int dims_at_axis = input_shape.Dims(axis_i);
     for (int i = 0; i < outer_size; ++i) {
       for (int j = 0; j < dims_at_axis; ++j) {
         const int start_pos = (i * dims_at_axis + j) * copy_size;

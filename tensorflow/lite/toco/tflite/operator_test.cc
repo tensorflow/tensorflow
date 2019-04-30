@@ -1017,6 +1017,28 @@ TEST_F(OperatorTest, VersioningFloorDivOperatorTest) {
   EXPECT_EQ(op->GetVersion(float_signature), 2);
 }
 
+TEST_F(OperatorTest, VersioningReverseTest) {
+  ReverseV2Operator reverse_op;
+  reverse_op.inputs = {"input", "axis"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(reverse_op.type).get();
+
+  Model single_axis_model;
+  Array& axis_array = single_axis_model.GetOrCreateArray(reverse_op.inputs[1]);
+  axis_array.copy_shape(Shape({1}));
+  OperatorSignature single_axis_signature = {.op = &reverse_op,
+                                             .model = &single_axis_model};
+  EXPECT_EQ(op->GetVersion(single_axis_signature), 1);
+
+  Model multi_axis_model;
+  Array& multi_axis_array =
+      multi_axis_model.GetOrCreateArray(reverse_op.inputs[1]);
+  multi_axis_array.copy_shape(Shape({2}));
+  OperatorSignature multi_axis_signature = {.op = &reverse_op,
+                                            .model = &multi_axis_model};
+  EXPECT_EQ(op->GetVersion(multi_axis_signature), 2);
+}
+
 }  // namespace
 }  // namespace tflite
 

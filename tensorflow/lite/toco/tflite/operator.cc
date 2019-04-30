@@ -2368,6 +2368,24 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
+class ReverseV2 : public SimpleOperator<ReverseV2Operator> {
+ public:
+  explicit ReverseV2()
+      : SimpleOperator("REVERSE_V2", OperatorType::kReverseV2) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name =
+        op_signature.op->inputs[1];  // Need to check only axis
+    const Array& input_array = op_signature.model->GetArray(input_name);
+
+    // Version 2 supports multi-axis.
+    if (input_array.has_shape() && (input_array.shape().dims(0) > 1)) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2596,8 +2614,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
   ops.push_back(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
-  ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(
-      "REVERSE_V2", OperatorType::kReverseV2));
+  ops.push_back(MakeUnique<ReverseV2>());
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowRankOperator>>(
       "RANK", OperatorType::kRank));
   return ops;
