@@ -1546,7 +1546,7 @@ LogicalResult ExtractElementOp::verify() {
 
 Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
                                          MLIRContext *context) {
-  assert(operands.size() > 1 && "extract_element takes atleast one operands");
+  assert(!operands.empty() && "extract_element takes atleast one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();
