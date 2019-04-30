@@ -16,9 +16,10 @@ limitations under the License.
 package org.tensorflow;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 /** 
- * An {@link OperationBuilder} for building {@link Operation}s that are executed eagerly.
+ * An {@link OperationBuilder} for building {@link Operation Operations} that are executed eagerly.
  */
 final class EagerOperationBuilder implements OperationBuilder {
 
@@ -64,12 +65,12 @@ final class EagerOperationBuilder implements OperationBuilder {
 
   @Override
   public OperationBuilder setAttr(String name, String value) {
-    return setAttr(name, value.getBytes(Charset.forName("UTF-8")));
+    return setAttr(name, value.getBytes(StandardCharsets.UTF_8));
   }
 
   @Override
   public OperationBuilder setAttr(String name, String[] values) {
-    Charset utf8 = Charset.forName("UTF-8");
+    Charset utf8 = StandardCharsets.UTF_8;
     Object[] objects = new Object[values.length];
     for (int i = 0; i < values.length; ++i) {
       objects[i] = values[i].getBytes(utf8);

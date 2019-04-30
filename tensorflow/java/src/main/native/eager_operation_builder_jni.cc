@@ -116,6 +116,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperationBuilder_setDevice(
   const char* cname = env->GetStringUTFChars(device_name, nullptr);
   TF_Status* status = TF_NewStatus();
   TFE_OpSetDevice(op, cname, status);
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(device_name, cname);
 }
 
@@ -140,6 +142,10 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperationBuilder_addInputList(
   TFE_TensorHandle* tensor_handles[num_inputs];
   for (int i = 0; i < num_inputs; ++i) {
     tensor_handles[i] = requireTensorHandle(env, cinput_handles[i]);
+    if (tensor_handles[i] == nullptr) {
+      env->ReleaseLongArrayElements(input_handles, cinput_handles, JNI_ABORT);
+      return;
+    }
   }
   env->ReleaseLongArrayElements(input_handles, cinput_handles, JNI_ABORT);
   TF_Status* status = TF_NewStatus();
@@ -277,6 +283,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperationBuilder_setAttrShape(
   TFE_OpSetAttrShape(op, cname, cvalue.get(), static_cast<int>(num_dims),
                      status);
   throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(attr_name, cname);
 }
 
@@ -315,5 +322,7 @@ Java_org_tensorflow_EagerOperationBuilder_setAttrShapeList(
   TF_Status* status = TF_NewStatus();
   TFE_OpSetAttrShapeList(op, cname, cdims.get(), cnum_dims.get(),
                          num_dims_length, status);
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
   env->ReleaseStringUTFChars(attr_name, cname);
 }
