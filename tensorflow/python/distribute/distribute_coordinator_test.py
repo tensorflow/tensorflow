@@ -39,6 +39,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator
 from tensorflow.python.distribute import distribute_coordinator_context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -46,6 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_manager
 
@@ -181,6 +183,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
     self._strategy_property = {}
     self._std_servers = {}
     self._barrier = distribute_coordinator._Barrier(NUM_WORKERS)
+    self._coord = coordinator.Coordinator()
 
   @contextlib.contextmanager
   def _test_session(self, target):
@@ -236,10 +239,16 @@ class DistributeCoordinatorTestBase(test.TestCase):
     if result_value == expected:
       self._result_correct += 1
 
+  def _wrapped_worker_fn(self, worker_fn):
+    def wrapped(*args, **kwargs):
+      with self._coord.stop_on_exception():
+        return worker_fn(*args, **kwargs)
+    return wrapped
+
   def _run_coordinator_in_thread(self, worker_fn, strategy, **kwargs):
     t = threading.Thread(
         target=distribute_coordinator.run_distribute_coordinator,
-        args=(worker_fn, strategy),
+        args=(self._wrapped_worker_fn(worker_fn), strategy),
         kwargs=kwargs)
     t.start()
     return t
@@ -259,6 +268,15 @@ class DistributeCoordinatorTestBase(test.TestCase):
             **kwargs)
         threads[task_type].append(t)
     return threads
+
+  def _join_threads(self, threads):
+    try:
+      self._coord.join(threads)
+    except errors.UnknownError as e:
+      if "Could not start gRPC server" in e.message:
+        self.skipTest("Cannot start std servers.")
+      else:
+        raise
 
   def _between_graph_worker_fn(self, strategy):
     context = distribute_coordinator_context.get_current_worker_context()
@@ -584,7 +602,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=False),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    threads[WORKER][0].join()
+    self._join_threads([threads[WORKER][0]])
     self.assertEqual(self._result_correct, 1)
 
   def testBetweenGraph(self):
@@ -595,8 +613,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=True),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    for task_id in range(NUM_WORKERS):
-      threads[WORKER][task_id].join()
+    self._join_threads(threads[WORKER])
 
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
@@ -610,8 +627,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=True),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    for task_id in range(NUM_WORKERS):
-      threads[WORKER][task_id].join()
+    self._join_threads(threads[WORKER])
 
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
@@ -627,8 +643,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only one type of task and three such tasks.
     self.assertEqual(len(self._worker_context), 1)
@@ -666,8 +681,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only one type of task and there three such tasks.
     self.assertEqual(len(self._strategy_property), 1)
@@ -691,8 +705,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only a "None" task in the dumped task context.
     self.assertEqual(len(self._worker_context), 1)
@@ -727,9 +740,8 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
-      threads[EVALUATOR][0].join()
+      self._join_threads(threads[WORKER])
+      self._join_threads([threads[EVALUATOR][0]])
 
     # There are one "None" task and one EVALUATOR task.
     self.assertEqual(len(self._worker_context), 2)
