@@ -293,8 +293,9 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no shape");
   }
   Shape shape(proto.shape());
-  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE)) {
-    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
+    return InvalidArgument(
+        "Literal shape cannot include OPAQUE_TYPE sub-shape");
   }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");

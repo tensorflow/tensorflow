@@ -1698,16 +1698,18 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
-    ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
+
     if (options.override_device || ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
-    for (auto& attr : *ndef.mutable_attr()) {
-      if (attr.first == "_class") {
-        attr.second.set_s(
-            strings::StrCat(caller->name(), "/", attr.second.s()));
-      }
-    }
+
+    // Add the function node name as a prefix:
+    //  1) to node name to avoid collisions
+    //  2) to frame name to avoid multiple LoopCond nodes in one frame
+    //  3) to colocation attribute
+    const string prefix = strings::StrCat(caller->name(), "/");
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
     if (options.override_device && !caller->assigned_device_name().empty()) {

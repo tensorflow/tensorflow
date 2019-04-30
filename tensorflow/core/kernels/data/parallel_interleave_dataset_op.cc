@@ -252,7 +252,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncInterleaveManyNode(
             std::move(args),
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/port::NumSchedulableCPUs())});
+                                  /*max=*/dataset()->cycle_length_)});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
@@ -462,6 +462,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               if (!future_elements_.empty()) {
                 current_elements_[idx] = std::move(future_elements_.back());
                 future_elements_.pop_back();
+                if (current_elements_[idx]->iterator) {
+                  EnableAutotune(ctx.get(),
+                                 current_elements_[idx]->iterator.get());
+                }
               } else {
                 current_elements_[idx] = MakeElement(ctx);
                 if (!current_elements_[idx]) {
@@ -480,9 +484,21 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               if (num_results > 0) {
                 num_calls_++;
                 element->in_use = true;
-                thread_pool_->Schedule(
-                    std::bind(&ParallelInterleaveIterator::FetchResults, this,
-                              ctx, std::move(element), num_results));
+                thread_pool_->Schedule(std::bind(
+                    &ParallelInterleaveIterator::FetchResults, this, ctx,
+                    std::move(element), num_results,
+                    [this, ctx]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+                      --num_calls_;
+                      const auto& stats_aggregator = ctx->stats_aggregator();
+                      if (stats_aggregator) {
+                        stats_aggregator->AddScalar(
+                            stats_utils::ThreadUtilizationScalarName(
+                                dataset()->node_name()),
+                            static_cast<float>(num_calls_) /
+                                static_cast<float>(num_parallel_calls_->value),
+                            num_elements());
+                      }
+                    }));
               }
             }
           }
@@ -518,7 +534,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // Fetches up to `dataset()->block_length_` results from `element`.
       void FetchResults(const std::shared_ptr<IteratorContext>& ctx,
                         const std::shared_ptr<Element>& element,
-                        int64 num_results) LOCKS_EXCLUDED(*mu_) {
+                        int64 num_results, std::function<void()> done)
+          LOCKS_EXCLUDED(*mu_) {
         RecordStart(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
         bool end_of_input = false;
@@ -546,15 +563,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           element->inputs.clear();
           --num_open_;
         }
-        --num_calls_;
-        const auto& stats_aggregator = ctx->stats_aggregator();
-        if (stats_aggregator) {
-          stats_aggregator->AddScalar(
-              stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
-              static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value),
-              num_elements());
-        }
+        done();
         cond_var_->notify_all();
       }
 
@@ -566,9 +575,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         RecordStart(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
         auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-          // TODO(jsimsa): Autotune the buffer size.
-          return num_calls_ >= num_parallel_calls_->value ||
-                 future_elements_.size() >= 2 * dataset()->cycle_length_;
+          // TODO(jsimsa): Autotune the number of iterators to prefetch.
+          return future_elements_.size() >= 2 * dataset()->cycle_length_;
         };
         while (true) {
           mutex_lock l(*mu_);
@@ -595,20 +603,11 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             if (!element->iterator) {
               continue;
             }
-            ++num_calls_;
+            DisableAutotune(ctx.get(), element->iterator.get());
             element->in_use = true;
             thread_pool_->Schedule(
                 std::bind(&ParallelInterleaveIterator::FetchResults, this, ctx,
-                          std::move(element), dataset()->block_length_));
-          }
-          const auto& stats_aggregator = ctx->stats_aggregator();
-          if (stats_aggregator) {
-            stats_aggregator->AddScalar(
-                stats_utils::ThreadUtilizationScalarName(
-                    dataset()->node_name()),
-                static_cast<float>(num_calls_) /
-                    static_cast<float>(num_parallel_calls_->value),
-                num_elements());
+                          std::move(element), dataset()->block_length_, [] {}));
           }
           cond_var_->notify_all();
         }

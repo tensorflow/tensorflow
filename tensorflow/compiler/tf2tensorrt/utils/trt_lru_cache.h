@@ -101,17 +101,14 @@ class LRUCache {
   }
 
   // Creates n free positions in cache
-  Status DiscardOld(size_t n = 0) {
-    if (n > capacity_) {
-      return errors::Internal("Insufficient capacity in cache (capacity = ",
-                              capacity_, ", requested ", n, ")");
-    }
+  void DiscardOld(size_t n = 0) {
+    DCHECK(capacity_ >= n) << "Insufficient capacity in cache (capacity = "
+                           << capacity_ << ", requested " << n << ")";
     while (objects_.size() > (capacity_ - n)) {
       key_type discard_key = keys_.back();
       keys_.pop_back();
       objects_.erase(discard_key);
     }
-    return Status::OK();
   }
 };
 

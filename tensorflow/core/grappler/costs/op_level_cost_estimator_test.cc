@@ -135,6 +135,23 @@ OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
   return op_context;
 }
 
+// Returns an OpInfo for an Einsum
+OpContext DescribeEinsum(const std::vector<int>& dims_a,
+                         const std::vector<int>& dims_b,
+                         const string& equation) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("XlaEinsum");
+  AttrValue equation_attribute;
+  equation_attribute.set_s(equation);
+  (*op_context.op_info.mutable_attr())["equation"] = equation_attribute;
+  if (!dims_a.empty())
+    DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
+  if (!dims_b.empty())
+    DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+  return op_context;
+}
+
 // Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
 // estimation purposes.
 void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
@@ -1375,5 +1392,132 @@ TEST_F(OpLevelCostEstimatorTest, IntermediateRdWrBandwidth) {
   EXPECT_EQ(cost.execution_time, cost.compute_time + cost.memory_time +
                                      cost.intermediate_memory_time);
 }
+
+TEST_F(OpLevelCostEstimatorTest, Einsum) {
+  {  // Test a simple matrix multiplication.
+    auto cost = PredictCosts(DescribeEinsum({100, 50}, {100, 50}, "ik,jk->ij"));
+    EXPECT_EQ(Costs::Duration(104000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(100 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(4000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test a simple batch matrix multiplication.
+    auto cost = PredictCosts(
+        DescribeEinsum({25, 100, 50}, {100, 50, 25}, "Bik,jkB->Bij"));
+    EXPECT_EQ(Costs::Duration(25 * 104000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(25 * 100 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(25 * 4000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test multiple batch dimensions.
+    auto cost = PredictCosts(DescribeEinsum(
+        {25, 16, 100, 50}, {16, 100, 50, 25}, "BNik,NjkB->BNij"));
+    EXPECT_EQ(Costs::Duration(16 * 25 * 104000), cost.execution_time);
+    EXPECT_EQ(
+        Costs::Duration(16 * 25 * 100 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+        cost.compute_time);
+    EXPECT_EQ(Costs::Duration(16 * 25 * 4000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test multiple M dimensions.
+    auto cost =
+        PredictCosts(DescribeEinsum({25, 100, 50}, {100, 50}, "Aik,jk->Aij"));
+    EXPECT_EQ(Costs::Duration(2552000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(25 * 100 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(52000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test multiple N dimensions.
+    auto cost =
+        PredictCosts(DescribeEinsum({100, 50}, {25, 100, 50}, "ik,Bjk->ijB"));
+    EXPECT_EQ(Costs::Duration(2552000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(25 * 100 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(52000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test multiple contracting dimensions.
+    auto cost = PredictCosts(
+        DescribeEinsum({100, 50, 25}, {100, 50, 25}, "ikl,jkl->ij"));
+    EXPECT_EQ(Costs::Duration(2600000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(100 * 50 * 25 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(100000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test a simple matrix transpose.
+    auto cost = PredictCosts(DescribeEinsum({100, 50}, {}, "ij->ji"));
+    EXPECT_EQ(Costs::Duration(2000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test a malformed Einsum equation: Mismatch between shapes and equation.
+    auto cost =
+        PredictCosts(DescribeEinsum({100, 50, 25}, {50, 100}, "ik,kl->il"));
+    EXPECT_EQ(Costs::Duration(52000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(52000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    cost = PredictCosts(DescribeEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"));
+    EXPECT_EQ(Costs::Duration(52000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(52000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test an unsupported Einsum: ellipsis
+    auto cost = PredictCosts(DescribeEinsum(
+        {100, 50, 25, 16}, {50, 100, 32, 12}, "ik...,kl...->il..."));
+    EXPECT_EQ(Costs::Duration(1568000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(1568000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test a malformed/unsupported Einsum: repeated indices
+    auto cost =
+        PredictCosts(DescribeEinsum({100, 100, 50}, {50, 100}, "iik,kl->il"));
+    EXPECT_EQ(Costs::Duration(202000), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(202000), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+  {  // Test missing shapes.
+    auto cost = PredictCosts(DescribeEinsum({-1, 50}, {100, 50}, "ik,jk->ij"));
+    EXPECT_EQ(Costs::Duration(3020), cost.execution_time);
+    EXPECT_EQ(Costs::Duration(1 * 50 * 100 * 2 / (1000 * 10 * 1e-3)),
+              cost.compute_time);
+    EXPECT_EQ(Costs::Duration(2020), cost.memory_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

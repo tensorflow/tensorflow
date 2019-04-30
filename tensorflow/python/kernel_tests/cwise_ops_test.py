@@ -827,6 +827,7 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testTypes(self):
+    self.skipTest("b/131162241")
     for dtype in [np.float16, np.float32, np.float64]:
       self._testDtype(dtype)
 

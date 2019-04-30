@@ -13,10 +13,6 @@ apple_bundle_version(
     build_version = TFL_IOS_BUILD_VERSION,
 )
 
-#   Build the framework:
-#     bazel build tensorflow/lite/experimental/ios:TensorFlowLiteC_framework -c opt --ios_multi_cpus=x86_64,armv7,arm64 --apple_bitcode=embedded --copt=-fembed-bitcode
-#   Unzip the generated framework:
-#     unzip bazel-bin/tensorflow/lite/experimental/ios/TensorFlowLiteC_framework.zip -d /Users/path/to/tensorflow/Frameworks
 ios_static_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [

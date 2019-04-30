@@ -101,16 +101,30 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
+  bool sync_dst_compute = true;
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
-    Tensor copy(out_allocator, in.dtype(), in.shape());
+    AllocationAttributes aa;
+    uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+    std::function<uint64()> freed_by_func = [dst_device,
+                                             &safe_alloc_frontier]() {
+      safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
+      return safe_alloc_frontier;
+    };
+    if (parsed.dst.type == "GPU" && safe_alloc_frontier > 0) {
+      // There's a timestamped allocator at work, so use it instead
+      // of sync_dst_compute.
+      aa.freed_by_func = &freed_by_func;
+      sync_dst_compute = false;
+    }
+    Tensor copy(out_allocator, in.dtype(), in.shape(), aa);
     *out = copy;
   }
 
-  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
-                     recv_args.device_context, src_device, dst_device,
-                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     0 /*dev_to_dev_stream_index*/, std::move(done));
+  CopyTensor::ViaDMA(
+      parsed.edge_name, send_args.device_context, recv_args.device_context,
+      src_device, dst_device, send_args.alloc_attrs, recv_args.alloc_attrs, &in,
+      out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
 }
 
 void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,

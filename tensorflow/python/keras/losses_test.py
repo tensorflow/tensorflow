@@ -200,6 +200,16 @@ class KerasLossesTest(test.TestCase):
     # reduced_weighted_mse = (6 + 26) / 2 =
     self.assertAllClose(self.evaluate(loss), 16, 1e-2)
 
+  def test_invalid_reduction(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Foo.'):
+      keras.losses.MeanSquaredError(reduction='Foo')
+
+    mse_obj = keras.losses.MeanSquaredError()
+    y = constant_op.constant([1])
+    mse_obj.reduction = 'Bar'
+    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Bar.'):
+      mse_obj(y, y)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MeanSquaredErrorTest(test.TestCase):

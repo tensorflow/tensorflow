@@ -68,25 +68,27 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testAsFunctionWithMap(self):
     if not context.executing_eagerly():
       self.skipTest("Only works executing eagerly")
-    original_dataset = dataset_ops.Dataset.range(5).map(lambda x: x * 2)
-    fn = original_dataset._trace_variant_creation()
-    variant = fn()
+    with ops.device("CPU"):
+      original_dataset = dataset_ops.Dataset.range(5).map(lambda x: x * 2)
+      fn = original_dataset._trace_variant_creation()
+      variant = fn()
 
-    revived_dataset = _RevivedDataset(
-        variant, original_dataset._element_structure)
-    self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
+      revived_dataset = _RevivedDataset(
+          variant, original_dataset._element_structure)
+      self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
 
   def testAsFunctionWithMapInFlatMap(self):
     if not context.executing_eagerly():
       self.skipTest("Only works executing eagerly")
-    original_dataset = dataset_ops.Dataset.range(5).flat_map(
-        lambda x: dataset_ops.Dataset.range(5).map(lambda x: x * 2))
-    fn = original_dataset._trace_variant_creation()
-    variant = fn()
+    with ops.device("CPU"):
+      original_dataset = dataset_ops.Dataset.range(5).flat_map(
+          lambda x: dataset_ops.Dataset.range(5).map(lambda x: x * 2))
+      fn = original_dataset._trace_variant_creation()
+      variant = fn()
 
-    revived_dataset = _RevivedDataset(
-        variant, original_dataset._element_structure)
-    self.assertDatasetProduces(revived_dataset, list(original_dataset))
+      revived_dataset = _RevivedDataset(
+          variant, original_dataset._element_structure)
+      self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
   @staticmethod
   def make_apply_fn(dataset):
@@ -357,24 +359,25 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         accumulator += value
       return accumulator
 
-    first_dataset = dataset_ops.Dataset.range(10)
-    self.assertEqual(45, self.evaluate(_uses_dataset(first_dataset)))
-    second_dataset = dataset_ops.Dataset.range(11)
-    self.assertEqual(55, self.evaluate(_uses_dataset(second_dataset)))
-    first_concrete = _uses_dataset.get_concrete_function(first_dataset)
-    self.skipTest(
-        ("Not currently working: functions treat Datasets as opaque Python "
-         "objects"))
-    # The dataset should not be a captured input
-    self.assertEmpty(first_concrete.graph.captures)
-    # The two datasets have the same structure and so should re-use a trace.
-    self.assertIs(first_concrete,
-                  _uses_dataset.get_concrete_function(second_dataset))
-    # With a different structure we should use a different trace.
-    self.assertIsNot(
-        first_concrete,
-        _uses_dataset.get_concrete_function(
-            dataset_ops.Dataset.zip((first_dataset, second_dataset))))
+    with ops.device("CPU"):
+      first_dataset = dataset_ops.Dataset.range(10)
+      self.assertEqual(45, self.evaluate(_uses_dataset(first_dataset)))
+      second_dataset = dataset_ops.Dataset.range(11)
+      self.assertEqual(55, self.evaluate(_uses_dataset(second_dataset)))
+      first_concrete = _uses_dataset.get_concrete_function(first_dataset)
+      self.skipTest(
+          ("Not currently working: functions treat Datasets as opaque Python "
+           "objects"))
+      # The dataset should not be a captured input
+      self.assertEmpty(first_concrete.graph.captures)
+      # The two datasets have the same structure and so should re-use a trace.
+      self.assertIs(first_concrete,
+                    _uses_dataset.get_concrete_function(second_dataset))
+      # With a different structure we should use a different trace.
+      self.assertIsNot(
+          first_concrete,
+          _uses_dataset.get_concrete_function(
+              dataset_ops.Dataset.zip((first_dataset, second_dataset))))
 
 if __name__ == "__main__":
   test.main()

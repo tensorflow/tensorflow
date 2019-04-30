@@ -702,9 +702,10 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  AllocationAttributes logged_attr(allocation_attr);
-  logged_attr.allocation_will_be_logged = true;
-  Tensor new_tensor(a, type, shape, logged_attr);
+  Tensor new_tensor(a, type, shape,
+                    AllocationAttributes(allocation_attr.no_retry_on_failure,
+                                         /* allocation_will_be_logged= */ true,
+                                         allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -750,6 +751,9 @@ Status OpKernelContext::allocate_temp(
       int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
+  } else if (record_memory_consumption_) {
+    mutex_lock l(stats_mu_);
+    temp_memory_allocated_ += out_temp->TotalBytes();
   }
   return s;
 }
@@ -774,6 +778,10 @@ Status OpKernelContext::allocate_persistent(DataType type,
         int64 alloc_id = a->AllocationId(t->tensor_data().data());
         record_persistent_memory_allocation(alloc_size, alloc_id);
       }
+    } else if (record_memory_consumption_) {
+      mutex_lock l(stats_mu_);
+      persistent_memory_allocated_ +=
+          out_persistent->AccessTensor(this)->TotalBytes();
     }
   }
   return s;

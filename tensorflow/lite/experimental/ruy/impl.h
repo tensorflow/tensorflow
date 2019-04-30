@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_IMPL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_IMPL_H_
 
+#include <cstring>
 #include <vector>
 
 #include "profiling/instrumentation.h"
@@ -291,8 +292,6 @@ struct TrMulImpl {
     // The packed matrices.
     Matrix<PackedLhsScalar> packed_lhs;
     Matrix<PackedRhsScalar> packed_rhs;
-    using LhsSumsType = typename Matrix<PackedLhsScalar>::SumsType;
-    using RhsSumsType = typename Matrix<PackedRhsScalar>::SumsType;
     const bool lhs_use_packing_sums =
         Pack<PackedRhsScalar>(rhs.zero_point) != 0;
     const bool rhs_use_packing_sums =

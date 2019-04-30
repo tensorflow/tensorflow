@@ -388,7 +388,7 @@ def eager_learning_phase_scope(value):
   """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
-  assert context.executing_eagerly()
+  assert ops.executing_eagerly_outside_functions()
   previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
@@ -813,13 +813,6 @@ def constant(value, dtype=None, shape=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
-
-  # If the outer context is eager but we are executing under the keras
-  # FuncGraph, we create EagerTensors and use them as constants.
-  if (ops.executing_eagerly_outside_functions() and
-      getattr(get_graph(), 'name', '') == 'keras_graph'):
-    with ops.init_scope():
-      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 

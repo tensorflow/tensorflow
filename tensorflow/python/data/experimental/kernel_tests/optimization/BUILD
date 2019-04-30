@@ -58,6 +58,7 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "notap",  # TODO(b/131229793)
     ],
     deps = [
         "//tensorflow/python:client_testlib",

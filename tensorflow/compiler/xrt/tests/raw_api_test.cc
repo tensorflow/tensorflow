@@ -167,6 +167,18 @@ xla::XlaComputation AddAndScale() {
   return builder.Build().ValueOrDie();
 }
 
+xla::XlaComputation SubAndScale() {
+  xla::XlaBuilder builder("SubAndScale");
+  auto p0 = xla::Parameter(&builder, 0,
+                           xla::ShapeUtil::MakeShape(xla::F32, {2}), "P0");
+  auto p1 = xla::Parameter(&builder, 1,
+                           xla::ShapeUtil::MakeShape(xla::F32, {2}), "P1");
+  auto sum = xla::Sub(p0, p1);
+  auto c = xla::ConstantR0<float>(&builder, 11.0f);
+  xla::Mul(sum, c);
+  return builder.Build().ValueOrDie();
+}
+
 xla::XlaComputation Dot() {
   xla::XlaBuilder builder("Dot");
   auto p0 = xla::Parameter(
@@ -467,13 +479,7 @@ TEST(RawApiTest, CompileAndReleaseMany) {
           .ToProto();
   StoreComputationSnapshot(AddAndTuple(), c2.mutable_hlo_snapshot());
 
-  xrt::XRTExecutionConfig e;
-  e.set_release_input_handles(true);
-  e.set_release_compilation_handle(false);
-
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
-  auto e_config =
-      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
   auto computation1 =
       ops::Const(root.WithDevice("/device:CPU:0"), c1.SerializeAsString());
   auto c_handle1 = ops::XRTCompile(root, computation1);
@@ -684,6 +690,77 @@ TEST(RawApiTest, MakeTuple) {
   EXPECT_TRUE(CompareLiteralProtos(response_0, expected_0));
   auto expected_1 = NestedTuple();
   EXPECT_TRUE(CompareLiteralProtos(response_1, expected_1));
+}
+
+TEST(RawApiTest, ExecuteChained) {
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+
+  auto make_computation = [](const std::function<xla::XlaComputation()>& fn) {
+    xrt::XLAComputation c;
+    auto config = c.mutable_config();
+    auto shapes = config->mutable_program_shape();
+    *shapes->add_parameters() =
+        xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+    *shapes->add_parameters() =
+        xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+    *shapes->mutable_result() =
+        xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+    StoreComputationSnapshot(fn(), c.mutable_hlo_snapshot());
+    return c.SerializeAsString();
+  };
+
+  auto c_add_scale = make_computation(AddAndScale);
+  auto c_sub_scale = make_computation(SubAndScale);
+
+  auto c_add_scale_op = ops::XRTCompile(
+      root, ops::Const(root.WithDevice("/device:CPU:0"), c_add_scale));
+  auto c_sub_scale_op = ops::XRTCompile(
+      root, ops::Const(root.WithDevice("/device:CPU:0"), c_sub_scale));
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(
+      session.Run({c_add_scale_op.handle, c_sub_scale_op.handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 c_add_scale_handle = outputs[0].scalar<int64>()();
+  int64 c_sub_scale_handle = outputs[1].scalar<int64>()();
+
+  xrt::XLAAllocation p0;
+  *p0.mutable_value() = FloatVector({1.0f, 2.0f});
+  xrt::XLAAllocation p1;
+  *p1.mutable_value() = FloatVector({8.0f, 5.0f});
+
+  auto p0_handle = ops::XRTAllocate(
+      root,
+      ops::Const(root.WithDevice("/device:CPU:0"), p0.SerializeAsString()));
+  auto p1_handle = ops::XRTAllocate(
+      root,
+      ops::Const(root.WithDevice("/device:CPU:0"), p1.SerializeAsString()));
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(false);
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto result0 = ops::XRTExecute(root, Input(c_add_scale_handle), e_config,
+                                 {Output(p0_handle), Output(p1_handle)});
+  auto result1 = ops::XRTExecute(root, Input(c_sub_scale_handle), e_config,
+                                 {Output(p0_handle), Output(p1_handle)});
+  auto result = ops::XRTExecute(root, Input(c_add_scale_handle), e_config,
+                                {result0.output_handle, result1.output_handle});
+  auto read_back = ops::XRTReadLiteralAndRelease(root, result);
+  TF_ASSERT_OK(root.status());
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run({read_back}, &outputs));
+
+  xla::LiteralProto response;
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+
+  auto expected = xla::LiteralUtil::CreateR1<float>({-150.0f, -36.0f});
+  EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 }
 
 TEST(RawApiTest, CompileAndExecute) {

@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 
 
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
@@ -395,3 +396,22 @@ def assert_no_legacy_layers(layers):
         'classes), please use the tf.keras.layers implementation instead. '
         '(Or, if writing custom layers, subclass from tf.keras.layers rather '
         'than tf.layers)'.format(layer_str))
+
+
+@tf_contextlib.contextmanager
+def maybe_init_scope(layer):
+  """Open an `init_scope` if in V2 mode and using the keras graph.
+
+  Arguments:
+    layer: The Layer/Model that is currently active.
+
+  Yields:
+    None
+  """
+  # Don't open an init_scope in V1 mode or when using legacy tf.layers.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(layer, '_keras_style', True)):
+    with ops.init_scope():
+      yield
+  else:
+    yield

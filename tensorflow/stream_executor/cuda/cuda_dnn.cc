@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -307,7 +306,7 @@ port::Status CudnnSupport::Init() {
     CudnnVersion loaded_version;
     TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
-      const tensorflow::string error = absl::StrCat(
+      const string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
           ".  CuDNN library major and minor version needs to match or have "
@@ -2556,7 +2555,9 @@ struct RnnDoFP32ComputationFP16Input {
   // precision is set.
   // Set it temporary to false s.t. no error is raised when using fp16 inputs,
   // fp32 math precision.
-  static constexpr bool kDefaultFlag = false;
+  //
+  // cuDNN == 7.5.0 is verified to have this fixed.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 7500;
 };
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type) {

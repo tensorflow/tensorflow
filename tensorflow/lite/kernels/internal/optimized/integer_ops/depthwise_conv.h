@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1981,9 +1982,10 @@ inline void DepthwiseConvPerChannel(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
-
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -2003,8 +2005,7 @@ inline void DepthwiseConvPerChannel(
     thread_count = thread_count_row;
   }
 
-  const int max_threads =
-      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
+  const int max_threads = gemmlowp_context->max_num_threads();
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {

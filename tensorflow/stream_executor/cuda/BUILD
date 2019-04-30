@@ -58,7 +58,10 @@ cc_library(
             "//tensorflow/stream_executor/lib",
             "//tensorflow/stream_executor/platform",
         ],
-    ) + tf_additional_cuda_platform_deps(),
+    ) + tf_additional_cuda_platform_deps() + [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
 
@@ -72,7 +75,7 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-    ]),
+    ]) + ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(
@@ -118,7 +121,7 @@ cc_library(
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
-    textual_hdrs = ["cuda_runtime_10_0.inc"],
+    textual_hdrs = glob(["cuda_runtime_*.inc"]),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [
@@ -215,7 +218,7 @@ cc_library(
     ] + if_static(
         ["@local_config_cuda//cuda:cublas"],
         [":cublas_stub"],
-    )),
+    )) + ["@com_google_absl//absl/strings:str_format"],
     alwayslink = True,
 )
 
@@ -464,7 +467,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
+    ]) + ["@com_google_absl//absl/strings:str_format"],
     alwayslink = True,
 )
 
@@ -473,7 +476,7 @@ cc_library(
     srcs = ["cudnn_version.cc"],
     hdrs = ["cudnn_version.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -315,8 +315,8 @@ class Network(base_layer.Layer):
         output_tensors=self._nested_outputs)
 
     # Build self.input_names and self.output_names.
+    self._set_output_names()
     self.input_names = []
-    self.output_names = []
     self._feed_input_names = []
     self._feed_inputs = []
     self._feed_input_shapes = []
@@ -326,8 +326,25 @@ class Network(base_layer.Layer):
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
         self._feed_inputs.append(layer.input)
+
+  def _set_output_names(self):
+    """Assigns unique names to the Network's outputs.
+
+    Output layers with multiple output tensors would otherwise lead to duplicate
+    names in self.output_names.
+    """
+    uniquified = []
+    output_names = set()
+    prefix_count = {}
     for layer in self._output_layers:
-      self.output_names.append(layer.name)
+      proposal = layer.name
+      while proposal in output_names:
+        existing_count = prefix_count.get(layer.name, 1)
+        proposal = '{}_{}'.format(layer.name, existing_count)
+        prefix_count[layer.name] = existing_count + 1
+      output_names.add(proposal)
+      uniquified.append(proposal)
+    self.output_names = uniquified
 
   @trackable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None, dynamic=False):
@@ -527,171 +544,12 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  def _get_unfiltered_updates(self, check_trainable=True):
-    if check_trainable and not self.trainable and not self.stateful:
-      return []
-    updates = []
-    for layer in self.layers:
-      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
-    updates += list(self._updates)
-    return updates
-
-  @property
-  def _unfiltered_losses(self):
-    losses = []
-
-    # If any eager losses are present, we assume the model to be part of an
-    # eager training loop (either a custom one or the one used when
-    # `run_eagerly=True`), and so we always return just the eager losses in that
-    # case.
-    if self._eager_losses:
-      losses.extend(self._eager_losses)
-    else:
-      losses.extend(self._losses)
-    for regularizer in self._callable_losses:
-      loss_tensor = regularizer()
-      if loss_tensor is not None:
-        losses.append(loss_tensor)
-    for layer in self.layers:
-      if isinstance(layer, Network):
-        losses += layer._unfiltered_losses
-      else:
-        losses += layer.losses
-    return losses
-
   @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
       layer._clear_losses()
-
-  @property
-  def updates(self):
-    """Retrieves the network's updates.
-
-    Will only include updates that are either
-    unconditional, or conditional on inputs to this model
-    (e.g. will not include updates that were created by layers of this model
-    outside of the model).
-
-    When the network has no registered inputs, all updates are returned.
-
-    Effectively, `network.updates` behaves like `layer.updates`.
-
-    Concrete example:
-
-    ```python
-      bn = keras.layers.BatchNormalization()
-      x1 = keras.layers.Input(shape=(10,))
-      _ = bn(x1)  # This creates 2 updates.
-
-      x2 = keras.layers.Input(shape=(10,))
-      y2 = bn(x2)  # This creates 2 more updates.
-
-      # The BN layer has now 4 updates.
-      self.assertEqual(len(bn.updates), 4)
-
-      # Let's create a model from x2 to y2.
-      model = keras.models.Model(x2, y2)
-
-      # The model does not list all updates from its underlying layers,
-      # but only the updates that are relevant to it. Updates created by layers
-      # outside of the model are discarded.
-      self.assertEqual(len(model.updates), 2)
-
-      # If you keep calling the model, you append to its updates, just like
-      # what happens for a layer.
-      x3 = keras.layers.Input(shape=(10,))
-      y3 = model(x3)
-      self.assertEqual(len(model.updates), 4)
-
-      # But if you call the inner BN layer independently, you don't affect
-      # the model's updates.
-      x4 = keras.layers.Input(shape=(10,))
-      _ = bn(x4)
-      self.assertEqual(len(model.updates), 4)
-    ```
-
-    Returns:
-        A list of update ops.
-    """
-
-    updates = self._get_unfiltered_updates(check_trainable=True)
-
-    # `updates` might contain irrelevant updates, so it needs to be filtered
-    # with respect to inputs the model has been called on.
-    relevant_inputs = []
-    for i in range(0, len(self._inbound_nodes)):
-      inputs = self.get_input_at(i)
-      if isinstance(inputs, list):
-        relevant_inputs += inputs
-      else:
-        relevant_inputs.append(inputs)
-    if not relevant_inputs:
-      return list(set(updates))
-
-    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
-    relevant_conditional_updates = [x for x in updates if x in reachable]
-    unconditional_updates = [
-        x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
-    # A layer could be used multiple times in a nested structure,
-    # so the updates list must be de-duped.
-    return list(set(relevant_conditional_updates + unconditional_updates))
-
-  @property
-  def losses(self):
-    """Retrieves the network's losses.
-
-    Will only include losses that are either
-    unconditional, or conditional on inputs to this model
-    (e.g. will not include losses that depend on tensors
-    that aren't inputs to this model).
-
-    When the network has no registered inputs, all losses are returned.
-
-    Returns:
-        A list of loss tensors.
-    """
-    losses = self._unfiltered_losses
-
-    if context.executing_eagerly():
-      return losses
-
-    # TODO(kaftan/fchollet): Clean this up / make it obsolete.
-    # This is a super ugly, confusing check necessary to
-    # handle the case where we are executing in a function graph in eager mode
-    # but the model was constructed symbolically in a separate graph scope.
-    # We need to capture the losses created in the current graph function,
-    # and filter out the incorrect loss tensors created when symbolically
-    # building the graph.
-    # We have to use this check because the code after it that checks
-    # for reachable inputs only captures the part of the model that was
-    # built symbolically, and captures the wrong tensors from a different
-    # func graph (causing a crash later on when trying to execute the
-    # graph function)
-    if ops.executing_eagerly_outside_functions():
-      return [
-          loss for loss in losses
-          if getattr(loss, 'graph', None) == ops.get_default_graph()
-      ]
-
-    relevant_inputs = []
-    for i in range(0, len(self._inbound_nodes)):
-      inputs = self.get_input_at(i)
-      if isinstance(inputs, list):
-        relevant_inputs += inputs
-      else:
-        relevant_inputs.append(inputs)
-    if not relevant_inputs:
-      return losses
-
-    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
-    relevant_conditional_losses = [x for x in losses if x in reachable]
-    unconditional_losses = [
-        x for x in losses if x._unconditional_loss]  # pylint: disable=protected-access
-    return list(set(
-        relevant_conditional_losses + unconditional_losses + self._losses))
 
   @property
   def trainable_weights(self):
@@ -1004,8 +862,9 @@ class Network(base_layer.Layer):
           if 'training' in argspec:
             kwargs.setdefault('training', training)
           if 'mask' in argspec:
-            computed_masks = nest.map_structure(lambda t: t._keras_mask,
-                                                computed_tensors)
+            computed_masks = nest.map_structure(
+                lambda t: getattr(t, '_keras_mask', None),
+                computed_tensors)
             kwargs.setdefault('mask', computed_masks)
 
           # Compute outputs.

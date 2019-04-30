@@ -198,6 +198,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -226,6 +227,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
@@ -237,6 +239,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,

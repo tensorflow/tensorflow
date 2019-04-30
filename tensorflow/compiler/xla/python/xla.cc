@@ -122,7 +122,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("C64", C64)
       .value("C128", C128)
       .value("TUPLE", TUPLE)
-      .value("OPAQUE", OPAQUE)
+      .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
   // Shapes
@@ -217,10 +217,11 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static("FromPython", &PyLocalBuffer::FromPython)
       .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
+      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
       .def("Delete", &PyLocalBuffer::Delete)
       .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
       .def("ToPython", &PyLocalBuffer::ToPython)
-      .def("shape", &PyLocalBuffer::shape);
+      .def("shape", &PyLocalBuffer::on_host_shape);
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
@@ -231,6 +232,17 @@ PYBIND11_MODULE(xla_extension, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>());
+
+  py::class_<DebugOptions>(m, "DebugOptions")
+      .def_property("xla_cpu_enable_fast_math",
+                    &DebugOptions::xla_cpu_enable_fast_math,
+                    &DebugOptions::set_xla_cpu_enable_fast_math)
+      .def_property("xla_cpu_fast_math_honor_infs",
+                    &DebugOptions::xla_cpu_fast_math_honor_infs,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_infs)
+      .def_property("xla_cpu_fast_math_honor_nans",
+                    &DebugOptions::xla_cpu_fast_math_honor_nans,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -243,7 +255,10 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
-                    &ExecutableBuildOptions::set_num_replicas);
+                    &ExecutableBuildOptions::set_num_replicas)
+      .def_property_readonly(
+          "debug_options", &ExecutableBuildOptions::mutable_debug_options,
+          py::return_value_policy::reference, py::keep_alive<1, 0>());
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
@@ -283,7 +298,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   ops.def("AllToAll", &AllToAll);
   ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const ReplicaGroup>)>(
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
@@ -296,14 +311,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
   ops.def("ConcatInDim", &ConcatInDim);
   ops.def("Conditional",
-          static_cast<XlaOp (*)(const XlaOp&,
-                                absl::Span<const XlaComputation* const>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
                                 absl::Span<const XlaOp>)>(&Conditional));
-  ops.def(
-      "Conditional",
-      static_cast<XlaOp (*)(const XlaOp&, const XlaOp&, const XlaComputation&,
-                            const XlaOp&, const XlaComputation&)>(
-          &Conditional));
+  ops.def("Conditional",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
+                                const XlaComputation&)>(&Conditional));
   ops.def("ConstantLiteral", &ConstantLiteral);
   ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
           py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
@@ -319,11 +331,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
   ops.def("DynamicSlice",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice));
   ops.def("DynamicUpdateSlice",
-          static_cast<XlaOp (*)(const XlaOp&, const XlaOp&,
-                                absl::Span<const XlaOp>)>(&DynamicUpdateSlice));
+          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
+              &DynamicUpdateSlice));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"));
   ops.def("GetTupleElement", &GetTupleElement);
@@ -369,12 +381,10 @@ PYBIND11_MODULE(xla_extension, m) {
                                 absl::Span<const int64>)>(&Reduce));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
   ops.def("ReplicaId", &ReplicaId);
+  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
+                                           absl::Span<const int64>)>(&Reshape));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>,
-                                absl::Span<const int64>)>(&Reshape));
-  ops.def(
-      "Reshape",
-      static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>)>(&Reshape));
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
   ops.def("RngNormal", &RngNormal);
   ops.def("RngUniform", &RngUniform);
@@ -386,8 +396,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def("Sort",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>, int64)>(
-              &Sort),
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>, int64)>(&Sort),
           py::arg("keys"), py::arg("values"), py::arg("dimension") = -1);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);

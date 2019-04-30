@@ -25,20 +25,6 @@ limitations under the License.
 
 namespace toco {
 
-namespace {
-
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator* op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == op) {
-      break;
-    }
-  }
-  return it;
-}
-}  // namespace
-
 ::tensorflow::Status IdentifyL2Normalization::Run(Model* model,
                                                   std::size_t op_index,
                                                   bool* modified) {
@@ -150,7 +136,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*l2norm_op));
 
   // Erase the subgraph that is now replaced by L2Normalization
-  model->operators.erase(FindOperator(model, square_op));
+  model->operators.erase(FindOp(*model, square_op));
   DeleteOpAndArraysIfUnused(model, sum_op);
   if (add_op) {
     DeleteOpAndArraysIfUnused(model, add_op);

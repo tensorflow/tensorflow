@@ -21,13 +21,11 @@ from __future__ import print_function
 
 import weakref
 
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.tracking import data_structures
@@ -86,64 +84,77 @@ class VariableHolder(object):
     return wrapped
 
 
+def _lift_unlifted_variables(graph, variable_holder):
+  """Finds resource variables and lifts them into the outer context.
+
+  When we import a GraphDef inside a wrap_function, no Python graph building
+  code runs. This means we get VarHandleOps which create variable resources,
+  but no corresponding Python objects. Leaving them like this works but gives
+  the user no way to interact with or modify the variables outside the graph.
+
+  This method searches for variables and lifts them out as regular variable
+  objects when possible, indicating to the FuncGraph that they are captures.
+
+  Args:
+    graph: The FuncGraph to lift variables from.
+    variable_holder: A VariableHolder to record the lifted variables in.
+  """
+  with graph.as_default():
+    collection_variables = (
+        ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+        ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+    existing_captures = set(graph.internal_captures)
+    lifted_variables = {}
+    for old_variable in collection_variables:
+      if (old_variable._in_graph_mode  # pylint: disable=protected-access
+          and
+          isinstance(old_variable, resource_variable_ops.ResourceVariable)):
+        if old_variable.handle in existing_captures:
+          continue
+        new_variable = resource_variable_ops.UninitializedVariable(
+            shape=old_variable.shape,
+            dtype=old_variable.dtype,
+            name=old_variable.op.name,
+            trainable=old_variable.trainable,
+            extra_handle_data=old_variable.handle)
+        new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
+        graph.inputs.append(old_variable.handle)
+        graph.captures[new_variable.handle] = old_variable.handle
+        # Now that we've added the new variable to graph.captures,
+        # graph.capture will use that cached value and do some post-processing
+        # on the capture like recording it on the tape.
+        graph.capture(new_variable.handle)
+        existing_captures.add(old_variable.handle)
+        lifted_variables[old_variable] = new_variable
+        # pylint: disable=protected-access
+        variable_name = new_variable.name.split(":")[0]
+        variable_holder._variables_by_name[variable_name] = new_variable
+        graph._weak_variables.append(weakref.ref(new_variable))
+        # pylint: enable=protected-access
+        graph.watch_variable(new_variable)
+    # Update the graph's collections, partly for the user and partly so this
+    # function is idempotent when it runs again in prune() calls.
+    for collection_name in [
+        ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES
+    ]:
+      mutable_collection = ops.get_collection_ref(collection_name)
+      for index, current in enumerate(mutable_collection):
+        mutable_collection[index] = lifted_variables.get(current, current)
+
+
 # TODO(allenl): make this trackable
 class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
   def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
-    super(WrappedFunction, self).__init__(
-        fn_graph, attrs=attrs, signature=signature)
     self._variable_holder = variable_holder
     if ops.executing_eagerly_outside_functions():
       # TODO(allenl): Make this work in 1.x?
-      self._lift_unlifted_variables()
-
-  def _lift_unlifted_variables(self):
-    """Finds resource variables and lifts them into the outer context.
-
-    When we import a GraphDef inside a wrap_function, no Python graph building
-    code runs. This means we get VarHandleOps which create variable resources,
-    but no corresponding Python objects. Leaving them like this works but gives
-    the user no way to interact with or modify the variables outside the graph.
-
-    This method searches for variables and lifts them out as regular variable
-    objects when possible, indicating to the FuncGraph that they are captures.
-    """
-    with self.graph.as_default():
-      collection_variables = (
-          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
-          ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
-      existing_captures = set(self.graph.internal_captures)
-      lifted_variables = {}
-      for old_variable in collection_variables:
-        if (old_variable._in_graph_mode  # pylint: disable=protected-access
-            and
-            isinstance(old_variable, resource_variable_ops.ResourceVariable)):
-          if old_variable.handle in existing_captures:
-            continue
-          new_variable = def_function.UnliftedInitializerVariable(
-              array_ops.placeholder(
-                  name="unused_{}_initializer".format(old_variable.op.name),
-                  shape=old_variable.shape,
-                  dtype=old_variable.dtype),
-              name=old_variable.op.name,
-              trainable=old_variable.trainable)
-          self.graph.captures[new_variable.handle] = old_variable.handle
-          existing_captures.add(old_variable.handle)
-          lifted_variables[old_variable] = new_variable
-          # pylint: disable=protected-access
-          variable_name = new_variable.name.split(":")[0]
-          self._variable_holder._variables_by_name[variable_name] = new_variable
-          self.graph._weak_variables.append(weakref.ref(new_variable))
-          # pylint: enable=protected-access
-      # Update the graph's collections, partly for the user and partly so this
-      # function is idempotent when it runs again in prune() calls.
-      for collection_name in [
-          ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES
-      ]:
-        mutable_collection = ops.get_collection_ref(collection_name)
-        for index, current in enumerate(mutable_collection):
-          mutable_collection[index] = lifted_variables.get(current, current)
+      _lift_unlifted_variables(fn_graph, variable_holder)
+    # We call __init__ after lifting variables so that the function's signature
+    # properly reflects the new captured inputs.
+    super(WrappedFunction, self).__init__(
+        fn_graph, attrs=attrs, signature=signature)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     # TODO(b/129646028): Add support for CompositeTensors.

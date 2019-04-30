@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
 
 namespace tensorflow {
 namespace profiler {

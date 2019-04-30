@@ -32,6 +32,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
 _EVAL_STEPS = 20
@@ -39,7 +40,6 @@ _GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
-
 
 all_strategies = [
     strategy_combinations.default_strategy,
@@ -63,10 +63,10 @@ def graph_mode_test_configuration():
 
 
 def all_strategy_and_input_config_combinations():
-  return (
-      combinations.times(
-          combinations.combine(distribution=all_strategies),
-          eager_mode_test_configuration() + graph_mode_test_configuration()))
+  return (combinations.times(
+      combinations.combine(
+          distribution=all_strategies, cloning=[True, False]),
+      eager_mode_test_configuration() + graph_mode_test_configuration()))
 
 
 def strategies_for_embedding_models():
@@ -83,12 +83,11 @@ def strategies_for_embedding_models():
 
 
 def test_combinations_for_embedding_model():
-  return (
-      combinations.times(
-          combinations.combine(distribution=
-                               strategies_for_embedding_models()),
-          (graph_mode_test_configuration() +
-           eager_mode_test_configuration())))
+  return (combinations.times(
+      combinations.combine(
+          distribution=strategies_for_embedding_models(),
+          cloning=[True, False]),
+      (graph_mode_test_configuration() + eager_mode_test_configuration())))
 
 
 def test_combinations_with_tpu_strategies():
@@ -155,6 +154,13 @@ def get_data_size(data):
     return len(data[0])
 
   return len(six.next(six.itervalues(data)))
+
+
+def get_shapes(data):
+  shapes = None
+  if all(hasattr(x, 'shape') for x in nest.flatten(data)):
+    shapes = nest.map_structure(lambda x: x.shape, data)
+  return shapes
 
 
 def get_correctness_test_inputs(use_numpy, use_validation_data,
@@ -233,11 +239,19 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   return training_inputs, eval_inputs, predict_inputs
 
 
-def fit_eval_and_predict(initial_weights, input_fn, model_fn,
-                         distribution=None, is_stateful_model=False):
+def fit_eval_and_predict(initial_weights,
+                         input_fn,
+                         model_fn,
+                         cloning=None,
+                         distribution=None,
+                         is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
-  model = model_fn(initial_weights=initial_weights, distribution=distribution)
   training_inputs, eval_inputs, predict_inputs = input_fn()
+  model = model_fn(
+      cloning=cloning,
+      initial_weights=initial_weights,
+      distribution=distribution,
+      input_shapes=get_shapes(training_inputs['x']))
 
   result = {}
   result['training_history_1'] = model.fit(**training_inputs).history
@@ -366,7 +380,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
     return get_correctness_test_inputs(**kwargs)
 
-  def get_model(self, distribution=None):
+  def get_model(self, distribution=None, cloning=None, input_shapes=None):
     raise NotImplementedError
 
   def skip_unsupported_test_configuration(self, distribution):
@@ -378,6 +392,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            distribution,
                            use_numpy,
                            use_validation_data,
+                           cloning=None,
                            with_batch_norm=False,
                            is_stateful_model=False):
     with self.cached_session():
@@ -387,10 +402,11 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       # Train, eval, and predict datasets are created with the same input numpy
       # arrays.
       x_train, y_train, x_predict = self.get_data()
+
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
       # non-distribution run.
-      model = self.get_model()
+      model = self.get_model(cloning=cloning, input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
 
       ds_input_fn = functools.partial(
@@ -415,12 +431,14 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=distribution,
           is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=None,
           is_stateful_model=is_stateful_model)
 
@@ -452,13 +470,13 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     training_input = kwargs
     return training_input, None, None
 
-  def run_dynamic_lr_test(self, distribution):
+  def run_dynamic_lr_test(self, distribution, cloning=None):
     with self.cached_session():
       self.set_up_test_config()
       self.skip_unsupported_test_configuration(distribution)
 
       x_train, y_train, _ = self.get_data()
-      model = self.get_model()
+      model = self.get_model(cloning=cloning, input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
       update_freq = None
 
@@ -499,11 +517,13 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=distribution)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=None)
       compare_results(results_with_ds, results_without_ds, distribution,
                       testcase=self)

@@ -236,7 +236,10 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 tf_py_test(

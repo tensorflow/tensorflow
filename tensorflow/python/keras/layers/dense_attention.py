@@ -292,6 +292,7 @@ class Attention(BaseDenseAttention):
     return scores
 
 
+@keras_export('keras.layers.AdditiveAttention')
 class AdditiveAttention(BaseDenseAttention):
   """Additive attention layer, a.k.a. Bahdanau-style attention.
 

@@ -108,16 +108,16 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
   Note that when the spectrum is real, the operator may still be complex.
   """
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     # This operator will always be complex because, although the spectrum is
     # real, the matrix will not be real.
     return [dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
-    shape = build_info.shape
+    shape = shape_info.shape
     # For this test class, we are creating real spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
     #
@@ -170,10 +170,10 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   zero imaginary part.
   """
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
-    shape = build_info.shape
+    shape = shape_info.shape
     # For this test class, we are creating Hermitian spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
     #
@@ -237,21 +237,21 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   We test only complex dtypes here.
   """
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     return [dtypes.complex64, dtypes.complex128]
 
   # Skip Cholesky since we are explicitly testing non-hermitian
   # spectra.
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     return ["cholesky"]
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     del ensure_self_adjoint_and_pd
-    shape = build_info.shape
+    shape = shape_info.shape
     # Will be well conditioned enough to get accurate solves.
     spectrum = linear_operator_test_util.random_sign_uniform(
         shape=self._shape_to_spectrum_shape(shape),
@@ -392,16 +392,16 @@ class LinearOperatorCirculant2DBaseTest(object):
       with spectral_ops_test_util.fft_kernel_label_map():
         yield sess
 
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     # non-batch operators (n, n) and batch operators.
     return [
-        build_info((0, 0)),
-        build_info((1, 1)),
-        build_info((1, 6, 6)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 3, 3))
+        shape_info((0, 0)),
+        shape_info((1, 1)),
+        shape_info((1, 6, 6)),
+        shape_info((3, 4, 4)),
+        shape_info((2, 1, 3, 3))
     ]
 
   def _shape_to_spectrum_shape(self, shape):
@@ -472,10 +472,10 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   zero imaginary part.
   """
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
-    shape = build_info.shape
+    shape = shape_info.shape
     # For this test class, we are creating Hermitian spectrums.
     # We also want the spectrum to have eigenvalues bounded away from zero.
     #
@@ -525,19 +525,19 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
   We test only complex dtypes here.
   """
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     return [dtypes.complex64, dtypes.complex128]
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     return ["cholesky"]
 
-  def _operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     del ensure_self_adjoint_and_pd
-    shape = build_info.shape
+    shape = shape_info.shape
     # Will be well conditioned enough to get accurate solves.
     spectrum = linear_operator_test_util.random_sign_uniform(
         shape=self._shape_to_spectrum_shape(shape),
@@ -745,4 +745,14 @@ class LinearOperatorCirculant3DTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(
+      LinearOperatorCirculantTestSelfAdjointOperator)
+  linear_operator_test_util.add_tests(
+      LinearOperatorCirculantTestHermitianSpectrum)
+  linear_operator_test_util.add_tests(
+      LinearOperatorCirculantTestNonHermitianSpectrum)
+  linear_operator_test_util.add_tests(
+      LinearOperatorCirculant2DTestHermitianSpectrum)
+  linear_operator_test_util.add_tests(
+      LinearOperatorCirculant2DTestNonHermitianSpectrum)
   test.main()

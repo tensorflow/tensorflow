@@ -18,6 +18,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -26,6 +27,14 @@ limitations under the License.
 #define TF_HAS_GPU_FP16
 #endif
 
+=======
+#if GOOGLE_CUDA
+#include "cuda/include/cuda_fp16.h"
+#endif
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
+
+>>>>>>> upstream/master
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
@@ -33,6 +42,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
+<<<<<<< HEAD
 #define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
                           shared_mem, stream, ...) \
   kernel<<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
@@ -60,6 +70,38 @@ using gpuError_t = cudaError_t;
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
+using gpuStream_t = hipStream_t;
+using gpuError_t = hipError_t;
+#endif
+
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
+=======
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
+                          stream, ...)                                        \
+  TF_CHECK_OK(CudaLaunchKernel(kernel, block_count, threads_per_block,        \
+                               shared_mem, stream, __VA_ARGS__));
+#elif TENSORFLOW_USE_ROCM
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
+                          stream, ...)                                        \
+  hipLaunchKernelGGL(kernel, block_count, threads_per_block, shared_mem,      \
+                     stream, __VA_ARGS__);
+#endif
+
+// Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
+#define CUDA_1D_KERNEL_LOOP(i, n) \
+  for (int i : ::tensorflow::CudaGridRangeX<int>(n))
+// Deprecated, use 'for(int i : CudaGridRange?(n))' instead.
+#define CUDA_AXIS_KERNEL_LOOP(i, n, axis) \
+  for (int i : ::tensorflow::CudaGridRange##axis<int>(n))
+>>>>>>> upstream/master
+
+#if GOOGLE_CUDA
+#define gpuSuccess cudaSuccess
+using gpuStream_t = cudaStream_t;
+using gpuError_t = cudaError_t;
+
+#elif TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif

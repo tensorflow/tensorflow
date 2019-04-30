@@ -412,7 +412,8 @@ class TPUEmbedding(object):
                master,
                optimization_parameters=None,
                cluster_def=None,
-               pipeline_execution_with_tensor_core=False):
+               pipeline_execution_with_tensor_core=False,
+               partition_strategy='div'):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -433,10 +434,18 @@ class TPUEmbedding(object):
         faster, but trained model will be different if step N and step N+1
         involve the same set of embedding IDs. Please see
         `tpu_embedding_configuration.proto` for details.
+      partition_strategy: A string, either 'mod' or 'div', specifying how to map
+        the lookup id to the embedding tensor. For more information see
+        `tf.nn.embedding_lookup_sparse`.
 
     Raises:
       ValueError: if any input is invalid.
     """
+    if partition_strategy not in ('div', 'mod'):
+      raise ValueError(
+          'Invalid partition_strategy {}'.format(partition_strategy))
+    self._partition_strategy = partition_strategy
+
     _validate_table_to_config_dict(table_to_config_dict)
     # Avoid nondeterminism from `Dict` iteration order by using `OrderedDict`.
     self._table_to_config_dict = _create_ordered_dict(table_to_config_dict)
@@ -463,10 +472,10 @@ class TPUEmbedding(object):
     self._num_hosts = self._tpu_system_metadata.num_hosts
     master_job_name = tpu_system_metadata_lib.master_job(self._master,
                                                          self._cluster_def)
-    self._hosts = sorted([
+    self._hosts = [
         device.name for device in self._tpu_system_metadata.devices
         if 'device:CPU:' in device.name and (master_job_name is None or
-                                             master_job_name in device.name)])
+                                             master_job_name in device.name)]
     self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
     self._num_cores = self._tpu_system_metadata.num_cores
 
@@ -598,7 +607,10 @@ class TPUEmbedding(object):
     config_proto.batch_size_per_tensor_core = self._batch_size_per_core
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
-    config_proto.sharding_strategy = elc.TPUEmbeddingConfiguration.DIV_DEFAULT
+    config_proto.sharding_strategy = (
+        elc.TPUEmbeddingConfiguration.DIV_DEFAULT
+        if self._partition_strategy == 'div' else
+        elc.TPUEmbeddingConfiguration.MOD)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
 
