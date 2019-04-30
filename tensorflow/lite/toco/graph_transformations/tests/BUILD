@@ -19,6 +19,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "hardcode_min_max_test",
+    srcs = ["hardcode_min_max_test.cc"],
+    deps = [
+        "//tensorflow/lite/toco:graph_transformations",
+        "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/toco:tooling_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
     name = "identify_l2_pool_test",
     srcs = ["identify_l2_pool_test.cc"],
     deps = [

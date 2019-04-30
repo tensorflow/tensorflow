@@ -67,7 +67,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
          type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
-         type == OperatorType::kReduceMin ||
+         type == OperatorType::kReduceMin || type == OperatorType::kOneHot ||
          type == OperatorType::kTransposeConv ||
          type == OperatorType::kMatrixSetDiag ||
          type == OperatorType::kMatrixDiag;

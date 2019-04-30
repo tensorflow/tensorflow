@@ -30,6 +30,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       // ArgMax has no quantizable output.
       property.version = 2;
       break;
+    case BuiltinOperator_ONE_HOT:
+      property.input_indexes = {0, 1, 2, 3};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_AVERAGE_POOL_2D:
       property.input_indexes = {0};
       property.output_indexes = {0};

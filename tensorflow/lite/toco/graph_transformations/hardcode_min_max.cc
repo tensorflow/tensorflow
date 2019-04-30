@@ -63,6 +63,31 @@ bool HardcodeMinMaxForL2Normalization(Model* model, Operator* op) {
   return true;
 }
 
+bool HardcodeMinMaxForOneHot(Model* model, Operator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+
+  // Make sure we have OffValue minmax
+  const auto& offinput_array = model->GetArray(op->inputs[3]);
+  if (!offinput_array.minmax) {
+    return false;
+  }
+
+  // Make sure we have OnValue minmax
+  const auto& oninput_array = model->GetArray(op->inputs[2]);
+  if (!oninput_array.minmax) {
+    return false;
+  }
+  const auto& input_minmax = oninput_array.GetMinMax();
+  CHECK(!output_array.minmax);
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = input_minmax.min <= 0. ? 0. : input_minmax.min;
+  output_minmax.max = input_minmax.max >= 1. ? 1. : input_minmax.max;
+  return true;
+}
+
 bool HardcodeInputMinMaxFromOutput(Model* model, Operator* op) {
   auto& input = model->GetArray(op->inputs[0]);
   if (input.minmax) {
@@ -405,6 +430,10 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
 
     case OperatorType::kL2Normalization:
       changed = HardcodeMinMaxForL2Normalization(model, op);
+      break;
+
+    case OperatorType::kOneHot:
+      changed = HardcodeMinMaxForOneHot(model, op);
       break;
 
     case OperatorType::kRelu:
