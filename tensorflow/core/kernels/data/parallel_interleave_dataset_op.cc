@@ -196,7 +196,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                 Env::Default(), ThreadOptions(),
                 "data_parallel_interleave_worker_pool",
                 port::NumSchedulableCPUs() /* num_threads */,
-                false /* low_latency_hint */)) {}
+                false /* low_latency_hint */)) {
+      }
 
       ~ParallelInterleaveIterator() override {
         mutex_lock l(*mu_);
@@ -896,9 +897,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // Identifies the number of open iterators.
       int64 num_open_ GUARDED_BY(*mu_) = 0;
 
-      // Identifies the number of outstanding calls for CurrentElementManager.
+      // Identifies the number of outstanding calls for CurrentElementsManager.
       int64 current_num_calls_ GUARDED_BY(*mu_) = 0;
-      // Identifies the number of outstanding calls for FutureElementManager.
+      // Identifies the number of outstanding calls for FutureElementsManager.
       int64 future_num_calls_ GUARDED_BY(*mu_) = 0;
 
       std::unique_ptr<thread::ThreadPool> thread_pool_;
