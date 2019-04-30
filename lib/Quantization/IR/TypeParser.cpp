@@ -262,8 +262,11 @@ private:
   }
 
   // Parsers.
+  Type parseAnyType();
   Type parseUniformType();
   IntegerType parseStorageType(bool &isSigned);
+  bool parseStorageRange(IntegerType storageType, bool isSigned,
+                         int64_t &storageTypeMin, int64_t &storageTypeMax);
   FloatType parseExpressedType();
   bool parseQuantParams(double &scale, int64_t &zeroPoint);
 
@@ -289,6 +292,11 @@ Type TypeParser::parseType() {
       if (!result) {
         return nullptr;
       }
+    } else if (typeNameSpelling == "any") {
+      result = parseAnyType();
+      if (!result) {
+        return nullptr;
+      }
     } else {
       return (emitError("unknown quantized type " + typeNameSpelling), nullptr);
     }
@@ -306,14 +314,67 @@ Type TypeParser::parseType() {
 
 /// Parses a UniformQuantizedType.
 ///
-///   uniform_type ::= uniform_per_layer
-///                  | uniform_per_axis
-///   uniform_per_layer ::= `uniform<` storage-spec `,` scale-zero `>`
-///   uniform_per_axis ::= `uniform<` storage-spec axis-spec
-///                        `,` scale-zero-list `>`
+///   uniform_per_layer ::= `any<` storage-spec (expressed-type-spec)?`>`
 ///   storage-spec ::= storage-type (`<` storage-range `>`)?
 ///   storage-range ::= integer-literal `:` integer-literal
 ///   storage-type ::= (`i` | `u`) integer-literal
+///   expressed-type-spec ::= `:` `f` integer-literal
+Type TypeParser::parseAnyType() {
+  IntegerType storageType;
+  FloatType expressedType;
+  unsigned typeFlags = 0;
+  int64_t storageTypeMin;
+  int64_t storageTypeMax;
+
+  // Type specification.
+  if (!consumeIf(TokenKind::l_angle)) {
+    return (emitError("unrecognized token: " + curToken.spelling), nullptr);
+  }
+
+  // Storage type.
+  bool isSigned = false;
+  storageType = parseStorageType(isSigned);
+  if (!storageType) {
+    return nullptr;
+  }
+  if (isSigned) {
+    typeFlags |= QuantizationFlags::Signed;
+  }
+
+  // Storage type range.
+  if (parseStorageRange(storageType, isSigned, storageTypeMin,
+                        storageTypeMax)) {
+    return nullptr;
+  }
+
+  // Optional expressed type.
+  if (consumeIf(TokenKind::colon)) {
+    expressedType = parseExpressedType();
+    if (!expressedType) {
+      return nullptr;
+    }
+  }
+
+  if (!consumeIf(TokenKind::r_angle)) {
+    return (emitError("unrecognized token: " + curToken.spelling), nullptr);
+  }
+
+  return AnyQuantizedType::getChecked(typeFlags, storageType, expressedType,
+                                      storageTypeMin, storageTypeMax, location);
+}
+
+/// Parses a UniformQuantizedType.
+///
+///   uniform_type ::= uniform_per_layer
+///                  | uniform_per_axis
+///   uniform_per_layer ::= `uniform<` storage-spec expressed-type-spec
+///                          `,` scale-zero `>`
+///   uniform_per_axis ::= `uniform<` storage-spec expressed-type-spec
+///                        axis-spec `,` scale-zero-list `>`
+///   storage-spec ::= storage-type (`<` storage-range `>`)?
+///   storage-range ::= integer-literal `:` integer-literal
+///   storage-type ::= (`i` | `u`) integer-literal
+///   expressed-type-spec ::= `:` `f` integer-literal
 ///   axis-spec ::= `:` integer-literal
 ///   scale-zero ::= float-literal `:` integer-literal
 ///   scale-zero-list ::= `{` scale-zero (`,` scale-zero)* `}`
@@ -344,45 +405,12 @@ Type TypeParser::parseUniformType() {
   }
 
   // Storage type range.
-  int64_t defaultIntegerMin = QuantizedType::getDefaultMininumForInteger(
-      isSigned, storageType.getWidth());
-  int64_t defaultIntegerMax = QuantizedType::getDefaultMaxinumForInteger(
-      isSigned, storageType.getWidth());
-  if (consumeIf(TokenKind::l_angle)) {
-    // Explicit storage min and storage max.
-    if (curToken.kind != TokenKind::integer_literal) {
-      return (emitError("expected storage type minimum"), nullptr);
-    }
-    if (curToken.spelling.getAsInteger(10, storageTypeMin) ||
-        storageTypeMin < defaultIntegerMin) {
-      return (emitError("illegal storage type minimum: " + curToken.spelling),
-              nullptr);
-    }
-    consumeToken(TokenKind::integer_literal);
-
-    if (!consumeIf(TokenKind::colon)) {
-      return (emitError("unrecognized token: " + curToken.spelling), nullptr);
-    }
-
-    if (curToken.kind != TokenKind::integer_literal) {
-      return (emitError("expected storage type maximum"), nullptr);
-    }
-    if (curToken.spelling.getAsInteger(10, storageTypeMax) ||
-        storageTypeMax > defaultIntegerMax) {
-      return (emitError("illegal storage type maximum: " + curToken.spelling),
-              nullptr);
-    }
-    consumeToken(TokenKind::integer_literal);
-
-    if (!consumeIf(TokenKind::r_angle)) {
-      return (emitError("unrecognized token: " + curToken.spelling), nullptr);
-    }
-  } else {
-    storageTypeMin = defaultIntegerMin;
-    storageTypeMax = defaultIntegerMax;
+  if (parseStorageRange(storageType, isSigned, storageTypeMin,
+                        storageTypeMax)) {
+    return nullptr;
   }
 
-  // Repr type.
+  // Expressed type.
   if (!consumeIf(TokenKind::colon)) {
     return (emitError("unrecognized token: " + curToken.spelling), nullptr);
   }
@@ -485,6 +513,51 @@ IntegerType TypeParser::parseStorageType(bool &isSigned) {
         emitError("illegal storage type prefix: " + Twine(storageTypePrefix)),
         nullptr);
   }
+}
+
+bool TypeParser::parseStorageRange(IntegerType storageType, bool isSigned,
+                                   int64_t &storageTypeMin,
+                                   int64_t &storageTypeMax) {
+
+  int64_t defaultIntegerMin = QuantizedType::getDefaultMininumForInteger(
+      isSigned, storageType.getWidth());
+  int64_t defaultIntegerMax = QuantizedType::getDefaultMaxinumForInteger(
+      isSigned, storageType.getWidth());
+  if (consumeIf(TokenKind::l_angle)) {
+    // Explicit storage min and storage max.
+    if (curToken.kind != TokenKind::integer_literal) {
+      return (emitError("expected storage type minimum"), true);
+    }
+    if (curToken.spelling.getAsInteger(10, storageTypeMin) ||
+        storageTypeMin < defaultIntegerMin) {
+      return (emitError("illegal storage type minimum: " + curToken.spelling),
+              true);
+    }
+    consumeToken(TokenKind::integer_literal);
+
+    if (!consumeIf(TokenKind::colon)) {
+      return (emitError("unrecognized token: " + curToken.spelling), true);
+    }
+
+    if (curToken.kind != TokenKind::integer_literal) {
+      return (emitError("expected storage type maximum"), true);
+    }
+    if (curToken.spelling.getAsInteger(10, storageTypeMax) ||
+        storageTypeMax > defaultIntegerMax) {
+      return (emitError("illegal storage type maximum: " + curToken.spelling),
+              true);
+    }
+    consumeToken(TokenKind::integer_literal);
+
+    if (!consumeIf(TokenKind::r_angle)) {
+      return (emitError("unrecognized token: " + curToken.spelling), true);
+    }
+  } else {
+    storageTypeMin = defaultIntegerMin;
+    storageTypeMax = defaultIntegerMax;
+  }
+
+  return false;
 }
 
 FloatType TypeParser::parseExpressedType() {
@@ -601,6 +674,17 @@ static void printQuantParams(double scale, int64_t zeroPoint,
 }
 
 /// Helper that prints a UniformQuantizedType.
+static void printAnyQuantizedType(AnyQuantizedType type, raw_ostream &out) {
+  out << "any<";
+  printStorageType(type, out);
+  if (type.getExpressedType()) {
+    out << ":";
+    printExpressedType(type, out);
+  }
+  out << ">";
+}
+
+/// Helper that prints a UniformQuantizedType.
 static void printUniformQuantizedType(UniformQuantizedType type,
                                       raw_ostream &out) {
   out << "uniform<";
@@ -643,6 +727,9 @@ void QuantizationDialect::printType(Type type, raw_ostream &os) const {
   switch (type.getKind()) {
   default:
     llvm_unreachable("Unhandled quantized type");
+  case QuantizationTypes::Any:
+    printAnyQuantizedType(type.cast<AnyQuantizedType>(), os);
+    break;
   case QuantizationTypes::UniformQuantized:
     printUniformQuantizedType(type.cast<UniformQuantizedType>(), os);
     break;

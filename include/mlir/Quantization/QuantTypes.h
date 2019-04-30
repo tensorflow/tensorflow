@@ -34,6 +34,7 @@ class QuantizedIntegerType;
 namespace detail {
 
 struct QuantizedTypeStorage;
+struct AnyQuantizedTypeStorage;
 struct UniformQuantizedTypeStorage;
 struct UniformQuantizedPerAxisTypeStorage;
 
@@ -41,7 +42,8 @@ struct UniformQuantizedPerAxisTypeStorage;
 
 namespace QuantizationTypes {
 enum Kind {
-  UniformQuantized = Type::FIRST_QUANTIZATION_TYPE,
+  Any = Type::FIRST_QUANTIZATION_TYPE,
+  UniformQuantized,
   UniformQuantizedPerAxis,
   LAST_USED_QUANTIZATION_TYPE = UniformQuantizedPerAxis,
 };
@@ -80,8 +82,8 @@ public:
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) {
-    return kind == QuantizationTypes::UniformQuantized ||
-           kind == QuantizationTypes::UniformQuantizedPerAxis;
+    return kind >= Type::FIRST_QUANTIZATION_TYPE &&
+           kind <= QuantizationTypes::LAST_USED_QUANTIZATION_TYPE;
   }
 
   /// Gets the minimum possible stored by a storageType. storageTypeMin must
@@ -145,24 +147,24 @@ public:
   /// primitive type or a container type whose element type equals this
   /// QuantizedType's expressed type.
   /// Examples of compatible candidateExpressedType:
-  ///   !quant<"uniform[i8:f32]{1.0}"> =~ f32
-  ///   !quant<"uniform[i8:f32]{1.0}"> =~ tensor<4xf32>
+  ///   !quant.uniform<i8:f32, 1.0> =~ f32
+  ///   !quant.uniform<i8:f32, 1.0> =~ tensor<4xf32>
   bool isCompatibleExpressedType(Type candidateExpressedType);
 
   /// Returns the element type as a QuantizedType or nullptr if it is not
   /// a quantized type. If the type is primitive, returns that. If it is a
   /// container (vector/tensor), return the element type.
   /// Examples:
-  ///   !quant<"uniform[i8:f32]{1.0}"> -> !quant<"uniform[i8:f32]{1.0}">
-  ///   tensor<4x!quant<"uniform[i8:f32]{1.0}"> -> quant<"uniform[i8:f32]{1.0}">
+  ///   !quant.uniform<i8:f32, 1.0> -> !quant.uniform<i8:f32, 1.0>
+  ///   tensor<4x!quant.uniform<i8:f32, 1.0> -> quant.uniform<i8:f32, 1.0>
   static QuantizedType getQuantizedElementType(Type primitiveOrContainerType);
 
   /// Casts from a type based on the storageType to a corresponding type based
   /// on this type (returns nullptr if the cast is not valid).
   /// Examples:
-  ///   i8 -> !quant<"uniform[i8:f32]{1.0}">
-  ///   tensor<4xi8> -> tensor<4x!quant<"uniform[i8:f32]{1.0}">>
-  ///   vector<4xi8> -> vector<4x!quant<"uniform[i8:f32]{1.0}">>
+  ///   i8 -> !quant.uniform<i8:f32, 1.0>
+  ///   tensor<4xi8> -> tensor<4x!quant.uniform<i8:f32, 1.0}>>
+  ///   vector<4xi8> -> vector<4x!quant.uniform<i8:f32, 1.0>>
   Type castFromStorageType(Type candidateType);
 
   /// Casts from a type based on a QuantizedType to a corresponding type based
@@ -173,9 +175,9 @@ public:
   /// Casts from a type based on the expressedType to a corresponding type based
   /// on this type (returns nullptr if the cast is not valid).
   /// Examples:
-  ///   f32 -> !quant<"uniform[i8:f32]{1.0}">
-  ///   tensor<4xf32> -> tensor<4x!quant<"uniform[i8:f32]{1.0}">>
-  ///   vector<4xf32> -> vector<4x!quant<"uniform[i8:f32]{1.0}">>
+  ///   f32 -> !quant.uniform<i8:f32, 1.0>
+  ///   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+  ///   vector<4xf32> -> vector<4x!quant.uniform<i8:f32, 1.0>>
   Type castFromExpressedType(Type candidateType);
 
   /// Casts from a type based on QuantizedType to a corresponding type based
@@ -187,9 +189,47 @@ public:
   /// based on storageType by way of this QuantizedType. Equivalent to:
   ///   QuantizedType::castToStorageType(castFromExpressedType(candidateType))
   /// (but with validity checks).
-  /// Example (for this = !quant<"uniform[i8:f32]{1.0}">):
+  /// Example (for this = !quant.uniform<i8:f32, 1.0>):
   ///   tensor<4xf32> -> tensor<4xi8>
   Type castExpressedToStorageType(Type candidateType);
+};
+
+/// A quantized type that maps storage to/from expressed types in an
+/// unspecified way.
+///
+/// Typical syntax:
+///   quant.any<i8:f32>
+///   quant.any<i8>
+///   quant.any<i8<-16,15>>
+///
+/// Note that for the any type, the expressed type is optional.
+class AnyQuantizedType
+    : public Type::TypeBase<AnyQuantizedType, QuantizedType,
+                            detail::AnyQuantizedTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Support method to enable LLVM-style type casting.
+  static bool kindof(unsigned kind) { return kind == QuantizationTypes::Any; }
+
+  /// Gets an instance of the type with all parameters specified but not
+  /// checked.
+  static AnyQuantizedType get(unsigned flags, Type storageType,
+                              Type expressedType, int64_t storageTypeMin,
+                              int64_t storageTypeMax);
+
+  /// Gets an instance of the type with all specified parameters checked.
+  /// Returns a nullptr convertible type on failure.
+  static AnyQuantizedType getChecked(unsigned flags, Type storageType,
+                                     Type expressedType, int64_t storageTypeMin,
+                                     int64_t storageTypeMax, Location location);
+
+  /// Verifies construction invariants and issues errors/warnings.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, unsigned flags,
+                               Type storageType, Type expressedType,
+                               int64_t storageTypeMin, int64_t storageTypeMax);
 };
 
 /// Represents a family of uniform, quantized types.

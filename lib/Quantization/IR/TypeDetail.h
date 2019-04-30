@@ -51,6 +51,56 @@ struct QuantizedTypeStorage : public mlir::TypeStorage {
   int64_t storageTypeMax;
 };
 
+struct AnyQuantizedTypeStorage : public QuantizedTypeStorage {
+  struct KeyTy {
+    KeyTy(unsigned flags, Type storageType, Type expressedType,
+          int64_t storageTypeMin, int64_t storageTypeMax)
+        : flags(flags), storageType(storageType), expressedType(expressedType),
+          storageTypeMin(storageTypeMin), storageTypeMax(storageTypeMax) {}
+    unsigned flags;
+    Type storageType;
+    Type expressedType;
+    int64_t storageTypeMin;
+    int64_t storageTypeMax;
+
+    // Check for equality of two structures that share KeyTy data members
+    // (by name).
+    template <typename T, typename U>
+    static bool genericIsEqual(const T &lhs, const U &rhs) {
+      return lhs.flags == rhs.flags && lhs.storageType == rhs.storageType &&
+             lhs.expressedType == rhs.expressedType &&
+             lhs.storageTypeMin == rhs.storageTypeMin &&
+             lhs.storageTypeMax == rhs.storageTypeMax;
+    }
+
+    bool operator==(const KeyTy &other) const {
+      return genericIsEqual(*this, other);
+    }
+
+    unsigned getHashValue() const {
+      return llvm::hash_combine(flags, storageType, expressedType,
+                                storageTypeMin, storageTypeMax);
+    }
+  };
+
+  AnyQuantizedTypeStorage(const KeyTy &key)
+      : QuantizedTypeStorage(key.flags, key.storageType, key.expressedType,
+                             key.storageTypeMin, key.storageTypeMax) {}
+
+  bool operator==(const KeyTy &key) const {
+    return KeyTy::genericIsEqual(*this, key);
+  }
+
+  /// Construction.
+  static AnyQuantizedTypeStorage *construct(TypeStorageAllocator &allocator,
+                                            const KeyTy &key) {
+    return new (allocator.allocate<AnyQuantizedTypeStorage>())
+        AnyQuantizedTypeStorage(key);
+  }
+
+  static unsigned hashKey(const KeyTy &key) { return key.getHashValue(); }
+};
+
 struct UniformQuantizedTypeStorage : public QuantizedTypeStorage {
   struct KeyTy {
     KeyTy(unsigned flags, Type storageType, Type expressedType, double scale,

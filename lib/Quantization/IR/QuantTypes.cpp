@@ -35,16 +35,6 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, unsigned flags,
     Type storageType, Type expressedType, int64_t storageTypeMin,
     int64_t storageTypeMax) {
-  // Verify that the expressed type is floating point.
-  // If this restriction is ever eliminated, the parser/printer must be
-  // extended.
-  if (!expressedType.isa<FloatType>()) {
-    if (loc) {
-      context->emitError(*loc, "expressed type must be floating point");
-    }
-    return failure();
-  }
-
   // Verify that the storage type is integral.
   // This restriction may be lifted at some point in favor of using bf16
   // or f16 as exact representations on hardware where that is advantageous.
@@ -228,6 +218,47 @@ Type QuantizedType::castExpressedToStorageType(Type candidateType) {
   return QuantizedType::castToStorageType(expressedQuantizedType);
 }
 
+AnyQuantizedType AnyQuantizedType::get(unsigned flags, Type storageType,
+                                       Type expressedType,
+                                       int64_t storageTypeMin,
+                                       int64_t storageTypeMax) {
+  return Base::get(storageType.getContext(), QuantizationTypes::Any, flags,
+                   storageType, expressedType, storageTypeMin, storageTypeMax);
+}
+
+AnyQuantizedType AnyQuantizedType::getChecked(unsigned flags, Type storageType,
+                                              Type expressedType,
+                                              int64_t storageTypeMin,
+                                              int64_t storageTypeMax,
+                                              Location location) {
+  return Base::getChecked(location, storageType.getContext(),
+                          QuantizationTypes::Any, flags, storageType,
+                          expressedType, storageTypeMin, storageTypeMax);
+}
+
+LogicalResult AnyQuantizedType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, unsigned flags,
+    Type storageType, Type expressedType, int64_t storageTypeMin,
+    int64_t storageTypeMax) {
+  if (failed(QuantizedType::verifyConstructionInvariants(
+          loc, context, flags, storageType, expressedType, storageTypeMin,
+          storageTypeMax))) {
+    return failure();
+  }
+
+  // Verify that the expressed type is floating point.
+  // If this restriction is ever eliminated, the parser/printer must be
+  // extended.
+  if (expressedType && !expressedType.isa<FloatType>()) {
+    if (loc) {
+      context->emitError(*loc, "expressed type must be floating point");
+    }
+    return failure();
+  }
+
+  return success();
+}
+
 UniformQuantizedType UniformQuantizedType::get(unsigned flags, Type storageType,
                                                Type expressedType, double scale,
                                                int64_t zeroPoint,
@@ -257,6 +288,25 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   if (failed(QuantizedType::verifyConstructionInvariants(
           loc, context, flags, storageType, expressedType, storageTypeMin,
           storageTypeMax))) {
+    return failure();
+  }
+
+  // Uniform quantization requires fully expressed parameters, including
+  // expressed type.
+  if (!expressedType) {
+    if (loc) {
+      context->emitError(*loc, "uniform quantization requires expressed type");
+    }
+    return failure();
+  }
+
+  // Verify that the expressed type is floating point.
+  // If this restriction is ever eliminated, the parser/printer must be
+  // extended.
+  if (!expressedType.isa<FloatType>()) {
+    if (loc) {
+      context->emitError(*loc, "expressed type must be floating point");
+    }
     return failure();
   }
 
@@ -308,6 +358,25 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   if (failed(QuantizedType::verifyConstructionInvariants(
           loc, context, flags, storageType, expressedType, storageTypeMin,
           storageTypeMax))) {
+    return failure();
+  }
+
+  // Uniform quantization requires fully expressed parameters, including
+  // expressed type.
+  if (!expressedType) {
+    if (loc) {
+      context->emitError(*loc, "uniform quantization requires expressed type");
+    }
+    return failure();
+  }
+
+  // Verify that the expressed type is floating point.
+  // If this restriction is ever eliminated, the parser/printer must be
+  // extended.
+  if (!expressedType.isa<FloatType>()) {
+    if (loc) {
+      context->emitError(*loc, "expressed type must be floating point");
+    }
     return failure();
   }
 

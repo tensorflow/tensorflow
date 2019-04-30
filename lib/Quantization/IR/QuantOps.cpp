@@ -70,7 +70,8 @@ void StorageCastOp::getCanonicalizationPatterns(
 
 QuantizationDialect::QuantizationDialect(MLIRContext *context)
     : Dialect(/*name=*/"quant", context) {
-  addTypes<UniformQuantizedType, UniformQuantizedPerAxisType>();
+  addTypes<AnyQuantizedType, UniformQuantizedType,
+           UniformQuantizedPerAxisType>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Quantization/QuantOps.cpp.inc"
