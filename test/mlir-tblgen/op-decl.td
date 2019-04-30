@@ -30,6 +30,11 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
   let hasCanonicalizer = 1;
   let hasConstantFolder = 1;
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Display a graph for debugging purposes.
+    void displayGraph();
+  }];
 }
 
 // CHECK-LABEL: NS::AOp declarations
@@ -52,6 +57,8 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);
 // CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
+// CHECK:   // Display a graph for debugging purposes.
+// CHECK:   void displayGraph();
 // CHECK: };
 
 // Check op trait for different number of operands

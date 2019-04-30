@@ -892,6 +892,10 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
 
   // Op traits.
   list<OpTrait> traits = props;
+
+  // Additional code that will be added to the public part of the generated
+  // C++ code of the op declaration.
+  code extraClassDeclaration = ?;
 }
 
 // The arguments of an op.

@@ -76,6 +76,13 @@ int tblgen::Operator::getNumResults() const {
   return results->getNumArgs();
 }
 
+StringRef tblgen::Operator::getExtraClassDeclaration() const {
+  constexpr auto attr = "extraClassDeclaration";
+  if (def.isValueUnset(attr))
+    return {};
+  return def.getValueAsString(attr);
+}
+
 tblgen::TypeConstraint
 tblgen::Operator::getResultTypeConstraint(int index) const {
   DagInit *results = def.getValueAsDag("results");

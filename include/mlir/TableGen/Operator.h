@@ -59,6 +59,9 @@ public:
   // Returns this op's C++ class name.
   StringRef getCppClassName() const;
 
+  // Returns this op's extra class declaration code.
+  StringRef getExtraClassDeclaration() const;
+
   // Returns the qualified C++ class name for the given TableGen def `name`.
   // The first `_` in `name` is treated as separating the dialect namespace
   // and the op class name if the dialect namespace is not empty. Otherwise,

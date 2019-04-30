@@ -172,7 +172,7 @@ private:
 // Class for holding an op for C++ code emission
 class OpClass {
 public:
-  explicit OpClass(StringRef name);
+  explicit OpClass(StringRef name, StringRef extraClassDeclaration = "");
 
   // Adds an op trait.
   void addTrait(Twine trait);
@@ -188,7 +188,8 @@ public:
   void writeDefTo(raw_ostream &os) const;
 
 private:
-  std::string className;
+  StringRef className;
+  StringRef extraClassDeclaration;
   SmallVector<std::string, 4> traits;
   SmallVector<OpMethod, 8> methods;
 };
@@ -286,7 +287,8 @@ void OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
   os << "}";
 }
 
-OpClass::OpClass(StringRef name) : className(name) {}
+OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
+    : className(name), extraClassDeclaration(extraClassDeclaration) {}
 
 // Adds the given trait to this op. Prefixes "OpTrait::" to `trait` implicitly.
 void OpClass::addTrait(Twine trait) {
@@ -310,6 +312,8 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
     method.writeDeclTo(os);
     os << "\n";
   }
+  // TODO: Add line control markers to make errors easier to debug.
+  os << extraClassDeclaration << "\n";
   os << "};";
 }
 
@@ -388,7 +392,8 @@ private:
 } // end anonymous namespace
 
 OpEmitter::OpEmitter(const Record &def)
-    : def(def), op(def), opClass(op.getCppClassName()) {
+    : def(def), op(def),
+      opClass(op.getCppClassName(), op.getExtraClassDeclaration()) {
   genTraits();
   // Generate C++ code for various op methods. The order here determines the
   // methods in the generated file.
