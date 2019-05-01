@@ -1141,8 +1141,8 @@ class MeanIoUTest(test.TestCase):
     self.assertEqual(m_obj2.num_classes, 2)
 
   def test_unweighted(self):
-    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
-    y_true = constant_op.constant([0, 0, 1, 1])
+    y_pred = [0, 1, 0, 1]
+    y_true = [0, 0, 1, 1]
 
     m_obj = metrics.MeanIoU(num_classes=2)
     self.evaluate(variables.variables_initializer(m_obj.variables))
