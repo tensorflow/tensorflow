@@ -79,15 +79,6 @@ UnitAttr UnitAttr::get(MLIRContext *context) {
 }
 
 //===----------------------------------------------------------------------===//
-// NumericAttr
-//===----------------------------------------------------------------------===//
-
-bool NumericAttr::kindof(Kind kind) {
-  return BoolAttr::kindof(kind) || IntegerAttr::kindof(kind) ||
-         FloatAttr::kindof(kind) || ElementsAttr::kindof(kind);
-}
-
-//===----------------------------------------------------------------------===//
 // BoolAttr
 //===----------------------------------------------------------------------===//
 

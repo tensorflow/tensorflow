@@ -172,19 +172,9 @@ public:
   static bool kindof(Kind kind) { return kind == Attribute::Kind::Unit; }
 };
 
-/// Numeric attributes are (vector/tensor of) bool, integer, or floating-point
-/// constants. For all the attributes, we can only build constant op out of
-/// numeric attributes.
-class NumericAttr : public Attribute {
+class BoolAttr : public Attribute {
 public:
   using Attribute::Attribute;
-
-  static bool kindof(Kind kind);
-};
-
-class BoolAttr : public NumericAttr {
-public:
-  using NumericAttr::NumericAttr;
   using ImplType = detail::BoolAttributeStorage;
   using ValueType = bool;
 
@@ -196,9 +186,9 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Bool; }
 };
 
-class IntegerAttr : public NumericAttr {
+class IntegerAttr : public Attribute {
 public:
-  using NumericAttr::NumericAttr;
+  using Attribute::Attribute;
   using ImplType = detail::IntegerAttributeStorage;
   using ValueType = APInt;
 
@@ -213,9 +203,9 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
 };
 
-class FloatAttr : public NumericAttr {
+class FloatAttr : public Attribute {
 public:
-  using NumericAttr::NumericAttr;
+  using Attribute::Attribute;
   using ImplType = detail::FloatAttributeStorage;
   using ValueType = APFloat;
 
@@ -344,9 +334,9 @@ public:
 };
 
 /// A base attribute that represents a reference to a vector or tensor constant.
-class ElementsAttr : public NumericAttr {
+class ElementsAttr : public Attribute {
 public:
-  using NumericAttr::NumericAttr;
+  using Attribute::Attribute;
 
   VectorOrTensorType getType() const;
 
