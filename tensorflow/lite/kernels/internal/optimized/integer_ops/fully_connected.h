@@ -355,7 +355,7 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
 }
 #endif  // USE_NEON
 

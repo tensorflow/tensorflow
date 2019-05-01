@@ -1141,7 +1141,7 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
 }
 #endif  // USE_NEON
 
@@ -1768,7 +1768,7 @@ inline void ShuffledFullyConnected(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
 }
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
@@ -1983,7 +1983,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                                     output_scale, depth_start, depth_end);
       depth_start = depth_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
   }
 }
 

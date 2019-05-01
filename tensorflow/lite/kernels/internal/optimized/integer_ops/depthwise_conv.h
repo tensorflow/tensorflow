@@ -2025,7 +2025,7 @@ inline void DepthwiseConvPerChannel(
           output_data, thread_start, thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
   }
 }
 
