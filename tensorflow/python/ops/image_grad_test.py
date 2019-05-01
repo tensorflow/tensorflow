@@ -29,7 +29,8 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
-@test_util.disable_all_xla('align_corners=False not supported by XLA')
+@test_util.for_all_test_methods(test_util.disable_xla,
+                                'align_corners=False not supported by XLA')
 class ResizeNearestNeighborOpTest(test.TestCase):
 
   TYPES = [np.float32, np.float64]

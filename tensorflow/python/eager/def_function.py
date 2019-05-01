@@ -492,7 +492,7 @@ class Function(object):
 
     # Note: using defun here avoids an infinite recursion.
     # Note: there is no reason not to autograph once the overhead is negligible.
-    @function_lib.defun(autograph=False)  # tf.function internal, pure graph
+    @function_lib.defun
     def initialize_variables():
       for v, init in initializer_map.items():
         with ops.init_scope():

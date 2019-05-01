@@ -52,10 +52,10 @@ namespace ruy {
 template <typename Spec>
 void EnforceLayoutSupport(const Layout& lhs_layout, const Layout& rhs_layout,
                           const Layout& dst_layout) {
-  if (Spec::kLayoutSupport == LayoutSupport::kPackedLinearRCC) {
-    RUY_DCHECK(IsPackedLinearRowMajor(lhs_layout));
-    RUY_DCHECK(IsPackedLinearColMajor(rhs_layout));
-    RUY_DCHECK(IsPackedLinearColMajor(dst_layout));
+  if (Spec::kLayoutSupport == LayoutSupport::kRCC) {
+    RUY_DCHECK(IsRowMajor(lhs_layout));
+    RUY_DCHECK(IsColMajor(rhs_layout));
+    RUY_DCHECK(IsColMajor(dst_layout));
   }
 }
 
@@ -84,21 +84,108 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
   CheckZeroPoint<Spec>(dst_zero_point);
 }
 
-// GetTrMulImplRunFn is implemented with template metaprogramming by mutual
-// recursion between PathSearchCountdown and PathSearchCompiledPaths.
+inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
+                            const DMatrix& dst) {
+  return IsColMajor(lhs.layout) && IsColMajor(rhs.layout) &&
+         IsColMajor(dst.layout);
+}
+
+inline void CreatePackedLayout(const Layout& src, const Type& scalar,
+                               const KernelLayout& kernel_layout,
+                               PackedLayout* packed) {
+  packed->order = Order::kColMajor;
+  packed->rows = round_up_pot(src.rows, kernel_layout.rows);
+  packed->cols = round_up_pot(src.cols, kernel_layout.cols);
+  packed->kernel = kernel_layout;
+  int inner_size = packed->rows;
+  if (RUY_OPT_SET & RUY_OPT_AVOID_ALIASING) {
+    packed->stride =
+        (inner_size * scalar.size) % 1024 ? inner_size : inner_size + 64;
+  } else {
+    packed->stride = inner_size;
+  }
+}
+
+template <typename Scalar, typename PackedScalar>
+void CreatePackedMatrix(const DMatrix& src, const KernelLayout& kernel_layout,
+                        PMatrix* packed) {
+  // Ruy always uses 32-bit signed accumulators for quantized
+  // matrix multiplication, so we would like to always use std::int32_t
+  // unconditionally for SumsType.
+  // However, for floating point types, we still need a reasonable type here to
+  // avoid tripping assertions elsewhere in the code.
+  using SumsType =
+      typename std::conditional<std::is_floating_point<Scalar>::value, Scalar,
+                                std::int32_t>::type;
+
+  packed->data_type = Type::Create<PackedScalar>();
+  packed->sums_type = Type::Create<SumsType>();
+  CreatePackedLayout(src.layout, packed->data_type, kernel_layout,
+                     &packed->layout);
+  packed->zero_point = Pack<PackedScalar, Scalar>(src.zero_point);
+}
+
+template <Path ThePath, typename LhsScalar, typename RhsScalar,
+          typename DstScalar, typename Spec>
+void PopulateTrMulParams(TrMulParams* params) {
+  static_assert((ThePath & Path::kReference) == Path::kNone,
+                "Path::kReference should not do TrMul");
+  // The optimized code paths only handle a very specific set of layouts.
+  // Fall back to Path::kStandardCpp if needed.
+  if (ThePath != Path::kStandardCpp) {
+    if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
+      PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
+                          Spec>(params);
+      return;
+    }
+  }
+
+  using PackedLhsScalar = PackedType<ThePath, LhsScalar>;
+  using PackedRhsScalar = PackedType<ThePath, RhsScalar>;
+  using Kernel =
+      Kernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
+  using LhsKernelLayout = typename Kernel::LhsLayout;
+  using RhsKernelLayout = typename Kernel::RhsLayout;
+
+  CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
+      params->lhs, ToKernelLayout<LhsKernelLayout>(), &params->packed_lhs);
+  CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
+      params->rhs, ToKernelLayout<RhsKernelLayout>(), &params->packed_rhs);
+
+  params->lhs_run_pack =
+      &RunPack<ThePath, LhsKernelLayout, LhsScalar, PackedLhsScalar>;
+  params->rhs_run_pack =
+      &RunPack<ThePath, RhsKernelLayout, RhsScalar, PackedRhsScalar>;
+  params->run_kernel =
+      &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
+  return;
+}
+
+// PopulateTrMulParamsAllCompiledPaths calls into one of multiple
+// instantiations of PopulateTrMulParams. For each bit that is set in
+// CompiledPaths, it statically instantiates PopulateTrMulParams with a Path
+// corresponding to that single bit. The call to PopulateTrMulParams is
+// guarded by a runtime check that it is in fact the dynamically selected path.
 //
-// GetTrMulImplRunFn is logically implementing the following computation:
+// PopulateTrMulParamsAllCompiledPaths is implemented with template
+// metaprogramming by mutual recursion between PathSearchCountdown and
+// PathSearchCompiledPaths.
 //
-// decltype(&TrMulImpl<...>::Run) GetTrMulImplRunFn(Path single_path) {
+// PopulateTrMulParamsAllCompiledPaths is logically implementing the following
+// computation:
+//
+// template <Path CompiledPaths>
+// void PopulateTrMulParamsAllCompiledPaths(Path the_path,
+//                                            TrMulParams* params) {
 //   for (int bit = 8 * sizeof(Path) - 1; bit != -1; bit--) { // [1]
 //     Path current_path = static_cast<Path>(1 << bit);
 //     if ((CompiledPaths & current_path) != Path::kNone) { // [2]
-//       if (current_path == single_path) { // [3]
-//         return &TrMulImpl<current_path, ...>::Run;
+//       if (current_path == the_path) { // [3]
+//         PopulateTrMulParams<current_path, ...>(the_path, params);
+//         return;
 //       }
 //     }
 //   }
-//   return nullptr; // [4]
 // }
 //
 //
@@ -110,15 +197,13 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
 // doing the whole computation at C++ compile time.
 // [3] - Done by the `if` in the main definition of
 // PathSearchOnlyCompiledPaths.
-// [4] - Done by the partial specialization of PathSearchCountdown.
 //
 // The template metaprogramming is necessary because:
-// - In `TrMulImpl<current_path, ...>::Run`, current_path must be a C++
+// - In `PopulateTrMulParams<current_path, ...>`, current_path must be a C++
 // compile-time constant.
-// - GetTrMulImplRunFn must not instantiate
-// `TrMulImpl<curent_path, ...>::Run` for paths that are not in
-// CompiledPaths, since that can result in bogus instantiations which cause
-// a compile time failure.
+// - PopulateTrMulParamsAllCompiledPaths must not instantiate
+// inner loops for paths that are not in CompiledPaths, since that can result in
+// bogus instantiations which cause a compile time failure.
 template <Path CompiledPaths, int BitNumber, typename LhsScalar,
           typename RhsScalar, typename DstScalar, typename Spec>
 struct PathSearchCountdown;
@@ -128,29 +213,25 @@ template <Path CompiledPaths, bool InCompiledPaths, int BitNumber,
           typename Spec>
 struct PathSearchOnlyCompiledPaths {
   static constexpr Path kCurrentPath = static_cast<Path>(1 << BitNumber);
-  static decltype(
-      &TrMulImpl<Path::kNone, LhsScalar, RhsScalar, DstScalar, Spec>::Run)
-  Search(Path single_path) {
-    if (kCurrentPath == single_path) {
-      return &TrMulImpl<kCurrentPath, LhsScalar, RhsScalar, DstScalar,
-                        Spec>::Run;
+  static void Search(Path the_path, TrMulParams* params) {
+    if (kCurrentPath == the_path) {
+      PopulateTrMulParams<kCurrentPath, LhsScalar, RhsScalar, DstScalar, Spec>(
+          params);
+      return;
     }
-    return PathSearchCountdown<CompiledPaths, BitNumber - 1, LhsScalar,
-                               RhsScalar, DstScalar, Spec>::Search(single_path);
+    PathSearchCountdown<CompiledPaths, BitNumber - 1, LhsScalar, RhsScalar,
+                        DstScalar, Spec>::Search(the_path, params);
   }
 };
 
-// Skip instantiating TrMulImpl if CompiledPaths doesn't contain the
-// specified path.
+// Skip this iteration if CompiledPaths doesn't contain the specified path.
 template <Path CompiledPaths, int BitNumber, typename LhsScalar,
           typename RhsScalar, typename DstScalar, typename Spec>
 struct PathSearchOnlyCompiledPaths<CompiledPaths, false, BitNumber, LhsScalar,
                                    RhsScalar, DstScalar, Spec> {
-  static decltype(
-      &TrMulImpl<Path::kNone, LhsScalar, RhsScalar, DstScalar, Spec>::Run)
-  Search(Path single_path) {
-    return PathSearchCountdown<CompiledPaths, BitNumber - 1, LhsScalar,
-                               RhsScalar, DstScalar, Spec>::Search(single_path);
+  static void Search(Path the_path, TrMulParams* params) {
+    PathSearchCountdown<CompiledPaths, BitNumber - 1, LhsScalar, RhsScalar,
+                        DstScalar, Spec>::Search(the_path, params);
   }
 };
 
@@ -158,12 +239,10 @@ template <Path CompiledPaths, int BitNumber, typename LhsScalar,
           typename RhsScalar, typename DstScalar, typename Spec>
 struct PathSearchCountdown {
   static constexpr Path kCurrentPath = static_cast<Path>(1 << BitNumber);
-  static decltype(
-      &TrMulImpl<Path::kNone, LhsScalar, RhsScalar, DstScalar, Spec>::Run)
-  Search(Path single_path) {
-    return PathSearchOnlyCompiledPaths<
+  static void Search(Path the_path, TrMulParams* params) {
+    PathSearchOnlyCompiledPaths<
         CompiledPaths, (CompiledPaths & kCurrentPath) != Path::kNone, BitNumber,
-        LhsScalar, RhsScalar, DstScalar, Spec>::Search(single_path);
+        LhsScalar, RhsScalar, DstScalar, Spec>::Search(the_path, params);
   }
 };
 
@@ -173,48 +252,132 @@ template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 struct PathSearchCountdown<CompiledPaths, -1, LhsScalar, RhsScalar, DstScalar,
                            Spec> {
-  static decltype(
-      &TrMulImpl<Path::kNone, LhsScalar, RhsScalar, DstScalar, Spec>::Run)
-  Search(Path single_path) {
-    return nullptr;
-  }
+  static void Search(Path the_path, TrMulParams* params) { RUY_DCHECK(false); }
 };
 
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
-decltype(&TrMulImpl<Path::kNone, LhsScalar, RhsScalar, DstScalar, Spec>::Run)
-GetTrMulImplRunFn(Path single_path) {
+void PopulateTrMulParamsAllCompiledPaths(Path the_path, TrMulParams* params) {
   return PathSearchCountdown<CompiledPaths, 8 * sizeof(Path) - 1, LhsScalar,
-                             RhsScalar, DstScalar, Spec>::Search(single_path);
+                             RhsScalar, DstScalar, Spec>::Search(the_path,
+                                                                 params);
+}
+
+template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
+          typename DstScalar, typename Spec>
+void CreateTrMulParams(const Matrix<LhsScalar>& lhs,
+                       const Matrix<RhsScalar>& rhs, const Spec& spec,
+                       Context* context, Matrix<DstScalar>* dst, Path the_path,
+                       TrMulParams* params) {
+  // Fill in the fields we already know.
+  params->lhs = ToDMatrix(lhs);
+  params->rhs = ToDMatrix(rhs);
+  params->dst = ToDMatrix(*dst);
+  params->spec = ToVoidPtr(&spec);
+
+  // Create inner loops and packed matrices based on the Path.
+  PopulateTrMulParamsAllCompiledPaths<CompiledPaths, LhsScalar, RhsScalar,
+                                      DstScalar, Spec>(the_path, params);
+}
+
+template <typename LhsScalar, typename RhsScalar, typename DstScalar,
+          typename Spec>
+void ReferenceMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
+                  const Spec& spec, Matrix<DstScalar>* dst) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceMul");
+  for (int i = 0; i < lhs.layout.rows; i++) {
+    for (int j = 0; j < rhs.layout.cols; j++) {
+      using AccumScalar = typename Spec::AccumScalar;
+      AccumScalar accum = 0;
+      for (int k = 0; k < lhs.layout.cols; k++) {
+        AccumScalar lhs_val = Element(lhs, i, k);
+        AccumScalar rhs_val = Element(rhs, k, j);
+        accum += (lhs_val - lhs.zero_point) * (rhs_val - rhs.zero_point);
+      }
+      if (spec.bias) {
+        accum += spec.bias[i];
+      }
+      ApplyMultiplier(spec, i, &accum);
+      accum += dst->zero_point;
+      accum = std::min<AccumScalar>(accum, spec.clamp_max);
+      accum = std::max<AccumScalar>(accum, spec.clamp_min);
+      *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
+    }
+  }
+}
+
+// Compile-time dispatch to ReferenceMul. This allows us to statically ensure
+// that there is no call to ReferenceMul in the user's binary.
+template <bool ReferenceMulIsEnabled>
+struct CompileTimeEnabledReferenceMul {
+  template <typename LhsScalar, typename RhsScalar, typename DstScalar,
+            typename Spec>
+  static void Run(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
+                  const Spec& spec, Matrix<DstScalar>* dst) {
+    ReferenceMul(lhs, rhs, spec, dst);
+  }
+};
+
+// When this partial specialization is chosen, it ensures that ReferenceMul
+// is never compiled.
+template <>
+struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
+  template <typename LhsScalar, typename RhsScalar, typename DstScalar,
+            typename Spec>
+  static void Run(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
+                  const Spec& spec, Matrix<DstScalar>* dst) {
+    RUY_DCHECK(false);
+  }
 };
 
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
-struct MulDispatch {
-  void Mul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-           const Spec& spec, Context* context, Matrix<DstScalar>* dst) {
-    gemmlowp::ScopedProfilingLabel label("Mul");
+void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
+                 const Spec& spec, Context* context, Matrix<DstScalar>* dst) {
+  static_assert(CompiledPaths != Path::kNone, "Must compile at least one Path");
+  static_assert((CompiledPaths & ~kAllPaths) == Path::kNone,
+                "CompiledPaths must be a subset of ruy::kAllPaths");
 
-    const Path runtime_enabled_paths = context->GetRuntimeEnabledPaths();
-    // The above query should resolve to specific paths, never return kNone.
-    RUY_DCHECK(runtime_enabled_paths != Path::kNone);
+  gemmlowp::ScopedProfilingLabel label("Mul");
 
-    Path single_path =
-        GetMostSignificantPath(CompiledPaths & runtime_enabled_paths);
-    auto tr_mul_impl_run_fn =
-        GetTrMulImplRunFn<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec>(
-            single_path);
-    context->last_taken_path = single_path;
+  EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
+  EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
+                                dst->zero_point);
 
-    EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
-    EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
-                                  dst->zero_point);
+  // This should be a constant, for a given machine and CompiledPaths.
+  // There is a back door to override it for testing, but in production it will
+  // always be the "best" Path. I.e. the one with the newest SIMD instructions
+  // available on the present machine, and avoiding Path::kReference unless
+  // no other path is compiled.
+  //
+  // Unfortunately, it is not a *static* constant, since it depends on runtime
+  // detection of the available SIMD instructions.
+  Path the_path = context->GetPathToTake<CompiledPaths>();
 
-    Matrix<LhsScalar> lhs_copy(lhs);
-    Transpose(&lhs_copy);
-    tr_mul_impl_run_fn(lhs_copy, rhs, spec, context, dst);
+  // Production code should probably never execute Path::kReference.
+  // Path::kReference implements a Mul, not a TrMul like the rest of Ruy, so if
+  // that's what we need to do, then get it out of the way before going down the
+  // TrMul path.
+  if (the_path == Path::kReference) {
+    constexpr bool ReferenceMulIsEnabled =
+        (CompiledPaths & Path::kReference) != Path::kNone;
+    CompileTimeEnabledReferenceMul<ReferenceMulIsEnabled>::Run(lhs, rhs, spec,
+                                                               dst);
+    return;
   }
-};
+
+  // As described in the comment at the top of this file, Ruy internally
+  // converts Mul into TrMul. We handle that here.
+  //
+  // This is Ruy's main code path.
+  constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
+  Matrix<LhsScalar> transposed_lhs(lhs);
+  Transpose(&transposed_lhs);
+  TrMulParams params;
+  CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
+                                        the_path, &params);
+  TrMul(&params, context);
+}
 
 }  // namespace ruy
 

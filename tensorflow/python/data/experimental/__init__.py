@@ -26,6 +26,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@DatasetStructure
+@@DistributeOptions
 @@MapVectorizationOptions
 @@NestedStructure
 @@OptimizationOptions
@@ -85,7 +86,6 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
@@ -94,6 +94,7 @@ from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element

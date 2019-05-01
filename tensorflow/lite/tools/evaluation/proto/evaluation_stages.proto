@@ -17,6 +17,10 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
 // Defines the functionality executed by an EvaluationStage.
 //
 // Next ID: 5

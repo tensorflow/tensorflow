@@ -42,6 +42,7 @@ from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -446,7 +447,13 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)
+    try:
+      self._coord.join(worker_threads)
+    except errors.UnknownError as e:
+      if 'Could not start gRPC server' in e.message:
+        self.skipTest('Cannot start std servers.')
+      else:
+        raise
 
 
 class MultiWorkerMultiProcessTest(test.TestCase):

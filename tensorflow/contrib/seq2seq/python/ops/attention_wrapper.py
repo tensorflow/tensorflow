@@ -947,7 +947,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
       num_units: The depth of the query mechanism.
       memory: The memory to query; usually the output of an RNN encoder.  This
         tensor should be shaped `[batch_size, max_time, ...]`.
-      memory_sequence_length (optional): Sequence lengths for the batch entries
+      memory_sequence_length: (optional) Sequence lengths for the batch entries
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
       normalize: Python boolean.  Whether to normalize the energy term.

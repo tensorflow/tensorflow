@@ -5088,10 +5088,281 @@ TEST_F(AlgebraicSimplifierTest, CopyReshape) {
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
-  LOG(INFO) << "\n" << m->ToString();
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RL) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[6, 2] constant({{1, 2},{3, 4},{5, 6},{1, 1},{1, 1},{1, 1}})
+      t0 = f32[2, 2, 3] parameter(0)
+      t1 = f32[2, 3, 2] transpose(t0), dimensions={0, 2, 1}
+      lhs = f32[2, 6] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
+  auto shape2 = ShapeUtil::MakeShape(F32, {3, 2, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  // The transformation of moving transpose and reshape to the constant side
+  // is layout insensitive. We ignore layout when checking shapes.
+  const HloInstruction* transpose;
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+                  m::Reshape(m::Transpose(&transpose,
+                                          m::Reshape(m::Constant())
+                                              .WithShapeCompatibleTo(&shape2))
+                                 .WithShapeCompatibleTo(&shape3)))));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(1, 0, 2));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RR) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[2, 6] constant({{1, 2, 3, 4, 5, 6},
+                                {1, 1, 1, 1, 1, 1}})
+      t0 = f32[2, 2, 3] parameter(0)
+      t1 = f32[2, 3, 2] transpose(t0), dimensions={0, 2, 1}
+      lhs = f32[2, 6] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+                  m::Reshape(m::Transpose(m::Reshape(m::Constant())
+                                              .WithShapeCompatibleTo(&shape2))
+                                 .WithShapeCompatibleTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[2, 6] constant({{1, 2, 3, 4, 5, 6},
+                                {1, 1, 1, 1, 1, 1}})
+      t0 = f32[2, 3, 2] parameter(0)
+      t1 = f32[3, 2, 2] transpose(t0), dimensions={1, 0, 2}
+      lhs = f32[6, 2] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {6, 2});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+                  m::Reshape(m::Transpose(m::Reshape(m::Constant())
+                                              .WithShapeCompatibleTo(&shape2))
+                                 .WithShapeCompatibleTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[8, 2] constant({{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6},{7, 7},{8, 8}})
+      t0 = f32[2, 2, 2, 2] parameter(0)
+      t1 = f32[2, 2, 2, 2] transpose(t0), dimensions={0, 2, 3, 1}
+      lhs = f32[2, 8] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 8});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
+  const HloInstruction* transpose;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(
+          m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+          m::Reshape(m::Transpose(
+              &transpose,
+              m::Reshape(m::Constant()).WithShapeCompatibleTo(&shape2))))));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(2, 0, 1, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[2, 6, 2] constant({{{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6}},
+                                   {{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6}}})
+      t0 = f32[2, 2, 3, 2] parameter(0)
+      t1 = f32[2, 3, 2, 2] transpose(t0), dimensions={0, 2, 1, 3}
+      lhs = f32[2, 6, 2] reshape(t1)
+      ROOT dot.5 = f32[2, 2, 2] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={1},
+                                               rhs_batch_dims={0}, rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6, 2});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3, 2});
+  const HloInstruction* transpose;
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+                  m::Reshape(m::Transpose(&transpose,
+                                          m::Reshape(m::Constant())
+                                              .WithShapeCompatibleTo(&shape2))
+                                 .WithShapeCompatibleTo(&shape3)))));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegTranspose) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[12, 2] constant({{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6},{1, 1},{2, 2},{3, 3},{4, 4},{5, 5},{6, 6}})
+      t0 = f32[3, 4, 2] parameter(0)
+      t1 = f32[2, 3, 4] transpose(t0), dimensions={2, 0, 1}
+      lhs = f32[2, 12] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  // Transpose affects non-contracting dimension. The transpose and reshape
+  // should not be moved to the constant side.
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegReshape) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[8, 2] constant({{1, 1},{2, 2},{3, 3},{4, 4},{1, 1},{2, 2},{3, 3},{4, 4}})
+      t0 = f32[2, 4, 3] parameter(0)
+      t1 = f32[2, 3, 4] transpose(t0), dimensions={0, 2, 1}
+      lhs = f32[3, 8] reshape(t1)
+      ROOT dot.5 = f32[3, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  // Reshape affects non-contracting dimensions. The transpose and reshape
+  // should not be moved to the constant side.
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegConstant) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      t0 = f32[2, 3, 4] parameter(0)
+      t1 = f32[2, 4, 3] transpose(t0), dimensions={0, 2, 1}
+      lhs = f32[2, 12] reshape(t1)
+      rhs = f32[12, 2] parameter(1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  // Both operands are non-constant, so the optimization should not happen.
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegLayout) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      rhs = f32[6, 2] constant({{1, 2},{3, 4},{5, 6},{1, 1},{1, 1},{1, 1}})
+      t0 = f32[2, 2, 3] parameter(0)
+      t1 = f32[2, 3, 2] transpose(t0), dimensions={0, 2, 1}
+      lhs = f32[2, 6] reshape(t1)
+      ROOT dot.5 = f32[2, 2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  // We disable converting reshape to bitcast to make sure algsimp pass does
+  // not catch the reshape in this test, then we can simply check if algsimp
+  // pass does not make any change.
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  // The transformation of moving transpose and reshape to the constant side is
+  // layout insensitive. It should not happen if AlgebraicSimplifier is set up
+  // to be layout sensitive.
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDimsNoChange) {
+  // This isn't transformed (notice that the relative order of the `2` and `3`
+  // dims doesn't change, so there's no opportunity here), but it's nonetheless
+  // an interesting testcase because of the presence of the size-1 dimensions.
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+     param = f32[1,2,5,3] parameter(0)
+     transpose = f32[1,5,2,3] transpose(param), dimensions={0,2,1,3}
+     reshape = f32[5,6] reshape(transpose)
+     constant = f32[6,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+     ROOT dot = f32[5,4] dot(reshape, constant),
+       lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDims) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+     param = f32[1,2,3,5] parameter(0)
+     transpose = f32[1,3,2,5] transpose(param), dimensions={0,2,1,3}
+     reshape = f32[6,5] reshape(transpose)
+     constant = f32[6,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+     ROOT dot = f32[5,4] dot(reshape, constant),
+       lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto shape1 = ShapeUtil::MakeShape(F32, {6, 5});
+  auto shape2 = ShapeUtil::MakeShape(F32, {1, 3, 2, 4});
+  auto shape3 = ShapeUtil::MakeShape(F32, {1, 2, 3, 4});
+  const HloInstruction* transpose;
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
+                  m::Reshape(m::Transpose(&transpose,
+                                          m::Reshape(m::Constant())
+                                              .WithShapeCompatibleTo(&shape2))
+                                 .WithShapeCompatibleTo(&shape3)))));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DotContractingReorder_NoChangeInContractingDimsOrder) {
+  // No optimization opportunity here because the transpose does not reorder the
+  // contracting dims.
+  const char* kModuleStr = R"(
+    param = f32[2,5,1,3] parameter(0)
+    transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
+    reshape = f32[5,6] reshape(transpose)
+    constant = f32[6,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+    ROOT dot = f32[5,4] dot(reshape, constant),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
 
 }  // namespace

@@ -153,6 +153,16 @@ py_library(
 )
 
 py_library(
+    name = "distribute_options",
+    srcs = ["distribute_options.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
+    ],
+)
+
+py_library(
     name = "snapshot",
     srcs = [
         "snapshot.py",

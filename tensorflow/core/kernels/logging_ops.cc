@@ -44,7 +44,7 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
   mutex_lock l(*file_mutex);
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
-  Status a = file->Append(absl::StrCat(data, "\n"));
+  Status a = file->Append(data);
   Status c = file->Close();
   return a.ok() ? c : a;
 }
@@ -148,6 +148,7 @@ class PrintV2Op : public OpKernel {
  public:
   explicit PrintV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_stream", &output_stream_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("end", &end_));
 
     SetFilePathIfAny();
     if (!file_path_.empty()) return;
@@ -171,9 +172,12 @@ class PrintV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
     const string& msg = input_->scalar<string>()();
 
+    string ended_msg = strings::StrCat(msg, end_);
+
     if (!file_path_.empty()) {
       // Outputs to a file at the specified path.
-      OP_REQUIRES_OK(ctx, AppendStringToFile(file_path_, msg, ctx->env()));
+      OP_REQUIRES_OK(ctx,
+                     AppendStringToFile(file_path_, ended_msg, ctx->env()));
       return;
     }
     auto listeners = logging::GetListeners();
@@ -182,15 +186,15 @@ class PrintV2Op : public OpKernel {
         listener(msg.c_str());
       }
     } else if (output_stream_ == "stdout") {
-      std::cout << msg << std::endl;
+      std::cout << ended_msg << std::flush;
     } else if (output_stream_ == "stderr") {
-      std::cerr << msg << std::endl;
+      std::cerr << ended_msg << std::flush;
     } else if (output_stream_ == "log(info)") {
-      LOG(INFO) << msg << std::endl;
+      LOG(INFO) << ended_msg << std::flush;
     } else if (output_stream_ == "log(warning)") {
-      LOG(WARNING) << msg << std::endl;
+      LOG(WARNING) << ended_msg << std::flush;
     } else if (output_stream_ == "log(error)") {
-      LOG(ERROR) << msg << std::endl;
+      LOG(ERROR) << ended_msg << std::flush;
     } else {
       string error_msg = strings::StrCat(
           "Unknown output stream: ", output_stream_, ", Valid streams are:");
@@ -206,6 +210,7 @@ class PrintV2Op : public OpKernel {
                                           "log(warning)", "log(error)"};
 
  private:
+  string end_;
   // Either output_stream_ or file_path_ (but not both) will be non-empty.
   string output_stream_;
   string file_path_;

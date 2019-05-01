@@ -804,6 +804,31 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-5,
           rtol=1e-5)
 
+  @combinations.generate(tpu_strategy_combinations())
+  def test_no_target_model(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+
+      class MyLayer(keras.layers.Layer):
+
+        def call(self, inputs, training=None):
+          self.add_loss(math_ops.reduce_sum(inputs), inputs=True)
+          return inputs
+
+      with distribution.scope():
+        model = keras.models.Sequential()
+        model.add(keras.layers.Dense(16, activation='relu',
+                                     input_shape=_INPUT_SIZE))
+        model.add(MyLayer())
+        model.add(keras.layers.Dense(_NUM_CLASS, activation='softmax'))
+
+        model.compile(optimizer)
+        inputs = np.zeros((20, 10), np.float32)
+
+        model.fit(inputs, epochs=1, steps_per_epoch=2)
+        model.predict(inputs, steps=1)
+        model.evaluate(inputs, steps=1)
+
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),
                          combinations.combine(cloning=[True, False])))

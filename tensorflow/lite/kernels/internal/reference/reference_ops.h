@@ -318,6 +318,34 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   }
 }
 
+template <typename T>
+inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+                              const RuntimeShape& input_shape,
+                              const T* input_data,
+                              const RuntimeShape& output_shape,
+                              T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  static const int32 quantized_min = std::numeric_limits<T>::min();
+  static const int32 quantized_max = std::numeric_limits<T>::max();
+  static const int32 alpha_value = q_alpha - params.alpha_offset;
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 input_value = input_data[i] - params.input_offset;
+    if (input_value >= 0) {
+      output_data[i] = input_data[i];
+    } else {
+      const int32 unclamped_output =
+          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                     input_value * alpha_value,
+                                     params.output_multiplier,
+                                     params.output_shift);
+      const T clamped_output =
+          std::min(quantized_max, std::max(quantized_min, unclamped_output));
+      output_data[i] = static_cast<uint8>(clamped_output);
+    }
+  }
+}
+
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,

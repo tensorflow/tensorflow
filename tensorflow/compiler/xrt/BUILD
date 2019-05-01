@@ -54,6 +54,7 @@ cc_library(
         "xrt_util.h",
     ],
     deps = [
+        ":xrt_proto",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:debug_options_flags",

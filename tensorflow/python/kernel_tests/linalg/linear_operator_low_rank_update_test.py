@@ -196,7 +196,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
     self._rtol[dtypes.float32] = 1e-4
     self._atol[dtypes.float64] = 1e-9
     self._rtol[dtypes.float64] = 1e-9
-    self._rtol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.complex64] = 2e-4
 
 
 class LinearOperatorLowRankUpdatetestNoDiagUseCholesky(
@@ -239,7 +239,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
     self._rtol[dtypes.float32] = 1e-4
     self._atol[dtypes.float64] = 1e-9
     self._rtol[dtypes.float64] = 1e-9
-    self._rtol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.complex64] = 2e-4
 
 
 class LinearOperatorLowRankUpdatetestWithDiagNotSquare(

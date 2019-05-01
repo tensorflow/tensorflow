@@ -104,6 +104,10 @@ def _matches_version(actual_version, required_version):
   """
   if actual_version is None:
     return False
+
+  # Strip spaces from the versions.
+  actual_version = actual_version.strip()
+  required_version = required_version.strip()
   return actual_version.startswith(required_version)
 
 

@@ -351,6 +351,31 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "linear_operator_toeplitz_test",
+    size = "medium",
+    srcs = ["linear_operator_toeplitz_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:spectral_ops_test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/signal",
+    ],
+    shard_count = 5,
+    tags = [
+        "noasan",  # times out, b/63678675
+        "optonly",  # times out, b/79171797
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "linear_operator_zeros_test",
     size = "medium",
     srcs = ["linear_operator_zeros_test.py"],

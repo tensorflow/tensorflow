@@ -180,9 +180,9 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       }
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
-      string stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
+      auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion>*>(data);
-      *result = rocm::StringToDriverVersion(stripped_dso_version);
+      *result = rocm::StringToDriverVersion(string(stripped_dso_version));
       return 1;
     }
     return 0;
@@ -210,8 +210,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t space_index = version_and_rest.find(" ");
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
-  string stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
-  return rocm::StringToDriverVersion(stripped_kernel_version);
+  auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
+  return rocm::StringToDriverVersion(string(stripped_kernel_version));
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(

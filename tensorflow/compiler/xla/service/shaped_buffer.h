@@ -97,6 +97,8 @@ class ShapedBuffer {
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
   ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
 
+  StatusOr<ShapedBuffer> SubShapedBuffer(const ShapeIndex& index) const;
+
   // Set all device memory pointers in the object to null.
   void clear();
 

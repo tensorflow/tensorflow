@@ -15,9 +15,17 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
 
@@ -25,9 +33,78 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-enum SnapshotState { STATE_READ = 0, STATE_WRITE = 1, STATE_PASSTHROUGH = 2 };
+enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
-const uint64 ONE_DAY_IN_MICROSECONDS = 24L * 60L * 60L * 1e6L;
+const uint64 kOneDayInMicroseconds = 24L * 60L * 60L * 1e6L;
+
+const uint64 kNumElementsPerShard = 10000;
+
+const char kSnapshotFilename[] = "snapshot.metadata";
+
+string GetCurrentSnapshotDataFilename(uint64 next_index,
+                                      const string& run_dir) {
+  uint64_t shard_id = next_index / kNumElementsPerShard;
+  return absl::StrCat(run_dir, "/", strings::Printf("%08lu", shard_id),
+                      ".snapshot");
+}
+
+Status WriteMetadataFile(const string& fingerprint_dir,
+                         const experimental::SnapshotMetadataRecord& metadata) {
+  string metadata_filename =
+      absl::StrCat(fingerprint_dir, "/", kSnapshotFilename);
+
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(fingerprint_dir));
+
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
+
+  auto writer = absl::make_unique<io::RecordWriter>(file.get());
+  TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
+  TF_RETURN_IF_ERROR(writer->Close());
+
+  return Status::OK();
+}
+
+Status ReadMetadataFile(const string& fingerprint_dir,
+                        experimental::SnapshotMetadataRecord* metadata) {
+  string metadata_filename =
+      absl::StrCat(fingerprint_dir, "/", kSnapshotFilename);
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
+
+  string record_bytes;
+  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  uint64 offset = 0;
+  TF_CHECK_OK(reader->ReadRecord(&offset, &record_bytes));
+
+  metadata->ParseFromString(record_bytes);
+  return Status::OK();
+}
+
+SnapshotMode DetermineOpState(
+    const Status& file_status,
+    const experimental::SnapshotMetadataRecord& metadata) {
+  if (errors::IsNotFound(file_status)) {
+    return WRITER;
+  }
+
+  if (metadata.finalized()) {
+    // File found, snapshot has been finalized.
+    return READER;
+  }
+
+  if (metadata.creation_timestamp() >=
+      Env::Default()->NowMicros() - kOneDayInMicroseconds) {
+    // TODO(frankchn): Make this timestamp configurable.
+    // Someone else is already writing and time has not expired.
+    return PASSTHROUGH;
+  } else {
+    // Time has expired, we write regardless.
+    return WRITER;
+  }
+}
 
 class SnapshotDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -47,21 +124,27 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     GraphDef graph_def;
     OP_REQUIRES_OK(ctx, AsGraphDef(ctx, input, &graph_def));
-    string graph_fp = strings::StrCat(strings::Hex(
-        Fingerprint64(graph_def.SerializeAsString()), strings::kZeroPad4));
 
-    *output = new Dataset(ctx, input, path, graph_fp);
+    // TODO(frankchn): Find a better way than SerializeToStringDeterministic()
+    // This is not deterministic across different builds of binaries right now.
+    string graph_def_serialized;
+    SerializeToStringDeterministic(graph_def, &graph_def_serialized);
+
+    string graph_fingerprint = strings::StrCat(
+        strings::Hex(Fingerprint64(graph_def_serialized), strings::kZeroPad16));
+
+    *output = new Dataset(ctx, input, path, graph_fingerprint);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, const string& path,
-            const string& graph_fp)
+            const string& graph_fingerprint)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          path_(path),
-          graph_fp_(graph_fp) {
+          dir_(path),
+          graph_fingerprint_(graph_fingerprint) {
       input_->Ref();
     }
 
@@ -92,7 +175,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* path = nullptr;
-      TF_RETURN_IF_ERROR(b->AddScalar(path_, &path));
+      TF_RETURN_IF_ERROR(b->AddScalar(dir_, &path));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, path}, output));
       return Status::OK();
     }
@@ -104,29 +187,40 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        run_id_ =
-            strings::StrCat(strings::Hex(random::New64(), strings::kZeroPad4));
-        fp_path_ = absl::StrCat(dataset()->path_, "/", dataset()->graph_fp_);
-        state_ = DetermineOpState();
+        fingerprint_dir_ =
+            absl::StrCat(dataset()->dir_, "/", dataset()->graph_fingerprint_);
 
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        experimental::SnapshotMetadataRecord metadata;
+        Status s = ReadMetadataFile(fingerprint_dir_, &metadata);
+        state_ = DetermineOpState(s, metadata);
+
+        switch (state_) {
+          case WRITER:
+            iterator_ = absl::make_unique<SnapshotWriterIterator>(
+                SnapshotWriterIterator::Params{
+                    dataset(), strings::StrCat(prefix(), "Impl")},
+                fingerprint_dir_);
+            break;
+          case READER:
+            iterator_ = absl::make_unique<SnapshotReaderIterator>(
+                SnapshotReaderIterator::Params{
+                    dataset(), strings::StrCat(prefix(), "Impl")},
+                fingerprint_dir_, metadata);
+            break;
+          case PASSTHROUGH:
+            iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
+                SnapshotPassthroughIterator::Params{
+                    dataset(), strings::StrCat(prefix(), "Impl")});
+            break;
+        }
+
+        return iterator_->Initialize(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        // TODO(frankchn,rohanj): Implement the actual read/write of snapshots.
-
-        switch (state_) {
-          case STATE_READ:
-            return GetNextInternalRead(ctx, out_tensors, end_of_sequence);
-          case STATE_WRITE:
-            return GetNextInternalWrite(ctx, out_tensors, end_of_sequence);
-          case STATE_PASSTHROUGH:
-          default:
-            return GetNextInternalPassthrough(ctx, out_tensors,
-                                              end_of_sequence);
-        }
+        return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -142,77 +236,230 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      Status GetNextInternalRead(IteratorContext* ctx,
-                                 std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) {
-        return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-      }
+      class SnapshotReaderIterator : public DatasetIterator<Dataset> {
+       public:
+        explicit SnapshotReaderIterator(
+            const Params& params, const string& fingerprint_dir,
+            const experimental::SnapshotMetadataRecord& metadata)
+            : DatasetIterator<Dataset>(params),
+              fingerprint_dir_(fingerprint_dir),
+              metadata_(metadata) {}
 
-      Status GetNextInternalWrite(IteratorContext* ctx,
-                                  std::vector<Tensor>* out_tensors,
-                                  bool* end_of_sequence) {
-        return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-      }
+        Status Initialize(IteratorContext* ctx) override {
+          mutex_lock l(mu_);
 
-      Status GetNextInternalPassthrough(IteratorContext* ctx,
-                                        std::vector<Tensor>* out_tensors,
-                                        bool* end_of_sequence) {
-        return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-      }
-
-      SnapshotState DetermineOpState() {
-        experimental::SnapshotMetadataRecord metadata;
-        Status s = ReadMetadataFile(&metadata);
-
-        if (!s.ok()) {
-          // File not found, or otherwise not readable.
-          return STATE_WRITE;
+          run_id_ = metadata_.run_id();
+          run_dir_ = absl::StrCat(fingerprint_dir_, "/", run_id_);
+          return Status::OK();
         }
 
-        if (metadata.finalized()) {
-          // File found, snapshot has been finalized.
-          return STATE_READ;
+        Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
+          mutex_lock l(mu_);
+
+          string snapshot_data_filename =
+              GetCurrentSnapshotDataFilename(next_index_, run_dir_);
+
+          if (current_read_filename_ != snapshot_data_filename) {
+            current_reader_.reset();
+            current_read_file_.reset();
+            current_read_offset_ = 0;
+
+            // The current implementation here assumes that tensors are stored
+            // in files which are named sequentially. If a file doesn't exist
+            // when we try reading that item, we assume that we have reached the
+            // end of the snapshot.
+            Status s = Env::Default()->FileExists(snapshot_data_filename);
+            if (!s.ok()) {
+              *end_of_sequence = true;
+              return Status::OK();
+            }
+
+            TF_CHECK_OK(Env::Default()->NewRandomAccessFile(
+                snapshot_data_filename, &current_read_file_));
+            current_reader_ =
+                absl::make_unique<io::RecordReader>(current_read_file_.get());
+            current_read_filename_ = snapshot_data_filename;
+          }
+
+          string record_bytes;
+          Status s =
+              current_reader_->ReadRecord(&current_read_offset_, &record_bytes);
+
+          if (errors::IsOutOfRange(s)) {
+            *end_of_sequence = true;
+            return Status::OK();
+          } else if (!s.ok()) {
+            return s;
+          }
+
+          experimental::SnapshotRecord record;
+          record.ParseFromString(record_bytes);
+
+          for (int i = 0; i < record.tensor_size(); ++i) {
+            Tensor t;
+            if (!t.FromProto(record.tensor(i))) {
+              return errors::DataLoss("Unable to parse Tensor from proto.");
+            }
+            out_tensors->push_back(t);
+          }
+
+          next_index_++;
+          return Status::OK();
         }
 
-        if (metadata.creation_timestamp() >=
-            Env::Default()->NowMicros() - ONE_DAY_IN_MICROSECONDS) {
-          // TODO(frankchn): Make this timestamp configurable.
-          // Someone else is already writing and time has not expired.
-          return STATE_PASSTHROUGH;
-        } else {
-          // Time has expired, we write regardless.
-          return STATE_WRITE;
+       private:
+        const string fingerprint_dir_;
+        const experimental::SnapshotMetadataRecord metadata_;
+        string run_id_ GUARDED_BY(mu_);
+        string run_dir_ GUARDED_BY(mu_);
+
+        std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+
+        string current_read_filename_ GUARDED_BY(mu_);
+        uint64 current_read_offset_ GUARDED_BY(mu_);
+        std::unique_ptr<RandomAccessFile> current_read_file_ GUARDED_BY(mu_);
+        std::unique_ptr<io::RecordReader> current_reader_ GUARDED_BY(mu_);
+
+        int64 next_index_ GUARDED_BY(mu_) = 0;
+
+        mutex mu_;
+      };
+
+      class SnapshotWriterIterator : public DatasetIterator<Dataset> {
+       public:
+        explicit SnapshotWriterIterator(const Params& params,
+                                        const string& fingerprint_dir)
+            : DatasetIterator<Dataset>(params),
+              fingerprint_dir_(fingerprint_dir) {}
+
+        Status Initialize(IteratorContext* ctx) override {
+          mutex_lock l(mu_);
+
+          run_id_ = strings::StrCat(
+              strings::Hex(random::New64(), strings::kZeroPad4));
+          run_dir_ = absl::StrCat(fingerprint_dir_, "/", run_id_);
+
+          TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(run_dir_));
+
+          experimental::SnapshotMetadataRecord metadata;
+          metadata.set_creation_timestamp(Env::Default()->NowMicros());
+          metadata.set_graph_fingerprint(dataset()->graph_fingerprint_);
+          metadata.set_run_id(run_id_);
+          metadata.set_finalized(false);
+
+          TF_RETURN_IF_ERROR(WriteMetadataFile(fingerprint_dir_, metadata));
+
+          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
-      }
 
-      Status ReadMetadataFile(experimental::SnapshotMetadataRecord* metadata) {
-        string metadata_file_path =
-            absl::StrCat(fp_path_, "/snapshot.metadata");
-        TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_file_path));
+        Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
+          mutex_lock l(mu_);
 
-        std::unique_ptr<RandomAccessFile> file;
-        TF_CHECK_OK(
-            Env::Default()->NewRandomAccessFile(metadata_file_path, &file));
+          TF_RETURN_IF_ERROR(
+              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
 
-        string record_bytes;
-        auto reader = absl::make_unique<io::RecordReader>(file.get());
-        uint64 offset = 0;
-        TF_CHECK_OK(reader->ReadRecord(&offset, &record_bytes));
+          if (*end_of_sequence) {
+            experimental::SnapshotMetadataRecord metadata;
+            TF_RETURN_IF_ERROR(ReadMetadataFile(fingerprint_dir_, &metadata));
 
-        metadata->ParseFromString(record_bytes);
-        return Status::OK();
-      }
+            if (metadata.run_id() == run_id_) {
+              if (current_writer_) TF_RETURN_IF_ERROR(current_writer_->Close());
+              if (current_write_file_)
+                TF_RETURN_IF_ERROR(current_write_file_->Close());
+              current_writer_.reset();
+              current_write_file_.reset();
 
-      string run_id_;
-      string fp_path_;
-      SnapshotState state_;
+              current_write_filename_ = "";
 
-      std::unique_ptr<IteratorBase> input_impl_;
+              metadata.set_finalized(true);
+              TF_RETURN_IF_ERROR(WriteMetadataFile(fingerprint_dir_, metadata));
+            } else {
+              // TODO(frankchn): We lost the race, remove all snapshots.
+            }
+
+            return Status::OK();
+          }
+
+          string snapshot_data_filename =
+              GetCurrentSnapshotDataFilename(next_index_, run_dir_);
+
+          if (current_write_filename_ != snapshot_data_filename) {
+            if (current_writer_) TF_RETURN_IF_ERROR(current_writer_->Close());
+            if (current_write_file_)
+              TF_RETURN_IF_ERROR(current_write_file_->Close());
+
+            current_writer_.reset();
+            current_write_file_.reset();
+
+            TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
+                snapshot_data_filename, &current_write_file_));
+            current_writer_ =
+                absl::make_unique<io::RecordWriter>(current_write_file_.get());
+            current_write_filename_ = snapshot_data_filename;
+          }
+
+          experimental::SnapshotRecord record;
+
+          for (auto out_tensor : *out_tensors) {
+            TensorProto* t = record.add_tensor();
+            out_tensor.AsProtoTensorContent(t);
+          }
+
+          TF_RETURN_IF_ERROR(
+              current_writer_->WriteRecord(record.SerializeAsString()));
+
+          next_index_++;
+          return Status::OK();
+        }
+
+       private:
+        std::unique_ptr<IteratorBase> input_impl_;
+
+        const string fingerprint_dir_;
+        string run_id_ GUARDED_BY(mu_);
+        string run_dir_ GUARDED_BY(mu_);
+
+        string current_write_filename_ GUARDED_BY(mu_);
+        std::unique_ptr<WritableFile> current_write_file_ GUARDED_BY(mu_);
+        std::unique_ptr<io::RecordWriter> current_writer_ GUARDED_BY(mu_);
+
+        uint64 next_index_ GUARDED_BY(mu_) = 0;
+
+        mutex mu_;
+      };
+
+      class SnapshotPassthroughIterator : public DatasetIterator<Dataset> {
+       public:
+        explicit SnapshotPassthroughIterator(const Params& params)
+            : DatasetIterator<Dataset>(params) {}
+
+        Status Initialize(IteratorContext* ctx) override {
+          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        }
+
+        Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
+          return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        }
+
+       private:
+        std::unique_ptr<IteratorBase> input_impl_;
+      };
+
+      string fingerprint_dir_;
+      SnapshotMode state_;
+
+      std::unique_ptr<IteratorBase> iterator_;
     };
 
     const DatasetBase* const input_;
-    const string path_;
-    const string graph_fp_;
+    const string dir_;
+    const string graph_fingerprint_;
   };
 
   const int graph_def_version_;

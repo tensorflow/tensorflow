@@ -87,6 +87,10 @@ inline constexpr Path operator^(Path p, Path q) {
                            static_cast<std::uint32_t>(q));
 }
 
+inline constexpr Path operator~(Path p) {
+  return static_cast<Path>(~static_cast<std::uint32_t>(p));
+}
+
 inline Path GetMostSignificantPath(Path path_mask) {
   return static_cast<Path>(round_down_pot(static_cast<int>(path_mask)));
 }

@@ -2863,6 +2863,7 @@ py_library(
         ":platform",
         ":string_ops",
         ":util",
+        "//tensorflow/python/compat",
     ],
 )
 

@@ -196,6 +196,17 @@ cc_library(
 )
 
 cc_library(
+    name = "internal_matrix",
+    hdrs = ["internal_matrix.h"],
+    deps = [
+        ":check_macros",
+        ":common",
+        ":matrix",
+        ":size_util",
+    ],
+)
+
+cc_library(
     name = "common",
     hdrs = [
         "common.h",
@@ -205,7 +216,6 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":path",
-        ":size_util",
     ],
 )
 
@@ -219,7 +229,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":size_util",
@@ -240,7 +250,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":spec",

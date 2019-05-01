@@ -2096,6 +2096,10 @@ void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
 
   std::vector<Node*> node_map(src.num_node_ids());
 
+  // Copy just the fdef attributes (copy '_noinline' and other similar flags to
+  // the gradient function body).
+  *(gbody->fdef.mutable_attr()) = fbody_->fdef.attr();
+
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();
   node_map[src.sink_node()->id()] = dst->sink_node();

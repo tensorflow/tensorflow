@@ -1439,6 +1439,58 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   }
 }
 
+TEST_F(FunctionLibraryRuntimeTest, Gradient_Select) {
+  FunctionDef my_select = FunctionDefHelper::Create(
+      "MySelect",
+      // Args
+      {"condition: bool", "t: float32", "e: float32"},
+      // Return values
+      {"z: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"select0"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"select1"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"add"},
+           "Add",
+           {"select0:output", "select1:output"},
+           {{"T", DT_FLOAT}}},
+      },
+      // Output mapping
+      {{"z", "add:z"}});
+  FunctionDef select_grad = FunctionDefHelper::Create(
+      "MySelectGrad",
+      // Args
+      {"condition: bool", "t:float32", "e: float32", "dz: float32"},
+      // Return values
+      {"dt: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {{
+          {"grad"},
+          "SymbolicGradient",
+          {"condition", "t", "e", "dz"},
+          {
+              {"f", FunctionDefHelper::FunctionRef("MySelect")},
+              {"Tin", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT, DT_FLOAT})},
+              {"Tout", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT})},
+          },
+      }},
+      // Output mapping
+      {{"dt", "grad:output:1"}});
+  Init({my_select, select_grad});
+
+  auto condition = test::AsTensor<bool>({false});
+  auto t = test::AsTensor<float>({13.0});
+  auto e = test::AsTensor<float>({15.0});
+  auto dz = test::AsTensor<float>({1.0});
+  Tensor y;
+  TF_EXPECT_OK(InstantiateAndRun(flr0_, "MySelectGrad", {},
+                                 {condition, t, e, dz}, {&y}));
+}
+
 TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {
   Init({});
   auto T = DT_FLOAT;

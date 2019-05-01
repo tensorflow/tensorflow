@@ -32,9 +32,8 @@ struct ZeroPointSupportSpec : BasicSpec<AccumScalar, DstScalar> {
 };
 
 template <typename AccumScalar, typename DstScalar>
-struct PackedLinearRCCSpec : BasicSpec<AccumScalar, DstScalar> {
-  static constexpr LayoutSupport kLayoutSupport =
-      LayoutSupport::kPackedLinearRCC;
+struct RCCSpec : BasicSpec<AccumScalar, DstScalar> {
+  static constexpr LayoutSupport kLayoutSupport = LayoutSupport::kRCC;
 };
 
 using LhsScalar = RUY_TEST_LHSSCALAR;
@@ -117,13 +116,11 @@ TEST(TestSpecialSpecs, ZeroPointSupport) {
       SymmetricZeroPoint<DstScalar>() - 1, ExpectedOutcome::kDeath);
 }
 
-TEST(TestSpecialSpecs, PackedLinearRCC) {
-  using PackedLinearRCCSpec = PackedLinearRCCSpec<AccumScalar, DstScalar>;
-  using PackedLinearRCCTestSet =
-      TestSet<LhsScalar, RhsScalar, PackedLinearRCCSpec>;
-  TestPackedLinearRCC<PackedLinearRCCTestSet>(81, 93, 72);
-  TestLinearAllOrders<PackedLinearRCCTestSet>(81, 93, 72,
-                                              ExpectedOutcome::kDeath);
+TEST(TestSpecialSpecs, RCC) {
+  using RCCSpec = RCCSpec<AccumScalar, DstScalar>;
+  using RCCTestSet = TestSet<LhsScalar, RhsScalar, RCCSpec>;
+  TestRCC<RCCTestSet>(81, 93, 72);
+  TestNonRCC<RCCTestSet>(81, 93, 72, ExpectedOutcome::kDeath);
 }
 
 }  // namespace ruy

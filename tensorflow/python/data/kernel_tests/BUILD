@@ -549,7 +549,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],

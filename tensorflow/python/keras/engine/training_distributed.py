@@ -238,7 +238,10 @@ def _make_train_step_fn(model, mode, strategy, output_labels):
 
   def _step_fn(ctx, inputs):
     """A step fn that returns update ops."""
-    inputs, targets = inputs
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
 
     # When input feature is a dictionary of tensors, dictionary is flattended
     # to an array and passed as a model input. This results in input mismatch
@@ -493,7 +496,11 @@ def experimental_tpu_test_loop(model,
 
   def _test_step_fn(inputs):
     """A fn that returns output of single test step."""
-    inputs, targets = inputs
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
+
     (distribution_strategy_context.get_replica_context().merge_call(
         _build_model, args=(model, mode, inputs, targets)))
 

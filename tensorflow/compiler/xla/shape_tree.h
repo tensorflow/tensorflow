@@ -290,6 +290,8 @@ class ShapeTree {
                        const ShapeIndex& source_base_index,
                        const ShapeIndex& target_base_index);
 
+  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const;
+
   bool operator==(const ShapeTree<T>& other) const;
   bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
 
@@ -662,6 +664,16 @@ void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
     }
     *data = other.element(source_index);
   });
+}
+
+template <typename T>
+StatusOr<ShapeTree<T>> ShapeTree<T>::SubShapeTree(
+    const ShapeIndex& index) const {
+  TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
+                      ShapeUtil::TryGetSubshape(shape(), index));
+  ShapeTree<T> sub_shape_tree(*sub_shape);
+  sub_shape_tree.CopySubtreeFrom(*this, index, {});
+  return std::move(sub_shape_tree);
 }
 
 template <typename T>

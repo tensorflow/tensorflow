@@ -30,6 +30,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
@@ -2027,6 +2028,14 @@ class Options(options_lib.OptionsBase):
       docstring=
       "Whether the outputs need to be produced in deterministic order. If None,"
       " defaults to True.")
+
+  experimental_distribute = options_lib.create_option(
+      name="experimental_distribute",
+      ty=distribute_options.DistributeOptions,
+      docstring=
+      "The distribution options associated with the dataset. See "
+      "`tf.data.experimental.DistributeOptions` for more details.",
+      default_factory=distribute_options.DistributeOptions)
 
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
