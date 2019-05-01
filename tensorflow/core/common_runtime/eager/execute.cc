@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -683,7 +684,9 @@ Status EagerLocalExecute(EagerOperation* op,
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
+  ctx->Ref();
   return [ctx, eager_client, context_id, op_id, output_num]() {
+    auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
     if (!ctx->HasActiveRemoteContext(context_id)) {
       // This means that this tensor was pointing to a remote device, which
       // has been changed out from under us. Simply return since there is

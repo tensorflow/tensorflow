@@ -677,7 +677,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
       std::move(server), grpc_server->worker_env()->device_mgr,
       grpc_server->worker_env()->collective_executor_mgr));
 
