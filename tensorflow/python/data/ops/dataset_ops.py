@@ -2878,7 +2878,7 @@ class BatchDataset(UnaryDataset):
     return self._structure
 
 
-class _VariantTracker(tracking.TrackableResource):
+class _VariantTracker(tracking.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object
