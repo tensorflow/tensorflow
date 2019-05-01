@@ -391,7 +391,10 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
     infeed_queue.initializer
-    with self.assertRaisesRegexp(ValueError, 'The `initializer` function can'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'The IPUInfeedQueue `initializer` function can only be accessed once.'
+    ):
       infeed_queue.initializer
 
   def testTrainingLoopWithInfeed(self):
