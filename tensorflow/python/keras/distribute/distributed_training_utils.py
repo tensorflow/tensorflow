@@ -339,8 +339,9 @@ def validate_per_replica_inputs(distribution_strategy, x):
     # structure.
     x_values = distribution_strategy.unwrap(x)
 
-    # Validate that the shape and dtype of all the elements in x are the same.
-    validate_all_tensor_shapes(x, x_values)
+    if not context.executing_eagerly():
+      # Validate that the shape and dtype of all the elements in x are the same.
+      validate_all_tensor_shapes(x, x_values)
     validate_all_tensor_types(x, x_values)
 
     x_values_list.append(x_values[0])
@@ -398,16 +399,12 @@ def init_restore_or_wait_for_variables():
     _wait_for_variable_initialization(session)
 
 
-def validate_inputs(x, y, distribution_strategy, allow_partial_batch=False):
+def validate_inputs(x, y):
   """Validate inputs when using DistributionStrategy.
 
   Args:
     x: Model Inputs.
     y: Model Targets.
-    distribution_strategy: The DistributionStrategy with which the model is
-      compiled.
-    allow_partial_batch: Boolean. If false, datasets must have fully
-      defined shapes.
 
   Raises:
     ValueError: if input is not a Dataset or a numpy array(when we use
@@ -418,16 +415,6 @@ def validate_inputs(x, y, distribution_strategy, allow_partial_batch=False):
     raise ValueError('`DistributionStrategy` does not support inputs of type '
                      'Iterator. You must pass a `tf.data.Dataset` object or a '
                      'numpy array as input.')
-
-  if is_tpu_strategy(distribution_strategy):
-    for i in [x, y]:
-      if (isinstance(i, dataset_ops.DatasetV2) and not allow_partial_batch):
-        if not is_dataset_shape_fully_defined(i):
-          raise ValueError(
-              'Using TPUs currently requires fully defined shapes. Either use '
-              'set_shape() on the input tensors or use '
-              'dataset.batch(..., drop_remainder=True).'
-              'Found unknown shape in input {}.'.format(i))
 
 
 # TODO(b/118776054): Currently we support global batch size for TPUStrategy and
@@ -485,9 +472,9 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
   # Partial batches are allowed for training as we repeat the
   # dataset when converting numpy arrays into a dataset.
   # For other modes uneven batch sizes are not allowed except
-  # for `predict()` on TPUStrategy.
+  # for `test()` and `predict()` on TPUStrategy.
   allow_partial_batch = (mode == ModeKeys.TRAIN or
-                         (mode == ModeKeys.PREDICT
+                         ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST)
                           and is_tpu_strategy(distribution_strategy)))
 
   if steps is None:
