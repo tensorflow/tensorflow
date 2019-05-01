@@ -624,7 +624,8 @@ bool AssertSameStructureHelper(
     PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
     bool* is_type_error,
     const std::function<int(PyObject*)>& is_sequence_helper,
-    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter) {
+    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
+    bool check_composite_tensor_metadata) {
   DCHECK(error_msg);
   DCHECK(is_type_error);
   const bool is_seq1 = is_sequence_helper(o1);
@@ -730,6 +731,25 @@ bool AssertSameStructureHelper(
     }
   }
 
+  if (check_composite_tensor_metadata && IsCompositeTensor(o1)) {
+    if (!IsCompositeTensor(o2)) return false;
+    static char _to_component_metadata[] = "_component_metadata";
+    PyObject* m1 = PyObject_CallMethod(o1, _to_component_metadata, nullptr);
+    if (PyErr_Occurred() || m1 == nullptr) return false;
+    PyObject* m2 = PyObject_CallMethod(o2, _to_component_metadata, nullptr);
+    if (PyErr_Occurred() || m2 == nullptr) return false;
+    if (PyObject_RichCompareBool(m1, m2, Py_NE)) {
+      *is_type_error = false;
+      *error_msg = tensorflow::strings::StrCat(
+          "The two CompositeTensors have different metadata. "
+          "First CompositeTensor ",
+          PyObjectToString(o1), " has metadata ", PyObjectToString(m1),
+          ", while second structure ", PyObjectToString(o2), " has metadata ",
+          PyObjectToString(m2));
+      return false;
+    }
+  }
+
   ValueIteratorPtr iter1 = value_iterator_getter(o1);
   ValueIteratorPtr iter2 = value_iterator_getter(o2);
 
@@ -744,7 +764,8 @@ bool AssertSameStructureHelper(
       }
       bool no_internal_errors = AssertSameStructureHelper(
           v1.get(), v2.get(), check_types, error_msg, is_type_error,
-          is_sequence_helper, value_iterator_getter);
+          is_sequence_helper, value_iterator_getter,
+          check_composite_tensor_metadata);
       Py_LeaveRecursiveCall();
       if (!no_internal_errors) return false;
       if (!error_msg->empty()) return true;
@@ -916,10 +937,12 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
       expand_composites ? IsSequenceOrCompositeHelper : IsSequenceHelper;
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
+  const bool check_composite_tensor_metadata = expand_composites;
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            is_sequence_helper, get_value_iterator);
+                            is_sequence_helper, get_value_iterator,
+                            check_composite_tensor_metadata);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).
@@ -943,7 +966,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator);
+                            IsSequenceForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).
