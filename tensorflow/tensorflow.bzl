@@ -1299,7 +1299,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda_is_configured_compat([
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_lib"),
@@ -2033,7 +2033,8 @@ def tf_py_test(
         flaky = 0,
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
 
@@ -2063,6 +2064,7 @@ def tf_py_test(
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),
         ] + additional_deps + xla_test_true_list,
+        **kwargs
     )
 
 register_extension_info(

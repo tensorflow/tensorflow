@@ -202,6 +202,8 @@ class ReplicaDeviceMap(DeviceMap):
     replica_id = replica_context.replica_id_in_sync_group
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
+    if replica_id is None:
+      replica_id = 0
     return values[replica_id]
 
   def replica_for_device(self, device):
@@ -280,10 +282,7 @@ class DistributedValues(object):
 
   @property
   def is_tensor_like(self):
-    for v in self._values:
-      if not tensor_util.is_tensor(v):
-        return False
-    return True
+    return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
     devices = self.devices
@@ -1092,7 +1091,7 @@ class TPUMirroredVariable(variables_lib.Variable):
 
   @property
   def constraint(self):
-    return None
+    return self.primary.constraint
 
   @property
   def initializer(self):
@@ -1308,7 +1307,8 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
     return self._distribute_strategy.reduce(
-        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self)
+        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self,
+        axis=None)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1560,8 +1560,16 @@ class AggregatingVariable(variables_lib.Variable):
     assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
+  @property
   def initializer(self):
-    return self._v.initializer()
+    return self._v.initializer
+
+  @property
+  def op(self):
+    return self._v.op
+
+  def read_value(self):
+    return self._v.read_value()
 
   def eval(self, session=None):
     return self._v.eval(session)

@@ -206,8 +206,12 @@ def _get_argspec_for_partial(obj):
 
   # Fill in default values provided by partial function in all_defaults.
   for kw, default in six.iteritems(partial_keywords):
-    idx = args.index(kw)
-    all_defaults[idx] = default
+    if kw in args:
+      idx = args.index(kw)
+      all_defaults[idx] = default
+    elif not keywords:
+      raise ValueError('Function does not have **kwargs parameter, but '
+                       'contains an unknown partial keyword.')
 
   # Find first argument with default value set.
   first_default = next(
@@ -395,22 +399,3 @@ def isroutine(object):  # pylint: disable=redefined-builtin
 def stack(context=1):
   """TFDecorator-aware replacement for inspect.stack."""
   return _inspect.stack(context)[1:]
-
-
-def getsource_no_unwrap(obj):
-  """Return source code for an object. Does not unwrap TFDecorators.
-
-  The source code is returned literally, including indentation for functions not
-  at the top level. This function is analogous to inspect.getsource, with one
-  key difference - it doesn't unwrap decorators. For simplicity, support for
-  some Python object types is dropped (tracebacks, frames, code objects).
-
-  Args:
-      obj: a class, method, or function object.
-
-  Returns:
-      source code as a string
-
-  """
-  lines, lnum = _inspect.findsource(obj)
-  return ''.join(_inspect.getblock(lines[lnum:]))

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+
 #include <numeric>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -39,8 +41,9 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+                                       TimerStats* timer_stats)
+    : enabled(enabled), label(label), timer_stats(timer_stats) {
   if (enabled) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
@@ -51,8 +54,22 @@ ScopedLoggingTimer::~ScopedLoggingTimer() {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
+    TimerStats& stats = *timer_stats;
+    tensorflow::mutex_lock lock(stats.stats_lock);
+    stats.cumulative_secs += secs;
+    if (secs > stats.max_secs) {
+      stats.max_secs = secs;
+    }
+    stats.times_called++;
+
     LOG(INFO) << label << " time: "
-              << tensorflow::strings::HumanReadableElapsedTime(secs);
+              << tensorflow::strings::HumanReadableElapsedTime(secs)
+              << " (cumulative: "
+              << tensorflow::strings::HumanReadableElapsedTime(
+                     stats.cumulative_secs)
+              << ", max: "
+              << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+              << ", #called: " << stats.times_called << ")";
   }
 }
 

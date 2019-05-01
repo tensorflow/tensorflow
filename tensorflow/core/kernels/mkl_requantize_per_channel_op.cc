@@ -162,11 +162,18 @@ class MklRequantizePerChannelOp : public OpKernel {
   engine cpu_engine_ = engine(engine::cpu, 0);
 };
 
+// Registration for out_type: qint8
 REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint32>("T")
                             .TypeConstraint<qint8>("out_type"),
                         MklRequantizePerChannelOp<CPUDevice, qint8>);
+// Registration for out_type: quint8
+REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint32>("T")
+                            .TypeConstraint<quint8>("out_type"),
+                        MklRequantizePerChannelOp<CPUDevice, quint8>);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

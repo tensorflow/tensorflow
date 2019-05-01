@@ -60,6 +60,33 @@ XLA_TEST_F(QrTest, Simple) {
                              xla::ErrorSpec(1e-4, 1e-4));
 }
 
+XLA_TEST_F(QrTest, ZeroDiagonal) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::Array2D<float> a_vals({
+      {0, 1, 1},
+      {1, 0, 1},
+      {1, 1, 0},
+  });
+
+  xla::XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      xla::QRDecomposition(a, /*full_matrices=*/true, /*block_size=*/8));
+
+  // Verifies that the decomposition composes back to the original matrix.
+  //
+  // This isn't a terribly demanding test, (e.g., we should verify that Q is
+  // orthonormal and R is upper-triangular) but it's awkward to write such tests
+  // without more linear algebra libraries. It's easier to test the numerics
+  // from Python, anyway, where we have access to numpy and scipy.
+  xla::BatchDot(result.q, result.r, xla::PrecisionConfig::HIGHEST);
+
+  ComputeAndCompareR2<float>(&builder, a_vals, {a_data.get()},
+                             xla::ErrorSpec(1e-4, 1e-4));
+}
+
 XLA_TEST_F(QrTest, SimpleBatched) {
   xla::XlaBuilder builder(TestName());
 

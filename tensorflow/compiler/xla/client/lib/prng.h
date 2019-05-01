@@ -50,6 +50,19 @@ using BitGeneratorTy = std::function<RngOutput(XlaOp key, XlaOp initial_state,
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const xla::Shape& shape);
 
+// Implements the Philox algorithm to generate random numbers in parallel.
+// Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
+//   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
+//
+// The paper presents a few variants of the Philox algorithm, we picked the
+// 4x32_10 version of the algorithm for the following reasons:
+//   . 4x32 uses 32-bit multiplication which is fast on GPUs.
+//   . The authors recommend the 10-round variant, and TensorFlow also uses it.
+// 'scramble` controls whether to scramble 'key' and 'initial_state' to form
+// the actual key and state fed to the Philox algorithm.
+RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
+                             bool scramble);
+
 // Uses the given bit generator to generate random bits and then converts the
 // random bits to random numbers of uniform distribution in the given range.
 // Returns the random numbers and the state of the random number generator.
@@ -69,6 +82,10 @@ RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
 RngOutput NormalF32Distribution(XlaOp key, XlaOp initial_state,
                                 BitGeneratorTy bit_generator,
                                 const xla::Shape& shape);
+
+// Concatenates scalars into a vector.
+xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,
+                         absl::Span<const xla::XlaOp> scalars);
 
 }  // namespace xla
 

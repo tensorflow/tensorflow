@@ -19,6 +19,7 @@ from __future__ import print_function
 import functools
 import json
 import os
+import weakref
 
 from absl.testing import parameterized
 import six
@@ -27,7 +28,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -43,6 +43,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
@@ -406,7 +408,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    root_trackable.save_counter  # pylint: disable=pointless-statement
+    self.assertFalse(root_trackable.save_counter.trainable)
     self.evaluate(trackable_utils.gather_initializers(
         root_trackable))
     self.evaluate(train_op)
@@ -617,6 +619,84 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       if not path.endswith(expected_suffix):
         self.fail("%s should have suffix %s" % (path, expected_suffix))
       self.evaluate(step.assign_add(2))
+
+  def testPartialRestoreWarningObject(self):
+    with context.eager_mode():
+      optimizer = adam.Adam(0.0)
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.),
+                                                 optimizer=optimizer)
+      # Create a slot variable to save
+      optimizer.minimize(original_root.v1.read_value, [original_root.v1])
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      weak_v1 = weakref.ref(partial_root.v1)
+      partial_root.restore(save_path)
+      self.assertEqual(2., partial_root.v1.numpy())
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        self.assertIsNone(weak_v1())
+        messages = str(mock_log.call_args_list)
+      self.assertIn("(root).v2'", messages)
+      self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
+      self.assertNotIn("(root).v1'", messages)
+      self.assertIn("expect_partial()", messages)
+
+  def testPartialRestoreWarningAttribute(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=base.Trackable(),
+                                                v2=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        # Note: Unlike in testPartialRestoreWarningObject, the warning actually
+        # prints immediately here, since all of the objects have been created
+        # and there's no deferred restoration sitting around.
+        partial_root.restore(save_path)
+        self.assertEqual(3., partial_root.v2.numpy())
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        messages = str(mock_log.call_args_list)
+      self.assertIn("(root).v1", messages)
+      self.assertNotIn("(root).v2", messages)
+      self.assertIn("expect_partial()", messages)
+
+  def testAttributeException(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=base.Trackable(),
+                                                v2=variables_lib.Variable(0.))
+      status = partial_root.restore(save_path)
+      with self.assertRaisesRegexp(
+          AssertionError,
+          r"Unused attributes(.|\n)*\(root\).v1"):
+        status.assert_consumed()
+
+  def testSilencePartialWarning(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      weak_v1 = weakref.ref(partial_root.v1)
+      partial_root.restore(save_path).expect_partial()
+      self.assertEqual(2., partial_root.v1.numpy())
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        self.assertIsNone(weak_v1())
+        self.assertEmpty(mock_log.call_args_list)
 
   # pylint: disable=cell-var-from-loop
   @test_util.run_in_graph_and_eager_modes
@@ -1571,4 +1651,5 @@ class PythonMetadataTests(test.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

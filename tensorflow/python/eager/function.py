@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import itertools
 import threading
 import types as types_lib
 import weakref
@@ -959,31 +960,49 @@ class FunctionSpec(object):
   @staticmethod
   def from_function_and_signature(python_function, input_signature):
     """Create a FunctionSpec instance given a python function and signature."""
-    if isinstance(python_function, functools.partial):
-      python_function_to_inspect = python_function.func
-      args_to_prepend = python_function.args or tuple()
-      kwargs_to_include = python_function.keywords or {}
-      if input_signature is not None:
-        # TODO(b/124441704): Add support for input_signature + partial.
-        raise NotImplementedError(
-            "Missing support for input_signature when using partial functions.")
-    else:
-      python_function_to_inspect = python_function
-      args_to_prepend = tuple()
-      kwargs_to_include = {}
+    fullargspec = tf_inspect.getfullargspec(python_function)
+    # Treat a wrapped partial function as a special case. For all arguments that
+    # were overridden with keywords in the partial:
+    #   - remove the corresponding arguments,
+    #   - remove the corresponding keywords.
+    _, unwrapped = tf_decorator.unwrap(python_function)
+    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
+    # fullargspec.kwonlydefaults.
+    if isinstance(unwrapped, functools.partial):
+      # Also consider the Python3 case with kwonlydefaults.
+      if fullargspec.defaults or fullargspec.kwonlydefaults:
+        new_defaults = fullargspec.defaults
+        new_args = fullargspec.args
+        if fullargspec.defaults:
+          num_defaults = len(fullargspec.defaults)
+          args_with_default = fullargspec.args[-num_defaults:]
+          non_keyword_defaults_mask = [
+              0 if key in unwrapped.keywords else 1 for key in args_with_default
+          ]
+          # Keep only arguments and defaults that were not kwargs of partial.
+          new_defaults = tuple(
+              itertools.compress(fullargspec.defaults,
+                                 non_keyword_defaults_mask))
+          new_args = list(
+              itertools.compress(fullargspec.args, non_keyword_defaults_mask))
 
-    fullargspec = tf_inspect.getfullargspec(python_function_to_inspect)
-    is_method = tf_inspect.ismethod(python_function_to_inspect)
-
-    return FunctionSpec(fullargspec, is_method, args_to_prepend,
-                        kwargs_to_include, input_signature)
+        fullargspec = tf_inspect.FullArgSpec(
+            args=new_args,
+            varargs=fullargspec.varargs,
+            varkw=fullargspec.varkw,
+            defaults=new_defaults,
+            kwonlyargs=[],
+            kwonlydefaults={},
+            annotations=fullargspec.annotations)
+    is_method = tf_inspect.ismethod(python_function)
+    return FunctionSpec(fullargspec, is_method, [], {}, input_signature)
 
   def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
                input_signature):
     self._fullargspec = fullargspec
     self._is_method = is_method
-    self._args_to_prepend = args_to_prepend
-    self._kwargs_to_include = kwargs_to_include
+    del args_to_prepend
+    del kwargs_to_include
     self._default_values = fullargspec.defaults
 
     if self._is_method:
@@ -1009,7 +1028,7 @@ class FunctionSpec(object):
     if input_signature is None:
       self._input_signature = None
     else:
-      if fullargspec.varkw is not None or fullargspec.kwonlyargs:
+      if fullargspec.kwonlyargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
                          "function with keyword arguments when "
                          "input_signature is provided.")
@@ -1020,7 +1039,7 @@ class FunctionSpec(object):
 
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
-                                                      expand_composites=False))
+                                                      expand_composites=True))
 
   @property
   def fullargspec(self):
@@ -1085,8 +1104,6 @@ class FunctionSpec(object):
               "When input_signature is provided, only pass arguments "
               "covered by it. Received argument %s." % arg)
 
-    args = self._args_to_prepend + args
-    kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
       inputs = args
       for index in sorted(self._arg_indices_to_default_values.keys()):
@@ -1267,10 +1284,7 @@ class Function(object):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    if isinstance(python_function, functools.partial):
-      self._python_function = python_function.func
-    else:
-      self._python_function = python_function
+    self._python_function = python_function
     self._function_spec = FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._name = name
@@ -1642,7 +1656,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature, expand_composites=False)):
+         for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 
@@ -1690,7 +1704,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   # A simple example.
   def f(x, y):
@@ -1737,7 +1751,7 @@ def defun(func=None,
   model(x, training=False) # executes a graph, without dropout
 
   # `defun`-compiled functions are differentiable.
-  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=0.01)
   with tf.GradientTape() as tape:
     outputs = model(x)
   gradient = tape.gradient(outputs, model.trainable_variables)
@@ -1759,8 +1773,8 @@ def defun(func=None,
   By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
   for every unique sequence of the shapes and dtypes of Tensor arguments and
   the values of Python objects it is invoked with. For example, calling
-  `F(tf.random_uniform([2])` will execute a different graph than
-  `F(tf.random_uniform([3])` because the two inputs have different shapes.
+  `F(tf.random.uniform([2])` will execute a different graph than
+  `F(tf.random.uniform([3])` because the two inputs have different shapes.
   The first time that `F(*args, **kwargs)` is called with a particular sequence
   of Tensor shapes and dtypes and Python values, it constructs a graph by
   tracing the execution of `f(*args, **kwargs)`; this graph is bound to an
@@ -1797,15 +1811,15 @@ def defun(func=None,
     ...
 
   # Note how the third dimension of the first input can vary freely.
-  words = tf.random_uniform(([50, 300, 10])
-  second_input = tf.random_uniform([300, 100])
+  words = tf.random.uniform(([50, 300, 10])
+  second_input = tf.random.uniform([300, 100])
   my_sequence_model(words, second_input)
 
-  words = tf.random_uniform(([50, 300, 20])
+  words = tf.random.uniform(([50, 300, 20])
   my_sequence_model(words, second_input)
 
   # Passing an input with an incompatible shape will raise an error.
-  words = tf.random_uniform(([50, 100, 20])
+  words = tf.random.uniform(([50, 100, 20])
   my_sequence_model(words, second_input)  # <---- This will raise an error.
 
   ```
@@ -1827,7 +1841,7 @@ def defun(func=None,
   import tensorflow as tf
   import numpy as np
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   def add_noise():
     return tf.eye(5) + np.random.randn(5, 5)
@@ -1837,7 +1851,7 @@ def defun(func=None,
   `compiled = tf.contrib.eager.defun(add_noise)` will return the same value
   every time it is called, since a particular random offset generated by NumPy
   will be inserted into the graph as a TensorFlow constant. The solution is to
-  replace the call to `np.random.randn` with `tf.random_normal((5, 5))`.
+  replace the call to `np.random.randn` with `tf.random.normal((5, 5))`.
 
   _Python Side-Effects_
 
@@ -1859,7 +1873,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   @tf.contrib.eager.defun
   def lossy_matmul(W, x, training=True):
@@ -1868,8 +1882,8 @@ def defun(func=None,
       outputs = tf.nn.dropout(outputs, keep_probability=0.2)
     return outputs
 
-  W = tf.random_normal((3, 5))
-  x = tf.random_normal((5, 1))
+  W = tf.random.normal((3, 5))
+  x = tf.random.normal((5, 1))
 
   # Executes a graph that applies dropout.
   lossy_outputs = lossy_matmul(W, x, training=True)
@@ -1911,7 +1925,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   def fn():
     x = tf.Variable(0.0)

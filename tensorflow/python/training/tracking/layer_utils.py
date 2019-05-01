@@ -33,9 +33,10 @@ def is_layer(obj):
 def has_weights(obj):
   """Implicit check for Layer-like objects."""
   # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
-  return (hasattr(obj, "trainable_weights")
-          and hasattr(obj, "non_trainable_weights")
-          and not isinstance(obj, type))
+  has_weight = (hasattr(type(obj), "trainable_weights")
+                and hasattr(type(obj), "non_trainable_weights"))
+
+  return has_weight and not isinstance(obj, type)
 
 
 def filter_empty_layer_containers(layer_list):

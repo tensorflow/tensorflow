@@ -116,7 +116,6 @@ REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
 #endif  // TENSORFLOW_USE_SYCL
 
-REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_GPU).HostMemory("tensor"), SendOp);
 
@@ -200,7 +199,6 @@ REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
 #endif  // TENSORFLOW_USE_SYCL
 
-REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
 
@@ -208,5 +206,17 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
 #endif  // TENSORFLOW_USE_SYCL
+
+// Environment variable `DISABLE_HOST_SEND_RECV_REGISTRATION` is used to disable
+// hostSend and hostRecv registration on CPU device in the mock environment.
+static bool InitModule() {
+  if (!std::getenv("DISABLE_HOST_SEND_RECV_REGISTRATION")) {
+    REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
+    REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
+  }
+  return true;
+}
+
+static bool module_initialized = InitModule();
 
 }  // end namespace tensorflow

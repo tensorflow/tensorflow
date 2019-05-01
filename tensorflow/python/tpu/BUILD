@@ -133,6 +133,20 @@ py_library(
 )
 
 py_library(
+    name = "tpu_noestimator",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        ":preempted_hook_py",
+        ":tpu_embedding",
+        ":tpu_lib",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
@@ -165,6 +179,7 @@ py_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
@@ -221,7 +236,10 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 tf_py_test(

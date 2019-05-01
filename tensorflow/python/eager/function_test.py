@@ -41,6 +41,7 @@ from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import sparse_tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -66,6 +67,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -116,8 +118,7 @@ def _example_indexed_slices_without_dense_shape():
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
@@ -289,8 +290,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -301,8 +301,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedInputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -316,8 +315,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -346,8 +344,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().shape, ())
 
   def testBasicGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -361,8 +358,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -381,8 +377,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
 
   def testNestedInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(mats):
@@ -476,8 +471,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(), x)
 
   def testNestedInputsGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -494,8 +488,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -964,6 +957,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
       (sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
+       [ragged_tensor_spec.ragged_tensor_spec([None, None], dtypes.int32)]),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
+       [ragged_tensor_spec.ragged_tensor_spec([None, None, None],
+                                              dtypes.int32)]),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
+       [sparse_tensor_spec.sparse_tensor_spec([None], dtypes.int32)]),
   ])  # pyformat: disable
   def testCompositeAsArgumentTensorWithDefun(self,
                                              factory_fn,
@@ -988,8 +991,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):
     x = constant_op.constant([1.]).gpu()
-    # TODO(b/121134877): Remove the autograph override.
-    f = def_function.function(math_ops.add, autograph=False)
+    f = def_function.function(math_ops.add)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
@@ -1053,8 +1055,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionHandlesInputsOnDifferentDevices(self):
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).cpu()
@@ -1063,8 +1064,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
@@ -1123,9 +1123,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
-    # TODO(b/121134877): Remove the autograph override.
-    clip_by_global_norm = def_function.function(
-        clip_ops.clip_by_global_norm, autograph=False)
+    clip_by_global_norm = def_function.function(clip_ops.clip_by_global_norm)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
@@ -1777,21 +1775,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
-  def testInputSignatureWithKeywordArgsFails(self):
-
-    def foo(a, **kwargs):
-      del a
+  def testInputSignatureWithKeywordArgs(self):
+    def foo(a, b, **kwargs):
       del kwargs
+      return a, b
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Cannot define a TensorFlow function from a Python '
-        'function with keyword arguments when input_signature.*'):
-      function.defun(
-          foo,
-          input_signature=[
-              tensor_spec.TensorSpec([], dtypes.float32),
-              tensor_spec.TensorSpec([], dtypes.int64)
-          ])
+    x = function.defun(
+        foo,
+        input_signature=[
+            tensor_spec.TensorSpec([], dtypes.float32),
+            tensor_spec.TensorSpec([], dtypes.int32)
+        ]).get_concrete_function()
+    result = x(constant_op.constant(5.0), constant_op.constant(5))
+    self.assertAllEqual(result, [5.0, 5])
 
   def testTensorKeywordArguments(self):
 
@@ -2939,6 +2935,32 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
         layer_variables = layer.trainable_variables
         gradients = tape.gradient(loss, layer_variables)
         optimizer.apply_gradients(zip(gradients, layer_variables))
+
+    train()
+
+  def testEarlyStoppingTrainingLoopInFunction(self):
+    layer = core.Dense(2)
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
+        .repeat(10)
+        .batch(32))
+    optimizer = adam.Adam()
+
+    @def_function.function
+    def train():
+      for x, y in dataset:
+        with backprop.GradientTape() as tape:
+          out = layer(x)
+          loss = math_ops.reduce_mean(
+              nn_ops.sparse_softmax_cross_entropy_with_logits(
+                  logits=out, labels=y))
+        layer_variables = layer.trainable_variables
+        gradients = tape.gradient(loss, layer_variables)
+        optimizer.apply_gradients(zip(gradients, layer_variables))
+        if optimizer.iterations > 3:
+          break
 
     train()
 

@@ -1044,7 +1044,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testBatchMatMulBroadcast(self):
     """Tests broadcasting behavior of BatchMatMul."""
-    with compat.forward_compatibility_horizon(2019, 4, 19):
+    with compat.forward_compatibility_horizon(2019, 4, 26):
       # [2, 3] @ [1, 3, 4] -> [1, 2, 4]
       self._testBinary(
           math_ops.matmul,

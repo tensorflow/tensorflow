@@ -17,7 +17,10 @@ package_group(
 package_group(
     name = "friends",
     includes = [":internal"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/tools/tf_replay/...",
+        "//tensorflow/...",
+    ],
 )
 
 package(
@@ -210,6 +213,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
@@ -285,6 +289,7 @@ cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
+    visibility = [":friends"],
     deps = [
         ":sharding_util",
         ":tf2xla_proto",
@@ -376,6 +381,7 @@ tf_cc_test(
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -390,6 +396,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -501,6 +508,39 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "rearrange_function_argument_pass",
+    srcs = [
+        "rearrange_function_argument_pass.cc",
+    ],
+    hdrs = [
+        "rearrange_function_argument_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "rearrange_function_argument_pass_registration",
+    srcs = [
+        "rearrange_function_argument_pass_registration.cc",
+    ],
+    deps = [
+        ":rearrange_function_argument_pass",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

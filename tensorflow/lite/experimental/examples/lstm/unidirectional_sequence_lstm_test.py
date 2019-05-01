@@ -143,7 +143,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     Args:
       lstm_layer: The lstm layer either a single lstm cell or a multi lstm cell.
       sess: Old session.
-      saver: Saver created by tf.train.Saver()
+      saver: Saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: Use dynamic_rnn or not.
 
     Returns:

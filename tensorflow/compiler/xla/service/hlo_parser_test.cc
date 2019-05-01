@@ -1536,6 +1536,19 @@ ENTRY MinMaxValues {
 
 )"
 },
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+}
 });
   // clang-format on
 }
@@ -2838,6 +2851,61 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter has 2 leaf buffers, but "
                                    "parameter_replication has 3 elements"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[2] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("The first operand must be a scalar"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "The first operand must be a scalar of PRED or S32"));
 }
 
 }  // namespace

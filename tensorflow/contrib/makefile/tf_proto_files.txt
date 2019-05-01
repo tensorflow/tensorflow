@@ -46,6 +46,7 @@ tensorflow/core/protobuf/saver.proto
 tensorflow/core/protobuf/struct.proto
 tensorflow/core/protobuf/tensor_bundle.proto
 tensorflow/core/protobuf/tensorflow_server.proto
+tensorflow/core/protobuf/trace_events.proto
 tensorflow/core/protobuf/verifier_config.proto
 tensorflow/core/util/event.proto
 tensorflow/core/util/memmapped_file_system.proto

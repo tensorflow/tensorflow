@@ -161,7 +161,7 @@ def _binary_assert_doc(sym):
     to ensure that it runs. Example of adding a dependency to an operation:
 
     ```python
-    with tf.control_dependencies([tf.debugging.{opname}(x, y)]):
+    with tf.control_dependencies([tf.compat.v1.{opname}(x, y)]):
       output = tf.reduce_sum(x)
     ```
 
@@ -739,7 +739,7 @@ def assert_near(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_near(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_near(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1079,7 +1079,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank(x, 2)]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank(x, 2)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1176,7 +1176,7 @@ def assert_rank_at_least(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank_at_least(x, 2)]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank_at_least(x, 2)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1340,7 +1340,7 @@ def assert_rank_in(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank_in(x, (2, 4))]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank_in(x, (2, 4))]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1422,7 +1422,7 @@ def assert_integer(x, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_integer(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_integer(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1759,7 +1759,7 @@ def ensure_shape(x, shape, name=None):
 
   For example:
   ```python
-  x = tf.placeholder(tf.int32)
+  x = tf.compat.v1.placeholder(tf.int32)
   print(x.shape)
   ==> TensorShape(None)
   y = x * 2
@@ -1770,7 +1770,7 @@ def ensure_shape(x, shape, name=None):
   print(y.shape)
   ==> TensorShape([Dimension(None), Dimension(3), Dimension(3)])
 
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     # Raises tf.errors.InvalidArgumentError, because the shape (3,) is not
     # compatible with the shape (None, 3, 3)
     sess.run(y, feed_dict={x: [1, 2, 3]})

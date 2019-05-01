@@ -303,6 +303,37 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
+## BroadcastInDim
+
+See also
+[`XlaBuilder::BroadcastInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Expands the size and rank of an array by duplicating the data in the array.
+
+<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+
+| Arguments              | Type                | Semantics                     |
+| ---------------------- | ------------------- | ----------------------------- |
+| `operand`              | `XlaOp`             | The array to duplicate        |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
+
+Similar to Broadcast, but allows adding dimensions anywhere and expanding
+existing dimensions with size 1.
+
+The `operand` is broadcast to the shape described by `out_dim_size`.
+`broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
+target shape, i.e. the i'th dimension of the operand is mapped to the
+broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
+`operand` must have size 1 or be the same size as the dimension in in the output
+shape they are mapped to. The remaining dimensions are filled with dimensions of
+size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
+dimensions to reach the output shape. The semantics are described in detail on
+the [broadcasting page](broadcasting.md).
+
 ## Call
 
 See also
@@ -897,11 +928,11 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot`    | matrix [m x n]        | matrix-matrix           |
 : matrix [k x n]          :                       : multiplication          :
 
-The operation performs sum of products over the last dimension of `lhs` and the
-one-before-last dimension of `rhs`. These are the "contracted" dimensions. The
-contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
-it can be used to perform dot products between vectors, vector/matrix
-multiplications or matrix/matrix multiplications.
+The operation performs sum of products over the second dimension of `lhs` (or
+the first if it has rank 1) and the first dimension of `rhs`. These are the
+"contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
+the same size. In practice, it can be used to perform dot products between
+vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
 ## DotGeneral
 
@@ -1257,6 +1288,59 @@ Arguments | Type    | Semantics
 
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+
+## Fft
+
+The XLA FFT operation implements the forward and inverse Fourier Transforms for
+real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
+supported, except on TPU, where only a single axis is supported (please file a
+github issue if you require higher order).
+
+See also
+[`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+| Arguments    | Type                | Semantics                |
+| ------------ | ------------------- | ------------------------ |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
+| `fft_type`   | `FftType`           | See the table below.     |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
+
+| `FftType` | Semantics                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
+
+#### Multidimensional FFT
+
+When more than 1 `fft_length` is provided, this is equivalent to applying a
+cascade of FFT operations to each of the innermost axes. Note that for the
+real->complex and complex->real cases, the innermost axis transform is
+(effectively) performed first (RFFT; last for IRFFT), which is why the innermost
+axis is the one which changes size. Other axis transforms will then be
+complex->complex.
+
+#### Implementation details
+
+CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 
 ## Gather
 
@@ -2453,43 +2537,58 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-There are two versions of the Sort instruction: a single-operand and a
-multi-operand version.
+<b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
-<b>`Sort(operand, dimension)`</b>
+Arguments    | Type                | Semantics
+------------ | ------------------- | --------------------
+`operands`   | `ArraySlice<XlaOp>` | The operands to sort.
+`comparator` | `XlaComputation`    | The comparator computation to use.
+`dimension`  | `int64`             | The dimension along which to sort.
+`is_stable`  | `bool`              | Whether stable sorting should be used.
 
-Arguments   | Type    | Semantics
------------ | ------- | --------------------
-`operand`   | `XlaOp` | The operand to sort.
-`dimension` | `int64` | The dimension along which to sort.
+If only one operand is provided:
 
-Sorts the elements in the operand in ascending order along the provided
-dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
-will sort each column independently, and a `dimension` value of 1 will sort each
-row independently. If the operand's elements have floating point type, and the
-operand contains NaN elements, the order of elements in the output is
-implementation-defined.
+* If the operand is a rank-1 tensor (an array), the result is a sorted array.
+  If you want to sort the array into ascending order, the comparator should
+  perform a less-than comparison. Formally, after the array is sorted, it holds
+  for all index positions `i, j` with `i < j` that either
+  `comparator(value[i], value[j]) = comparator(value[j], value[i]) = false` or
+  `comparator(value[i], value[j]) = true`.
 
-<b>`Sort(keys, values, ... values, dimension)`</b>
+* If the operand has higher rank, the operand is sorted along the provided
+  dimension. For example, for a rank-2 tensor (a matrix), a dimension value of
+  `0` will independently sort every column, and a dimension value of `1` will
+  independently sort each row. If no dimension number is provided, then the last
+  dimension is chosen by default. For the dimension which is sorted, the same
+  sorting order applies as in the rank-1 case.
 
-Sorts both the key and one or more value operands. The keys are sorted as in the
-single-operand version. Each of the values inputs is sorted according to the
-order of the corresponding keys. For example, if the three inputs are `keys =
-[3, 1]`, `values0 = [42, 50]`, `values1 = [-3.0, 1.1]`, then the output of the
-sort is the tuple `{[1, 3], [50, 42], [1.1, -3.0]}`.
+If `n > 1` operands are provided:
 
-The sort is not guaranteed to be stable, that is, if the keys array contains
-duplicates, the order of values corresponding to these keys may not be
-preserved.
+* All `n` operands must be tensors with the same dimensions. The element types
+  of the tensors may be different.
 
-Arguments   | Type                   | Semantics
------------ | ---------------------- | ----------------------------------
-`keys`      | `XlaOp`                | The sort keys.
-`values`    | Sequence of N `XlaOp`s | The values to sort.
-`dimension` | `int64`                | The dimension along which to sort.
+* All operands are sorted together, not individually. Conceptually the operands
+  are treated as a tuple. When checking whether the elements of each operand at
+  index positions `i` and `j` need to be swapped, the comparator is called with
+  `2 * n` scalar parameters, where parameter `2 * k` corresponds to the value at
+  position `i` from the `k-th` operand, and parameter `2 * k + 1` corresponds to
+  the value at position `j` from the `k-th` operand. Usually, the comparator
+  would thus compare parameters `2 * k` and `2 * k + 1` with each other and
+  possibly use other parameter pairs as tie breakers.
 
-The `keys` and each of the `values` inputs must have the same dimensions, but
-may have different element types.
+* The result is a tuple that consists of the operands in sorted order (along
+  the provided dimension, as above). The `i-th` operand of the tuple corresponds
+  to the `i-th` operand of Sort.
+
+For example, if there are three operands `operand0 = [3, 1]`,
+`operand1 = [42, 50]`, `operand2 = [-3.0, 1.1]`, and the comparator compares
+only the values of `operand0` with less-than, then the output of the sort is the
+tuple `([1, 3], [50, 42], [1.1, -3.0])`.
+
+If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
+there are elements which are considered to be equal by the comparator, the
+relative order of the equal values is preserved. By default, `is_stable` is set
+to false.
 
 ## Transpose
 

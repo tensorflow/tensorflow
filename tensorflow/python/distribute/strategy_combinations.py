@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
@@ -100,6 +101,10 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
+    "CentralStorage2GPUs",
+    lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
+    required_gpus=2)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
@@ -130,9 +135,6 @@ optimizers_v2 = [
 optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
-
-
-optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 
 def distributions_and_v1_optimizers():

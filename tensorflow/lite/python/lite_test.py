@@ -84,7 +84,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
     self.assertTrue(converter._has_valid_tensors())
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -502,8 +502,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
     quantized_converter.post_training_quantize = True
     self.assertTrue(quantized_converter.post_training_quantize)
-    self.assertEqual(quantized_converter.optimizations,
-                     [lite.Optimize.OPTIMIZE_FOR_SIZE])
+    self.assertEqual(quantized_converter.optimizations, [lite.Optimize.DEFAULT])
 
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -531,17 +530,17 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
-    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-  def testPostTrainingCalibrateAndQuantize(self):
+  def _getCalibrationQuantizeModel(self):
     np.random.seed(0)
-    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
-                                name='input')
+    inp = array_ops.placeholder(
+        dtype=dtypes.float32, shape=(1, 5, 5, 3), name='input')
     conv = nn_ops.conv2d(
         inp,
         filter=array_ops.ones([3, 3, 3, 16]),
@@ -553,6 +552,10 @@ class FromSessionTest(test_util.TensorFlowTestCase):
       for _ in range(5):
         yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
 
+    return (inp, output, calibration_gen)
+
+  def testPostTrainingCalibrateAndQuantize(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
     sess = session.Session()
 
     # Convert float model.
@@ -560,12 +563,42 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     float_tflite = float_converter.convert()
     self.assertTrue(float_tflite)
 
-    # Convert quantized weights model.
+    # Convert quantized model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
-    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  def testCalibrateAndQuantizeBuiltinInt8(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert model by specifying target spec (instead of optimizations), since
+    # when targeting an integer only backend, quantization is mandatory.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.target_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -583,20 +616,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
   def testPostTrainingCalibrateAndQuantizeInt8Inputs(self):
-    np.random.seed(0)
-    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
-                                name='input')
-    conv = nn_ops.conv2d(
-        inp,
-        filter=array_ops.ones([3, 3, 3, 16]),
-        strides=[1, 1, 1, 1],
-        padding='SAME')
-    output = nn_ops.relu(conv, name='output')
-
-    def calibration_gen():
-      for _ in range(5):
-        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
-
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
     sess = session.Session()
 
     # Convert float model.
@@ -609,9 +629,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         sess, [inp], [output])
     quantized_converter.inference_input_type = lite_constants.INT8
     quantized_converter.inference_output_type = lite_constants.INT8
-    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -717,7 +736,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -857,7 +876,30 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
         'Unable to parse input file \'{}\'.'.format(graph_def_file),
         str(error.exception))
 
-  # TODO(nupurgarg): Test model loading in open source.
+  def testFloatTocoConverter(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the model is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+
+class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
+
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
     # Looks for the model file which is saved in a different location internally
@@ -943,29 +985,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
         'input_shapes must contain a value for each item in input_array.',
         str(error.exception))
 
-  def testFloatTocoConverter(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
 
-    # Write graph to file.
-    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
-    write_graph(sess.graph_def, '', graph_def_file, False)
-    sess.close()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
-                                                     ['Placeholder'], ['add'])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Ensure the model is able to load.
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-
-
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSavedModel(self, shape):
@@ -1125,7 +1146,7 @@ class MyAddLayer(keras.layers.Layer):
     return config
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1566,6 +1587,12 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     converter.post_training_quantize = False
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+
+class ImportOpsUtilTest(test_util.TensorFlowTestCase):
+
+  def testGetPotentiallySupportedOps(self):
+    self.assertIsNotNone(lite.get_potentially_supported_ops())
 
 
 if __name__ == '__main__':

@@ -188,11 +188,13 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python:distribute",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
@@ -209,6 +211,7 @@ py_library(
         "saving/__init__.py",
         "saving/hdf5_format.py",
         "saving/model_config.py",
+        "saving/save.py",
         "saving/saved_model.py",
         "saving/saving_utils.py",
     ],
@@ -336,7 +339,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops/losses:loss_reduction",
     ],
 )
 
@@ -686,6 +689,19 @@ tf_py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
+)
+
+tf_py_test(
+    name = "subclassed_layers_test",
+    size = "medium",
+    srcs = ["layers/subclassed_layers_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1313,9 +1329,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "topology_test",
+    name = "network_test",
     size = "medium",
-    srcs = ["engine/topology_test.py"],
+    srcs = ["engine/network_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1432,6 +1448,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "save_test",
+    size = "small",
+    srcs = ["saving/save_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(

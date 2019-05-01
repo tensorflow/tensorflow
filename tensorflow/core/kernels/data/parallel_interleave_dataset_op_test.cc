@@ -494,7 +494,7 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, GetNext) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
@@ -884,8 +884,7 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorOutputPrefix) {
   EXPECT_EQ(iterator->prefix(), "Iterator::ParallelInterleaveV2");
 }
 
-// TODO(b/130309946): Re-enable once deflaked.
-TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DISABLED_Roundtrip) {
+TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   const TestCase &test_case = GetParam();
   TF_ASSERT_OK(InitThreadPool(thread_num));
@@ -937,7 +936,8 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DISABLED_Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *parallel_interleave_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
@@ -949,7 +949,7 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DISABLED_Roundtrip) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 INSTANTIATE_TEST_SUITE_P(

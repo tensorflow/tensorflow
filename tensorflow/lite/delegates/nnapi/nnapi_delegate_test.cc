@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -64,6 +65,21 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
         break;
       case TensorType_INT8:
         QuantizeAndPopulate<int8_t>(index, data);
+        break;
+      default:
+        FAIL() << "Type not supported: " << type;
+        break;
+    }
+  }
+
+  void GetData(int index, TensorType type, std::vector<float>* output) {
+    switch (type) {
+      case TensorType_FLOAT32:
+        *output = ExtractVector<float>(index);
+        break;
+      case TensorType_UINT8:
+        *output = Dequantize<uint8_t>(ExtractVector<uint8_t>(index),
+                                      GetScale(index), GetZeroPoint(index));
         break;
       default:
         FAIL() << "Type not supported: " << type;
@@ -985,6 +1001,87 @@ TEST(NNAPIDelegate, TransposeSimpleTest) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
+}
+
+class ElementwiseOpBaseModel : public SingleOpModelWithNNAPI {
+ public:
+  int input() const { return input_; }
+  int output() const { return output_; }
+
+ protected:
+  int input_;
+  int output_;
+};
+
+class ElementwiseOpFloatModel : public ElementwiseOpBaseModel {
+ public:
+  ElementwiseOpFloatModel(BuiltinOperator op,
+                          std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_FLOAT32);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
+TEST(Elementwise, Abs) {
+  ElementwiseOpFloatModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
+  m.PopulateTensor<float>(m.input(), {
+                                         0.f, -6.2f, 2.f, 4.f,  //
+                                         3.f, -2.f, 10.f, 1.f,  //
+                                     });
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()), ElementsAreArray({
+                                                      0.f, 6.2f, 2.f, 4.f,  //
+                                                      3.f, 2.f, 10.f, 1.f,  //
+                                                  }));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 4, 1}));
+}
+
+TEST(Elementwise, Exp) {
+  ElementwiseOpFloatModel m(BuiltinOperator_EXP, {3, 1, 2});
+  m.PopulateTensor<float>(m.input(), {1.0, 0.0, -1.0, 1.0, 1.0, -1.0});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {2.71828, 1, 0.367879, 2.71828, 2.71828, 0.367879})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({3, 1, 2}));
+}
+
+TEST(Elementwise, Log) {
+  ElementwiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(Elementwise, Rsqrt) {
+  ElementwiseOpFloatModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, 0.7071, 0.5, 0.33333})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(Elementwise, Sin) {
+  ElementwiseOpFloatModel m(BuiltinOperator_SIN, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 0, 0, 0.84147})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(Elementwise, Sqrt) {
+  ElementwiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 1, 1.41421, 2})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
 class FloatSubOpModel : public SingleOpModelWithNNAPI {
@@ -4217,6 +4314,85 @@ TEST(NNAPIDelegate, HashtableLookupTest1DInput) {
                               1,
                           }));
 }
+
+// A base class of PRelu op model. It provides the constructor for
+// FloatPReluOpModel and QuantizedPReluOpModel.
+class PReluOpModel : public SingleOpModelWithNNAPI {
+ public:
+  PReluOpModel(const TensorData& input, const TensorData& alpha)
+      : input_type_(input.type) {
+    input_ = AddInput(input);
+    alpha_ = AddInput(alpha);
+    output_ = AddOutput({input.type, input.shape, input.min, input.max});
+    SetBuiltinOp(BuiltinOperator_PRELU, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_), GetShape(alpha_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    SetData(input_, input_type_, data);
+  }
+
+  void SetAlpha(std::initializer_list<float> data) {
+    SetData(alpha_, input_type_, data);
+  }
+
+  std::vector<float> GetOutput() {
+    std::vector<float> output;
+    GetData(output_, input_type_, &output);
+    return output;
+  }
+
+ protected:
+  int input_;
+  int alpha_;
+  int output_;
+
+  const TensorType input_type_;
+};
+
+TEST(NNAPIDelegate, PReluFloat) {
+  PReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                 {TensorType_FLOAT32, {1, 1, 3}});
+
+  m.SetInput({
+      0.0f, 0.0f, 0.0f,     // Row 1, Column 1
+      1.0f, 1.0f, 1.0f,     // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
+      -2.0f, -2.0f, -2.0f,  // Row 1, Column 2
+  });
+  m.SetAlpha({0.0f, 1.0f, 2.0f});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0f, 0.0f, 0.0f,    // Row 1, Column 1
+                                 1.0f, 1.0f, 1.0f,    // Row 1, Column 2
+                                 0.0f, -1.0f, -2.0f,  // Row 2, Column 1
+                                 0.0f, -2.0f, -4.0f,  // Row 1, Column 2
+                             }));
+}
+
+TEST(NNAPIDelegate, PReluQuantized) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  PReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
+                 {TensorType_UINT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 1, Column 2
+  });
+  m.SetAlpha({0.0f, 0.5f, -0.5f});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                                     0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                                     0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                                     0.0f, -0.125f, 0.125f,  // Row 1, Column 2
+                                 },
+                                 kQuantizedTolerance)));
+}
+
 }  // namespace
 }  // namespace tflite
 

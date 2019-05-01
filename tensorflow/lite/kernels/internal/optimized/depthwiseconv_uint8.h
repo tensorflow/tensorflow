@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -2106,8 +2107,10 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context = nullptr) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -2128,7 +2131,8 @@ inline void DepthwiseConv(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
+  const int max_threads =
+      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
@@ -2148,7 +2152,7 @@ inline void DepthwiseConv(
           thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 

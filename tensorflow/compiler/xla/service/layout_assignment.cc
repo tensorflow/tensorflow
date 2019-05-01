@@ -1226,9 +1226,14 @@ namespace {
 // unassigned layouts in the graph.
 bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
+    case HloOpcode::kFusion:
+      return hlo.IsCustomFusion();
+    case HloOpcode::kGather:
+      return true;
     case HloOpcode::kReshape:
       return hlo.operand(0)->shape().rank() == 1 ||
              std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+    case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
       return true;
     default:

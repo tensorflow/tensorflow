@@ -263,38 +263,23 @@ Status GenVariableMethods(const tf2xla::Config& config,
   void set_var_{{NAME}}_data({{MAYBE_CONST}}{{TYPE}}* data) {
     set_arg_data({{I}}, data);
   }
-)";
-    const tf2xla::Variable& var = config.variable(i - config.feed_size());
-    rewrites.emplace_back("{{MAYBE_CONST}}", var.readonly() ? "const " : "");
-    *methods += RewriteWithName(
-        var.name().empty() ? var.node_name() : var.name(), code, rewrites);
+  {{MAYBE_CONST}}{{TYPE}}* var_{{NAME}}_data() {
+    return static_cast<{{MAYBE_CONST}}{{TYPE}}*>(arg_data({{I}}));
   }
-  size_t num_results = ps.result().tuple_shapes_size();
-  int variable_num = -1;
-  for (int i = config.fetch_size(); i < num_results; ++i) {
-    std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(AddRewritesForShape(
-        i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
-    string code = R"(
-  {{TYPE}}* var_{{NAME}}_data() {
-    return static_cast<{{TYPE}}*>(result_data({{I}}));
-  }
-  {{TYPE}}& var_{{NAME}}({{DIM_VARS}}) {
-    return (*static_cast<{{TYPE}}(*){{DIM_SIZES}}>(
-        result_data({{I}}))){{INDICES}};
+  {{MAYBE_CONST}}{{TYPE}}& var_{{NAME}}({{DIM_VARS}}) {
+    return (*static_cast<{{MAYBE_CONST}}{{TYPE}}(*){{DIM_SIZES}}>(
+        arg_data({{I}}))){{INDICES}};
   }
   const {{TYPE}}* var_{{NAME}}_data() const {
-    return static_cast<const {{TYPE}}*>(result_data({{I}}));
+    return static_cast<const {{TYPE}}*>(arg_data({{I}}));
   }
   const {{TYPE}}& var_{{NAME}}({{DIM_VARS}}) const {
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
-        result_data({{I}}))){{INDICES}};
+        arg_data({{I}}))){{INDICES}};
   }
 )";
-    do {
-      ++variable_num;
-    } while (config.variable(variable_num).readonly());
-    const tf2xla::Variable& var = config.variable(variable_num);
+    const tf2xla::Variable& var = config.variable(i - config.feed_size());
+    rewrites.emplace_back("{{MAYBE_CONST}}", var.readonly() ? "const " : "");
     *methods += RewriteWithName(
         var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }
@@ -549,7 +534,8 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
     return *kStaticData;
   }
 
-  {{CLASS}}(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS)
+  {{CLASS}}(AllocMode alloc_mode =
+            AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS)
       : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
 
   {{CLASS}}(const {{CLASS}}&) = delete;
@@ -590,19 +576,29 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   // buffers are managed internally, and may change after each call to Run.
 {{METHODS_RESULT}}
 
-  // Methods for managing variable buffers. Buffers are in row-major order. The
-  // input and output buffers may or may not be identical.
+  // Methods for managing variable buffers. Buffers are in row-major order.
+  //
+  // For read-write variables we generate the following methods:
   //
   // void set_var_X_data(T* data)
-  //   Sets the buffer for variable X.
+  //   Sets the buffer for variable X.  Must be called before Run if the
+  //   allocation mode is RESULTS_PROFILES_AND_TEMPS_ONLY.
   //
   // T* var_X_data()
-  //   Returns the buffer of type T for variable X.
+  //   Returns the buffer of type T for variable X.  If the allocation mode is
+  //   RESULTS_PROFILES_AND_TEMPS_ONLY then this buffer is the same as the
+  //   buffer passed to set_var_X_data.
   //
   // T& var_X(...dim indices...)
   //   Returns a reference to the value of type T for variable X,
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
+  //
+  // For readonly variables we generate the same set of methods, except that we
+  // use `const T` instead of `T`.  We use `const T` to avoid erasing the
+  // constness of the buffer passed to `set_var_X_data` but the underlying
+  // buffer is not const (and thus the const can be safely const-cast'ed away)
+  // unless `set_var_X_data` is called with a pointer to constant storage.
 {{METHODS_VARIABLE}}
 
  private:

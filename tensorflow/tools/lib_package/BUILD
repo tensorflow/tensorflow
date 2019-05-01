@@ -4,8 +4,10 @@
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_cuda", "if_not_windows", "tf_binary_additional_data_deps", "tf_shared_library_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_cuda", "if_macos", "if_not_windows")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -53,10 +55,16 @@ pkg_tar(
 pkg_tar(
     name = "common_deps",
     srcs = ["//tensorflow:tensorflow_framework"],
-    symlinks = {
-        "libtensorflow_framework.so": "libtensorflow_framework.so.%s" % VERSION_MAJOR,
-        "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow_framework.so.%s" % VERSION,
-    },
+    symlinks = if_macos(
+        {
+            "libtensorflow_framework.dylib": "libtensorflow_framework.%s.dylib" % VERSION_MAJOR,
+            "libtensorflow_framework.%s.dylib" % VERSION_MAJOR: "libtensorflow_framework.%s.dylib" % VERSION,
+        },
+        {
+            "libtensorflow_framework.so": "libtensorflow_framework.so.%s" % VERSION_MAJOR,
+            "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow_framework.so.%s" % VERSION,
+        },
+    ),
     tags = ["manual"],
 )
 
@@ -92,10 +100,16 @@ pkg_tar(
     name = "clib",
     srcs = ["//tensorflow"],
     package_dir = "lib",
-    symlinks = {
-        "lib/libtensorflow.so": "libtensorflow.so.%s" % VERSION_MAJOR,
-        "lib/libtensorflow.so.%s" % VERSION_MAJOR: "libtensorflow.so.%s" % VERSION,
-    },
+    symlinks = if_macos(
+        {
+            "lib/libtensorflow.dylib": "libtensorflow.%s.dylib" % VERSION_MAJOR,
+            "lib/libtensorflow.%s.dylib" % VERSION_MAJOR: "libtensorflow.%s.dylib" % VERSION,
+        },
+        {
+            "lib/libtensorflow.so": "libtensorflow.so.%s" % VERSION_MAJOR,
+            "lib/libtensorflow.so.%s" % VERSION_MAJOR: "libtensorflow.so.%s" % VERSION,
+        },
+    ),
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -148,9 +162,7 @@ genrule(
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + if_not_windows([
-        "@llvm//:LICENSE.TXT",
-    ]) + select({
+    ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -185,7 +197,9 @@ genrule(
             "@grpc//:LICENSE",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ),
+    ) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -221,9 +235,7 @@ genrule(
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
-    ] + if_not_windows([
-        "@llvm//:LICENSE.TXT",
-    ]) + select({
+    ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -252,7 +264,9 @@ genrule(
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]),
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

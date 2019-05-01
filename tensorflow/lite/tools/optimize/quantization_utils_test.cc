@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -254,6 +256,108 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeTensor) {
       model.buffers.at(weights_tensor->buffer)->data.size();
   EXPECT_EQ(weights_tensor->type, TensorType_INT8);
   EXPECT_EQ(quant_buffer_size * 4, float_buffer_size);
+}
+
+TEST(QuantizationUtilsTest, AddQuantizationParams) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  const std::vector<float> scales = {0.5, 1.0, 1.5};
+  const std::vector<int64_t> zero_points = {5, 10, 15};
+  const int32_t quantizated_dimension = 3;
+  const std::vector<uint8_t> buffer_data = {1, 2, 3, 4};
+  const int32_t buffer_size = 4;
+  tensor->buffer = 0;
+
+  // Wire the model.
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+  model->buffers.push_back(std::move(buffer));
+
+  // Call and verify.
+  EXPECT_EQ(
+      AddQuantizationParams(scales, zero_points, quantizated_dimension,
+                            buffer_data.data(), buffer_size, TensorType_INT8,
+                            model.get(), model->subgraphs[0]->tensors[0].get()),
+      kTfLiteOk);
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale,
+              ElementsAreArray(scales));
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point,
+              ElementsAreArray(zero_points));
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
+              ElementsAreArray(buffer_data));
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT8);
+}
+
+TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  const float weight_scale = 0.5;
+  const float input_scale = 0.5;
+  std::vector<float> bias_data = {4.0, 1.0};
+  auto bias_reinterpreted_data =
+      reinterpret_cast<const unsigned char*>(bias_data.data());
+  buffer->data.assign(bias_reinterpreted_data,
+                      bias_reinterpreted_data + bias_data.size() * 4);
+  tensor->buffer = 0;
+  tensor->shape = {2, 1, 1, 1};
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+
+  // Wire the model.
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+  model->buffers.push_back(std::move(buffer));
+
+  // Call and verify.
+  EXPECT_EQ(SymmetricPerLayerBiasQuantize(model.get(),
+                                          model->subgraphs[0]->tensors[0].get(),
+                                          input_scale, weight_scale),
+            kTfLiteOk);
+
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],
+              weight_scale * input_scale);
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point[0], 0);
+
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
+              ElementsAreArray({16, 0, 0, 0, 4, 0, 0, 0}));
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
+}
+
+TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  const std::vector<float> weight_scales = {0.5, 1.0};
+  const float input_scale = 0.5;
+  std::vector<float> bias_data = {4.0, 1.0};
+  auto bias_reinterpreted_data =
+      reinterpret_cast<const unsigned char*>(bias_data.data());
+  buffer->data.assign(bias_reinterpreted_data,
+                      bias_reinterpreted_data + bias_data.size() * 4);
+  tensor->buffer = 0;
+  tensor->shape = {2, 1, 1, 1};
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+
+  // Wire the model.
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+  model->buffers.push_back(std::move(buffer));
+
+  // Call and verify.
+  EXPECT_EQ(SymmetricPerChannelBiasQuantize(
+                model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
+                weight_scales.data(), 2, 0),
+            kTfLiteOk);
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
+              ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
 }  // namespace

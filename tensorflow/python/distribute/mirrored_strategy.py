@@ -407,8 +407,7 @@ def _infer_num_gpus_per_worker(devices):
 def all_local_devices(num_gpus=None):
   if num_gpus is None:
     num_gpus = context.num_gpus()
-  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
-          ("/device:CPU:0",))
+  return device_util.local_devices_from_num_gpus(num_gpus)
 
 
 def _all_devices():
@@ -430,7 +429,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   The multi-worker version will be added in the future.
 
   Args:
-    devices: a list of device strings.
+    devices: a list of device strings.  If `None`, all available GPUs are used.
+    If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, nccl will be use by default.
   """
@@ -452,7 +452,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):
     super(MirroredStrategyV1, self).__init__(extended)
 
 
-class MirroredExtended(distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
@@ -521,9 +522,12 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         self._device_map, worker_devices)
 
     if len(workers) > 1:
-      self._inferred_cross_device_ops = (
-          cross_device_ops_lib.MultiWorkerAllReduce(
-              workers, _infer_num_gpus_per_worker(devices)))
+      if not isinstance(self._cross_device_ops,
+                        cross_device_ops_lib.MultiWorkerAllReduce):
+        raise ValueError(
+            "In-graph multi-worker training with `MirroredStrategy` is not "
+            "supported.")
+      self._inferred_cross_device_ops = self._cross_device_ops
     else:
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
@@ -596,6 +600,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
+
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -949,20 +957,20 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # `tf.function` and there is a merge_call in `fn`. This breaks because each
     # thread tries to create a distinct tf.function. Each tf.function creation
     # takes a lock, and so if there is a merge call in the middle, the lock is
-    # never releases and subsequent replica threads cannot proceed to define
+    # never released and subsequent replica threads cannot proceed to define
     # their own functions. Checking for the graph being the same is one way for
     # us to check this didn't happen.
     if ops.get_default_graph() != t.graph:
       raise RuntimeError(
-          "`merge_call` called while defining a new graph. "
-          "This can happen if the function `fn` passed to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` is decorated with "
-          "`@tf.function`. In this case, wrap the call to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` with `@tf.function` "
-          "instead of `fn`. This will avoid mismatching graphs and also "
-          "improve performance.")
+          "`merge_call` called while defining a new graph or a tf.function. "
+          "This can often happen if the function `fn` passed to "
+          "`strategy.experimental_run()` is decorated with "
+          "`@tf.function` (or contains a nested `@tf.function`), and `fn` "
+          "contains a synchronization point, such as aggregating gradients. "
+          "This behavior is not yet supported. Instead, please wrap the entire "
+          "call `strategy.experimental_run(fn)` in a `@tf.function`, and avoid "
+          "nested `tf.function`s that may potentially cross a synchronization "
+          "boundary.")
 
     t.has_paused.set()
     t.should_run.wait()

@@ -282,7 +282,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    filepath = os.path.join(temp_dir, 'checkpoint')
+    filepath = os.path.join(temp_dir, 'checkpoint.h5')
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
         test_samples=TEST_SAMPLES,
@@ -1260,7 +1260,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1489,7 +1490,8 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def fitModelAndAssertKerasModelWritten(self, model):

@@ -51,7 +51,7 @@ _STRUCTURES_HAVE_MISMATCHING_TYPES = (
     "type {shallow_type}, while shallow structure has type {input_type}.")
 
 _INPUT_TREE_SMALLER_THAN_SHALLOW_TREE = (
-    "The input_tree has fewer elements than the input_tree. Input structure "
+    "The input_tree has fewer elements than the shallow_tree. Input structure "
     "has length {input_size}, while shallow structure has length "
     "{shallow_size}.")
 
@@ -128,7 +128,8 @@ def _sequence_like(instance, args):
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
-    return instance._from_components(args)  # pylint: disable=protected-access
+    metadata = instance._component_metadata()  # pylint: disable=protected-access
+    return type(instance)._from_components(args, metadata)  # pylint: disable=protected-access
   else:
     # Not a namedtuple
     return type(instance)(args)

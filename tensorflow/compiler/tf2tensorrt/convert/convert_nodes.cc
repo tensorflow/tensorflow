@@ -1598,18 +1598,6 @@ Status AllowDataTypes(const OpConverterParams& params,
   return Status::OK();
 }
 
-TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
-                                    const TRT_ShapedWeights& weights_src) {
-  TRT_ShapedWeights weights =
-      store->GetTempWeights(nvinfer1::DataType::kHALF, weights_src.shape_);
-  const float* src = static_cast<const float*>(weights_src.GetValues());
-  Eigen::half* dst = static_cast<Eigen::half*>(weights.GetValues());
-  for (int64_t i = 0; i < weights_src.count(); i++) {
-    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
-  }
-  return weights;
-}
-
 // ****************************************************************************
 // Constant folding functions for weights.
 // TODO(laigd): we should probably use eigen directly.
@@ -1781,10 +1769,6 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
         params->converter->TransposeTensor(tensor, permutation, &tensor));
   }
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
-
   // Prepare weights
   TRT_ShapedWeights shift_weights(weights.TrtDType());
   TRT_ShapedWeights scale_weights(weights.TrtDType());
@@ -1946,9 +1930,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
-  }
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
   // Therefore, this reorder will work for both cases.
@@ -1988,6 +1969,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   } else {
     padding = {{0, 0}, {0, 0}};
   }
+
+// TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we
+// can only use asymmetric padding in convolutions with 5.1.3+.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // Handle asymmetric padding.
@@ -2000,6 +1985,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -2010,7 +1996,23 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      // SAME_UPPER means that post padding is preferred.
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    // For VALID padding, we need to manually set the padding.
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     conv_layer = layer;
@@ -2021,7 +2023,20 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     layer->setDilation(dilation);
@@ -2767,6 +2782,8 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
   }
 
+// TensorRT 5.1 added support for asymmetric padding.
+#if !IS_TRT_VERSION_GE(5, 1, 0, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
@@ -2780,6 +2797,7 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   nvinfer1::IPoolingLayer* layer =
       params->converter->network()->addPooling(*tensor, type, ksize);
@@ -2791,7 +2809,21 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+  if (attrs.get<string>("padding") == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+#endif
+// TensorRT 5.1 has support for asymmetric padding.
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  // If padding mode is not SAME, then these values will be used instead.
+  layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+  layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
+#else
+  layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+#endif
   layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
@@ -3047,9 +3079,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   if (weights.shape_.d[0] == 1) {
     mode = nvinfer1::ScaleMode::kUNIFORM;

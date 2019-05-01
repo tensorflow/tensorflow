@@ -25,6 +25,7 @@ import numpy as np  # pylint: disable=unused-import
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1560,6 +1561,19 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     grad = gradients_impl.gradients(t1, t)[0]
     self.assertAllEqual(self.evaluate(grad), [1., 1., 1.])
+
+  def testHandleDataAcrossFunctionCall(self):
+
+    @def_function.function
+    def func():
+      t = constant_op.constant([1., 2., 3.])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      return l
+
+    tensor_list = func()
+    element = list_ops.tensor_list_get_item(
+        tensor_list, 0, element_dtype=dtypes.float32)
+    self.assertAllEqual(element.shape.as_list(), [])
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ package(default_visibility = ["//tensorflow:internal"])
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 py_library(
     name = "xla_client",
@@ -27,6 +28,7 @@ py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
@@ -34,6 +36,16 @@ py_test(
         ":xla_client",
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+cc_library(
+    name = "worker_thread",
+    srcs = ["worker_thread.cc"],
+    hdrs = ["worker_thread.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -70,6 +82,7 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
+        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -90,6 +103,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shared_device_buffer",
+    srcs = ["shared_device_buffer.cc"],
+    hdrs = ["shared_device_buffer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+    ],
+)
+
+tf_cc_test(
+    name = "shared_device_buffer_test",
+    srcs = ["shared_device_buffer_test.cc"],
+    deps = [
+        ":shared_device_buffer",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -105,10 +145,15 @@ tf_pybind_extension(
     features = ["-use_header_modules"],
     module_name = "xla_extension",
     deps = [
+        ":shared_device_buffer",
         ":types",
+        ":worker_thread",
         ":xrt",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -131,9 +176,13 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:lib",

@@ -210,6 +210,9 @@ class ExecutorBarrier {
 
     if (done != nullptr) {
       delete this;
+      if (!status.ok()) {
+        VLOG(1) << "ExecutorBarrier finished with bad status: " << status;
+      }
       done(status);
     }
   }

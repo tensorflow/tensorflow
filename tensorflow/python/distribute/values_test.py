@@ -23,7 +23,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -38,16 +37,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
-
-
-# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
-# third_party/tensorflow/python/distribute/strategy_combinations.py
-# pylint: disable=g-long-lambda
-parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
-    "ParameterServer2GPUs",
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
 
 
 class DistributedValuesTest(test.TestCase):
@@ -272,6 +261,14 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                      values.select_device_mirrored(_device_str(0), result))
     self.assertEqual(_nested_value("2"),
                      values.select_device_mirrored(_device_str(1), result))
+
+  def testWrapAListOfTwoTuples(self):
+    device_map = values.ReplicaDeviceMap((_device_str(0), _device_str(1)))
+    result = values.regroup(device_map, [("1", "2"), ("3", "4")])
+    self.assertIsInstance(result, tuple)
+    self.assertEqual(2, len(result))
+    self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
+    self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
 
   def testMirroredContainer(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
@@ -561,7 +558,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[parameter_server_strategy_with_two_gpus],
+          distribution=[
+              strategy_combinations.central_storage_strategy_with_two_gpus
+          ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope_aggregating(self, distribution):
     with distribution.scope():
@@ -577,7 +576,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["graph", "eager"]))
   def testExtendsVariable(self, distribution):
@@ -591,7 +590,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["graph", "eager"]))
   def testCheckpointing(self, distribution):

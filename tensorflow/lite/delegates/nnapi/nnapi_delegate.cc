@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -116,7 +117,16 @@ bool IsRestrictedScalesCompliant(const TfLiteContext* context,
 constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
+constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
 
+static size_t getNumPaddingBytes(size_t byte_size) {
+  size_t num_padding_bytes = 0;
+  if (byte_size % kDefaultByteAlignmentForNNAPI) {
+    num_padding_bytes = kDefaultByteAlignmentForNNAPI -
+                        (byte_size % kDefaultByteAlignmentForNNAPI);
+  }
+  return num_padding_bytes;
+}
 }  // namespace
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -703,16 +713,16 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinResizeBilinear:
         if (version == 1) {
-          if (android_sdk_version < kMinSdkVersionForNNAPI12) {
-            // Some NNAPI 1.1 drivers don't support this operator properly.
-            return nullptr;
-          }
           const auto& input = context->tensors[node->inputs->data[0]];
           if (input.dims->size != 4) return nullptr;
           if (input.type != kTfLiteFloat32 && input.type != kTfLiteUInt8) {
             return nullptr;
           }
-
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              input.type != kTfLiteFloat32) {
+            // NNAPI 1.0 & 11 only supports float input.
+            return nullptr;
+          }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             const int output_id = mapping_args.node->outputs->data[0];
@@ -720,8 +730,8 @@ class NNAPIDelegateKernel {
             const int output_height = output.dims->data[1];
             const int output_width = output.dims->data[2];
             // TfLiteResizeBilinearParams's |align_corners| is ignored.
-            mapping_args.builder->AddScalarInt32Operand(output_height);
             mapping_args.builder->AddScalarInt32Operand(output_width);
+            mapping_args.builder->AddScalarInt32Operand(output_height);
             return ANEURALNETWORKS_RESIZE_BILINEAR;
           };
         }
@@ -882,11 +892,14 @@ class NNAPIDelegateKernel {
         if (version == 1 && node->inputs->size == 2 &&
             (android_sdk_version >= kMinSdkVersionForNNAPI11) &&
             (context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||
+             (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+              context->tensors[node->inputs->data[0]].params.zero_point == 0) ||
              android_sdk_version >= kMinSdkVersionForNNAPI12)) {
           // NNAPI does not support specifying the padding value.
           // Before 1.2, NNAPI pads physical zero for quantized tensors, so only
-          // delegate float pad to NNAPI. NNAPI 1.2 onwards pads with
-          // zero-point, so delegate quantized pad as well.
+          // delegate pad with float input or quantized input with zero_point ==
+          // 0 to NNAPI. NNAPI 1.2 onwards pads with zero-point, so delegate
+          // other quantized pad as well.
           return BasicMappingFn<ANEURALNETWORKS_PAD>;
         }
         break;
@@ -919,6 +932,36 @@ class NNAPIDelegateKernel {
             (context->tensors[node->inputs->data[1]].allocation_type ==
              kTfLiteMmapRo)) {
           return BasicMappingFn<ANEURALNETWORKS_TRANSPOSE>;
+        }
+        break;
+      case kTfLiteBuiltinAbs:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_ABS>;
+        }
+        break;
+      case kTfLiteBuiltinExp:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_EXP>;
+        }
+        break;
+      case kTfLiteBuiltinLog:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_LOG>;
+        }
+        break;
+      case kTfLiteBuiltinRsqrt:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_RSQRT>;
+        }
+        break;
+      case kTfLiteBuiltinSin:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_SIN>;
+        }
+        break;
+      case kTfLiteBuiltinSqrt:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_SQRT>;
         }
         break;
       case kTfLiteBuiltinRnn:
@@ -1079,6 +1122,11 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_HASHTABLE_LOOKUP>;
         }
         break;
+      case kTfLiteBuiltinPrelu:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return BasicMappingFn<ANEURALNETWORKS_PRELU>;
+        }
+        break;
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -1150,6 +1198,7 @@ class NNAPIDelegateKernel {
                 execution, relative_input_index, nullptr,
                 nn_input_memory_->get_handle(), input_offset, tensor->bytes));
         input_offset += tensor->bytes;
+        input_offset += getNumPaddingBytes(tensor->bytes);
         relative_input_index++;
       }
     }
@@ -1165,6 +1214,7 @@ class NNAPIDelegateKernel {
               execution, relative_output_index, nullptr,
               nn_output_memory_->get_handle(), output_offset, tensor->bytes));
       output_offset += tensor->bytes;
+      output_offset += getNumPaddingBytes(tensor->bytes);
       relative_output_index++;
     }
 
@@ -1204,6 +1254,7 @@ class NNAPIDelegateKernel {
       memcpy(tensor->data.raw,
              nn_output_memory_->get_data_ptr() + output_offset, tensor->bytes);
       output_offset += tensor->bytes;
+      output_offset += getNumPaddingBytes(tensor->bytes);
     }
 
     return kTfLiteOk;
@@ -1370,6 +1421,7 @@ class NNAPIDelegateKernel {
           context->tensors[i].allocation_type != kTfLiteMmapRo) {
         inputs.push_back(operand_mapping_.lite_index_to_ann(i));
         total_input_byte_size += context->tensors[i].bytes;
+        total_input_byte_size += getNumPaddingBytes(context->tensors[i].bytes);
       }
     }
 
@@ -1377,6 +1429,7 @@ class NNAPIDelegateKernel {
     for (int i : TfLiteIntArrayView(output_tensors)) {
       outputs.push_back(operand_mapping_.lite_index_to_ann(i));
       total_output_byte_size += context->tensors[i].bytes;
+      total_output_byte_size += getNumPaddingBytes(context->tensors[i].bytes);
     }
 
     // Add state output tensors as model outputs.

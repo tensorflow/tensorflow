@@ -22,13 +22,14 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_math_ops
 
 
 LIMIT_PYTHON_ITERATIONS = True
@@ -36,6 +37,15 @@ PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
 INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
 INEFFICIENT_UNROLL_MIN_OPS = 1
+
+
+def _disallow_undefs_into_loop(*values):
+  undefined = tuple(filter(special_values.is_undefined, values))
+  if undefined:
+    raise ValueError(
+        'TensorFlow requires that the following symbols must be defined'
+        ' before the loop: {}'.format(
+            tuple(s.symbol_name for s in undefined)))
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -74,21 +84,17 @@ def for_stmt(iter_, extra_test, body, init_state):
   if tensor_util.is_tensor(iter_):
     return _known_len_tf_for_stmt(iter_, extra_test, body, init_state)
 
-  elif isinstance(iter_, dataset_ops.DatasetV2):
-    # Check for undefined symbols and report an error. This prevents the error
-    # from propagating into the TF runtime. We have more information here and
-    # can provide a clearer error message.
-    undefined = tuple(filter(special_values.is_undefined, init_state))
-    if undefined:
-      raise ValueError(
-          'TensorFlow requires that the following symbols must be defined'
-          ' before the loop: {}'.format(
-              tuple(s.symbol_name for s in undefined)))
+  if isinstance(iter_, dataset_ops.DatasetV2):
+    return _tf_dataset_for_stmt(iter_, extra_test, body, init_state)
 
-    return _dataset_for_stmt(iter_, extra_test, body, init_state)
+  # Note: This experimental interface is subject to change.
+  custom_handler = getattr(iter_, '_autograph_for_loop', None)
+  if custom_handler is not None:
+    # TODO(mdan): TensorFlow-specific verification - handlers should perform it.
+    _disallow_undefs_into_loop(*init_state)
+    return custom_handler(extra_test, body, init_state)
 
-  else:
-    return _py_for_stmt(iter_, extra_test, body, init_state)
+  return _py_for_stmt(iter_, extra_test, body, init_state)
 
 
 def _py_for_stmt(iter_, extra_test, body, init_state):
@@ -103,6 +109,8 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
 
 def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
   """Overload of for_stmt that iterates over objects that admit a length."""
+  _disallow_undefs_into_loop(*init_state)
+
   n = py_builtins.len_(iter_)
 
   def while_body(iterate_index, *state):
@@ -117,7 +125,10 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
 
   def while_cond(iterate_index, *state):
     if extra_test is not None:
-      return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+      return control_flow_ops.cond(
+          iterate_index < n,
+          lambda: extra_test(*state),
+          lambda: False)
     return iterate_index < n
 
   results = _tf_while_stmt(
@@ -138,13 +149,46 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
   return results
 
 
-def _dataset_for_stmt(ds, extra_test, body, init_state):
+def _tf_dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
+  _disallow_undefs_into_loop(*init_state)
 
   if extra_test is not None:
-    raise NotImplementedError(
-        'break and return statements are not yet supported in '
-        'for/Dataset loops.')
+    assert init_state, 'Lowering should always add state.'
+    return _dataset_for_stmt_with_extra_test(ds, extra_test, body, init_state)
+
+  return _dataset_for_stmt_no_extra_test(ds, body, init_state)
+
+
+def _dataset_for_stmt_with_extra_test(ds, extra_test, body, init_state):
+  """Overload of _dataset_for_stmt with early stopping. See for_stmt."""
+
+  def scan_body(state, iterate):
+    extra_cond = extra_test(*state)
+    new_state = control_flow_ops.cond(
+        extra_cond, lambda: body(iterate, *state), lambda: state)
+    aug_state = new_state, extra_cond
+    # Note: new_state is the actual state of scan; aug_state is its output
+    # (hence the redundancy).
+    return new_state, aug_state
+
+  def take_while_predicate(new_state, extra_cond):
+    del new_state
+    return extra_cond
+
+  def reduce_body(old_state, aug_state):
+    del old_state
+    new_state, extra_cond = aug_state
+    del extra_cond
+    return new_state
+
+  ds = ds.apply(scan_ops.scan(init_state, scan_body))
+  ds = ds.apply(take_while_ops.take_while(take_while_predicate))
+  return ds.reduce(init_state, reduce_body)
+
+
+def _dataset_for_stmt_no_extra_test(ds, body, init_state):
+  """Overload of _dataset_for_stmt without early stopping. See for_stmt."""
 
   def reduce_body(state, iterate):
     new_state = body(iterate, *state)
@@ -153,7 +197,7 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
   if init_state:
     return ds.reduce(init_state, reduce_body)
 
-  # Workaround for Datset.reduce not allowing empty state tensors - create
+  # Workaround for Dataset.reduce not allowing empty state tensors - create
   # a dummy state variable that remains unused.
   def reduce_body_with_dummy_state(state, iterate):
     reduce_body((), iterate)
@@ -204,15 +248,10 @@ def while_stmt(test, body, init_state, opts=None):
 
 def _tf_while_stmt(test, body, init_state, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
+  _disallow_undefs_into_loop(*init_state)
+
   if opts is None:
     opts = {}
-
-  undefined = tuple(filter(special_values.is_undefined, init_state))
-  if undefined:
-    raise ValueError(
-        'TensorFlow requires that the following symbols must be initialized '
-        'to a Tensor, Variable or TensorArray before the loop: {}'.format(
-            tuple(s.symbol_name for s in undefined)))
 
   # Non-v2 while_loop unpacks the results when there is only one return value.
   # This enforces consistency across versions.
@@ -337,8 +376,8 @@ def if_stmt(cond, body, orelse, get_state, set_state):
 
 def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  body = _disallow_undefs(body, branch_name='if')
-  orelse = _disallow_undefs(orelse, branch_name='else')
+  body = _wrap_disallow_undefs_in_cond(body, branch_name='if')
+  orelse = _wrap_disallow_undefs_in_cond(orelse, branch_name='else')
   body = _isolate_state(body, get_state, set_state)
   orelse = _isolate_state(orelse, get_state, set_state)
 
@@ -386,8 +425,8 @@ def _isolate_state(func, get_state, set_state):
   return wrapper
 
 
-def _disallow_undefs(func, branch_name):
-  """Wraps function to raise useful error when it returns undefined symbols."""
+def _wrap_disallow_undefs_in_cond(func, branch_name):
+  """Wraps conditional branch to disallow returning undefined symbols."""
 
   def wrapper():
     """Calls function and raises an error if undefined symbols are returned."""

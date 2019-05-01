@@ -64,12 +64,16 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(
 namespace pybind11 {
 namespace detail {
 
+// When absl::optional is an alias for std::optional, the type_caster
+// specializations are provided by pybind11.
+#ifndef ABSL_HAVE_STD_OPTIONAL
 // absl::optional
 template <typename T>
 struct type_caster<absl::optional<T>> : optional_caster<absl::optional<T>> {};
 
 template <>
 struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
+#endif
 
 // absl::Span
 template <typename T>

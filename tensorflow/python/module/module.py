@@ -41,7 +41,7 @@ class Module(tracking.AutoTrackable):
   ...   def __init__(self, in_features, output_features, name=None):
   ...     super(Dense, self).__init__(name=name)
   ...     self.w = tf.Variable(
-  ...         tf.random_normal([input_features, output_features]), name='w')
+  ...         tf.random.normal([input_features, output_features]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_features]), name='b')
   ...
   ...   def __call__(self, x):

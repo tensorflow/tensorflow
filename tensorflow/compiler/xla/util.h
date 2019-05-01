@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -63,6 +64,8 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
 //
+// Keeps track of global maximum and cumulative times across all invocations.
+//
 // By default, the timing traces are only printed at VLOG(1) and above:
 //
 //   XLA_SCOPED_LOGGING_TIMER("fooing bar");  // nop if !VLOG_IS_ON(1).
@@ -83,9 +86,19 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, VLOG_IS_ON(level))
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)         \
+  static ::tensorflow::mutex XLA_ScopedGlobalLoggingTimerLock##counter( \
+      ::tensorflow::LINKER_INITIALIZED);                                \
+  static ::xla::TimerStats XLA_TimerStats##counter;                     \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(    \
+      label, /*enabled=*/VLOG_IS_ON(level), &XLA_TimerStats##counter);
+
+struct TimerStats {
+  tensorflow::mutex stats_lock;
+  double cumulative_secs GUARDED_BY(stats_lock) = 0;
+  double max_secs GUARDED_BY(stats_lock) = 0;
+  uint64 times_called GUARDED_BY(stats_lock) = 0;
+};
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
@@ -93,12 +106,19 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 struct ScopedLoggingTimer {
   // The timer does nothing if enabled is false.  This lets you pass in your
   // file's VLOG_IS_ON value.
-  ScopedLoggingTimer(const string& label, bool enabled);
+  //
+  // timer_id should be derived from a __COUNTER__ macro. This is unique
+  // per each XLA_SCOPED_LOGGING_TIMER* invocation, which lets us display
+  // cumulative time across different timer instances created for the same
+  // macro in the source code.
+  ScopedLoggingTimer(const std::string& label, bool enabled,
+                     TimerStats* timer_stats);
   ~ScopedLoggingTimer();
 
   bool enabled;
   string label;
   uint64 start_micros;
+  TimerStats* timer_stats;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its

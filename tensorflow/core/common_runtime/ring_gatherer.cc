@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_gatherer.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 Status RingGatherer::InitializeCollectiveParams(CollectiveParams* col_params) {
@@ -98,7 +100,7 @@ void RingGatherer::Run(StatusCallback done) {
   // We are running in a blockable thread and the callback can't block so
   // just wait here on the copy.
   {
-    tracing::ScopedActivity activity("MemCpyAsync");
+    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
     Notification note;
     Status status;
     Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
@@ -143,7 +145,8 @@ bool RingGatherer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
-    tracing::ScopedActivity activity("WaitForQueuedEvents");
+    profiler::TraceMe activity("WaitForQueuedEvents",
+                               profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -164,7 +167,7 @@ bool RingGatherer::RunAsyncParts() {
 
   // Loop until all RingFields have advanced to completion.
   {
-    tracing::ScopedActivity activity("Loop");
+    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
     while (field_done_count < rfv_.size()) {
       VLOG(4) << FieldState();
       // Wait for a RingField to appear in the ready_queue.

@@ -81,7 +81,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if isinstance(var, ops.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
-    elif isinstance(var, resource_variable_ops.ResourceVariable):
+    elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
         def f():

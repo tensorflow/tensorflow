@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -28,14 +31,76 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
-namespace xla_python {
 
 namespace py = pybind11;
+
+namespace {
+
+struct Uniquer {
+  absl::Mutex mu;
+  NameUniquer name_uniquer GUARDED_BY(mu);
+};
+
+Uniquer* GetUniquer() {
+  static Uniquer* uniquer = new Uniquer;
+  return uniquer;
+}
+
+static string UniquifyName(const string& name) {
+  Uniquer* uniquer = GetUniquer();
+  absl::MutexLock lock(&uniquer->mu);
+  return uniquer->name_uniquer.GetUniqueName(name);
+}
+
+// Converts a computation to a serialized HloModuleProto.
+StatusOr<py::bytes> GetComputationSerializedProto(
+    const XlaComputation& computation) {
+  std::string result;
+  if (!computation.proto().SerializeToString(&result)) {
+    return Unknown("Failed to serialize the HloModuleProto.");
+  }
+  return py::bytes(result);
+}
+
+// Converts a computation to textual HLO form.
+StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  HloPrintOptions options;
+  options = HloPrintOptions::ShortParsable();
+  options.set_print_large_constants(false);
+  return hlo_module->ToString(options);
+}
+
+// Converts a computation to HLO dot graph form.
+StatusOr<std::string> GetComputationHloDotGraph(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
+                     hlo_module->config().debug_options(),
+                     RenderedGraphFormat::kDot);
+}
+
+}  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
   // Types
@@ -57,7 +122,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("C64", C64)
       .value("C128", C128)
       .value("TUPLE", TUPLE)
-      .value("OPAQUE", OPAQUE)
+      .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
   // Shapes
@@ -75,7 +140,9 @@ PYBIND11_MODULE(xla_extension, m) {
             if (layout) {
               return ShapeUtil::MakeShapeWithLayout(type, dims, *layout);
             } else {
-              return ShapeUtil::MakeShape(type, dims);
+              Shape shape = ShapeUtil::MakeShape(type, dims);
+              shape.clear_layout();
+              return shape;
             }
           },
           "Makes an array shape.", py::arg("type"), py::arg("dims"),
@@ -87,7 +154,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("tuple_shapes",
            static_cast<const std::vector<Shape>& (Shape::*)() const>(
                &Shape::tuple_shapes))
-      .def("__repr__", [](const Shape& shape) { return shape.ToString(); });
+      .def("__repr__", [](const Shape& shape) {
+        return shape.ToString(/*print_layouts=*/true);
+      });
 
   py::class_<ProgramShape>(m, "ProgramShape")
       .def(py::init(
@@ -139,40 +208,41 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  py::class_<LocalClient>(m, "LocalClient")
-      .def_static("Get", &GetLocalClient, py::return_value_policy::reference)
-      .def("DeviceCount", &LocalClient::device_count)
-      .def("TransferToInfeed", &LocalClient::TransferToInfeedLocal,
-           py::call_guard<py::gil_scoped_release>())
-      .def("TransferFromOutfeed",
-           [](LocalClient* client, const Shape& shape,
-              int device_ordinal) -> StatusOr<py::object> {
-             Literal literal;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(literal, client->TransferFromOutfeedLocal(
-                                                shape, device_ordinal));
-             }
-             return LiteralToPython(
-                 absl::make_unique<Literal>(std::move(literal)));
-           });
+  py::class_<PyLocalClient>(m, "LocalClient")
+      .def_static("Get", &PyLocalClient::Get)
+      .def("DeviceCount", &PyLocalClient::device_count)
+      .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
+      .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
-  py::class_<LocalShapedBuffer>(m, "LocalShapedBuffer")
-      .def_static("FromPython", &LocalShapedBuffer::FromPython)
-      .def("Delete", &LocalShapedBuffer::Delete)
-      .def("DestructureTuple", &LocalShapedBuffer::DestructureTuple)
-      .def("ToPython", &LocalShapedBuffer::ToPython)
-      .def("shape", &LocalShapedBuffer::shape);
+  py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
+      .def_static("FromPython", &PyLocalBuffer::FromPython)
+      .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
+      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
+      .def("Delete", &PyLocalBuffer::Delete)
+      .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
+      .def("ToPython", &PyLocalBuffer::ToPython)
+      .def("shape", &PyLocalBuffer::on_host_shape);
 
-  py::class_<LocalExecutableWrapper>(m, "LocalExecutable")
-      .def_static("Compile", &LocalExecutableWrapper::Compile,
+  py::class_<PyLocalExecutable>(m, "LocalExecutable")
+      .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
-      .def("DeviceOrdinals", &LocalExecutableWrapper::DeviceOrdinals)
-      .def("Delete", &LocalExecutableWrapper::Delete)
-      .def("Execute", &LocalExecutableWrapper::Execute,
+      .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
+      .def("Delete", &PyLocalExecutable::Delete)
+      .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>())
-      .def("ExecutePerReplica", &LocalExecutableWrapper::ExecutePerReplica,
+      .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>());
+
+  py::class_<DebugOptions>(m, "DebugOptions")
+      .def_property("xla_cpu_enable_fast_math",
+                    &DebugOptions::xla_cpu_enable_fast_math,
+                    &DebugOptions::set_xla_cpu_enable_fast_math)
+      .def_property("xla_cpu_fast_math_honor_infs",
+                    &DebugOptions::xla_cpu_fast_math_honor_infs,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_infs)
+      .def_property("xla_cpu_fast_math_honor_nans",
+                    &DebugOptions::xla_cpu_fast_math_honor_nans,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_nans);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -185,7 +255,10 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
-                    &ExecutableBuildOptions::set_num_replicas);
+                    &ExecutableBuildOptions::set_num_replicas)
+      .def_property_readonly(
+          "debug_options", &ExecutableBuildOptions::mutable_debug_options,
+          py::return_value_policy::reference, py::keep_alive<1, 0>());
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
@@ -196,7 +269,9 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<XlaOp>(m, "XlaOp");
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
-      .def(py::init<const std::string&>())
+      .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
+        return absl::make_unique<XlaBuilder>(UniquifyName(name));
+      }))
       .def(
           "Build",
           [](XlaBuilder& builder, absl::optional<XlaOp> root) {
@@ -223,7 +298,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   ops.def("AllToAll", &AllToAll);
   ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const ReplicaGroup>)>(
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
@@ -236,14 +311,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
   ops.def("ConcatInDim", &ConcatInDim);
   ops.def("Conditional",
-          static_cast<XlaOp (*)(const XlaOp&,
-                                absl::Span<const XlaComputation* const>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
                                 absl::Span<const XlaOp>)>(&Conditional));
-  ops.def(
-      "Conditional",
-      static_cast<XlaOp (*)(const XlaOp&, const XlaOp&, const XlaComputation&,
-                            const XlaOp&, const XlaComputation&)>(
-          &Conditional));
+  ops.def("Conditional",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
+                                const XlaComputation&)>(&Conditional));
   ops.def("ConstantLiteral", &ConstantLiteral);
   ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
           py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
@@ -259,11 +331,11 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
   ops.def("DynamicSlice",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>,
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice));
   ops.def("DynamicUpdateSlice",
-          static_cast<XlaOp (*)(const XlaOp&, const XlaOp&,
-                                absl::Span<const XlaOp>)>(&DynamicUpdateSlice));
+          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
+              &DynamicUpdateSlice));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"));
   ops.def("GetTupleElement", &GetTupleElement);
@@ -309,12 +381,10 @@ PYBIND11_MODULE(xla_extension, m) {
                                 absl::Span<const int64>)>(&Reduce));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
   ops.def("ReplicaId", &ReplicaId);
+  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
+                                           absl::Span<const int64>)>(&Reshape));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>,
-                                absl::Span<const int64>)>(&Reshape));
-  ops.def(
-      "Reshape",
-      static_cast<XlaOp (*)(const XlaOp&, absl::Span<const int64>)>(&Reshape));
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
   ops.def("RngNormal", &RngNormal);
   ops.def("RngUniform", &RngUniform);
@@ -326,8 +396,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def("Sort",
-          static_cast<XlaOp (*)(const XlaOp&, absl::Span<const XlaOp>, int64)>(
-              &Sort),
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>, int64)>(&Sort),
           py::arg("keys"), py::arg("values"), py::arg("dimension") = -1);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
@@ -420,5 +489,4 @@ PYBIND11_MODULE(xla_extension, m) {
   tensorflow::AddXrtSubmodule(&m);
 }
 
-}  // namespace xla_python
 }  // namespace xla

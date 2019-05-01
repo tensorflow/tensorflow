@@ -178,11 +178,11 @@ def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
 
 def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if not isinstance(actual, graph_pb2.GraphDef):
-    raise TypeError(
-        "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
+    raise TypeError("Expected tf.GraphDef for actual, got %s" %
+                    type(actual).__name__)
   if not isinstance(expected, graph_pb2.GraphDef):
-    raise TypeError(
-        "Expected tf.GraphDef for expected, got %s" % type(expected).__name__)
+    raise TypeError("Expected tf.GraphDef for expected, got %s" %
+                    type(expected).__name__)
 
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
@@ -256,8 +256,12 @@ def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
 
-def CudaSupportsHalfMatMulAndConv():
-  return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+def IsBuiltWithROCm():
+  return pywrap_tensorflow.IsBuiltWithROCm()
+
+
+def GpuSupportsHalfMatMulAndConv():
+  return pywrap_tensorflow.GpuSupportsHalfMatMulAndConv()
 
 
 def IsMklEnabled():
@@ -874,14 +878,14 @@ def generate_combinations_with_testcase_name(**kwargs):
   for combination in combinations:
     assert isinstance(combination, OrderedDict)
     name = "".join([
-        "_{}_{}".format("".join(filter(str.isalnum, key)), "".join(
-            filter(str.isalnum, str(value))))
+        "_{}_{}".format("".join(filter(str.isalnum, key)),
+                        "".join(filter(str.isalnum, str(value))))
         for key, value in combination.items()
     ])
     named_combinations.append(
         OrderedDict(
-            list(combination.items()) + [("testcase_name",
-                                          "_test{}".format(name))]))
+            list(combination.items()) +
+            [("testcase_name", "_test{}".format(name))]))
 
   return named_combinations
 
@@ -961,7 +965,7 @@ def run_in_graph_and_eager_modes(func=None,
   a `tf.test.TestCase` class. Doing so will cause the contents of the test
   method to be executed twice - once normally, and once with eager execution
   enabled. This allows unittests to confirm the equivalence between eager
-  and graph execution (see `tf.enable_eager_execution`).
+  and graph execution (see `tf.compat.v1.enable_eager_execution`).
 
   For example, consider the following unittest:
 
@@ -1107,8 +1111,10 @@ def also_run_as_tf_function(f):
   """
 
   def decorated(*args, **kwds):
+
     def bound_f():
       f(*args, **kwds)
+
     with context.eager_mode():
       # Running in eager mode
       bound_f()
@@ -1331,13 +1337,17 @@ def run_cuda_only(func=None):
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
+  Warning: if not GPU version of the package is installed, the function would
+  also, return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
+  was build with CUDA support.
+
   Args:
-    cuda_only: limit the search to CUDA gpus.
+    cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
       CUDA compute capability required, or None if no requirement.
 
   Returns:
-    True if a gpu device of the requested kind is available.
+    True if a GPU device of the requested kind is available.
   """
 
   def compute_capability_from_device_desc(device_desc):
@@ -1544,20 +1554,56 @@ def disable_xla(description):
   return disable_xla_impl
 
 
-# The description is just for documentation purposes.
-def disable_all_xla(description):
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
 
-  def disable_all_impl(cls):
-    """Execute all test methods in this class only if xla is not enabled."""
-    base_decorator = disable_xla
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
     for name in dir(cls):
       value = getattr(cls, name)
       if callable(value) and name.startswith(
-          "test") and not name == "test_session":
-        setattr(cls, name, base_decorator(description)(value))
+          "test") and (name != "test_session"):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
     return cls
 
-  return disable_all_impl
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def no_xla_auto_jit(description):  # pylint: disable=unused-argument
+
+  def no_xla_auto_jit_impl(func):
+    """This test is not intended to be run with XLA auto jit enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Skip test if using XLA is forced.
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return no_xla_auto_jit_impl
 
 
 class EagerSessionWarner(object):
@@ -1761,12 +1807,12 @@ class TensorFlowTestCase(googletest.TestCase):
                                                  tensor.dense_shape.numpy())
         elif ragged_tensor.is_ragged(tensor):
           return ragged_tensor_value.RaggedTensorValue(
-              tensor.values.numpy(),
-              tensor.row_splits.numpy())
+              tensor.values.numpy(), tensor.row_splits.numpy())
         elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(values=tensor.values.numpy(),
-                                        indices=tensor.indices.numpy(),
-                                        dense_shape=tensor.dense_shape.numpy())
+          return ops.IndexedSlicesValue(
+              values=tensor.values.numpy(),
+              indices=tensor.indices.numpy(),
+              dense_shape=tensor.dense_shape.numpy())
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -2550,8 +2596,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(
-            "Exception of type %s: %s" % (str(type(e)), str(e)))
+        raise AssertionError("Exception of type %s: %s" %
+                             (str(type(e)), str(e)))
 
   # pylint: enable=g-doc-return-or-yield
 
@@ -2726,7 +2772,7 @@ def create_local_cluster(num_workers,
   ```python
   workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
 
-  worker_sessions = [tf.Session(w.target) for w in workers]
+  worker_sessions = [tf.compat.v1.Session(w.target) for w in workers]
 
   with tf.device("/job:ps/task:0"):
     ...
@@ -2744,14 +2790,15 @@ def create_local_cluster(num_workers,
     num_workers: Number of worker servers to start.
     num_ps: Number of PS servers to start.
     protocol: Communication protocol. Allowed values are documented in the
-      documentation of `tf.train.Server`.
+      documentation of `tf.distribute.Server`.
     worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be
       used to instantiate multiple devices etc.
     ps_config: (optional) `tf.ConfigProto` to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
-    of `num_workers` objects of type `tf.train.Server` (all running locally);
+    of `num_workers` objects of type `tf.distribute.Server` (all running
+    locally);
     and `ps_servers` is a list of `num_ps` objects of similar type.
 
   Raises:

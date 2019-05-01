@@ -18,8 +18,7 @@ package_group(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -85,8 +84,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":debug_options_flags",
         ":xla_proto",
-        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
@@ -190,6 +189,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -812,7 +812,7 @@ cc_library(
     hdrs = ["parse_flags_from_env.h"],
     deps =
         [
-            "//tensorflow/compiler/xla:types",
+            ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
@@ -827,7 +827,7 @@ tf_cc_test(
     deps =
         [
             ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
+            ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:test",
@@ -847,7 +847,7 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":status",
-            "//tensorflow/compiler/xla:xla_proto",
+            ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "@com_google_absl//absl/strings",
@@ -871,7 +871,7 @@ tf_cc_test(
     ],
     deps =
         [
-            "//tensorflow/compiler/xla:xla_proto",
+            ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",

@@ -257,6 +257,28 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     compare(True, True)
     compare(True, False)
 
+  @test_util.run_v2_only
+  def testKey(self):
+    key = 1234
+    gen = random.Generator(seed=[0, 0, key])
+    got = gen.key
+    self.assertAllEqual(key, got)
+    @def_function.function
+    def f():
+      return gen.key
+    got = f()
+    self.assertAllEqual(key, got)
+
+  @test_util.run_v2_only
+  def testSkip(self):
+    key = 1234
+    counter = 5678
+    gen = random.Generator(seed=[counter, 0, key])
+    delta = 432
+    gen.skip(delta)
+    new_counter = gen._state_var[0]
+    self.assertAllEqual(counter + delta * 256, new_counter)
+
   def _sameAsOldRandomOps(self, device, floats):
     def compare(dtype, old, new):
       seed1, seed2 = 79, 25
@@ -331,6 +353,21 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """
     self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
 
+  @parameterized.parameters(INTS + [dtypes.uint32, dtypes.uint64])
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testGPUEqualsCPU(self, dtype):
+    """Tests that GPU and CPU generate the same integer outputs."""
+    seed = 1234
+    shape = [315, 49]
+    with ops.device("/device:CPU:0"):
+      cpu = random.Generator(seed=seed).uniform_full_int(
+          shape=shape, dtype=dtype)
+    with ops.device(test_util.gpu_device_name()):
+      gpu = random.Generator(seed=seed).uniform_full_int(
+          shape=shape, dtype=dtype)
+    self.assertAllEqual(cpu, gpu)
+
   @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
   def testUniformIsInRange(self, dtype):
@@ -392,9 +429,14 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     gen = random.Generator(seed=1234)
     with self.assertRaisesWithPredicateMatch(
         errors.InvalidArgumentError,
-        r"algorithm must be of shape \[\], not"):
+        r"must have shape \[\], not"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           gen.state.handle, [0, 0], shape)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        r"must have shape \[\], not"):
+      gen_stateful_random_ops.rng_skip(
+          gen.state.handle, gen.algorithm, [0, 0])
     with self.assertRaisesWithPredicateMatch(
         TypeError, "Requested dtype: int64"):
       gen_stateful_random_ops.stateful_standard_normal_v2(

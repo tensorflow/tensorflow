@@ -545,10 +545,22 @@ class RunManyGraphs {
   BlockingCounter pending_;
   mutable mutex mu_;
   StatusGroup status_group_ GUARDED_BY(mu_);
+  bool cancel_issued_ GUARDED_BY(mu_) = false;
 
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // Start cancellation if we aren't already in an error state.
-    if (status_group_.ok()) {
+    // TODO(jingdong): Change the following log to VLOG once the distributed
+    // error aggregation is stable.
+    LOG(INFO) << "Master received error status " << s;
+    if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
+      // Only start cancelling other workers upon receiveing a non-derived
+      // error
+      cancel_issued_ = true;
+
+      // TODO(jingdong): Change the following log to VLOG once the distributed
+      // error aggregation feature is stable.
+      LOG(INFO)
+          << "Master received error report. Cancelling remaining workers.";
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
@@ -697,7 +709,11 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
   }
 
   // Waits for the RunGraph calls.
-  call_opts->SetCancelCallback([&calls]() { calls.StartCancel(); });
+  call_opts->SetCancelCallback([&calls]() {
+    LOG(INFO) << "Client requested cancellation for RunStep, cancelling "
+                  "worker operations.";
+    calls.StartCancel();
+  });
   auto token = cm->get_cancellation_token();
   const bool success =
       cm->RegisterCallback(token, [&calls]() { calls.StartCancel(); });

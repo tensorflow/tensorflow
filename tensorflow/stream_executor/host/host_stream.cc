@@ -38,15 +38,15 @@ bool HostStream::EnqueueTask(std::function<void()> task) {
       // should guarantee that all tasks are destroyed.
       task = std::function<void()>();
       {
-        mutex_lock lock(stream->mu_);
+        absl::MutexLock lock(&stream->mu_);
         --stream->pending_tasks_;
       }
-      stream->completion_condition_.notify_all();
+      stream->completion_condition_.SignalAll();
     }
   };
 
   {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     ++pending_tasks_;
   }
   host_executor_->Schedule(NotifiedTask{this, std::move(task)});
@@ -54,9 +54,9 @@ bool HostStream::EnqueueTask(std::function<void()> task) {
 }
 
 void HostStream::BlockUntilDone() {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   while (pending_tasks_ != 0) {
-    completion_condition_.wait(lock);
+    completion_condition_.Wait(&mu_);
   }
 }
 

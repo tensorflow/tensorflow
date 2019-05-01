@@ -146,7 +146,11 @@ string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
 static const char* kDerivedMarker = "[_Derived_]";
 
 Status StatusGroup::MakeDerived(const Status& s) {
-  return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+  if (IsDerived(s)) {
+    return s;
+  } else {
+    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+  }
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
@@ -205,12 +209,12 @@ Status StatusGroup::as_summary_status() const {
     fmt.push_back(
         strings::Printf("%zu derived errors ignored.",
                         children_.size() - nonderived_statuses.size()));
+
     return Status(
         nonderived_statuses[0].code(),
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize));
   } else {
-    // All status are derived. Return the first status error, which will be
-    // ignored when aggregated at the master node.
+    // All statuses are derived. Pick the first available status to return.
     return children_[0];
   }
 }

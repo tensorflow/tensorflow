@@ -23,7 +23,10 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
@@ -52,9 +55,11 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
@@ -68,7 +73,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 32,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -108,11 +113,14 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -129,7 +137,7 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -144,12 +152,10 @@ distribute_py_test(
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -164,12 +170,10 @@ distribute_py_test(
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -189,7 +193,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -204,9 +208,7 @@ distribute_py_test(
     srcs = ["keras_stateful_lstm_model_correctness_test.py"],
     full_precision = True,
     main = "keras_stateful_lstm_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -223,10 +225,10 @@ distribute_py_test(
     srcs = ["keras_utils_test.py"],
     full_precision = True,
     main = "keras_utils_test.py",
-    shard_count = 32,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -270,28 +272,6 @@ cuda_py_test(
     ],
 )
 
-distribute_py_test(
-    name = "keras_two_input_layers_correctness_test",
-    size = "medium",
-    srcs = ["keras_two_input_layers_correctness_test.py"],
-    full_precision = True,
-    main = "keras_two_input_layers_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 5,
-    tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_windows_gpu",
-        "notsan",
-    ],
-    deps = [
-        ":keras_correctness_test_lib",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-    ],
-)
-
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
@@ -299,7 +279,7 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/124344198): Add "multi_and_single_gpu",
+        # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
 )
 
@@ -308,22 +288,28 @@ py_library(
     srcs = ["multi_worker_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
-        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:optimizers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -340,7 +326,64 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/keras",
     ],
-    shard_count = 12,
+    shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
+
+py_binary(
+    name = "mnist_multi_worker",
+    srcs = ["mnist_multi_worker.py"],
+    deps = [":mnist_multi_worker_lib"],
+)
+
+py_library(
+    name = "mnist_multi_worker_lib",
+    srcs = [
+        "mnist_multi_worker.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:optimizers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_optimizer_comparison_test",
+    srcs = ["multi_worker_optimizer_comparison_test.py"],
+    additional_deps = [
+        ":mnist_multi_worker_lib",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/keras/distribute:multi_worker_test",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/keras",
+    ],
     tags = [
         "multi_and_single_gpu",
     ],

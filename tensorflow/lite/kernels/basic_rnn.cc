@@ -27,16 +27,6 @@ namespace ops {
 namespace builtin {
 namespace rnn {
 
-namespace {
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-}  // namespace
-
 constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kRecurrentWeightsTensor = 2;
