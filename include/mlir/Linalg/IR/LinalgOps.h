@@ -19,8 +19,8 @@
 #define MLIR_LINALG_LINALGOPS_H_
 
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Linalg/LinalgTraits.h"
-#include "mlir/Linalg/LinalgTypes.h"
+#include "mlir/Linalg/IR/LinalgTraits.h"
+#include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
@@ -221,7 +221,25 @@ public:
 };
 
 #define GET_OP_CLASSES
-#include "mlir/Linalg/LinalgOps.h.inc"
+#include "mlir/Linalg/IR/LinalgOps.h.inc"
+
+/// Returns the list of maps that map loops to operands of a Linalg op.
+/// The i-th affine map identifies loop indices to subscripts that are used when
+/// accessing the i-th operand.
+/// For instance, a matmul that can be written in index notation as:
+/// `A(i, k) * B(k, j) -> C(i, j)` will have the following, ordered, list of
+/// affine maps:
+///
+/// ```{.mlir}
+///    (
+///      (i, j, k) -> (i, k),
+///      (i, j, k) -> (k, j),
+///      (i, j, k) -> (i, j)
+///    )
+/// ```
+///
+/// Only permutation maps are currently supported. 
+SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
 } // namespace mlir
 

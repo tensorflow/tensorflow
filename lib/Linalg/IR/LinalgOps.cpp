@@ -19,13 +19,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Linalg/LinalgOps.h"
+#include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Linalg/LinalgTypes.h"
+#include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 
@@ -156,20 +156,14 @@ void mlir::SliceOp::build(Builder *b, OperationState *result, Value *base,
     if (!i->getType().isa<RangeType>())
       rank--;
   Type elementType = viewType.getElementType();
-  result->addTypes(
-      {ViewType::get(b->getContext(), elementType, indexings.size())});
+  result->addTypes({ViewType::get(b->getContext(), elementType, rank)});
 }
 
 LogicalResult mlir::SliceOp::verify() {
   if (llvm::empty(getOperands()))
     return emitOpError(
         "requires at least a view operand followed by 'rank' indices");
-  if (!getOperand(0)->getDefiningOp()->isa<ViewOp>())
-    return emitOpError(
-        "requires at least a view operand followed by 'rank' indices");
-
-  auto viewOp = getOperand(0)->getDefiningOp()->dyn_cast<ViewOp>();
-  if (!viewOp)
+  if (!dyn_cast_or_null<ViewOp>(getOperand(0)->getDefiningOp()))
     return emitOpError("first operand must come from a ViewOp");
   unsigned rank = getBaseViewRank();
   if (llvm::size(getIndexings()) != rank) {
@@ -189,8 +183,8 @@ LogicalResult mlir::SliceOp::verify() {
   }
   if (getRank() != rank) {
     return emitOpError("the rank of the view must be the number of its range "
-                       "indices: " +
-                       Twine(rank));
+                       "indices (" +
+                       Twine(rank) + ") but got: " + Twine(getRank()));
   }
   return success();
 }
@@ -359,6 +353,14 @@ void mlir::ViewOp::print(OpAsmPrinter *p) {
 
 namespace mlir {
 namespace impl {
+void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op);
+bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result);
+} // namespace impl
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgOps.cpp.inc"
+
+} // namespace mlir
 
 // A LinalgLibraryOp prints as:
 //
@@ -374,7 +376,7 @@ namespace impl {
 // ```
 //
 // Where %0, %1 and %2 are ssa-values of type ViewType.
-void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op) {
+void mlir::impl::printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
   *p << op->getName().getStringRef() << "(";
   interleave(
@@ -386,7 +388,8 @@ void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op) {
       [&](mlir::Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
 }
 
-bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result) {
+bool mlir::impl::parseLinalgLibraryOp(OpAsmParser *parser,
+                                      OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
   return parser->parseOperandList(ops, -1, OpAsmParser::Delimiter::Paren) ||
@@ -395,9 +398,28 @@ bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(ops, types, parser->getNameLoc(),
                                  result->operands);
 }
-} // namespace impl
 
-#define GET_OP_CLASSES
-#include "mlir/Linalg/LinalgOps.cpp.inc"
-
-} // namespace mlir
+// Ideally this should all be Tablegen'd but there is no good story for
+// AffineMap for now.
+SmallVector<AffineMap, 4> mlir::loopToOperandRangesMaps(Operation *op) {
+  MLIRContext *context = op->getContext();
+  auto i = getAffineDimExpr(0, context);
+  auto j = getAffineDimExpr(1, context);
+  auto k = getAffineDimExpr(2, context);
+  if (op->isa<DotOp>())
+    // A(r_i) * B(r_i) -> C()
+    return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}, {}),
+                                     AffineMap::get(1, 0, {i}, {}),
+                                     AffineMap()};
+  if (op->isa<MatvecOp>())
+    //   A(i, r_j) * B(r_j) -> C(i)
+    return SmallVector<AffineMap, 4>{AffineMap::get(2, 0, {i, j}, {}),
+                                     AffineMap::get(2, 0, {j}, {}),
+                                     AffineMap::get(2, 0, {i}, {})};
+  if (op->isa<MatmulOp>())
+    //   A(i, r_j) * B(r_j) -> C(i)
+    return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}, {}),
+                                     AffineMap::get(3, 0, {k, j}, {}),
+                                     AffineMap::get(3, 0, {i, j}, {})};
+  llvm_unreachable("Missing loopToOperandRangesMaps for op");
+}

@@ -1,4 +1,4 @@
-//===- LinalgRegistration.cpp - Register the linalg dialect statically ----===//
+//===- Passes.h - Linalg pass entry points ----------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,11 +14,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+//
+// This header file defines prototypes that expose pass constructors.
+//
+//===----------------------------------------------------------------------===//
 
-#include "mlir/Linalg/IR/LinalgOps.h"
-#include "mlir/Linalg/IR/LinalgTypes.h"
+#ifndef MLIR_LINALG_PASSES_H_
+#define MLIR_LINALG_PASSES_H_
 
-using namespace mlir;
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
 
-// Static initialization for LinalgOps dialect registration.
-static DialectRegistration<LinalgDialect> LinalgOps;
+namespace mlir {
+class ModulePassBase;
+
+mlir::ModulePassBase *
+createLinalgTilingPass(llvm::ArrayRef<int64_t> tileSizes = {});
+} // namespace mlir
+
+#endif // MLIR_LINALG_PASSES_H_

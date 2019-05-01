@@ -268,3 +268,41 @@ AffineMap mlir::simplifyAffineMap(AffineMap map) {
   }
   return AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs, sizes);
 }
+
+AffineMap mlir::inversePermutation(AffineMap map) {
+  assert(map.getNumSymbols() == 0 && "expected map without symbols");
+  assert(map.getRangeSizes().empty() && "expected map without range sizes");
+  SmallVector<AffineExpr, 4> exprs(map.getNumDims());
+  for (auto en : llvm::enumerate(map.getResults())) {
+    auto expr = en.value();
+    auto d = expr.cast<AffineDimExpr>(); // permutation map expected;
+    if (exprs[d.getPosition()])
+      continue;
+    exprs[d.getPosition()] = getAffineDimExpr(en.index(), d.getContext());
+  }
+  SmallVector<AffineExpr, 4> seenExprs;
+  seenExprs.reserve(map.getNumDims());
+  for (auto expr : exprs)
+    if (expr)
+      seenExprs.push_back(expr);
+  assert(seenExprs.size() == map.getNumInputs() && "map is not full rank");
+  return AffineMap::get(map.getNumResults(), 0, seenExprs, {});
+}
+
+AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
+  unsigned numResults = 0;
+  for (auto m : maps)
+    numResults += m ? m.getNumResults() : 0;
+  unsigned numDims = 0;
+  llvm::SmallVector<AffineExpr, 8> results;
+  results.reserve(numResults);
+  for (auto m : maps) {
+    if (!m)
+      continue;
+    assert(m.getNumSymbols() == 0 && "expected map without symbols");
+    assert(m.getRangeSizes().empty() && "expected map without range sizes");
+    results.append(m.getResults().begin(), m.getResults().end());
+    numDims = std::max(m.getNumDims(), numDims);
+  }
+  return AffineMap::get(numDims, 0, results, {});
+}

@@ -19,10 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Linalg/LinalgTypes.h"
+#include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Linalg/LinalgOps.h"
+#include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Support/LLVM.h"
 
 using namespace mlir;
@@ -33,7 +33,7 @@ mlir::LinalgDialect::LinalgDialect(MLIRContext *context)
   addOperations<BufferAllocOp, BufferDeallocOp, RangeOp, SliceOp, ViewOp>();
   addOperations<
 #define GET_OP_LIST
-#include "mlir/Linalg/LinalgOps.cpp.inc"
+#include "mlir/Linalg/IR/LinalgOps.cpp.inc"
       >();
 }
 

@@ -19,7 +19,7 @@
 #define MLIR_LINALG_LINALGTRAITS_H_
 
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Linalg/LinalgTypes.h"
+#include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {

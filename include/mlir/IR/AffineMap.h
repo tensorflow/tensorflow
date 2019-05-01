@@ -154,6 +154,52 @@ inline ::llvm::hash_code hash_value(AffineMap arg) {
 /// sizes.
 AffineMap simplifyAffineMap(AffineMap map);
 
+/// Returns a map of codomain to domain dimensions such that the first codomain
+/// dimension for a particular domain dimension is selected.
+///
+/// Prerequisites:
+///   1. `map` is a permutation of full rank.
+///   2. `map` has no symbols.
+///   3. `map` has empty `rangeSizes`.
+///
+/// Example:
+///
+/// ```{.mlir}
+///    (d0, d1, d2) -> (d1, d1, d0, d2, d1, d2, d1, d0)
+///                      0       2   3
+/// ```
+///
+/// returns:
+///
+/// ```{.mlir}
+///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
+/// ```
+AffineMap inversePermutation(AffineMap map);
+
+/// Concatenates a list of `maps` into a single AffineMap, stepping over
+/// potentially empty maps. Assumes each of the underlying map has 0 symbols and
+/// empty `rangeSizes`.
+/// The resulting map has a number of dims equal to the max of `maps`' dims and
+/// the concatenated results as its results.
+///
+/// Example:
+/// When applied to the following list of 3 affine maps,
+///
+/// ```{.mlir}
+///    {
+///      (i, j, k) -> (i, k),
+///      (i, j, k) -> (k, j),
+///      (i, j, k) -> (i, j)
+///    }
+/// ```
+///
+/// Returns the map:
+///
+/// ```{.mlir}
+///     (i, j, k) -> (i, k, k, j, i, j)
+/// ```
+AffineMap concatAffineMaps(llvm::ArrayRef<AffineMap> maps);
+
 } // end namespace mlir
 
 namespace llvm {
