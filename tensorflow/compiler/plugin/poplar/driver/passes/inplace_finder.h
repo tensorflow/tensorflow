@@ -58,6 +58,8 @@ class InplaceFinder : public HloModulePass {
 
   // The instruction annotations from the compiler
   struct CompilerAnnotations& annotations_;
+
+  InplaceWorkList worklist_;
 };
 
 }  // namespace poplarplugin

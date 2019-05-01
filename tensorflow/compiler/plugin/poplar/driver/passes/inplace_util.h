@@ -22,56 +22,59 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
+#include <set>
 namespace xla {
 namespace poplarplugin {
 struct CompilerAnnotations;
-namespace InplaceUtil {
-using OperandIndexes = absl::InlinedVector<uint64, 1>;
+
+using OperandIndexes = std::vector<int64>;
 using InplaceInstructions = absl::flat_hash_set<const HloInstruction*>;
+using InplaceWorkList = absl::flat_hash_map<HloInstruction*, bool>;
+
+enum class HloInstructionType {
+  // A kGetTupleElement instruction is inplace if and only if it's a unique
+  // access to a tensor in a tuple and all other users of the tuple are
+  // GetTupleElement ops too.
+  kInplaceGetTupleElement = 0,
+  // An instruction is inplace read/write when the output is input tensor(s)
+  // which are modified by this instruction.
+  kInplaceReadWrite,
+  // An instruction is inplace read-only when the output is reference to the
+  // input tensor(s) which are not modified by this instruction.
+  kInplaceReadOnly,
+  // An instruction is not inplace when the output does not alias any of the
+  // inputs.
+  kNotInplace,
+};
 
 // Internal representations of the Types of instructions.
-// An instruction is either an inplace op or not inplace op.
-
-// Base Hlo instruction op type.
 class HloInstructionDescription {
  public:
-  // Returns true if given description is of InplaceHloInstructionDescription
-  // type given a instruction.
-  virtual bool IsInPlaceType(const HloInstruction*);
+  HloInstructionDescription(const HloInstruction* inst);
 
- protected:
-  HloInstructionDescription();
-};
+  // Get the HloInstructionType.
+  const HloInstructionType& GetType() const;
 
-// An instruction which has no aliasing between its input and output tensors.
-class NotInplaceHloInstructionDescription : public HloInstructionDescription {
- public:
-  NotInplaceHloInstructionDescription();
-};
+  // Get the inplace operands.
+  const OperandIndexes& GetInplaceOperandIndexes() const;
 
-// An instruction which overwrites the output tensors of all inplace_operands
-// instructions.
-class InplaceHloInstructionDescription : public HloInstructionDescription {
- public:
-  InplaceHloInstructionDescription();
-  InplaceHloInstructionDescription(
-      const OperandIndexes& inplace_operand_indexes);
-  bool IsInPlaceType(const HloInstruction*);
-  const OperandIndexes GetInplaceOperandIndexes() const;
+  // Checks if the type is kInplaceReadWrite or kInplaceReadOnly.
+  bool IsInplaceType() const;
+
+  static bool IsInplace(HloInstruction* inst,
+                        HloReachabilityMap* reachability_map,
+                        InplaceWorkList& worklist,
+                        const InplaceInstructions& inplace_instructions);
+
+  const std::string ToString() const;
 
  private:
-  OperandIndexes inplace_operand_indexes_;
+  HloInstructionDescription();
+
+  OperandIndexes inplace_operands_;
+
+  HloInstructionType type_;
 };
-
-std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
-    const HloInstruction* inst);
-
-// A function which is used to decide whether an instruction is of inplace or
-// view changing or not-inplace type given our backend implementation of these
-// ops in Poplar.
-bool IsInPlace(HloInstruction* inst, HloReachabilityMap* reachability_map);
-}  // namespace InplaceUtil
-
 }  // namespace poplarplugin
 }  // namespace xla
 

@@ -25,8 +25,6 @@ class HloModule;
 
 namespace poplarplugin {
 
-class InplaceInstructions;
-
 // Extract elementwise ops into a called sub-graph
 // (must come after InplaceFinder)
 
