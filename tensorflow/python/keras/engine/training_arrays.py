@@ -303,7 +303,7 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = distributed_training_utils._per_device_aggregate_batch(
+          batch_outs = distributed_training_utils._per_replica_aggregate_batch(
               batch_outs, model, mode)
 
         # Aggregate results.

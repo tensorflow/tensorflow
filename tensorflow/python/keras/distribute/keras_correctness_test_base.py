@@ -120,16 +120,10 @@ class MaybeDistributionScope(object):
       self._scope = None
 
 
-def batch_wrapper(dataset, batch_size, distribution, repeat=None):
+def batch_wrapper(dataset, batch_size, repeat=None):
   if repeat:
     dataset = dataset.repeat(repeat)
-  # TPUs currently require fully defined input shapes, drop_remainder ensures
-  # the input will have fully defined shapes.
-  if isinstance(distribution, (tpu_strategy.TPUStrategy,
-                               tpu_strategy.TPUStrategyV1)):
-    return dataset.batch(batch_size, drop_remainder=True)
-  else:
-    return dataset.batch(batch_size)
+  return dataset.batch(batch_size)
 
 
 def get_batch_size(global_batch_size, distribution):
@@ -163,10 +157,16 @@ def get_shapes(data):
   return shapes
 
 
-def get_correctness_test_inputs(use_numpy, use_validation_data,
-                                with_distribution, x_train, y_train, x_predict):
+def get_correctness_test_inputs(use_numpy,
+                                use_validation_data,
+                                with_distribution,
+                                x_train,
+                                y_train,
+                                x_eval,
+                                y_eval,
+                                x_predict,
+                                training_epochs):
   """Generates the inputs for correctness check when enable Keras with DS."""
-  training_epochs = 2
   global_batch_size = _GLOBAL_BATCH_SIZE
   batch_size = get_batch_size(global_batch_size, with_distribution)
 
@@ -181,56 +181,53 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 
     if use_validation_data:
       eval_inputs = None
-      training_inputs['validation_data'] = (x_train, y_train)
+      training_inputs['validation_data'] = (x_eval, y_eval)
     else:
       eval_inputs = {
           'batch_size': batch_size,
-          'x': x_train,
-          'y': y_train,
+          'x': x_eval,
+          'y': y_eval,
       }
     predict_inputs = {
         'x': x_predict
     }
   else:
     training_data_size = get_data_size(x_train)
-    if training_data_size < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
-      # Currently, we cannot detect the size of a dataset. So, the eval steps is
-      # hard coded.
-      raise ValueError('x_train must have at least '
-                       '_GLOBAL_BATCH_SIZE * _EVAL_STEPS samples')
     # For dataset inputs, we do not pass batch_size to
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-    x = batch_wrapper(train_dataset, batch_size, with_distribution,
-                      repeat=training_epochs)
+    x = batch_wrapper(train_dataset, batch_size, repeat=training_epochs)
 
+    steps_per_epoch = int(np.ceil(1.0 * training_data_size / global_batch_size))
     training_inputs = {
         'batch_size': None,
         'x': x,
         'y': None,
         'epochs': training_epochs,
         'shuffle': False,
-        'steps_per_epoch': training_data_size // global_batch_size,
+        'steps_per_epoch': steps_per_epoch
     }
     if use_validation_data:
       eval_inputs = None  # Remove the eval_inputs
-      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-      x = batch_wrapper(eval_dataset, batch_size, with_distribution)
+      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_eval, y_eval))
+      x = batch_wrapper(eval_dataset, batch_size)
       training_inputs['validation_data'] = x
       training_inputs['validation_steps'] = 5
     else:
+      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_eval, y_eval))
+      x = batch_wrapper(eval_dataset, batch_size)
+      eval_steps = int(np.ceil(1.0 * get_data_size(x_eval) / global_batch_size))
       eval_inputs = {
           'batch_size': None,
           'x': x,
           'y': None,
-          'steps': _EVAL_STEPS,
+          'steps': eval_steps,
       }
 
     predict_batch_size = get_batch_size(get_data_size(x_predict),
                                         with_distribution)
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
-    predict_dataset = batch_wrapper(predict_dataset, predict_batch_size,
-                                    with_distribution)
+    predict_dataset = batch_wrapper(predict_dataset, predict_batch_size)
     predict_inputs = {
         'steps': 1,
         'x': predict_dataset,
@@ -284,8 +281,11 @@ def fit_eval_and_predict(initial_weights,
   return result
 
 
-def compare_results(results_with_ds, results_without_ds, distribution,
-                    testcase):
+def compare_results(results_with_ds,
+                    results_without_ds,
+                    distribution,
+                    testcase,
+                    partial_last_batch=False):
   """Compares results of model compiled with/without distribution strategy."""
 
   default_tolerance = 1e-5
@@ -313,6 +313,18 @@ def compare_results(results_with_ds, results_without_ds, distribution,
       continue
 
     tolerance = _get_compare_result_tolerance(key)
+
+    # We don't compare the loss as loss is currently not computed as metric
+    # in Keras, the loss value is inaccurate for last partial batch due to
+    # more weights for the last batch samples.
+    if partial_last_batch:
+      if key.startswith('eval_result'):
+        results_with_ds[key] = results_with_ds[key][1:]
+        results_without_ds[key] = results_without_ds[key][1:]
+      if key.startswith('training_history'):
+        results_with_ds[key]['val_loss'] = 0
+        results_without_ds[key]['val_loss'] = 0
+
     testcase.assertAllClose(
         results_with_ds[key],
         results_without_ds[key],
@@ -364,6 +376,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     y_train = x_train
     return (x_train.astype('float32'), y_train.astype('float32'), None)
 
+  def get_data_with_partial_last_batch(self):
+    x_train, y_train, x_predict = self.get_data()
+    return  x_train, y_train, x_train, y_train, x_predict
+
   def get_input_for_correctness_test(self, **kwargs):
     """Generates inputs that are dictionaries.
 
@@ -394,14 +410,22 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            use_validation_data,
                            cloning=None,
                            with_batch_norm=False,
-                           is_stateful_model=False):
+                           is_stateful_model=False,
+                           partial_last_batch=False,
+                           training_epochs=2):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
       self.skip_unsupported_test_configuration(distribution)
 
       # Train, eval, and predict datasets are created with the same input numpy
       # arrays.
-      x_train, y_train, x_predict = self.get_data()
+      if partial_last_batch:
+        x_train, y_train, x_eval, y_eval, x_predict = (
+            self.get_data_with_partial_last_batch())
+      else:
+        x_train, y_train, x_predict = self.get_data()
+        x_eval = x_train
+        y_eval = y_train
 
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
@@ -416,7 +440,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           with_distribution=distribution,
           x_train=x_train,
           y_train=y_train,
-          x_predict=x_predict)
+          x_eval=x_eval,
+          y_eval=y_eval,
+          x_predict=x_predict,
+          training_epochs=training_epochs)
 
       nods_input_fn = functools.partial(
           self.get_input_for_correctness_test,
@@ -425,7 +452,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           with_distribution=None,
           x_train=x_train,
           y_train=y_train,
-          x_predict=x_predict)
+          x_eval=x_eval,
+          y_eval=y_eval,
+          x_predict=x_predict,
+          training_epochs=training_epochs)
 
       results_with_ds = fit_eval_and_predict(
           initial_weights,
@@ -442,16 +472,24 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           distribution=None,
           is_stateful_model=is_stateful_model)
 
-      # First, special case, for multi-replica distributed training, batch norm
-      # is not aggregated globally. So it is expected to have different weights.
-      if (self.with_batch_norm and
-          distribution.num_replicas_in_sync > 1):
+      # First, special case, for multi-replica distributed training, batch
+      # norm is not aggregated globally. So it is expected to have different
+      # weights.
+      if (self.with_batch_norm and distribution.num_replicas_in_sync > 1):
         with self.assertRaises(AssertionError):
-          compare_results(results_with_ds, results_without_ds, distribution,
-                          testcase=self)
+          compare_results(
+              results_with_ds,
+              results_without_ds,
+              distribution,
+              testcase=self,
+              partial_last_batch=partial_last_batch)
       else:
-        compare_results(results_with_ds, results_without_ds, distribution,
-                        testcase=self)
+        compare_results(
+            results_with_ds,
+            results_without_ds,
+            distribution,
+            testcase=self,
+            partial_last_batch=partial_last_batch)
 
   def get_input_for_dynamic_lr_test(self, **kwargs):
     """Generates inputs that are dictionaries.

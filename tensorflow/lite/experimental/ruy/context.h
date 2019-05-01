@@ -65,6 +65,13 @@ struct Context final {
     }
   }
 
+  template <Path CompiledPaths>
+  Path GetPathToTake() {
+    last_taken_path =
+        GetMostSignificantPath(CompiledPaths & GetRuntimeEnabledPaths());
+    return last_taken_path;
+  }
+
   void SetRuntimeEnabledPaths(Path paths);
   Path GetRuntimeEnabledPaths();
 

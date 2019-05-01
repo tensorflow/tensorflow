@@ -2033,7 +2033,8 @@ def tf_py_test(
         flaky = 0,
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
 
@@ -2063,6 +2064,7 @@ def tf_py_test(
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),
         ] + additional_deps + xla_test_true_list,
+        **kwargs
     )
 
 register_extension_info(

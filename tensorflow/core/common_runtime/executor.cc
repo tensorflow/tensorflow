@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -2214,11 +2215,25 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     mutex_lock l(mu_);
     if (status_.ok()) {
       abort_run = true;
-      status_ = s;
+
+      // If execution has been cancelled, mark any new errors as being derived.
+      // This ensures any errors triggered by cancellation are marked as
+      // derived.
+      if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        status_ = StatusGroup::MakeDerived(s);
+      } else {
+        status_ = s;
+      }
     }
   }
   if (abort_run) {
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+    if (cancellation_manager_) {
+      // only log when the abort happens during the actual run time.
+      auto device_name = impl_->params_.device->name();
+      LOG(WARNING) << "[" << device_name << "] Executor start aborting: " << s;
+    }
+
     if (rendezvous_) {
       rendezvous_->StartAbort(s);
     }

@@ -151,9 +151,7 @@ class Layer(module.Module):
         'activity_regularizer',
     }
     # Validate optional keyword arguments.
-    for kwarg in kwargs:
-      if kwarg not in allowed_kwargs:
-        raise TypeError('Keyword argument not understood:', kwarg)
+    generic_utils.validate_kwargs(kwargs, allowed_kwargs)
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
@@ -379,7 +377,7 @@ class Layer(module.Module):
         initializer=initializer,
         dtype=dtype,
         constraint=constraint,
-        trainable=trainable and self.trainable,
+        trainable=trainable,
         partitioner=partitioner,
         use_resource=use_resource,
         collections=collections,

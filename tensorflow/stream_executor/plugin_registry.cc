@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/plugin_registry.h"
 
+#include "absl/base/const_init.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace stream_executor {
@@ -43,9 +46,9 @@ string PluginKindString(PluginKind plugin_kind) {
 PluginRegistry::DefaultFactories::DefaultFactories() :
     blas(kNullPlugin), dnn(kNullPlugin), fft(kNullPlugin), rng(kNullPlugin) { }
 
-static mutex& GetPluginRegistryMutex() {
-  static mutex* mu = new mutex;
-  return *mu;
+static absl::Mutex& GetPluginRegistryMutex() {
+  static absl::Mutex mu(absl::kConstInit);
+  return mu;
 }
 
 /* static */ PluginRegistry* PluginRegistry::instance_ = nullptr;
@@ -53,7 +56,7 @@ static mutex& GetPluginRegistryMutex() {
 PluginRegistry::PluginRegistry() {}
 
 /* static */ PluginRegistry* PluginRegistry::Instance() {
-  mutex_lock lock{GetPluginRegistryMutex()};
+  absl::MutexLock lock{&GetPluginRegistryMutex()};
   if (instance_ == nullptr) {
     instance_ = new PluginRegistry();
   }
@@ -69,14 +72,14 @@ template <typename FACTORY_TYPE>
 port::Status PluginRegistry::RegisterFactoryInternal(
     PluginId plugin_id, const string& plugin_name, FACTORY_TYPE factory,
     std::map<PluginId, FACTORY_TYPE>* factories) {
-  mutex_lock lock{GetPluginRegistryMutex()};
+  absl::MutexLock lock{&GetPluginRegistryMutex()};
 
   if (factories->find(plugin_id) != factories->end()) {
     return port::Status(
         port::error::ALREADY_EXISTS,
-        port::Printf("Attempting to register factory for plugin %s when "
-                     "one has already been registered",
-                     plugin_name.c_str()));
+        absl::StrFormat("Attempting to register factory for plugin %s when "
+                        "one has already been registered",
+                        plugin_name));
   }
 
   (*factories)[plugin_id] = factory;
@@ -94,7 +97,7 @@ port::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
     if (iter == generic_factories.end()) {
       return port::Status(
           port::error::NOT_FOUND,
-          port::Printf("Plugin ID %p not registered.", plugin_id));
+          absl::StrFormat("Plugin ID %p not registered.", plugin_id));
     }
   }
 
@@ -233,8 +236,8 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
     auto iter = platform_id_by_kind_.find(platform_kind);                     \
     if (iter == platform_id_by_kind_.end()) {                                 \
       return port::Status(port::error::FAILED_PRECONDITION,                   \
-                          port::Printf("Platform kind %d not registered.",    \
-                                       static_cast<int>(platform_kind)));     \
+                          absl::StrFormat("Platform kind %d not registered.", \
+                                          static_cast<int>(platform_kind)));  \
     }                                                                         \
     return GetFactory<PluginRegistry::FACTORY_TYPE>(iter->second, plugin_id); \
   }

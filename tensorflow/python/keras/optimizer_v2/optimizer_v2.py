@@ -381,14 +381,16 @@ class OptimizerV2(trackable.Trackable):
       ValueError: In case any gradient cannot be computed (e.g. if gradient
         function not implemented).
     """
+    params = nest.flatten(params)
     with backend.get_graph().as_default():
       grads = gradients.gradients(loss, params)
-    if None in grads:
-      raise ValueError("An operation has `None` for gradient. "
-                       "Please make sure that all of your ops have a "
-                       "gradient defined (i.e. are differentiable). "
-                       "Common ops without gradient: "
-                       "K.argmax, K.round, K.eval.")
+    for grad, param in zip(grads, params):
+      if grad is None:
+        raise ValueError("Variable {} has `None` for gradient. "
+                         "Please make sure that all of your ops have a "
+                         "gradient defined (i.e. are differentiable). "
+                         "Common ops without gradient: "
+                         "K.argmax, K.round, K.eval.".format(param))
     if hasattr(self, "clipnorm"):
       grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
     if hasattr(self, "clipvalue"):

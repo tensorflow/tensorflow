@@ -8,6 +8,13 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
+# Enables usage of ruy in TF Lite kernels.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_ruy",
+    define_values = {"tflite_with_ruy": "true"},
+)
+
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -88,9 +95,61 @@ cc_library(
         "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
+    defines = select({
+        "//tensorflow/lite/kernels:tflite_with_ruy": [
+            "TFLITE_WITH_RUY",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":op_macros",
+        # For now this unconditionally depends on both ruy and gemmlowp.
+        # See the comment inside class CpuBackendContext on the
+        # gemmlowp_context_ and ruy_context_ members.
+        "//tensorflow/lite/experimental/ruy:context",
         "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "cpu_backend_gemm",
+    srcs = [
+        "cpu_backend_gemm_ruy.h",
+    ] + select({
+        "//tensorflow/lite/kernels:tflite_with_ruy": [],
+        "//conditions:default": [
+            "cpu_backend_gemm_gemmlowp.h",
+            "cpu_backend_gemm_eigen.h",
+        ],
+    }),
+    hdrs = [
+        "cpu_backend_gemm.h",
+        "cpu_backend_gemm_params.h",
+    ],
+    deps = [
+        "//tensorflow/lite/kernels/internal:types",
+        ":cpu_backend_context",
+        # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
+        # cpu_backend_gemm.h about why ruy is the generic path.
+        "//tensorflow/lite/experimental/ruy",
+        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
+        # is false, but putting these dependencies in a select() seems to
+        # defeat copybara's rewriting rules.
+        "@gemmlowp",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "cpu_backend_gemm_test",
+    srcs = ["cpu_backend_gemm_test.cc"],
+    tags = ["notsan"],
+    deps = [
+        ":cpu_backend_gemm",
+        "@com_google_googletest//:gtest",
+        # ruy's reference path provides the reference implementation
+        # that this test compares against.
+        "//tensorflow/lite/experimental/ruy",
     ],
 )
 

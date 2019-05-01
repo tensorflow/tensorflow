@@ -105,16 +105,16 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   base_dir = path.dirname(tf.__file__)
   base_dirs = (
       base_dir,
-      path.normpath(path.join(base_dir, "../../tensorflow")),
+      # External packages base directories,
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )
 
   code_url_prefixes = (
       code_url_prefix,
-      # External packages source repositories
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard"
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator"
+      # External packages source repositories,
+      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
   doc_generator = generate_lib.DocGenerator(

@@ -508,18 +508,26 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "sqrdmulh v18.4s, v18.4s, v15.4s\n"
         "sqrdmulh v19.4s, v19.4s, v15.4s\n"
 
-        // We have some rounding
-        // division-by-power-of-two to do. Normally, this should be just
-        // a rounding-right-shift, srshl. However, that does not quite
-        // implement the round-to-nearest semantics that we need. See
-        // Appendix B of https://arxiv.org/pdf/1712.05877.pdf
-
-        // Because we are going to get benchmarked against less-careful
-        // competition, let's give people the ability to get faster, less
-        // careful arithmetic if they want --- define RUY_SLOPPY. We don't
-        // recommend using that in production, we have observed measurable
-        // loss of accuracy from this on MobileNets (which is how we noticed
-        // this whole issue in the first place).
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
 #if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
@@ -1434,17 +1442,26 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "ldr x4, [%[rhs_ptr], #56]\n"
         "sqrdmulh v19.4s, v19.4s, v15.4s\n"
 
-        // We have some rounding
-        // division-by-power-of-two to do. Normally, this should be just
-        // a rounding-right-shift, srshl. However, that does not quite
-        // implement the round-to-nearest semantics that we need. See
-        // Appendix B of https://arxiv.org/pdf/1712.05877.pdf
-        // Because we are going to get benchmarked against less-careful
-        // competition, let's give people the ability to get faster, less
-        // careful arithmetic if they want --- define RUY_SLOPPY. We don't
-        // recommend using that in production, we have observed measurable
-        // loss of accuracy from this on MobileNets (which is how we noticed
-        // this whole issue in the first place).
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
 #if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
@@ -2485,17 +2502,26 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "sqrdmulh v30.4s, v30.4s, v14.4s\n"
         "sqrdmulh v31.4s, v31.4s, v15.4s\n"
 
-        // We have some rounding
-        // division-by-power-of-two to do. Normally, this should be just
-        // a rounding-right-shift, srshl. However, that does not quite
-        // implement the round-to-nearest semantics that we need. See
-        // Appendix B of https://arxiv.org/pdf/1712.05877.pdf
-        // Because we are going to get benchmarked against less-careful
-        // competition, let's give people the ability to get faster, less
-        // careful arithmetic if they want --- define RUY_SLOPPY. We don't
-        // recommend using that in production, we have observed measurable
-        // loss of accuracy from this on MobileNets (which is how we noticed
-        // this whole issue in the first place).
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
 #if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
@@ -3504,17 +3530,26 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "sqrdmulh v30.4s, v30.4s, v14.4s\n"
         "sqrdmulh v31.4s, v31.4s, v15.4s\n"
 
-        // We have some rounding
-        // division-by-power-of-two to do. Normally, this should be just
-        // a rounding-right-shift, srshl. However, that does not quite
-        // implement the round-to-nearest semantics that we need. See
-        // Appendix B of https://arxiv.org/pdf/1712.05877.pdf
-        // Because we are going to get benchmarked against less-careful
-        // competition, let's give people the ability to get faster, less
-        // careful arithmetic if they want --- define RUY_SLOPPY. We don't
-        // recommend using that in production, we have observed measurable
-        // loss of accuracy from this on MobileNets (which is how we noticed
-        // this whole issue in the first place).
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
 #if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up

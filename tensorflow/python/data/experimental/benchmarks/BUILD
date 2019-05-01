@@ -15,7 +15,6 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

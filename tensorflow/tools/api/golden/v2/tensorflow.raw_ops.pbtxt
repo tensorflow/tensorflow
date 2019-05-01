@@ -2410,7 +2410,7 @@ tf_module {
   }
   member_method {
     name: "PrintV2"
-    argspec: "args=[\'input\', \'output_stream\', \'name\'], varargs=None, keywords=None, defaults=[\'stderr\', \'None\'], "
+    argspec: "args=[\'input\', \'output_stream\', \'end\', \'name\'], varargs=None, keywords=None, defaults=[\'stderr\', \'\\n\', \'None\'], "
   }
   member_method {
     name: "PriorityQueue"
@@ -4275,6 +4275,10 @@ tf_module {
   member_method {
     name: "Transpose"
     argspec: "args=[\'x\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TridiagonalMatMul"
+    argspec: "args=[\'superdiag\', \'maindiag\', \'subdiag\', \'rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "TridiagonalSolve"

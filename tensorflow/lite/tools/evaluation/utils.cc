@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#include <dirent.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -30,6 +32,14 @@ limitations under the License.
 
 namespace tflite {
 namespace evaluation {
+
+std::string StripTrailingSlashes(const std::string& path) {
+  int end = path.size();
+  while (end > 0 && path[end - 1] == '/') {
+    end--;
+  }
+  return path.substr(0, end);
+}
 
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output) {
@@ -47,6 +57,31 @@ bool ReadFileLines(const std::string& file_path,
     lines_output->push_back(line);
   }
   return true;
+}
+
+TfLiteStatus GetSortedFileNames(const std::string& directory,
+                                std::vector<std::string>* result) {
+  DIR* dir;
+  struct dirent* ent;
+  if (result == nullptr) {
+    LOG(ERROR) << "result cannot be nullptr";
+    return kTfLiteError;
+  }
+  result->clear();
+  std::string dir_path = StripTrailingSlashes(directory);
+  if ((dir = opendir(dir_path.c_str())) != nullptr) {
+    while ((ent = readdir(dir)) != nullptr) {
+      std::string filename(std::string(ent->d_name));
+      if (filename.size() <= 2) continue;
+      result->emplace_back(dir_path + "/" + filename);
+    }
+    closedir(dir);
+  } else {
+    LOG(ERROR) << "Could not open dir: " << dir_path;
+    return kTfLiteError;
+  }
+  std::sort(result->begin(), result->end());
+  return kTfLiteOk;
 }
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {

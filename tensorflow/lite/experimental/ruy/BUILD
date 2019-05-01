@@ -196,6 +196,17 @@ cc_library(
 )
 
 cc_library(
+    name = "internal_matrix",
+    hdrs = ["internal_matrix.h"],
+    deps = [
+        ":check_macros",
+        ":common",
+        ":matrix",
+        ":size_util",
+    ],
+)
+
+cc_library(
     name = "common",
     hdrs = [
         "common.h",
@@ -205,7 +216,6 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":path",
-        ":size_util",
     ],
 )
 
@@ -219,7 +229,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":size_util",
@@ -240,7 +250,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":spec",
@@ -256,7 +266,11 @@ cc_library(
         "dispatch.h",
         "impl.h",
     ],
-    hdrs = ["ruy.h"],
+    hdrs = [
+        "matrix.h",
+        "path.h",
+        "ruy.h",
+    ],
     visibility = ruy_visibility(),
     deps = [
         ":allocator",
@@ -265,10 +279,8 @@ cc_library(
         ":common",
         ":context",
         ":kernel",
-        ":matrix",
         ":opt_set",
         ":pack",
-        ":path",
         ":size_util",
         ":spec",
         ":thread_pool",
@@ -386,3 +398,7 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
+
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+tflite_portable_test_suite()

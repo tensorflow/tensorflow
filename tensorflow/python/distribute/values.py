@@ -1091,7 +1091,7 @@ class TPUMirroredVariable(variables_lib.Variable):
 
   @property
   def constraint(self):
-    return None
+    return self.primary.constraint
 
   @property
   def initializer(self):

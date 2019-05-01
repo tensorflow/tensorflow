@@ -25,7 +25,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorHouseholder",]
@@ -199,8 +198,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     normalized_axis = self.reflection_axis / linalg.norm(
         self.reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
-    x_dot_normalized_v = linear_operator_util.matmul_with_broadcast(
-        mat, x, adjoint_a=True)
+    x_dot_normalized_v = math_ops.matmul(mat, x, adjoint_a=True)
 
     return x - 2 * mat * x_dot_normalized_v
 
@@ -227,8 +225,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     normalized_axis = self.reflection_axis / linalg.norm(
         self.reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
-    matrix = -2 * linear_operator_util.matmul_with_broadcast(
-        mat, mat, adjoint_b=True)
+    matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 

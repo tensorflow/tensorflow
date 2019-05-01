@@ -1372,6 +1372,166 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(factory(**kwargs))
 
+#=============================================================================
+# RaggedTensor Variant conversion
+#=============================================================================
+
+  @parameterized.parameters(
+      {
+          'ragged_constant': [[1, 2], [3, 4, 5], [6], [], [7]],
+          'ragged_rank': 1
+      }, {
+          'ragged_constant': [[[1, 2]], [], [[3, 4]], []],
+          'ragged_rank': 1
+      }, {
+          'ragged_constant': [[[1], [2, 3, 4, 5, 6, 7]], [[]]],
+          'ragged_rank': 2
+      })
+  def testRaggedToVariant(self, ragged_constant, ragged_rank):
+    rt = ragged_factory_ops.constant(ragged_constant, ragged_rank=ragged_rank)
+    et = rt._to_variant()
+    self.assertEqual(et.shape.as_list(), [])
+    self.assertEqual(et.dtype, dtypes.variant)
+
+  @parameterized.parameters(
+      {
+          'ragged_constant': [[1, 2], [3, 4, 5], [6], [], [7]],
+          'ragged_rank': 1,
+          'num_batched_elems': 5
+      }, {
+          'ragged_constant': [[[1, 2]], [], [[3, 4]], []],
+          'ragged_rank': 1,
+          'num_batched_elems': 4
+      }, {
+          'ragged_constant': [[[1], [2, 3, 4, 5, 6, 7]], [[]]],
+          'ragged_rank': 2,
+          'num_batched_elems': 2
+      })
+  def testRaggedToBatchedVariant(self, ragged_constant, ragged_rank,
+                                 num_batched_elems):
+    rt = ragged_factory_ops.constant(ragged_constant, ragged_rank=ragged_rank)
+    et = rt._to_variant(batched_input=True)
+    self.assertEqual(et.shape.as_list(), [num_batched_elems])
+    self.assertEqual(et.dtype, dtypes.variant)
+
+  @parameterized.parameters(
+      # 2D test cases.
+      {
+          'ragged_constant': [[]],
+          'ragged_rank': 1,
+      },
+      {
+          'ragged_constant': [[1]],
+          'ragged_rank': 1,
+      },
+      {
+          'ragged_constant': [[1, 2]],
+          'ragged_rank': 1,
+      },
+      {
+          'ragged_constant': [[1], [2], [3]],
+          'ragged_rank': 1,
+      },
+      {
+          'ragged_constant': [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+          'ragged_rank': 1,
+      },
+      {
+          'ragged_constant': [[1, 2], [3, 4, 5], [6], [], [7]],
+          'ragged_rank': 1,
+      },
+      # 3D test cases.
+      {
+          'ragged_constant': [[[]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1, 2]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1, 2], [3, 4]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1, 2]], [[3, 4]], [[5, 6]], [[7, 8]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1], [2]], [[3], [4]], [[5], [6]], [[7], [8]]],
+          'ragged_rank': 2,
+      },
+      {
+          'ragged_constant': [[[1, 2]], [], [[3, 4]], []],
+          'ragged_rank': 2,
+      },
+      # 4D test cases.
+      {
+          'ragged_constant': [[[[1, 2], [3, 4]]],
+                              [[[0, 0], [0, 0]], [[5, 6], [7, 8]]], []],
+          'ragged_rank': 3,
+      },
+      # dtype `string`.
+      {
+          'ragged_constant': [['a'], ['b'], ['c']],
+          'ragged_rank': 1,
+          'dtype': dtypes.string,
+      },
+      {
+          'ragged_constant': [[['a', 'b'], ['c', 'd']]],
+          'ragged_rank': 2,
+          'dtype': dtypes.string,
+      },
+      {
+          'ragged_constant': [[[['a', 'b'], ['c', 'd']]],
+                              [[['e', 'f'], ['g', 'h']], [['i', 'j'],
+                                                          ['k', 'l']]], []],
+          'ragged_rank': 3,
+          'dtype': dtypes.string,
+      })
+  def testVariantRoundTrip(self,
+                           ragged_constant,
+                           ragged_rank,
+                           dtype=dtypes.int32):
+    rt = ragged_factory_ops.constant(
+        ragged_constant, ragged_rank=ragged_rank, dtype=dtype)
+    et = rt._to_variant()
+    round_trip_rt = RaggedTensor._from_variant(
+        et, dtype, input_ragged_rank=ragged_rank)
+    self.assertRaggedEqual(rt, round_trip_rt)
+
+  def testBatchedVariantRoundTrip(self):
+    ragged_rank = 1
+    rt = ragged_factory_ops.constant(
+        [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]],
+        ragged_rank=ragged_rank)
+    batched_variant = rt._to_variant(batched_input=True)
+    nested_batched_variant = array_ops.reshape(batched_variant, [5, 2])
+    decoded_rt = RaggedTensor._from_variant(
+        nested_batched_variant,
+        dtype=dtypes.int32,
+        input_ragged_rank=ragged_rank - 1,
+        output_ragged_rank=ragged_rank + 1)
+    expected_rt = ragged_factory_ops.constant([[[0], [1]], [[2], [3]], [[4],
+                                                                        [5]],
+                                               [[6], [7]], [[8], [9]]])
+    self.assertRaggedEqual(decoded_rt, expected_rt)
+
+  def testFromVariantInvalidParams(self):
+    rt = ragged_factory_ops.constant([[0], [1], [2], [3]])
+    batched_variant = rt._to_variant(batched_input=True)
+    nested_batched_variant = array_ops.reshape(batched_variant, [2, 2])
+    with self.assertRaisesRegexp(ValueError,
+                                 'output_ragged_rank must be equal to'):
+      RaggedTensor._from_variant(
+          nested_batched_variant,
+          dtype=dtypes.int32,
+          input_ragged_rank=1,
+          output_ragged_rank=1)
 
 if __name__ == '__main__':
   googletest.main()

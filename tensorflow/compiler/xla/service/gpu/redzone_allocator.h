@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -41,13 +42,15 @@ namespace gpu {
 class RedzoneAllocator : public se::ScratchAllocator {
  public:
   RedzoneAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator,
+                   const HloModuleConfig& hlo_module_config,
                    int64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
                    uint8 redzone_pattern = -1)
       : device_ordinal_(device_ordinal),
         redzone_size_(
             RoundUpToNearest(redzone_size, kXlaAllocatedBufferAlignBytes)),
         redzone_pattern_(redzone_pattern),
-        memory_allocator_(memory_allocator) {}
+        memory_allocator_(memory_allocator),
+        hlo_module_config_(hlo_module_config) {}
 
   // Redzones don't count towards the memory limit.
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
@@ -64,11 +67,6 @@ class RedzoneAllocator : public se::ScratchAllocator {
   Status CheckRedzones(se::Stream* stream) const;
 
  private:
-  // Checks that one buffer's redzones are unmodified.  buf should point to the
-  // user-editable buffer, i.e. it should not include redzones.
-  Status CheckBufferRedzones(se::DeviceMemoryBase buf,
-                             se::Stream* stream) const;
-
   const int device_ordinal_;
 
   // Redzone size on *one side* of allocation.
@@ -79,6 +77,7 @@ class RedzoneAllocator : public se::ScratchAllocator {
 
   const uint8 redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
+  const HloModuleConfig& hlo_module_config_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the

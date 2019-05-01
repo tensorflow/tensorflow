@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -195,7 +196,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
     self._rtol[dtypes.float32] = 1e-4
     self._atol[dtypes.float64] = 1e-9
     self._rtol[dtypes.float64] = 1e-9
-    self._rtol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.complex64] = 2e-4
 
 
 class LinearOperatorLowRankUpdatetestNoDiagUseCholesky(
@@ -238,7 +239,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
     self._rtol[dtypes.float32] = 1e-4
     self._atol[dtypes.float64] = 1e-9
     self._rtol[dtypes.float64] = 1e-9
-    self._rtol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.complex64] = 2e-4
 
 
 class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
@@ -263,9 +264,9 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
 
     # domain_dimension is 3
     self.assertAllEqual([2, 3, 3], operator.shape)
-    with self.cached_session():
-      self.assertAllEqual([2, 3, 3], operator.to_dense().eval().shape)
+    self.assertAllEqual([2, 3, 3], self.evaluate(operator.to_dense()).shape)
 
+  @test_util.run_deprecated_v1
   def test_dynamic_shape_broadcasts_up_from_operator_to_other_args(self):
     num_rows_ph = array_ops.placeholder(dtypes.int32)
 

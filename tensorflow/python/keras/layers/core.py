@@ -717,6 +717,9 @@ class Lambda(Layer):
         output_shape` If a function, it specifies the entire shape as a function
         of the
       input shape: `output_shape = f(input_shape)`
+    mask: Either None (indicating no masking) or a callable with the same
+      signature as the `compute_mask` layer method, or a tensor that will be
+      returned as output mask regardless what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
   Input shape: Arbitrary. Use the keyword argument input_shape (tuple of

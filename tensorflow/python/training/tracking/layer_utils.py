@@ -33,13 +33,8 @@ def is_layer(obj):
 def has_weights(obj):
   """Implicit check for Layer-like objects."""
   # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
-  try:
-    has_weight = (hasattr(obj, "trainable_weights")
-                  and hasattr(obj, "non_trainable_weights"))
-  except ValueError:
-    # Ignore the ValueError here since the model/layer might not be built yet.
-    # In that case, the obj is actual a instance with weights.
-    has_weight = True
+  has_weight = (hasattr(type(obj), "trainable_weights")
+                and hasattr(type(obj), "non_trainable_weights"))
 
   return has_weight and not isinstance(obj, type)
 

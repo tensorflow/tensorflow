@@ -123,16 +123,17 @@ bool HasMinMax(const TensorT* tensor) {
          !tensor->quantization->max.empty();
 }
 
-TfLiteStatus SetOperatorCodeVersion(ModelT* model) {
+void SetOperatorCodeVersion(ModelT* model) {
   for (int i = 0; i < model->operator_codes.size(); ++i) {
     OperatorCodeT* op_code = model->operator_codes[i].get();
     const BuiltinOperator op_buildin_code = op_code->builtin_code;
-    operator_property::OperatorProperty property;
-    TF_LITE_ENSURE_STATUS(
-        operator_property::GetOperatorProperty(op_buildin_code, &property));
-    op_code->version = property.version;
+    operator_property::OperatorProperty property =
+        operator_property::GetOperatorProperty(op_buildin_code);
+    if (property.quantizable) {
+      // Only update the versions of non-quantizable operations.
+      op_code->version = property.version;
+    }
   }
-  return kTfLiteOk;
 }
 
 }  // namespace utils

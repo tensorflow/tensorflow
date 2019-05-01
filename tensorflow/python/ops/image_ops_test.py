@@ -3349,7 +3349,7 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
 
 # half_pixel_centers not supported by XLA
-@test_util.disable_all_xla("b/127616992")
+@test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -4894,6 +4894,13 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
+
+  def testNumpyInput(self):
+    """Test case for GitHub issue 28241."""
+    image = np.random.random([512, 512, 1])
+    score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
+    with self.cached_session(use_gpu=True):
+      _ = self.evaluate(score_tensor)
 
 
 class ImageGradientsTest(test_util.TensorFlowTestCase):

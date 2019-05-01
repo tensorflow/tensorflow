@@ -356,10 +356,17 @@ def converted_call(f, owner, options, args, kwargs):
 
     return _call_unconverted(f, args, kwargs)
 
-  if kwargs is not None:
-    result = converted_f(*effective_args, **kwargs)
-  else:
-    result = converted_f(*effective_args)
+  try:
+    if kwargs is not None:
+      result = converted_f(*effective_args, **kwargs)
+    else:
+      result = converted_f(*effective_args)
+  except errors.StagingError as e:
+    target_origin = errors.extract_origin_info(converted_f)
+    raise errors.StagingError((target_origin,) + e.user_trace, e.original_error)
+  except errors.AutoGraphError as e:
+    target_origin = errors.extract_origin_info(converted_f)
+    raise errors.StagingError((target_origin,), e)
 
   return result
 

@@ -192,25 +192,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "numa_map_and_batch_dataset_op",
-    srcs = ["numa_map_and_batch_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core/kernels:inplace_ops",
-        "//tensorflow/core/kernels/data:captured_function",
-        "//tensorflow/core/kernels/data:dataset_utils",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_kernel_library(
     name = "parallel_interleave_dataset_op",
     srcs = ["parallel_interleave_dataset_op.cc"],
     deps = [
@@ -456,7 +437,6 @@ tf_kernel_library(
         ":map_and_batch_dataset_op",
         ":matching_files_dataset_op",
         ":non_serializable_dataset_op",
-        ":numa_map_and_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parse_example_dataset_op",
         ":prefetching_kernels",

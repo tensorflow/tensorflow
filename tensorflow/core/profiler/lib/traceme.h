@@ -133,7 +133,10 @@ class TraceMe {
     }
   }
 
-  ~TraceMe() {
+  // Stop tracing the activity. Called by the destructor, but exposed to allow
+  // stopping tracing before the object goes out of scope. Only has an effect
+  // the first time it is called.
+  void Stop() {
     // We do not need to check the trace level again here.
     // - If tracing wasn't active to start with, we have kUntracedActivity.
     // - If tracing was active and was stopped, we have
@@ -148,8 +151,11 @@ class TraceMe {
                                  start_time_, Env::Default()->NowNanos()});
       }
       no_init_.name.~string();
+      start_time_ = kUntracedActivity;
     }
   }
+
+  ~TraceMe() { Stop(); }
 
   // TraceMe is not movable or copyable.
   TraceMe(const TraceMe &) = delete;

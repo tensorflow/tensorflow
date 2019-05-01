@@ -134,6 +134,19 @@ java_library(
 )
 
 tf_java_test(
+    name = "EagerSessionTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/EagerSessionTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.EagerSessionTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
     name = "GraphTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/GraphTest.java"],

@@ -766,6 +766,22 @@ class DatasetBaseIterator : public IteratorBase {
     return model::MakeUnknownNode(std::move(args));
   }
 
+  // When modeling is enabled, this method disables autotuning for the given
+  // iterator (and the transitive closure of its inputs).
+  void DisableAutotune(IteratorContext* ctx, IteratorBase* iterator) {
+    if (iterator->node_) {
+      iterator->node_->set_autotune(false);
+    }
+  }
+
+  // When modeling is enabled, this method enables autotuning for the given
+  // iterator (and the transitive closure of its inputs).
+  void EnableAutotune(IteratorContext* ctx, IteratorBase* iterator) {
+    if (iterator->node_) {
+      iterator->node_->set_autotune(true);
+    }
+  }
+
   // When modeling is enabled, this method records the fact that this iterator
   // has dequeued an element from an internal buffer.
   void RecordBufferDequeue(IteratorContext* ctx,

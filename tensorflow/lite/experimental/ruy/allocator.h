@@ -146,12 +146,17 @@ class AlignedAllocator {
 // typed buffer.
 class Allocator {
  public:
+  void* AllocateBytes(std::size_t num_bytes) {
+    if (num_bytes == 0) {
+      return nullptr;
+    }
+    return aligned.AllocateAlignedBytes(
+        round_up_pot(num_bytes, detail::AlignedAllocator::kAlignment));
+  }
   template <typename Pointer>
   void Allocate(std::size_t count, Pointer* out) {
     using T = typename std::pointer_traits<Pointer>::element_type;
-    std::size_t num_bytes =
-        round_up_pot(count * sizeof(T), detail::AlignedAllocator::kAlignment);
-    *out = static_cast<T*>(aligned.AllocateAlignedBytes(num_bytes));
+    *out = static_cast<T*>(AllocateBytes(count * sizeof(T)));
   }
 
   void FreeAll() { aligned.FreeAll(); }

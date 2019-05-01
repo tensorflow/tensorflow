@@ -67,6 +67,20 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
 
 ShapedBuffer::~ShapedBuffer() {}
 
+StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
+    const ShapeIndex& index) const {
+  TF_ASSIGN_OR_RETURN(const Shape* host_sub_shape,
+                      ShapeUtil::TryGetSubshape(on_host_shape(), index));
+  TF_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
+                      ShapeUtil::TryGetSubshape(on_device_shape(), index));
+  ShapedBuffer sub_shaped_buffer(*host_sub_shape, *device_sub_shape, platform_,
+                                 device_ordinal_);
+  TF_ASSIGN_OR_RETURN(ShapeTree<se::DeviceMemoryBase> sub_buffers,
+                      buffers_.SubShapeTree(index));
+  sub_shaped_buffer.set_buffers(std::move(sub_buffers));
+  return std::move(sub_shaped_buffer);
+}
+
 void ShapedBuffer::clear() {
   for (auto& pair : buffers_) {
     // A default constructed DeviceMemoryBase is a null pointer.

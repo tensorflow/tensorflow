@@ -186,7 +186,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
-                                            int output_py_type) {
+                                            int output_py_type,
+                                            bool allow_float) {
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -199,7 +200,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), error_reporter_.get());
+      TfLiteTypeToSchemaType(output_type), allow_float, error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;
