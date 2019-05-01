@@ -47,7 +47,7 @@ void TestParallelismDetection::runOnFunction() {
   FuncBuilder b(f);
   f.walk<AffineForOp>([&](AffineForOp forOp) {
     if (isLoopParallel(forOp))
-      forOp.emitNote("parallel loop");
+      forOp.emitRemark("parallel loop");
   });
 }
 

@@ -403,7 +403,7 @@ void LoopTiling::runOnFunction() {
         msg << tSize << " ";
       msg << "]\n";
       auto rootForOp = band[0];
-      rootForOp.emitNote(msg.str());
+      rootForOp.emitRemark(msg.str());
     }
     if (failed(tileCodeGen(band, tileSizes)))
       return signalPassFailure();

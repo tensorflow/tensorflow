@@ -249,7 +249,8 @@ static void findMatchingStartFinishInsts(
 void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(forOp.emitNote("won't pipeline due to unknown trip count loop"));
+    LLVM_DEBUG(
+        forOp.emitRemark("won't pipeline due to unknown trip count loop"));
     return;
   }
 
@@ -257,7 +258,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
   if (startWaitPairs.empty()) {
-    LLVM_DEBUG(forOp.emitNote("No dma start/finish pairs\n"));
+    LLVM_DEBUG(forOp.emitRemark("No dma start/finish pairs\n"));
     return;
   }
 

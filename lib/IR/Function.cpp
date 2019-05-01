@@ -116,21 +116,20 @@ void Function::erase() {
   getModule()->getFunctions().erase(this);
 }
 
-/// Emit a note about this operation, reporting up to any diagnostic
+/// Emit a remark about this function, reporting up to any diagnostic
 /// handlers that may be listening.
-void Function::emitNote(const Twine &message) {
-  getContext()->getDiagEngine().emit(getLoc(), message,
-                                     DiagnosticSeverity::Note);
+void Function::emitRemark(const Twine &message) {
+  getContext()->emitRemark(getLoc(), message);
 }
 
-/// Emit a warning about this operation, reporting up to any diagnostic
+/// Emit a warning about this function, reporting up to any diagnostic
 /// handlers that may be listening.
 void Function::emitWarning(const Twine &message) {
   getContext()->getDiagEngine().emit(getLoc(), message,
                                      DiagnosticSeverity::Warning);
 }
 
-/// Emit an error about fatal conditions with this operation, reporting up to
+/// Emit an error about fatal conditions with this function, reporting up to
 /// any diagnostic handlers that may be listening.  This function always
 /// returns failure.  NOTE: This may terminate the containing application, only
 /// use when the IR is in an inconsistent state.

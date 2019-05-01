@@ -98,7 +98,7 @@ static void checkDependences(ArrayRef<Operation *> loadsAndStores) {
         // TODO(andydavis) Print dependence type (i.e. RAW, etc) and print
         // distance vectors as: ([2, 3], [0, 10]). Also, shorten distance
         // vectors from ([1, 1], [3, 3]) to (1, 3).
-        srcOpInst->emitNote(
+        srcOpInst->emitRemark(
             "dependence from " + Twine(i) + " to " + Twine(j) + " at depth " +
             Twine(d) + " = " +
             getDirectionVectorStr(ret, numCommonLoops, d, dependenceComponents)

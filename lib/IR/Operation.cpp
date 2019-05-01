@@ -305,6 +305,12 @@ void Operation::walk(const std::function<void(Operation *)> &callback) {
 // Other
 //===----------------------------------------------------------------------===//
 
+/// Emit a remark about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Operation::emitRemark(const Twine &message) {
+  getContext()->emitRemark(getLoc(), message);
+}
+
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitNote(const Twine &message) {
@@ -669,6 +675,12 @@ void OpState::emitWarning(const Twine &message) {
 /// handlers that may be listening.
 void OpState::emitNote(const Twine &message) {
   getOperation()->emitNote(message);
+}
+
+/// Emit a remark about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void OpState::emitRemark(const Twine &message) {
+  getOperation()->emitRemark(message);
 }
 
 //===----------------------------------------------------------------------===//

@@ -121,6 +121,10 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message);
 
+  /// Emit a remark about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitRemark(const Twine &message);
+
   // These are default implementations of customization hooks.
 public:
   /// This hook returns any canonicalization pattern rewrites that the operation

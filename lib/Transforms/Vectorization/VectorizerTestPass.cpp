@@ -129,7 +129,7 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
     auto superVectorType = opInst->getResult(0)->getType().cast<VectorType>();
     auto ratio = shapeRatio(superVectorType, subVectorType);
     if (!ratio.hasValue()) {
-      opInst->emitNote("NOT MATCHED");
+      opInst->emitRemark("NOT MATCHED");
     } else {
       outs << "\nmatched: " << *opInst << " with shape ratio: ";
       interleaveComma(MutableArrayRef<unsigned>(*ratio), outs);
@@ -297,8 +297,7 @@ void VectorizerTestPass::runOnFunction() {
     testNormalizeMaps();
 
   if (!outs.str().empty()) {
-    getContext().getDiagEngine().emit(UnknownLoc::get(&getContext()),
-                                      outs.str(), DiagnosticSeverity::Note);
+    getContext().emitRemark(UnknownLoc::get(&getContext()), outs.str());
   }
 }
 

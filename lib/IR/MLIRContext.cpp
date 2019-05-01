@@ -427,6 +427,11 @@ bool MLIRContext::emitError(Location location, const llvm::Twine &message) {
   return true;
 }
 
+/// Emit a remark message using the diagnostic engine.
+void MLIRContext::emitRemark(Location location, const Twine &message) {
+  getImpl().diagEngine.emit(location, message, DiagnosticSeverity::Remark);
+}
+
 /// Returns the diagnostic engine for this context.
 DiagnosticEngine &MLIRContext::getDiagEngine() { return getImpl().diagEngine; }
 

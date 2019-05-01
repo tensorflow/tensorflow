@@ -37,6 +37,7 @@ enum class DiagnosticSeverity {
   Note,
   Warning,
   Error,
+  Remark,
 };
 
 //===----------------------------------------------------------------------===//

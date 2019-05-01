@@ -294,6 +294,9 @@ struct PrettyStackTraceParallelDiagnosticEntry
           case DiagnosticSeverity::Note:
             os << "note: ";
             break;
+          case DiagnosticSeverity::Remark:
+            os << "remark: ";
+            break;
           }
           os << message << '\n';
         });

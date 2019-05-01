@@ -244,7 +244,7 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
   // constant trip count "full tiles" before applying this.
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(forOp.emitNote("non-constant trip count loop not handled"));
+    LLVM_DEBUG(forOp.emitRemark("non-constant trip count loop not handled"));
     return success();
   }
   uint64_t tripCount = mayBeConstTripCount.getValue();

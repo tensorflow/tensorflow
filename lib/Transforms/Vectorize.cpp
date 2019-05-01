@@ -1211,10 +1211,9 @@ void Vectorize::runOnFunction() {
   Function &f = getFunction();
   if (!fastestVaryingPattern.empty() &&
       fastestVaryingPattern.size() != vectorSizes.size()) {
-    f.emitNote("Fastest varying pattern specified with different size than the "
-               "vector size.");
-    this->signalPassFailure();
-    return;
+    f.emitRemark("Fastest varying pattern specified with different size than "
+                 "the vector size.");
+    return signalPassFailure();
   }
 
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.

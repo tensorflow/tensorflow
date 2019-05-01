@@ -211,12 +211,12 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
   return true;
 }
 
-static void emitNoteForBlock(Block &block, const Twine &message) {
+static void emitRemarkForBlock(Block &block, const Twine &message) {
   auto *op = block.getContainingOp();
   if (!op) {
-    block.getFunction()->emitNote(message);
+    block.getFunction()->emitRemark(message);
   } else {
-    op->emitNote(message);
+    op->emitRemark(message);
   }
 }
 
@@ -360,7 +360,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
                oss << "Creating DMA buffer of type " << fastMemRefType;
                oss << " and size " << llvm::divideCeil(*sizeInBytes, 1024)
                    << " KiB\n";
-               emitNoteForBlock(*block, oss.str()));
+               emitRemarkForBlock(*block, oss.str()));
   } else {
     // Reuse the one already created.
     fastMemRef = fastBufferMap[memref];
@@ -741,8 +741,9 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
-    forOp.emitNote(Twine(sizeInKib) +
-                   " KiB of DMA buffers in fast memory space for this block\n");
+    forOp.emitRemark(
+        Twine(sizeInKib) +
+        " KiB of DMA buffers in fast memory space for this block\n");
   }
 
   if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {

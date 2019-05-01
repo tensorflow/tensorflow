@@ -160,6 +160,8 @@ static StringRef getDiagnosticKindString(DiagnosticSeverity kind) {
     return "warning";
   case DiagnosticSeverity::Error:
     return "error";
+  case DiagnosticSeverity::Remark:
+    return "remark";
   }
 }
 
@@ -172,6 +174,8 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
     return llvm::SourceMgr::DK_Warning;
   case DiagnosticSeverity::Error:
     return llvm::SourceMgr::DK_Error;
+  case DiagnosticSeverity::Remark:
+    return llvm::SourceMgr::DK_Remark;
   }
 }
 
@@ -270,7 +274,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // error handler.
   // Extract the expected errors from the file.
   llvm::Regex expected(
-      "expected-(error|note|warning) *(@[+-][0-9]+)? *{{(.*)}}");
+      "expected-(error|note|remark|warning) *(@[+-][0-9]+)? *{{(.*)}}");
   SmallVector<StringRef, 100> lines;
   buffer.getBuffer().split(lines, '\n');
   for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
@@ -284,6 +288,8 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
         kind = DiagnosticSeverity::Error;
       else if (matches[1] == "warning")
         kind = DiagnosticSeverity::Warning;
+      else if (matches[1] == "remark")
+        kind = DiagnosticSeverity::Remark;
       else {
         assert(matches[1] == "note");
         kind = DiagnosticSeverity::Note;

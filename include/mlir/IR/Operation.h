@@ -446,6 +446,10 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message);
 
+  /// Emit a remark about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitRemark(const Twine &message);
+
 private:
   Operation(Location location, OperationName name, unsigned numResults,
             unsigned numSuccessors, unsigned numRegions,

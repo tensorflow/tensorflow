@@ -186,7 +186,7 @@ bool mlir::isAccessInvariant(Value *iv, Value *index) {
   }
 
   if (affineApplyOps.size() > 1) {
-    affineApplyOps[0]->emitNote(
+    affineApplyOps[0]->emitRemark(
         "CompositionAffineMapsPass must have been run: there should be at most "
         "one AffineApplyOp, returning false conservatively.");
     return false;

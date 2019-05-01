@@ -249,19 +249,19 @@ public:
   void print(raw_ostream &os);
   void dump();
 
-  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// Emit an error about fatal conditions with this function, reporting up to
   /// any diagnostic handlers that may be listening.  This function always
   /// returns failure.  NOTE: This may terminate the containing application,
   /// only use when the IR is in an inconsistent state.
   LogicalResult emitError(const Twine &message);
 
-  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// Emit a warning about this function, reporting up to any diagnostic
   /// handlers that may be listening.
   void emitWarning(const Twine &message);
 
-  /// Emit a note about this operation, reporting up to any diagnostic
+  /// Emit a remark about this function, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitNote(const Twine &message);
+  void emitRemark(const Twine &message);
 
   /// Displays the CFG in a window. This is for use from the debugger and
   /// depends on Graphviz to generate the graph.
