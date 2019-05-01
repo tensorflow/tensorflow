@@ -389,11 +389,7 @@ py_test(
     size = "medium",
     srcs = ["parallel_interleave_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-        "notap",
-    ],
+    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
