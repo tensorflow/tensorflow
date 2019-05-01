@@ -368,6 +368,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
 
+  def testEagerLargeConstant(self):
+    for t in [dtypes.uint64, dtypes.uint32, dtypes.int32, dtypes.int64]:
+      self.assertEqual(
+          constant_op.constant(t.max, dtype=t).numpy(), t.max)
+      self.assertEqual(
+          constant_op.constant(t.min, dtype=t).numpy(), t.min)
+
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
