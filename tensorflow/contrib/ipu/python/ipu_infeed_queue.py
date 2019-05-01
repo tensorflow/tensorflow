@@ -141,6 +141,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
           **dataset_ops.flat_structure(self._dataset))
 
     self._dequeued = False
+    self._initialized = False
 
   def _dequeue(self):
     """Returns a nested structure of `tf.Tensor`s representing the next element
@@ -177,7 +178,15 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
     Returns:
       A `tf.Operation` that should be run to initialize this IPUInfeedQueue
+
+    Raises:
+      ValueError: if the function `initializer` has already been called.
     """
+    if self._initialized:
+      raise ValueError(
+          """The IPUInfeedQueue `initializer` function can only be accessed once."""
+      )
+    self._initialized = True
     return self._initializer
 
   def get_next(self):
