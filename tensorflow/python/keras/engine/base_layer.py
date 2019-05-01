@@ -589,7 +589,7 @@ class Layer(module.Module):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
-        with graph.as_default(), ops.name_scope(self._name_scope()):
+        with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
@@ -669,7 +669,7 @@ class Layer(module.Module):
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
-        with ops.name_scope(self._name_scope()):
+        with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           with base_layer_utils.autocast_context_manager(
               input_list, self._mixed_precision_policy.should_cast_variables):
@@ -1570,7 +1570,7 @@ class Layer(module.Module):
 
     def _loss_for_variable(v):
       """Creates a regularization loss `Tensor` for variable `v`."""
-      with ops.name_scope(name + '/Regularizer'):
+      with backend.name_scope(name + '/Regularizer'):
         regularization = regularizer(v)
       return regularization
 
@@ -1586,7 +1586,7 @@ class Layer(module.Module):
     # output, since it is output-specific.
     if self._activity_regularizer:
       output_list = nest.flatten(outputs)
-      with ops.name_scope('ActivityRegularizer'):
+      with backend.name_scope('ActivityRegularizer'):
         for output in output_list:
           activity_loss = self._activity_regularizer(output)
           batch_size = math_ops.cast(
@@ -1656,7 +1656,7 @@ class Layer(module.Module):
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:
-        with ops.name_scope(self.name):
+        with backend.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
     outputs = nest.pack_sequence_as(outputs, output_ls_copy)

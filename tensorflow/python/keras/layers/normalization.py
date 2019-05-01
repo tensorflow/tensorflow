@@ -424,8 +424,7 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum):
-    with ops.name_scope(None, 'AssignMovingAvg',
-                        [variable, value, momentum]) as scope:
+    with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
