@@ -61,16 +61,14 @@ void MakeRuySpec(const GemmParamsType& params, RuySpecType* ruy_spec) {
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
+          typename DstScalar, QuantizationFlavor quantization_flavor>
 struct GemmImplUsingRuy {
-  static void Run(const MatrixParams<LhsScalar>& lhs_params,
-                  const LhsScalar* lhs_data,
-                  const MatrixParams<RhsScalar>& rhs_params,
-                  const RhsScalar* rhs_data,
-                  const MatrixParams<DstScalar>& dst_params,
-                  DstScalar* dst_data,
-                  const GemmParams<AccumScalar, DstScalar>& params,
-                  CpuBackendContext* context) {
+  static void Run(
+      const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
+      const MatrixParams<RhsScalar>& rhs_params, const RhsScalar* rhs_data,
+      const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
+      const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
+      CpuBackendContext* context) {
     ruy::Matrix<LhsScalar> ruy_lhs;
     ruy::Matrix<RhsScalar> ruy_rhs;
     ruy::Matrix<DstScalar> ruy_dst;

@@ -24,13 +24,9 @@ namespace tflite {
 namespace cpu_backend_gemm {
 namespace detail {
 
-template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
+template <typename Scalar>
 struct GemmImplUsingEigen {
-  static_assert(std::is_same<LhsScalar, float>::value, "");
-  static_assert(std::is_same<RhsScalar, float>::value, "");
-  static_assert(std::is_same<AccumScalar, float>::value, "");
-  static_assert(std::is_same<DstScalar, float>::value, "");
+  static_assert(std::is_same<Scalar, float>::value, "");
   static void Run(const MatrixParams<float>& lhs_params, const float* lhs_data,
                   const MatrixParams<float>& rhs_params, const float* rhs_data,
                   const MatrixParams<float>& dst_params, float* dst_data,

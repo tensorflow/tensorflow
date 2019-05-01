@@ -49,12 +49,54 @@ struct MatrixParams {
   Scalar zero_point = 0;
 };
 
+// Enumeration of broad categories of Gemm.
+//
+// The primary reason for this to exist is to allow Gemm to compile
+// only uniform-quantized or only per-channel-quantized code paths.
+// This is unneeded with ruy as the back-end, as this is only a runtime
+// difference in ruy, but with gemmlowp these really are separate code
+// paths and templatizing in a QuantizationFlavor is necessary to avoid
+// compiling unused gemmlowp code. Indeed, TFLite currently uses
+// uint8 with uniform quantization and int8 with per-channel quantization,
+// and does not use uint8 with per-channel. We want to avoid compiling
+// the gemmlowp uint8 per-channel path when gemmlowp is the back-end.
+//
+// It's possible to drop this in the future if gemmlowp goes away and no
+// other then-relevant backend library handles quantized paths in a way that
+// requires knowing this at compile-time.
+enum class QuantizationFlavor {
+  // Floating-point Gemm: the accumulators are not multiplied by any
+  // 'multiplier'.
+  kFloatingPoint,
+  // Quantized Gemm using a single multiplier for all accumulators.
+  kIntegerWithUniformMultiplier,
+  // Quantized Gemm using a separate multipliers for accumulators of each
+  // row of the destination matrix. This is what is called 'per-channel'
+  // in GemmParams. Here we use the more specific 'per-row' terminology
+  // to allow for the possibility of 'per-column' in the future, and to
+  // allow for that to be a separate code path in some back-end such as
+  // gemmlowp.
+  kIntegerWithPerRowMultiplier
+};
+
 // Additional parameters that Gemm needs, beyond what falls into
 // the MatrixParams that it takes. Compare to ruy::Spec.
 //
 // Decoupling AccumScalar from DstScalar (rather than deducing it from that)
 // is useful future-proofing. Think of a float16 path using float32 accum.
-template <typename AccumScalar, typename DstScalar>
+//
+// QuantizationFlavor is passed here even though it's technically not used
+// in this class. This is so that we retain the ability in the future to
+// specialize this class for quantization flavor, and this allows for
+// Gemm to be templatized in quantization_flavor via the GemmParams that it
+// takes, allowing for automatic template parameter deduction to take place,
+// so that most call sites don't need to specify a QuantizationFlavor
+// (only those that need perchannel quantization do).
+template <typename AccumScalar, typename DstScalar,
+          QuantizationFlavor quantization_flavor =
+              std::is_floating_point<AccumScalar>::value
+                  ? QuantizationFlavor::kFloatingPoint
+                  : QuantizationFlavor::kIntegerWithUniformMultiplier>
 struct GemmParams {
   // Only for non-floating-point cases. The fixed-point part (i.e. the mantissa)
   // of the multiplier by which accumulators are multiplied before being casted
@@ -104,41 +146,72 @@ using FloatGemmParams = GemmParams<float, float>;
 // a release-build assertion. See b/131587258.
 
 // Validates self-consistency of GemmParams.
-template <typename AccumScalar, typename DstScalar>
-void ValidateGemmParams(const GemmParams<AccumScalar, DstScalar>& params) {
+template <typename AccumScalar, typename DstScalar,
+          QuantizationFlavor quantization_flavor>
+void ValidateGemmParams(
+    const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params) {
   // For now require a bias vector. Again, ruy does not rely on that requirement
   // but the gemmlowp and Eigen path would require more code to handle it,
   // and currently TFLite only uses the case where there is a bias vector.
   TFLITE_DCHECK(params.bias);
   // Guard consistency of the quantized multiplier fields.
-  if (std::is_floating_point<AccumScalar>::value) {
-    // Floating point case: must not have any quantized multipliers
+  if (quantization_flavor == QuantizationFlavor::kFloatingPoint) {
     TFLITE_DCHECK(!params.multiplier_fixedpoint);
     TFLITE_DCHECK(!params.multiplier_exponent);
     TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
-  } else {
-    // Quantized case. Must have either uniform or perchannel multiplier,
-    // not both.
-    TFLITE_DCHECK((params.multiplier_fixedpoint == 0) !=
-                  (params.multiplier_fixedpoint_perchannel == nullptr));
-    // Consistency of the two _perchannel fields.
-    TFLITE_DCHECK((params.multiplier_exponent_perchannel == nullptr) ==
-                  (params.multiplier_fixedpoint_perchannel == nullptr));
+  } else if (quantization_flavor ==
+             QuantizationFlavor::kIntegerWithUniformMultiplier) {
+    TFLITE_DCHECK(params.multiplier_fixedpoint);
+    // Nothing to check about multiplier_exponent
+    TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
+    TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
+  } else if (quantization_flavor ==
+             QuantizationFlavor::kIntegerWithPerRowMultiplier) {
+    TFLITE_DCHECK(!params.multiplier_fixedpoint);
+    TFLITE_DCHECK(!params.multiplier_exponent);
+    TFLITE_DCHECK(params.multiplier_fixedpoint_perchannel);
+    TFLITE_DCHECK(params.multiplier_exponent_perchannel);
   }
 }
 
-// Validates overall consistency of all the parameters taken by a Gemm call:
-// the 3 MatrixParams and the GemmParams. Even if currently these are
-// checked only separately, it's good to have this validation done in one
-// function taking all of these parameters at once, as in the future there
-// may be mutual consistency requirements.
+namespace detail {
+
+template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
+          typename DstScalar, QuantizationFlavor quantization_flavor>
+struct ValidateTypes {
+  // This generic implementation is for quantized flavors.
+  // kFloatingPoint will be a specialization below.
+  static_assert(!std::is_floating_point<LhsScalar>::value, "");
+  static_assert(!std::is_floating_point<RhsScalar>::value, "");
+  static_assert(!std::is_floating_point<AccumScalar>::value, "");
+  // No requirement on DstScalar --- we might in the future allow it
+  // to be floating point even in a quantized Gemm.
+};
+
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar>
-void ValidateParams(const MatrixParams<LhsScalar>& lhs_params,
-                    const MatrixParams<RhsScalar>& rhs_params,
-                    const MatrixParams<DstScalar>& dst_params,
-                    const GemmParams<AccumScalar, DstScalar>& params) {
+struct ValidateTypes<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+                     QuantizationFlavor::kFloatingPoint> {
+  static_assert(std::is_floating_point<LhsScalar>::value, "");
+  static_assert(std::is_floating_point<RhsScalar>::value, "");
+  static_assert(std::is_floating_point<AccumScalar>::value, "");
+  static_assert(std::is_floating_point<DstScalar>::value, "");
+};
+
+}  // namespace detail
+
+// Validates overall consistency of all the parameters taken by a Gemm call:
+// the 3 MatrixParams and the GemmParams.
+template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
+          typename DstScalar, QuantizationFlavor quantization_flavor>
+void ValidateParams(
+    const MatrixParams<LhsScalar>& lhs_params,
+    const MatrixParams<RhsScalar>& rhs_params,
+    const MatrixParams<DstScalar>& dst_params,
+    const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params) {
+  (void)detail::ValidateTypes<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+                              quantization_flavor>();
   ValidateGemmParams(params);
   // For now, Gemm only supports this particular combination of storage orders.
   // Actually the generic ruy path already supports all combinations (with
@@ -151,6 +224,20 @@ void ValidateParams(const MatrixParams<LhsScalar>& lhs_params,
   TFLITE_DCHECK(lhs_params.order == Order::kRowMajor);
   TFLITE_DCHECK(rhs_params.order == Order::kColMajor);
   TFLITE_DCHECK(dst_params.order == Order::kColMajor);
+  // Guard against the case when both LHS and RHS zero_point's are equal to
+  // the minimum representable value. In that case, padding with zero_point
+  // values will generate the bad case for fast int8 kernels on NEON
+  // (pre-dotprod) which attempt to multiply-accumulate two pairs of int8
+  // into a int16:  this is safe except in the bad case -128*-128 + -128*-128.
+  // Accordingly, this is banned by gemmlowp and ruy. However, they were not
+  // guarding against that, which allowed a real bug to happen, b/131609283.
+  // Checking this here lets callers of this cpu_backend_gemm library be
+  // safe regardless of backends.
+  if (quantization_flavor != QuantizationFlavor::kFloatingPoint) {
+    TFLITE_DCHECK(
+        lhs_params.zero_point != std::numeric_limits<LhsScalar>::lowest() ||
+        rhs_params.zero_point != std::numeric_limits<RhsScalar>::lowest());
+  }
 }
 
 }  // namespace cpu_backend_gemm
