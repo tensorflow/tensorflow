@@ -305,8 +305,8 @@ static port::Status InternalInit() {
 /* static */ port::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as hipInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status* init_retval = [&] {
-    init_retval = new Status(InternalInit());
+  static port::Status* init_retval = [] {
+    return new port::Status(InternalInit());
   }();
   return *init_retval;
 }
