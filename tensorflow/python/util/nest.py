@@ -130,6 +130,8 @@ def _sequence_like(instance, args):
   elif _is_composite_tensor(instance):
     metadata = instance._component_metadata()  # pylint: disable=protected-access
     return type(instance)._from_components(args, metadata)  # pylint: disable=protected-access
+  elif isinstance(instance, _six.moves.range):
+    return _sequence_like(list(instance), args)
   else:
     # Not a namedtuple
     return type(instance)(args)
