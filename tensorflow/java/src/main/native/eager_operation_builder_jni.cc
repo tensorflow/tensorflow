@@ -90,9 +90,10 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_EagerOperationBuilder_execute(
   TFE_Op* op = requireOp(env, op_handle);
   if (op == nullptr) return 0;
   int num_retvals = 8;  // should be >= than max number of outputs in any op
-  TFE_TensorHandle* retvals[num_retvals];
+  std::unique_ptr<TFE_TensorHandle* []> retvals(
+      new TFE_TensorHandle* [num_retvals]);
   TF_Status* status = TF_NewStatus();
-  TFE_Execute(op, retvals, &num_retvals, status);
+  TFE_Execute(op, retvals.get(), &num_retvals, status);
   if (!throwExceptionIfNotOK(env, status)) {
     TF_DeleteStatus(status);
     return nullptr;
@@ -139,7 +140,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperationBuilder_addInputList(
   if (op == nullptr) return;
   jlong* cinput_handles = env->GetLongArrayElements(input_handles, nullptr);
   size_t num_inputs = static_cast<size_t>(env->GetArrayLength(input_handles));
-  TFE_TensorHandle* tensor_handles[num_inputs];
+  std::unique_ptr<TFE_TensorHandle* []> tensor_handles(
+      new TFE_TensorHandle* [num_inputs]);
   for (int i = 0; i < num_inputs; ++i) {
     tensor_handles[i] = requireTensorHandle(env, cinput_handles[i]);
     if (tensor_handles[i] == nullptr) {
@@ -149,7 +151,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperationBuilder_addInputList(
   }
   env->ReleaseLongArrayElements(input_handles, cinput_handles, JNI_ABORT);
   TF_Status* status = TF_NewStatus();
-  TFE_OpAddInputList(op, tensor_handles, num_inputs, status);
+  TFE_OpAddInputList(op, tensor_handles.get(), num_inputs, status);
   throwExceptionIfNotOK(env, status);
   TF_DeleteStatus(status);
 }
