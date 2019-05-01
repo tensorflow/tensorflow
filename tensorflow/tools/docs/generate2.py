@@ -105,7 +105,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   base_dir = path.dirname(tf.__file__)
   base_dirs = (
       base_dir,
-      path.normpath(path.join(base_dir, "../../tensorflow")),
+      # External packages base directories,
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )
