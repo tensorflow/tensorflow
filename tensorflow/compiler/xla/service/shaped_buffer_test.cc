@@ -148,6 +148,27 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
       });
 }
 
+TEST(ScopedShapedBufferTest, TestSubShapeTree) {
+  Shape array_shape = ShapeUtil::MakeShape(F32, {1});
+  Shape tuple_shape =
+      xla::ShapeUtil::MakeTupleShape({array_shape, array_shape});
+  TestAllocator allocator;
+  ScopedShapedBuffer sb(tuple_shape, tuple_shape, &allocator,
+                        /*device_ordinal=*/0);
+  sb.buffers().ForEachMutableElement(
+      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        TF_ASSERT_OK_AND_ASSIGN(
+            OwningDeviceMemory m,
+            allocator.Allocate(/*device_ordinal=*/0, /*size=*/32));
+        *buffer = m.Forget();
+      });
+  auto ssb_statusor = sb.SubShapedBuffer({1});
+  ASSERT_TRUE(ssb_statusor.ok());
+  auto ssb = ssb_statusor.ConsumeValueOrDie();
+  EXPECT_EQ(ssb.on_host_shape(), array_shape);
+  EXPECT_EQ(ssb.on_device_shape(), array_shape);
+}
+
 // Test TakeSubTree with different depths (depth of ShapeTree) and fan-outs
 // (cardinality of each non-leaf node's children).
 void BM_TakeSubTree(int iters, int depth, int fan_out) {

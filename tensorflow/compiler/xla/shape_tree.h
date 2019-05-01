@@ -122,15 +122,16 @@ class ShapeTree {
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
 
-  // Replaces *only* the underlying shape of this ShapeTree. The caller must own
-  // the Shape object and hence shape_storage_ is not updated.
-  //
-  // Only safe to use this if the ShapeTree was constructed with 'explicit
-  // ShapeTree(const Shape* shape)' or is moved from one such ShapeTree. The
-  // caller must ensure that the input shape is consistent with the underlying
-  // tree.
+  // A ShapeTree object can own the underlying Shape pointer (via the
+  // shape_storage_ member), or can point to a Shape object owned by the caller.
+  // This API replaces the underlying Shape object to the one supplied by the
+  // caller, whom must ensure the object remain valid for the whole lifetime of
+  // this ShapeTree object, and also that the Shape is consistent with it.
   void replace_shape_ptr(const Shape* shape) {
-    CHECK(shape_storage_.get() == nullptr);
+    if (shape_storage_ != nullptr) {
+      CHECK_EQ(*shape, *shape_storage_);
+      shape_storage_ = nullptr;
+    }
     shape_ = shape;
   }
 
