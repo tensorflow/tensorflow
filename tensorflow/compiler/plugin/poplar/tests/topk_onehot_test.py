@@ -66,7 +66,7 @@ class OneHotTopK(test_util.TensorFlowTestCase):
         else:
           self.assertAllClose(result, expected)
 
-    # Generate a multi dimensional matrix.
+    # Generate a multi dimensional matrix.
     largish_matrix_size = [4, 3, 4, 2, 2]
     largish_matrix_data = np.random.randint(1, np.prod(largish_matrix_size),
                                             largish_matrix_size)
