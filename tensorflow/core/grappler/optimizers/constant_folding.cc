@@ -2470,7 +2470,7 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
 
 bool ConstantFolding::ReplaceReductionWithIdentity(NodeDef* node) const {
   // Replace the reduction node with an identity node, that can be further
-  // optimized by the model pruner.
+  // optimized by other passes.
   DataType output_type;
   if (node->attr().count("T") != 0) {
     output_type = node->attr().at("T").type();
