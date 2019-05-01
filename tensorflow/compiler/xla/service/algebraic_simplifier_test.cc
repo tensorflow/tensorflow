@@ -5088,7 +5088,6 @@ TEST_F(AlgebraicSimplifierTest, CopyReshape) {
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
-  LOG(INFO) << "\n" << m->ToString();
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
@@ -5113,14 +5112,14 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RL) {
   // The transformation of moving transpose and reshape to the constant side
   // is layout insensitive. We ignore layout when checking shapes.
   const HloInstruction* transpose;
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(
                   m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
                   m::Reshape(m::Transpose(&transpose,
                                           m::Reshape(m::Constant())
                                               .WithShapeCompatibleTo(&shape2))
                                  .WithShapeCompatibleTo(&shape3)))));
-  ASSERT_TRUE(transpose->dimensions() == std::vector<int64>({1, 0, 2}));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(1, 0, 2));
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RR) {
@@ -5190,14 +5189,14 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR2) {
   auto shape1 = ShapeUtil::MakeShape(F32, {2, 8});
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
   const HloInstruction* transpose;
-  EXPECT_THAT(
+  ASSERT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Dot(
           m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
           m::Reshape(m::Transpose(
               &transpose,
               m::Reshape(m::Constant()).WithShapeCompatibleTo(&shape2))))));
-  ASSERT_TRUE(transpose->dimensions() == std::vector<int64>({2, 0, 1, 3}));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(2, 0, 1, 3));
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
@@ -5219,14 +5218,14 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2, 2});
   auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3, 2});
   const HloInstruction* transpose;
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(
                   m::Reshape(m::Parameter(0)).WithShapeCompatibleTo(&shape1),
                   m::Reshape(m::Transpose(&transpose,
                                           m::Reshape(m::Constant())
                                               .WithShapeCompatibleTo(&shape2))
                                  .WithShapeCompatibleTo(&shape3)))));
-  ASSERT_TRUE(transpose->dimensions() == std::vector<int64>({0, 2, 1, 3}));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegTranspose) {
