@@ -15,12 +15,11 @@ limitations under the License.
 
 package org.tensorflow.lite.nnapi;
 
-import java.io.Closeable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.Tensor;
 
 /** {@link Delegate} for NNAPI inference. */
-public class NnApiDelegate implements Delegate, Closeable {
+public class NnApiDelegate implements Delegate, AutoCloseable {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
 
