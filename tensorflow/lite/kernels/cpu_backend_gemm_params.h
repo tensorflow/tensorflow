@@ -224,20 +224,6 @@ void ValidateParams(
   TFLITE_DCHECK(lhs_params.order == Order::kRowMajor);
   TFLITE_DCHECK(rhs_params.order == Order::kColMajor);
   TFLITE_DCHECK(dst_params.order == Order::kColMajor);
-  // Guard against the case when both LHS and RHS zero_point's are equal to
-  // the minimum representable value. In that case, padding with zero_point
-  // values will generate the bad case for fast int8 kernels on NEON
-  // (pre-dotprod) which attempt to multiply-accumulate two pairs of int8
-  // into a int16:  this is safe except in the bad case -128*-128 + -128*-128.
-  // Accordingly, this is banned by gemmlowp and ruy. However, they were not
-  // guarding against that, which allowed a real bug to happen, b/131609283.
-  // Checking this here lets callers of this cpu_backend_gemm library be
-  // safe regardless of backends.
-  if (quantization_flavor != QuantizationFlavor::kFloatingPoint) {
-    TFLITE_DCHECK(
-        lhs_params.zero_point != std::numeric_limits<LhsScalar>::lowest() ||
-        rhs_params.zero_point != std::numeric_limits<RhsScalar>::lowest());
-  }
 }
 
 }  // namespace cpu_backend_gemm

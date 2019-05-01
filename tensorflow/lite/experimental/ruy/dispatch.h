@@ -72,16 +72,27 @@ void CheckZeroPoint(Scalar zero_point) {
   }
 }
 
-// If the Spec's ZeroPointSupport covers only some special cases,
-// this function enforces that the matrix multiplication at hand falls into
-// that special case.
 template <typename Spec, typename LhsScalar, typename RhsScalar,
           typename DstScalar>
 void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
                              DstScalar dst_zero_point) {
+  // If the Spec's ZeroPointSupport covers only some special cases,
+  // this function enforces that the matrix multiplication at hand falls into
+  // that special case.
   CheckZeroPoint<Spec>(lhs_zero_point);
   CheckZeroPoint<Spec>(rhs_zero_point);
   CheckZeroPoint<Spec>(dst_zero_point);
+
+  // Guard against the case when both LHS and RHS zero_point's are equal to
+  // the minimum representable value. In that case, padding with zero_point
+  // values will generate the bad case for fast int8 kernels on NEON
+  // (pre-dotprod) which attempt to multiply-accumulate two pairs of int8
+  // into a int16:  this is safe except in the bad case -128*-128 + -128*-128.
+  // See b/131609283. This only affects the kNeon path but we ban this for all
+  // paths in order for ruy to have the same supported parameter space
+  // on all paths.
+  RUY_DCHECK(lhs_zero_point != std::numeric_limits<LhsScalar>::lowest() ||
+             rhs_zero_point != std::numeric_limits<RhsScalar>::lowest());
 }
 
 inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
