@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -1177,8 +1179,6 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1218,19 +1218,30 @@ inline void FullyConnected(
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
 
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
-      filter_data, output_rows, filter_cols, filter_cols);
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
-      input_data, filter_cols, batches, filter_cols);
-  gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
-      output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max);
-  gemmlowp::GemmWithOutputPipeline<uint8, uint8,
-                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
-      filter_offset, input_offset, output_pipeline);
+  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  lhs_params.rows = filter_rows;
+  lhs_params.cols = filter_cols;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.zero_point = -filter_offset;
+  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  rhs_params.rows = filter_cols;
+  rhs_params.cols = batches;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.zero_point = -input_offset;
+  cpu_backend_gemm::MatrixParams<uint8> dst_params;
+  dst_params.rows = filter_rows;
+  dst_params.cols = batches;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.zero_point = output_offset;
+  cpu_backend_gemm::GemmParams<int32, uint8> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  gemm_params.multiplier_fixedpoint = output_multiplier;
+  gemm_params.multiplier_exponent = output_shift;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 inline void FullyConnected(
