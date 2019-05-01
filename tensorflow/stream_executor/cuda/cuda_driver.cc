@@ -172,6 +172,9 @@ void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
   cudaPointerAttributes attributes;
   cudaError_t err =
       cudaPointerGetAttributes(&attributes, reinterpret_cast<const void*>(ptr));
+  CHECK(err == cudaSuccess || err == cudaErrorInvalidValue)
+      << "Unexpected CUDA error: " << cudaGetErrorString(err);
+
   // If we failed, reset cuda error status to avoid poisoning cuda streams.
   if (err != cudaSuccess) cudaGetLastError();
   bool points_to_host_memory = (err == cudaErrorInvalidValue ||
