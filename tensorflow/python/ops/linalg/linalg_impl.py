@@ -510,14 +510,15 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
   if rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
     raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
         diags_rank - 1, diags_rank, rhs_rank))
-  if diagonals.shape[-2] != 3:
+  if diagonals.shape[-2] and diagonals.shape[-2] != 3:
     raise ValueError('Expected 3 diagonals got {}'.format(diagonals.shape[-2]))
   if not diagonals.shape[:-2].is_compatible_with(rhs.shape[:diags_rank - 2]):
     raise ValueError('Batch shapes {} and {} are incompatible'.format(
         diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
 
   def check_num_lhs_matches_num_rhs():
-    if diagonals.shape[-1] != rhs.shape[-2]:
+    if (diagonals.shape[-1] and rhs.shape[-2] and
+        diagonals.shape[-1] != rhs.shape[-2]):
       raise ValueError('Expected number of left-hand sided and right-hand '
                        'sides to be equal, got {} and {}'.format(
                            diagonals.shape[-1], rhs.shape[-2]))
