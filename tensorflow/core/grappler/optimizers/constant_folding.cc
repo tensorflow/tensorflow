@@ -2474,9 +2474,10 @@ bool ConstantFolding::ReplaceReductionWithIdentity(NodeDef* node) const {
   DataType output_type;
   if (node->attr().count("T") != 0) {
     output_type = node->attr().at("T").type();
-  } else {
-    // This is an 'any' or 'all' reduction. The output is always boolean.
+  } else if (IsAny(*node) || IsAll(*node)) {
     output_type = DT_BOOL;
+  } else {
+    return false;
   }
   node->set_op("Identity");
   node->clear_attr();
