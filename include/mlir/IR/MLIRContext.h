@@ -25,6 +25,7 @@
 
 namespace mlir {
 class AbstractOperation;
+class DiagnosticEngine;
 class Dialect;
 class Location;
 class MLIRContextImpl;
@@ -55,44 +56,15 @@ public:
   /// directly.
   std::vector<AbstractOperation *> getRegisteredOperations();
 
-  /// This is the interpretation of a diagnostic that is emitted to the
-  /// diagnostic handler below.
-  enum class DiagnosticKind { Note, Warning, Error };
-
-  // Diagnostic handler registration and use.  MLIR supports the ability for the
-  // IR to carry arbitrary metadata about operation location information.  If an
-  // problem is detected by the compiler, it can invoke the emitError /
-  // emitWarning / emitNote method on an Operation and have it get reported
-  // through this interface.
-  //
-  // Tools using MLIR are encouraged to register error handlers and define a
-  // schema for their location information.  If they don't, then warnings and
-  // notes will be dropped and errors will terminate the process with exit(1).
-
-  using DiagnosticHandlerTy = std::function<void(
-      Location location, StringRef message, DiagnosticKind kind)>;
-
-  /// Register a diagnostic handler with this LLVM context.  The handler is
-  /// passed location information if present (nullptr if not) along with a
-  /// message and a boolean that indicates whether this is an error or warning.
-  void registerDiagnosticHandler(const DiagnosticHandlerTy &handler);
-
-  /// Return the current diagnostic handler, or null if none is present.
-  DiagnosticHandlerTy getDiagnosticHandler();
-
-  /// Emit a diagnostic using the registered issue handle if present, or with
-  /// the default behavior if not.  The MLIR compiler should not generally
-  /// interact with this, it should use methods on Operation instead.
-  void emitDiagnostic(Location location, const Twine &message,
-                      DiagnosticKind kind);
-
-  /// Emit an error message using the registered issue handle if present, or to
-  /// the standard error stream otherwise and return true.
-  bool emitError(Location location, const Twine &message);
-
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() { return *impl.get(); }
+
+  /// Emit an error message using the diagnostic engine and return true.
+  bool emitError(Location location, const Twine &message);
+
+  /// Returns the diagnostic engine for this context.
+  DiagnosticEngine &getDiagEngine();
 
   /// Returns the storage uniquer used for constructing type storage instances.
   /// This should not be used directly.

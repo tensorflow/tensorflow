@@ -23,6 +23,7 @@
 
 #include "mlir/Analysis/Passes.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -151,25 +152,25 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
 }
 
 /// Given a diagnostic kind, return a human readable string for it.
-static StringRef getDiagnosticKindString(MLIRContext::DiagnosticKind kind) {
+static StringRef getDiagnosticKindString(DiagnosticSeverity kind) {
   switch (kind) {
-  case MLIRContext::DiagnosticKind::Note:
+  case DiagnosticSeverity::Note:
     return "note";
-  case MLIRContext::DiagnosticKind::Warning:
+  case DiagnosticSeverity::Warning:
     return "warning";
-  case MLIRContext::DiagnosticKind::Error:
+  case DiagnosticSeverity::Error:
     return "error";
   }
 }
 
 /// Given a diagnostic kind, returns the LLVM DiagKind.
-static llvm::SourceMgr::DiagKind getDiagKind(MLIRContext::DiagnosticKind kind) {
+static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
   switch (kind) {
-  case MLIRContext::DiagnosticKind::Note:
+  case DiagnosticSeverity::Note:
     return llvm::SourceMgr::DK_Note;
-  case MLIRContext::DiagnosticKind::Warning:
+  case DiagnosticSeverity::Warning:
     return llvm::SourceMgr::DK_Warning;
-  case MLIRContext::DiagnosticKind::Error:
+  case DiagnosticSeverity::Error:
     return llvm::SourceMgr::DK_Error;
   }
 }
@@ -188,20 +189,19 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // If we are in verify mode then we have a lot of work to do, otherwise just
   // perform the actions without worrying about it.
   if (!verifyDiagnostics) {
-
     // Register a simple diagnostic handler that prints out info with context.
-    context.registerDiagnosticHandler([&](Location location, StringRef message,
-                                          MLIRContext::DiagnosticKind kind) {
-      unsigned line = 1, column = 1;
-      SMLoc loc;
-      if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
-        line = fileLoc->getLine();
-        column = fileLoc->getColumn();
-        loc = getLocFromLineAndCol(buffer, line, column);
-      }
+    context.getDiagEngine().setHandler(
+        [&](Location location, StringRef message, DiagnosticSeverity kind) {
+          unsigned line = 1, column = 1;
+          SMLoc loc;
+          if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
+            line = fileLoc->getLine();
+            column = fileLoc->getColumn();
+            loc = getLocFromLineAndCol(buffer, line, column);
+          }
 
-      sourceMgr.PrintMessage(loc, getDiagKind(kind), message);
-    });
+          sourceMgr.PrintMessage(loc, getDiagKind(kind), message);
+        });
 
     // Run the test actions.
     return performActions(sourceMgr, &context);
@@ -214,7 +214,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // Record the expected diagnostic's position, substring and whether it was
   // seen.
   struct ExpectedDiag {
-    MLIRContext::DiagnosticKind kind;
+    DiagnosticSeverity kind;
     unsigned lineNo;
     StringRef substring;
     SMLoc fileLoc;
@@ -224,7 +224,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 
   // Error checker that verifies reported error was expected.
   auto checker = [&](Location location, StringRef message,
-                     MLIRContext::DiagnosticKind kind) {
+                     DiagnosticSeverity kind) {
     unsigned line = 1, column = 1;
     if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
       line = fileLoc->getLine();
@@ -279,14 +279,14 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
       // Point to the start of expected-*.
       SMLoc expectedStart = SMLoc::getFromPointer(matches[0].data());
 
-      MLIRContext::DiagnosticKind kind;
+      DiagnosticSeverity kind;
       if (matches[1] == "error")
-        kind = MLIRContext::DiagnosticKind::Error;
+        kind = DiagnosticSeverity::Error;
       else if (matches[1] == "warning")
-        kind = MLIRContext::DiagnosticKind::Warning;
+        kind = DiagnosticSeverity::Warning;
       else {
         assert(matches[1] == "note");
-        kind = MLIRContext::DiagnosticKind::Note;
+        kind = DiagnosticSeverity::Note;
       }
 
       ExpectedDiag record{kind, lineNo + 1, matches[3], expectedStart, false};
@@ -306,7 +306,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   }
 
   // Finally, register the error handler to capture them.
-  context.registerDiagnosticHandler(checker);
+  context.getDiagEngine().setHandler(checker);
 
   // Do any processing requested by command line flags.  We don't care whether
   // these actions succeed or fail, we only care what diagnostics they produce

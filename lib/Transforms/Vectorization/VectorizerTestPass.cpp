@@ -25,6 +25,7 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/Functional.h"
@@ -296,8 +297,8 @@ void VectorizerTestPass::runOnFunction() {
     testNormalizeMaps();
 
   if (!outs.str().empty()) {
-    getContext().emitDiagnostic(UnknownLoc::get(&getContext()), outs.str(),
-                                MLIRContext::DiagnosticKind::Note);
+    getContext().getDiagEngine().emit(UnknownLoc::get(&getContext()),
+                                      outs.str(), DiagnosticSeverity::Note);
   }
 }
 

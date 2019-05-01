@@ -21,6 +21,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "PassDetail.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/CommandLine.h"
@@ -183,7 +184,7 @@ namespace {
 struct ParallelDiagnosticHandler {
   struct ThreadDiagnostic {
     ThreadDiagnostic(size_t id, Location loc, StringRef msg,
-                     MLIRContext::DiagnosticKind kind)
+                     DiagnosticSeverity kind)
         : id(id), loc(loc), msg(msg), kind(kind) {}
     bool operator<(const ThreadDiagnostic &rhs) const { return id < rhs.id; }
 
@@ -195,24 +196,24 @@ struct ParallelDiagnosticHandler {
     /// Information for the diagnostic.
     Location loc;
     std::string msg;
-    MLIRContext::DiagnosticKind kind;
+    DiagnosticSeverity kind;
   };
 
   ParallelDiagnosticHandler(MLIRContext &ctx)
-      : prevHandler(ctx.getDiagnosticHandler()), context(ctx) {
-    ctx.registerDiagnosticHandler([this](Location loc, StringRef message,
-                                         MLIRContext::DiagnosticKind kind) {
-      uint64_t tid = llvm::get_threadid();
-      llvm::sys::SmartScopedLock<true> lock(mutex);
+      : prevHandler(ctx.getDiagEngine().getHandler()), context(ctx) {
+    ctx.getDiagEngine().setHandler(
+        [this](Location loc, StringRef message, DiagnosticSeverity kind) {
+          uint64_t tid = llvm::get_threadid();
+          llvm::sys::SmartScopedLock<true> lock(mutex);
 
-      // Append a new diagnostic.
-      diagnostics.emplace_back(threadToFuncID[tid], loc, message, kind);
-    });
+          // Append a new diagnostic.
+          diagnostics.emplace_back(threadToFuncID[tid], loc, message, kind);
+        });
   }
 
   ~ParallelDiagnosticHandler() {
     // Restore the previous diagnostic handler.
-    context.registerDiagnosticHandler(prevHandler);
+    context.getDiagEngine().setHandler(prevHandler);
 
     // Early exit if there are no diagnostics, this is the common case.
     if (diagnostics.empty())
@@ -220,15 +221,14 @@ struct ParallelDiagnosticHandler {
 
     // Emit the diagnostics back to the context.
     emitDiagnostics(
-        [&](Location loc, StringRef message, MLIRContext::DiagnosticKind kind) {
-          return context.emitDiagnostic(loc, message, kind);
+        [&](Location loc, StringRef message, DiagnosticSeverity kind) {
+          return context.getDiagEngine().emit(loc, message, kind);
         });
   }
 
   /// Utility method to emit any held diagnostics.
   void emitDiagnostics(
-      std::function<void(Location, StringRef, MLIRContext::DiagnosticKind)>
-          emitFn) {
+      std::function<void(Location, StringRef, DiagnosticSeverity)> emitFn) {
     // Stable sort all of the diagnostics that were emitted. This creates a
     // deterministic ordering for the diagnostics based upon which function they
     // were emitted for.
@@ -247,7 +247,7 @@ struct ParallelDiagnosticHandler {
   }
 
   /// The previous context diagnostic handler.
-  MLIRContext::DiagnosticHandlerTy prevHandler;
+  DiagnosticEngine::HandlerTy prevHandler;
 
   /// A smart mutex to lock access to the internal state.
   llvm::sys::SmartMutex<true> mutex;
@@ -277,21 +277,21 @@ struct PrettyStackTraceParallelDiagnosticEntry
 
     os << "In-Flight Diagnostics:\n";
     parallelHandler.emitDiagnostics(
-        [&](Location loc, StringRef message, MLIRContext::DiagnosticKind kind) {
+        [&](Location loc, StringRef message, DiagnosticSeverity severity) {
           os.indent(4);
 
           // Print each diagnostic with the format:
           //   "<location>: <kind>: <msg>"
           if (!loc.isa<UnknownLoc>())
             os << loc << ": ";
-          switch (kind) {
-          case MLIRContext::DiagnosticKind::Error:
+          switch (severity) {
+          case DiagnosticSeverity::Error:
             os << "error: ";
             break;
-          case MLIRContext::DiagnosticKind::Warning:
+          case DiagnosticSeverity::Warning:
             os << "warning: ";
             break;
-          case MLIRContext::DiagnosticKind::Note:
+          case DiagnosticSeverity::Note:
             os << "note: ";
             break;
           }

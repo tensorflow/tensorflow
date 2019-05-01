@@ -19,6 +19,7 @@
 
 #include "mlir/FxpMathOps/FxpMathOps.h"
 #include "mlir/FxpMathOps/Passes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
@@ -51,9 +52,9 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
   // Pre-conditions.
   if (!elementType.isSigned()) {
     // TODO: Support unsigned storage type.
-    return rewriter.getContext()->emitDiagnostic(
+    return rewriter.getContext()->getDiagEngine().emit(
                loc, "unimplemented: dequantize signed uniform",
-               MLIRContext::DiagnosticKind::Warning),
+               DiagnosticSeverity::Warning),
            nullptr;
   }
 
@@ -93,13 +94,9 @@ emitUniformPerAxisDequantize(Location loc, Value *input,
                              UniformQuantizedPerAxisType elementType,
                              PatternRewriter &rewriter) {
   // TODO: Support per-axis dequantize.
-  return rewriter.getContext()->emitDiagnostic(
+  return rewriter.getContext()->getDiagEngine().emit(
              loc, "unimplemented: per-axis uniform dequantization",
-             MLIRContext::DiagnosticKind::Warning),
-         nullptr;
-
-  return input->getDefiningOp()->emitWarning(
-             "unimplemented: per-axis uniform dequantization"),
+             DiagnosticSeverity::Warning),
          nullptr;
 }
 

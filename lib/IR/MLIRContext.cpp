@@ -26,6 +26,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
@@ -302,16 +303,17 @@ public:
   llvm::sys::SmartRWMutex<true> identifierMutex;
 
   //===--------------------------------------------------------------------===//
+  // Diagnostics
+  //===--------------------------------------------------------------------===//
+  DiagnosticEngine diagEngine;
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
   /// A general purpose mutex to lock access to parts of the context that do not
-  /// have a more specific mutex, e.g. registry operations, diagnostics, etc.
+  /// have a more specific mutex, e.g. registry operations.
   llvm::sys::SmartRWMutex<true> contextMutex;
-
-  /// This is the handler to use to report diagnostics, or null if not
-  /// registered.
-  MLIRContext::DiagnosticHandlerTy diagnosticHandler;
 
   /// This is a list of dialects that are created referring to this context.
   /// The MLIRContext owns the objects.
@@ -420,70 +422,13 @@ static ArrayRef<T> copyArrayRefInto(llvm::BumpPtrAllocator &allocator,
 // Diagnostic Handlers
 //===----------------------------------------------------------------------===//
 
-/// Register an issue handler with this MLIR context.  The issue handler is
-/// passed location information along with a message and a DiagnosticKind enum
-/// value that indicates the type of the diagnostic (e.g., Warning, Error).
-void MLIRContext::registerDiagnosticHandler(
-    const DiagnosticHandlerTy &handler) {
-  // Lock access to the context diagnostic handler.
-  llvm::sys::SmartScopedWriter<true> contextLock(getImpl().contextMutex);
-  getImpl().diagnosticHandler = handler;
-}
-
-/// Return the current diagnostic handler, or null if none is present.
-auto MLIRContext::getDiagnosticHandler() -> DiagnosticHandlerTy {
-  // Lock access to the context diagnostic handler.
-  llvm::sys::SmartScopedReader<true> contextLock(getImpl().contextMutex);
-  return getImpl().diagnosticHandler;
-}
-
-/// This emits a diagnostic using the registered issue handle if present, or
-/// with the default behavior if not.  The MLIR compiler should not generally
-/// interact with this, it should use methods on Operation instead.
-void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
-                                 DiagnosticKind kind) {
-  // Check to see if we are emitting a diagnostic on a fused location.
-  if (auto fusedLoc = location.dyn_cast<FusedLoc>()) {
-    auto fusedLocs = fusedLoc->getLocations();
-
-    // Emit the original diagnostic with the first location in the fused list.
-    emitDiagnostic(fusedLocs.front(), message, kind);
-
-    // Emit the rest of the locations as notes.
-    for (unsigned i = 1, e = fusedLocs.size(); i != e; ++i)
-      emitDiagnostic(fusedLocs[i], "fused from here", DiagnosticKind::Note);
-    return;
-  }
-
-  // Lock access to the context so that no other threads emit diagnostics at
-  // the same time.
-  llvm::sys::SmartScopedWriter<true> contextLock(getImpl().contextMutex);
-
-  // If we had a handler registered, emit the diagnostic using it.
-  auto handler = getImpl().diagnosticHandler;
-  if (handler)
-    return handler(location, message.str(), kind);
-
-  // The default behavior for notes and warnings is to ignore them.
-  if (kind != DiagnosticKind::Error)
-    return;
-
-  auto &os = llvm::errs();
-
-  if (!location.isa<UnknownLoc>())
-    os << location << ": ";
-
-  os << "error: ";
-
-  // The default behavior for errors is to emit them to stderr.
-  os << message.str() << '\n';
-  os.flush();
-}
-
 bool MLIRContext::emitError(Location location, const llvm::Twine &message) {
-  emitDiagnostic(location, message, DiagnosticKind::Error);
+  getImpl().diagEngine.emit(location, message, DiagnosticSeverity::Error);
   return true;
 }
+
+/// Returns the diagnostic engine for this context.
+DiagnosticEngine &MLIRContext::getDiagEngine() { return getImpl().diagEngine; }
 
 //===----------------------------------------------------------------------===//
 // Dialect and Operation Registration

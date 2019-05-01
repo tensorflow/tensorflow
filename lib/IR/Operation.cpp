@@ -17,6 +17,7 @@
 
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/MLIRContext.h"
@@ -307,15 +308,15 @@ void Operation::walk(const std::function<void(Operation *)> &callback) {
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitNote(const Twine &message) {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Note);
+  getContext()->getDiagEngine().emit(getLoc(), message,
+                                     DiagnosticSeverity::Note);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitWarning(const Twine &message) {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Warning);
+  getContext()->getDiagEngine().emit(getLoc(), message,
+                                     DiagnosticSeverity::Warning);
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
