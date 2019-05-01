@@ -18,7 +18,7 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include <stdint.h>
+#include <functional>
 
 #include "tensorflow/lite/c/c_api_internal.h"
 
@@ -35,8 +35,10 @@ struct GpuDelegateOptions {
     // additional CPU resources.
     kActive,
     // Useful when the output is used with GPU pipeline then or if external
-    // command encoder is set
+    // command encoder is set.
     kDoNotWait,
+    // Tries to avoid GPU sleep mode.
+    kAggressive,
   };
   WaitType wait_type;
 };
@@ -61,7 +63,10 @@ bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
 
 // Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
 // into this encoder instead of the internal encoder.
-bool SetCommandEncoder(TfLiteDelegate* delegate,
-                       id<MTLComputeCommandEncoder> encoder);
+// The callback is a user-defined function to take control over encoder and
+// command buffer. Can be nullptr.
+bool TFLSetCommandEncoder(
+    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
+    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
