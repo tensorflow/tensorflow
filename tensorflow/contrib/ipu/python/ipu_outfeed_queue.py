@@ -176,6 +176,7 @@ class IPUOutfeedQueue:
 
     The return value of this operation depends on the enqueued tensors,
     replication factor and the execution mode.
+
     1. Outfeed returning a single tensor:
 
     .. code-block:: python
@@ -201,7 +202,7 @@ class IPUOutfeedQueue:
         with tf.Session() as sess:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
-        ```
+
     In this example the tensor `output` is of shape [4, 4] and it's enqueued
     into the outfeed with replication_factor = 2. If the Outfeed mode is
     outfeed_all == True, then the shape of the resulting `outfed` tensor will
@@ -240,7 +241,7 @@ class IPUOutfeedQueue:
         with tf.Session() as sess:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
-        ```
+
     In this example we outfeed a tuple of tensors, `output` and `sum`, where
     the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
     outfeed_all == True, then the resulting outfed is a two-tuple of tensors
@@ -282,7 +283,7 @@ class IPUOutfeedQueue:
         with tf.Session() as sess:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
-        ```
+
     In this example we outfeed a dictionary of tensors, `output` and `sum`,
     where the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
     outfeed_all == True, then the resulting outfed is a dictionary of tensors

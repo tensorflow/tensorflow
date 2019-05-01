@@ -75,7 +75,7 @@ class PopnnLSTM(base_layer.Layer):
         (default is all zeros).
       name: VariableScope for the created subgraph; defaults to class name.
         This only serves the default scope if later no scope is specified when
-        invoking __call__().
+        invoking ``__call__()``.
     """
     super(PopnnLSTM, self).__init__(dtype=dtype, name=name)
 
@@ -132,10 +132,12 @@ class PopnnLSTM(base_layer.Layer):
     """Create variables of the Popnn LSTM.
 
     It can be called manually before `__call__()` or automatically through
-    `__call__()`. In the former case, subsequent `__call__()`s will skip
+    `__call__()`. In the former case, any subsequent `__call__()` will skip
     creating variables.
+
     Args:
       input_shape: a TensorShape object with 3 dimensions.
+
     Raises:
       ValueError: if input_shape has wrong dimension or unknown 3rd dimension.
     """
@@ -177,16 +179,19 @@ class PopnnLSTM(base_layer.Layer):
     """Runs the forward step for the LSTM model.
 
     Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`.
-      initial_state: a tuple of tensor of shape `[batch_size, num_units]`. If
+      inputs: 3-D tensor with shape [time_len, batch_size, input_size].
+      initial_state: a tuple of tensor of shape [batch_size, num_units]. If
         not provided, the state is initialized to zeros.
       training: whether this operation will be used in training or inference.
+
     Returns:
-      output: a tensor of shape `[time_len, batch_size, num_units]`.
+      output: a tensor of shape [time_len, batch_size, num_units].
       output_states: a tuple of tensor of the same shape and structure as
-        `initial_state`.
+        initial_state.
+
     Raises:
       ValueError: initial_state is not a tuple.
+
     """
     if initial_state is not None and not isinstance(initial_state, tuple):
       raise ValueError("Invalid initial_state type: %s, expecting tuple.",
@@ -207,10 +212,11 @@ class PopnnLSTM(base_layer.Layer):
   def state_shape(self, batch_size):
     """Shape of Popnn LSTM states.
 
-    Shape is a 2-element tuple. Each is
-    [batch_size, num_units]
+    Shape is a 2-element tuple. Each is [batch_size, num_units]
+
     Args:
       batch_size: an int
+
     Returns:
       a tuple of python arrays.
     """

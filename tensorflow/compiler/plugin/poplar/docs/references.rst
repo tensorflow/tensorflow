@@ -1,3 +1,5 @@
+.. _references-section:
+
 References
 ----------
 

@@ -19,7 +19,7 @@ out-of-memory (OOM) issues.
     :maxdepth: 2
 
     intro
-    graphs
+    tutorial
     device_selection
     variables
     logging

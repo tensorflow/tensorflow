@@ -31,7 +31,7 @@ import time
 
 def configure_ipu_system(config, device="cpu"):
   """Configure an IPU system.  Passing an IpuOptions protobuf created by the
-  `create_ipu_config` function.
+  ``create_ipu_config`` function.
 
   Args:
     config: An IpuOptions configuration protobuf
@@ -83,10 +83,10 @@ def create_ipu_config(profiling=False,
       contain the full paths of the report files.
     always_rearrange_copies_on_the_host: *** Experimental Flag ***
       The data which is streamed to/from the device might be stored in different
-       layouts on the device and on the host. If that is the case the
-       rearrangment is performed on the device by default. By enabling this
-       option the rearrangment will be perfomed on the host at the expense of
-       latency.
+      layouts on the device and on the host. If that is the case the
+      rearrangment is performed on the device by default. By enabling this
+      option the rearrangment will be perfomed on the host at the expense of
+      latency.
     merge_infeed_io_copies: When true, this flag will merge the streamed
       host->device input copies into one larger copy.  This may reduce the time
       to copy data from the host, at the expense of increasing the live tensor
@@ -104,7 +104,7 @@ def create_ipu_config(profiling=False,
 
   Returns:
     An IpuOptions configuration protobuf, suitable for passing to
-    `configure_ipu_system`
+    ``configure_ipu_system``
   """
   if profiling and enable_ipu_events:
     raise Exception(
@@ -321,9 +321,9 @@ def set_floating_point_behaviour_options(opts,
 
   Args:
     inv: If true a floating point invalid operation (defined by IEEE 754)
-                will cause an exception.
+      will cause an exception.
     div0: If true a floating point divide by zero operation will cause an
-                 exception.
+      exception.
     oflo: If true a floating point overflow will cause an exception.
     esr: Enable stochastic rounding.
     nanoo: Enable Not-a-Number on overflow mode.
@@ -343,9 +343,9 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
 
   The configuration describes a system consisting of multiple Tensorflow
   devices, each with control of one of more IPUs. The devices will be labeled
-  `/device:IPU:0`, `/device:IPU:1' and so on.
+  ``/device:IPU:0``, ``/device:IPU:1`` and so on.
 
-  Each device can control a specific number of IPUs, given by the `num_ipus`
+  Each device can control a specific number of IPUs, given by the ``num_ipus``
   parameter. The system will automatically select IPU configurations from the
   available IPUs, where they match the desired number of IPUs.
 
@@ -425,11 +425,11 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
 
   The configuration describes a system consisting of multiple Tensorflow
   devices, each with control of one of more IPUs. The Tensorflow devices will be
-  labeled `/device:IPU:0`, `/device:IPU:1' and so on.
+  labeled ``/device:IPU:0``, ``/device:IPU:1`` and so on.
 
   Each Tensorflow device uses a specific configuration consisting of one or more
   IPUs from the list of devices.  These can be found by running the Graphcore
-  utility `gc-info -l`.  For instance, the following listing shows the device
+  utility ``gc-info -l``.  For instance, the following listing shows the device
   configurations available on a system with 16 IPUs.
 
   .. code-block:: shell
@@ -625,7 +625,7 @@ def extract_all_strings_from_event_trace(events):
   """Extract a concatenation of all data strings from an IPU event trace.
 
   Args:
-    events: An array of IPU events as returned from the `ipu_compile_summary`
+    events: An array of IPU events as returned from the ``ipu_compile_summary``
       operation.
 
   Returns:
