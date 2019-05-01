@@ -38,7 +38,6 @@ from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
@@ -693,6 +692,4 @@ def node_to_graph(node, context):
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.
   if context.program.options.uses(converter.Feature.NAME_SCOPES):
     node = converter.apply_(node, context, function_scopes)
-  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
-    node = converter.apply_(node, context, error_handlers)
   return node
