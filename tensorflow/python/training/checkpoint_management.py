@@ -667,7 +667,7 @@ class CheckpointManager(object):
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
-      and `latest_checkpoint` properies.
+      and `latest_checkpoint` properties.
     """
     # Save counter logic duplicated from tf.train.Checkpoint, soon to diverge
     # slightly with a custom numbering option.
