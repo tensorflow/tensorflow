@@ -157,10 +157,13 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
+EVALUATION_UTILS_SRCS := \
+  tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+  $(CMD_LINE_TOOLS_SRCS) \
+	$(EVALUATION_UTILS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
