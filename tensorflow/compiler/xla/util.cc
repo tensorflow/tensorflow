@@ -49,13 +49,13 @@ ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
+void ScopedLoggingTimer::StopAndLog() {
   if (enabled) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
     TimerStats& stats = *timer_stats;
-    tensorflow::mutex_lock lock(stats.stats_lock);
+    tensorflow::mutex_lock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -70,8 +70,11 @@ ScopedLoggingTimer::~ScopedLoggingTimer() {
               << ", max: "
               << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
               << ", #called: " << stats.times_called << ")";
+    enabled = false;
   }
 }
+
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
