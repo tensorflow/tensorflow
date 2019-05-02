@@ -1351,6 +1351,16 @@ class CheckpointV1(tracking.AutoTrackable):
   as a single checkpoint. This avoids copying all variables to one worker, but
   does require that all workers see a common filesystem.
 
+  While `tf.keras.Model.save_weights` and `tf.train.Checkpoint.save` save in the
+  same format, note that the root of the resulting checkpoint is the object the
+  save method is attached to. This means saving a `tf.keras.Model` using
+  `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
+  attached (or vice versa) will not match the `Model`'s variables. See the
+  [guide to training
+  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
+  training checkpoints.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1677,6 +1687,16 @@ class Checkpoint(tracking.AutoTrackable):
   section of the checkpoint. These sections are then merged/re-indexed to behave
   as a single checkpoint. This avoids copying all variables to one worker, but
   does require that all workers see a common filesystem.
+
+  While `tf.keras.Model.save_weights` and `tf.train.Checkpoint.save` save in the
+  same format, note that the root of the resulting checkpoint is the object the
+  save method is attached to. This means saving a `tf.keras.Model` using
+  `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
+  attached (or vice versa) will not match the `Model`'s variables. See the
+  [guide to training
+  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
+  training checkpoints.
 
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
