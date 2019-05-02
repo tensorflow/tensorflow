@@ -20,10 +20,15 @@
 
 #include <memory>
 
+namespace llvm {
+class Module;
+} // namespace llvm
+
 namespace mlir {
 class DialectConversion;
 class Module;
 class ModulePassBase;
+class Type;
 
 /// Creates a pass to convert Standard dialects into the LLVMIR dialect.
 ModulePassBase *createConvertToLLVMIRPass();
@@ -39,6 +44,10 @@ namespace LLVM {
 /// another block as a successor more than once with different values, insert
 /// a new dummy block for LLVM PHI nodes to tell the sources apart.
 void ensureDistinctSuccessors(Module *m);
+
+/// Converts a type in either MLIR standard or builtin type into LLVMIR dialect
+/// type.
+Type convertToLLVMDialectType(Type t, llvm::Module &llvmModule);
 } // namespace LLVM
 
 } // namespace mlir

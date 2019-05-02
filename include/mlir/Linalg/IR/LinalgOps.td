@@ -31,6 +31,10 @@ def Linalg_Dialect : Dialect {
   let name = "linalg";
 }
 
+// Whether a type is a BufferType.
+def LinalgIsBufferTypePred : CPred<"$_self.isa<BufferType>()">;
+def Buffer : Type<LinalgIsBufferTypePred, "buffer">;
+
 // Whether a type is a ViewType.
 def LinalgIsViewTypePred : CPred<"$_self.isa<ViewType>()">;
 def View : Type<LinalgIsViewTypePred, "view">;
@@ -82,6 +86,20 @@ Op<Linalg_Dialect, mnemonic, props> {
   let parser = [{ return impl::parseLinalgLibraryOp(parser, result); }];
 
   let printer = [{ impl::printLinalgLibraryOp(p, *this); }];
+}
+
+def BufferSizeOp :
+    Op<Linalg_Dialect, "buffer_size", [NoSideEffect]>,
+    Arguments<(ins Buffer)>,
+    Results<(outs Index)>
+{
+  let parser = [{
+    return impl::parseBufferSizeOp(parser, result);
+  }];
+
+  let printer = [{
+    return impl::printBufferSizeOp(p, this->getOperation());
+  }];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

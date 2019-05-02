@@ -355,7 +355,34 @@ namespace mlir {
 namespace impl {
 void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op);
 bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result);
+void printBufferSizeOp(mlir::OpAsmPrinter *p, Operation *op);
+bool parseBufferSizeOp(OpAsmParser *parser, OperationState *result);
 } // namespace impl
+
+/// Buffer size prints as:
+///
+/// ``` {.mlir}
+///    %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
+/// ```
+void mlir::impl::printBufferSizeOp(mlir::OpAsmPrinter *p, Operation *op) {
+  assert(op->getAbstractOperation() && "unregistered operation");
+  *p << op->cast<BufferSizeOp>().getOperationName() << " "
+     << *op->getOperand(0);
+  p->printOptionalAttrDict(op->getAttrs());
+  *p << " : " << op->getOperand(0)->getType();
+}
+
+bool mlir::impl::parseBufferSizeOp(OpAsmParser *parser,
+                                   OperationState *result) {
+  OpAsmParser::OperandType op;
+  Type type;
+  return parser->parseOperand(op) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperand(op, type, result->operands) ||
+         parser->addTypeToList(parser->getBuilder().getIndexType(),
+                               result->types);
+}
 
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
