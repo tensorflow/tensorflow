@@ -773,7 +773,7 @@ Symbol capture example:
 // '%o' is bound to the symbol 's0' in the affine map of the memref type.
 %n = ...
 %o = ...
-%A = <strong>alloc</strong> (%n)[%o] : <16x?xf32, #imapA>
+%A = alloc (%n)[%o] : <16x?xf32, #imapA>
 ```
 
 ##### Index Space
