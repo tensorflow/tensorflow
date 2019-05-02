@@ -744,12 +744,14 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "shape_optimizer_test",
     srcs = ["shape_optimizer_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":shape_optimizer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
