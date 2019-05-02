@@ -32,29 +32,29 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 
-@tf_export(v1=['train.experimental.allow_segment_rewrite'])
+@tf_export(v1=['train.experimental.auto_mixed_precision_scope'])
 @contextlib.contextmanager
-def allow_segment_rewrite(select=True, scope_name=None):
-  """Allow/Disallow the rewriting of specific segments of the graph.
+def auto_mixed_precision_scope(select=True):
+  """Allow/Disallow the rewriting of specific sections of the graph.
 
   This function uses a context manager to apply attributes to any node
   created within the yielded scope which will be interpreted by the graph
   rewrite pass.
 
-  A 'True' value for select does not guarantee that the segment will be
-  converted to fp16, it only ensures that the graph rewrite optimization pass
-  will consider the segment as usual.  This is the default behavior for every
-  node in the graph when the mixed precision graph rewrite is enabled.
+  A 'True' value for select does not guarantee that the scope will be converted
+  to fp16, it only ensures that the graph rewrite optimization pass will
+  consider the scope as usual.  This is the default behavior for every node in
+  the graph when the mixed precision graph rewrite is enabled.
 
   A 'False' value for select means that the graph rewrite optimization pass
-  will totally ignore the segment, which gaurantees the segment will remain
-  unconverted. This may result in other nodes outside of the segment not being
-  converted to fp16 which otherwise would have been, depending on the segment's
-  placement and the conversion algorithm.
+  will totally ignore the scope, which gaurantees the nodes within will remain
+  unconverted. This may result in other nodes outside of the scope not being
+  converted to fp16 which otherwise would have been, depending on the graph's
+  structure and conversion algorithm.
 
   Args:
     select: A boolean whose value determines whether to allow the graph rewrite
-      pass to process the current segment.
+      pass to process the current scope.
 
   Yields:
     The current scope, allowing or disallowing graph rewrite processing.
