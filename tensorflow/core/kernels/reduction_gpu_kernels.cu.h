@@ -553,7 +553,7 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
     const int warps_per_block = threads_per_block / TF_RED_WARPSIZE;
     int num_blocks = (num_rows + warps_per_block - 1) / warps_per_block;
 
-    GPU_LAUNCH_KERNEL(RowReduceKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
+    GPU_LAUNCH_KERNEL(RowReduceKernel<IN_T, OUT_T, Op>, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
         in, out, num_rows, num_cols, op, init);
     return;
   }
@@ -605,7 +605,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel,grid_dim, block_dim, 0, cu_stream,
+    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op>,grid_dim, block_dim, 0, cu_stream,
         in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
@@ -614,7 +614,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
+    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel<IN_T, T*, Op>, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init);
 
@@ -681,7 +681,7 @@ void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
-    GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
+    GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
         in, out, 1, extent_x, extent_y, op);
 #ifdef GOOGLE_CUDA
 // FIXME on ROCm
@@ -699,7 +699,7 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   // TODO(eriche): this won't be very good in the case of small x
   //                small z and large y.
-  GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
+  GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
       in, out, extent_x, extent_y, extent_z, op);
 }
 

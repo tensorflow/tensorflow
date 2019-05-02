@@ -67,7 +67,7 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(UpperBoundKernel<T>,
+    GPU_LAUNCH_KERNEL(UpperBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,
@@ -88,7 +88,7 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(LowerBoundKernel<T>,
+    GPU_LAUNCH_KERNEL(LowerBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,

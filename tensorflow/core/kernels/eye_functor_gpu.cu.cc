@@ -52,7 +52,7 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int m = matrix_batch.dimension(1);
     const int n = matrix_batch.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
-    GPU_LAUNCH_KERNEL(EyeKernel,
+    GPU_LAUNCH_KERNEL(EyeKernel<Scalar>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         device.stream(),
         config.virtual_thread_count, batch_size, m, n, matrix_batch.data());

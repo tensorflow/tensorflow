@@ -227,7 +227,7 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     const int output_size = batch_size * channels * out_height * out_width;
 
     GpuLaunchConfig output_config = GetGpuLaunchConfig(output_size, d);
-    GPU_LAUNCH_KERNEL(SetZero,
+    GPU_LAUNCH_KERNEL(SetZero<T>,
         dim3(output_config.block_count), dim3(output_config.thread_per_block),
         0, d.stream(),
         output_size, output.data());
