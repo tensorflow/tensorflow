@@ -31,6 +31,8 @@ message PoplibsOp {
     StatelessRandomNormal = 19;
     StatelessTruncatedNormal = 20;
     IpuInterCopy = 21;
+    Dropout = 22;
+    OneHot = 23;
   }
   required Op op = 2;
 }

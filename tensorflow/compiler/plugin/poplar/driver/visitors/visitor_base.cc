@@ -266,7 +266,7 @@ Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors output_tensors,
-      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence, false));
   CHECK_EQ(output_tensors.size(), 1);
   CHECK_EQ(output_tensors[0].size(), CountShapes(inst->shape()));
   for (int64 i = 0; i < output_tensors[0].size(); i++) {
@@ -560,7 +560,7 @@ Status BaseVisitor::HandleAddDependency(HloInstruction* inst) {
           << absl::StrJoin(dep_names, ",");
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence, false));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), CountShapes(inst->operand(0)->shape()));
   for (int64 idx = 0; idx < inputs[0].size(); idx++) {

@@ -56,6 +56,7 @@ class RemapOp : public PoplibsOpDef {
   }
 };
 REGISTER_POPLIBS_OP(Poputil, Remap, RemapOp);
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla

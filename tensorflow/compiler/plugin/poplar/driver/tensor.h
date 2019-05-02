@@ -146,7 +146,7 @@ bool AreInplaceOutputTensorsWritable(TensorMap& map, CompilerResources& res,
  * extra tensor copy and use that tensor as the input/output tensor.
  *
  * The ArgVector contains only those inputs which are listed as inplace inputs
- * by InplaceUtil::GetHloInstructionDescription.
+ * by HloInstructionDescription.
  */
 StatusOr<ArgVectors> FindInplaceOutputTensors(
     TensorMap& map, CompilerResources& res, const HloInstruction* inst,

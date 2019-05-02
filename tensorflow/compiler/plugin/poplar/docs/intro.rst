@@ -1,12 +1,16 @@
-Overview
---------
+Outline
+-------
 
-Graphcore provides a version of Tensorflow with an integrated XLA driver for
-targetting an IPU system.
+General outline: Update as document matures!!
 
-Extensions are provided for configuring the IPU system, running training in a
-hardware loop to improve performance, and targetting poplibs operations that
-are not natively supported by Tensorflow.
+The document will begin with a concise introduction to Tensorflow, reviewing key
+concepts of graph definition and suggest some useful references to dive into
+graph development. Three preliminary scripts are then presented to introduce
+some of the basic aspects of targeting the IPU, beginning with a plain graph
+definition, subsequently introducing *XLA*, (the *Accelerated Linear Algebra*),
+and finishing up with an example of sharding.
+
+General outline: Update as document matures!!
 
 Supported types
 ~~~~~~~~~~~~~~~

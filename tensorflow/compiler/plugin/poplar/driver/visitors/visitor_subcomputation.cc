@@ -113,6 +113,7 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       // For tensors which are not allocated we just forward them.
       inputs[i] = t;
     } else {
+      poplar::Graph& graph = GetGraphWithOutputIndex(resources_, param_inst, i);
       // We deal with the inputs differently depending on whether this
       // computation is inplace or not.
       if (inplace_inputs_) {
@@ -122,6 +123,12 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
           VLOG(1) << "Deferring allocation of " << inst->name()
                   << " sub tensor " << i << ".";
           add_output_tensor = false;
+        } else if (HasTensorAllocationTarget(src, resources_)) {
+          // If the input has an allocation target, then we use that layout
+          // rather than the input layout.
+          TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],
+                                                   resources_, tensor_map));
+          allocated_targets[i] = true;
         } else {
           inputs[i] = t;
         }
@@ -138,9 +145,6 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
                   << " sub tensor " << i << ".";
           add_output_tensor = false;
         } else {
-          poplar::Graph& graph =
-              GetGraphWithOutputIndex(resources_, param_inst, i);
-
           if (HasTensorAllocationTarget(src, resources_) ||
               t.containsConstant()) {
             TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],

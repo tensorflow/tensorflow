@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""@package tensorflow.contrib.ipu.python.ipu_infeed_queue
-Contains class for creating input infeeds into TF graphs targeting the IPU."""
+"""Contains class for creating input infeeds into TF graphs targeting the IPU.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -40,50 +41,51 @@ class IPUInfeedQueue:
   one feed in the same graph, each should be independently named.
 
   The following skeleton shows how to use this method when building a training
-  loop - note how the body signature contains variables which correspond to the
-  nested structure of `tf.Tensor`s representing the next element in the infeed
-  queue:
+  loop. Note how the body signature contains variables which correspond to the
+  nested structure of `tf.Tensor` objects representing the next element in the
+  infeed queue:
 
-  ```python
-  # Create an example dataset.
-  dataset = ...  # A `tf.data.Dataset` object.
+  .. code-block:: python
 
-  def dataset_parser(value):
-    features, labels = parse_record(value)
-    return {"features": features,
-            "labels": labels}
-  # The resulting dataset has a nested structure of: {features, labels}.
-  dataset = dataset.map(dataset_parser)
+    # Create an example dataset.
+    dataset = ...  # A `tf.data.Dataset` object.
 
-  infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    def dataset_parser(value):
+      features, labels = parse_record(value)
+      return {"features": features,
+              "labels": labels}
+    # The resulting dataset has a nested structure of: {features, labels}.
+    dataset = dataset.map(dataset_parser)
 
-  # dataset can no longer be used beyond this point.
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-  def my_net():
-    # Note how the nested structure forms part of the loop body signature.
-    def body(loss, features, labels):
-      with variable_scope.variable_scope("vs", use_resource=True):
-        y = tf.conv2d(features, .....)
-        ...
-        ...
-        logits = tf.nn.xw_plus_b(....)
-      loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
-      optimizer = gradient_descent.GradientDescentOptimizer(0.000001)
-      train = optimizer.minimize(loss)
-      with ops.control_dependencies([train]):
-        return array_ops.identity(loss)
+    # dataset can no longer be used beyond this point.
 
-    loss = 0.0
-    return = tf.conrib.ipu.loops.repeat(10000, body, [loss], infeed_queue)
+    def my_net():
+      # Note how the nested structure forms part of the loop body signature.
+      def body(loss, features, labels):
+        with variable_scope.variable_scope("vs", use_resource=True):
+          y = tf.conv2d(features, .....)
+          ...
+          ...
+          logits = tf.nn.xw_plus_b(....)
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
+        optimizer = gradient_descent.GradientDescentOptimizer(0.000001)
+        train = optimizer.minimize(loss)
+        with ops.control_dependencies([train]):
+          return array_ops.identity(loss)
 
-  with ipu.ops.ipu_scope("/device:IPU:0"):
-    res = ipu_compiler.compile(my_net, inputs=[])
+      loss = 0.0
+      return = tf.conrib.ipu.loops.repeat(10000, body, [loss], infeed_queue)
 
-  with tf.Session() as sess:
-    sess.run(infeed_queue.initializer)
-    sess.run(variables.global_variables_initializer())
-    result = sess.run(res)
-  ```
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[])
+
+    with tf.Session() as sess:
+      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
+      result = sess.run(res)
+
   """
 
   def __init__(self,
@@ -95,14 +97,13 @@ class IPUInfeedQueue:
 
     Args:
        dataset: a tf.data.Dataset object, all transformations e.g. `shuffle`,
-        `repeat`, `batch` must be applied prior to passing in to this function.
-        This dataset can no longer be used after creating this queue.
+         `repeat`, `batch` must be applied prior to passing in to this function.
+         This dataset can no longer be used after creating this queue.
        feed_name: the name of the infeed queue.  This must be unique between
-                  all IPUInfeedQueues and IPUOutfeedQueues.
+         all IPUInfeedQueues and IPUOutfeedQueues.
        device_ordinal: ordinal of the device on which this queue will be used.
        replication_factor: the number of replicated graphs this infeed will be
          used in.
-
 
     Raises:
       ValueError: if all dimensions of shapes of dataset.output_shapes are not
@@ -140,6 +141,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
           **dataset_ops.flat_structure(self._dataset))
 
     self._dequeued = False
+    self._initialized = False
 
   def _dequeue(self):
     """Returns a nested structure of `tf.Tensor`s representing the next element
@@ -158,7 +160,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
   @property
   def dequeued(self):
-    """ Returns whether this queue has been dequeued.
+    """Returns whether this queue has been dequeued.
 
     Returns:
       A nested structure of `tf.Tensor` objects.
@@ -176,7 +178,15 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
     Returns:
       A `tf.Operation` that should be run to initialize this IPUInfeedQueue
+
+    Raises:
+      ValueError: if the function `initializer` has already been called.
     """
+    if self._initialized:
+      raise ValueError(
+          """The IPUInfeedQueue `initializer` function can only be accessed once."""
+      )
+    self._initialized = True
     return self._initializer
 
   def get_next(self):

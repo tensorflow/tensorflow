@@ -54,7 +54,7 @@ struct CompilerAnnotations {
 
   ConvClassification classification_map;
 
-  InplaceUtil::InplaceInstructions inplace_instructions;
+  InplaceInstructions inplace_instructions;
 
   InfeedInfos infeed_infos;
   OutfeedInfos outfeed_infos;

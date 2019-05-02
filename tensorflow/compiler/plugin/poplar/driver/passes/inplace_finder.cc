@@ -24,10 +24,19 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
-#include <deque>
-
 namespace xla {
 namespace poplarplugin {
+namespace {
+enum class InplacePriority {
+  kHigh = 0,
+  kMedium,
+  kLow,
+};
+
+using InplaceCandidates =
+    std::map<InplacePriority, std::vector<HloInstruction*>>;
+}  // namespace
+
 void InplaceFinder::RouteFinder(HloInstruction* inst,
                                 const std::vector<int64>& stack) {
   std::vector<int64> new_stack;
@@ -120,6 +129,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   bool changed = false;
+  auto& inplace_instructions = annotations_.inplace_instructions;
   for (auto* comp : module->computations()) {
     if (IsPopOpsFusion(comp)) {
       continue;
@@ -138,66 +148,95 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       RouteFinder(p, {});
     }
 
-    // For each route in map
+    std::map<HloInstructionType, InplaceCandidates> inplace_candidates;
+
+    InplaceCandidates& inplace_gte_candidates =
+        inplace_candidates[HloInstructionType::kInplaceGetTupleElement];
+    InplaceCandidates& inplace_read_write_candidates =
+        inplace_candidates[HloInstructionType::kInplaceReadWrite];
+    InplaceCandidates& inplace_read_only_candidates =
+        inplace_candidates[HloInstructionType::kInplaceReadOnly];
+
+    // For each route in map mark inplace ops as high priority inplace
+    // candidates.
     for (auto& r : routes) {
       for (auto& inst : r.second) {
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
-          case HloOpcode::kAddDependency:
           case HloOpcode::kFusion:
           case HloOpcode::kDynamicUpdateSlice:
-          case HloOpcode::kGetTupleElement:
           case HloOpcode::kMultiply:
-          case HloOpcode::kSubtract:
-            if (InplaceUtil::IsInPlace(inst, reachability_map.get())) {
-              annotations_.inplace_instructions.insert(inst);
-              changed = true;
-            }
+          case HloOpcode::kSubtract: {
+            inplace_read_write_candidates[InplacePriority::kHigh].push_back(
+                inst);
+            break;
+          }
+          case HloOpcode::kAddDependency: {
+            inplace_read_only_candidates[InplacePriority::kHigh].push_back(
+                inst);
+            break;
+          }
+          case HloOpcode::kGetTupleElement: {
+            inplace_gte_candidates[InplacePriority::kHigh].push_back(inst);
+            break;
+          }
           default:
             break;
         }
       }
     }
-    // Get all possible remaining inplace instructions, giving higher priority
-    // to outlined poplibs calls.
-    std::deque<HloInstruction*> inplace_instructions_queue;
+    // Get all possible remaining inplace instructions.
+    // Give medium priority to outlined poplibs calls.
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      // Skip instructions already inplace.
-      if (annotations_.inplace_instructions.count(inst)) {
-        continue;
-      }
-
       switch (inst->opcode()) {
-        case HloOpcode::kAddDependency:
-        case HloOpcode::kBitcast:
-        case HloOpcode::kBroadcast:
-        case HloOpcode::kCall:
-        case HloOpcode::kConcatenate:
         case HloOpcode::kCustomCall:
-        case HloOpcode::kDynamicUpdateSlice:
-        case HloOpcode::kFusion:
-        case HloOpcode::kGetTupleElement:
-        case HloOpcode::kMap:
-        case HloOpcode::kReshape:
-        case HloOpcode::kScatter:
-        case HloOpcode::kSlice:
-        case HloOpcode::kSort:
-        case HloOpcode::kTranspose:
-        case HloOpcode::kTuple:
-        case HloOpcode::kPad:
-        case HloOpcode::kWhile:
-          inplace_instructions_queue.push_front(inst);
+        case HloOpcode::kFusion: {
+          inplace_read_write_candidates[InplacePriority::kMedium].push_back(
+              inst);
           break;
-        default:
-          inplace_instructions_queue.push_back(inst);
+        }
+        default: {
+          auto inst_description = HloInstructionDescription(inst);
+          switch (inst_description.GetType()) {
+            case HloInstructionType::kInplaceGetTupleElement: {
+              inplace_gte_candidates[InplacePriority::kLow].push_back(inst);
+              break;
+            }
+            case HloInstructionType::kInplaceReadWrite: {
+              inplace_read_write_candidates[InplacePriority::kLow].push_back(
+                  inst);
+              break;
+            }
+            case HloInstructionType::kInplaceReadOnly: {
+              inplace_read_only_candidates[InplacePriority::kLow].push_back(
+                  inst);
+              break;
+            }
+            default:
+              break;
+          }
           break;
+        }
       }
     }
 
-    for (auto* inst : inplace_instructions_queue) {
-      if (InplaceUtil::IsInPlace(inst, reachability_map.get())) {
-        annotations_.inplace_instructions.insert(inst);
-        changed = true;
+    // Because we are using a map, we first inplace GTEs, then Read/Write and
+    // then Read-Only.
+    for (auto type_candidates_pair : inplace_candidates) {
+      auto& inplace_candidates_queues = type_candidates_pair.second;
+      // Because we are using a map, all the candidate queues are sorted from
+      // High to Low priority.
+      for (auto inplace_priority_candidates_pair : inplace_candidates_queues) {
+        auto& inplace_instruction_candidates =
+            inplace_priority_candidates_pair.second;
+        for (auto* inst : inplace_instruction_candidates) {
+          if (HloInstructionDescription::IsInplace(inst, reachability_map.get(),
+                                                   worklist_,
+                                                   inplace_instructions)) {
+            inplace_instructions.insert(inst);
+            changed = true;
+          }
+        }
       }
     }
     routes.clear();

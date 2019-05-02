@@ -99,13 +99,20 @@ cc_library(
         "driver/passes/while_loop_to_repeat_simplify.cc",
         "driver/passes/wide_const_finder.cc",
         "driver/tools/classification_predicates.cc",
+
+        # DO NOT build any files which create a HloPoplarInstructionFactory before this point
+        # See https://phabricator.sourcevertex.net/T8409 for further information.
         "driver/tools/custom_ops/hlo_poplar_instruction.cc",
+
+        # Place HloPoplarInstructionFactory files below here.
+        "driver/tools/custom_ops/dropout_hlo.cc",
         "driver/tools/custom_ops/group_norm_infer.cc",
         "driver/tools/custom_ops/group_norm_train.cc",
         "driver/tools/custom_ops/group_norm_grad.cc",
         "driver/tools/custom_ops/group_norm_stats.cc",
         "driver/tools/custom_ops/ipu_inter_copy.cc",
         "driver/tools/custom_ops/lstm.cc",
+        "driver/tools/custom_ops/onehot.cc",
         "driver/tools/custom_ops/norm.cc",
         "driver/tools/custom_ops/pooling.cc",
         "driver/tools/custom_ops/relu.cc",
@@ -155,9 +162,11 @@ cc_library(
         "driver/passes/while_loop_to_repeat_simplify.h",
         "driver/passes/wide_const_finder.h",
         "driver/tools/classification_predicates.h",
+        "driver/tools/custom_ops/dropout_hlo.h",
         "driver/tools/custom_ops/hlo_poplar_instruction.h",
         "driver/tools/custom_ops/ipu_inter_copy.h",
         "driver/tools/custom_ops/lstm.h",
+        "driver/tools/custom_ops/onehot.h",
         "driver/tools/custom_ops/norm.h",
         "driver/tools/custom_ops/pooling.h",
         "driver/tools/custom_ops/relu.h",
@@ -214,10 +223,12 @@ cc_library(
         "driver/ops/custom_ops/poplibs_ops.cc",
         "driver/ops/custom_ops/popnn/lstm.cc",
         "driver/ops/custom_ops/popnn/norm.cc",
+        "driver/ops/custom_ops/popnn/onehot.cc",
         "driver/ops/custom_ops/popnn/pooling.cc",
         "driver/ops/custom_ops/popnn/relu.cc",
         "driver/ops/custom_ops/popnn/sigmoid.cc",
         "driver/ops/custom_ops/popnn/tanh.cc",
+        "driver/ops/custom_ops/poprand/dropout.cc",
         "driver/ops/custom_ops/poprand/random.cc",
         "driver/ops/custom_ops/poputil/ipu_inter_copy.cc",
         "driver/ops/custom_ops/poputil/remap.cc",
@@ -328,10 +339,12 @@ cc_library(
         "kernels/ipu_kernels.cc",
         "kernels/popnn/lstm.cc",
         "kernels/popnn/norm.cc",
+        "kernels/popnn/onehot.cc",
         "kernels/popnn/pooling.cc",
         "kernels/popnn/relu.cc",
         "kernels/popnn/sigmoid.cc",
         "kernels/popnn/tanh.cc",
+        "kernels/poprand/dropout_xla.cc",
         "kernels/poprand/random.cc",
         "kernels/popops/all_reduce.cc",
         "kernels/poputil/remap.cc",
@@ -420,6 +433,30 @@ tf_custom_op_py_library(
 )
 
 cc_library(
+    name = "poprand_ops",
+    srcs = [
+        "ops/poprand/dropout_tf.cc",
+    ],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "poprand_ops_wrapper_py",
+    out = "ops/gen_poprand_ops.py",
+    deps = [":poprand_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "poprand_ops_py",
+    kernels = [":poprand_ops"],
+    deps = [":poprand_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
+)
+
+
+cc_library(
     name = "poputil_ops",
     srcs = [
         "ops/poputil/remap.cc",
@@ -477,6 +514,7 @@ cc_library(
         ":ipu_ops",
         ":popnn_ops",
         ":popops_ops",
+        ":poprand_ops",
         ":poputil_ops",
         ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",

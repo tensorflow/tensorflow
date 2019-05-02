@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""@package tensorflow.contrib.ipu.python.autoshard
-Utilities for automatically applying sharding to a graph.
+"""Utilities for automatically applying sharding to a graph.
 """
 
 from tensorflow.contrib.ipu.python import autoshard_cnn
@@ -26,20 +25,21 @@ from tensorflow.python.util import tf_contextlib
 def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
 
-  num_shards: number of shards to split graph over
-  input_ts: tensor closest to the datafeed in graph
-  loss_ts: tensor closest to the loss in graph
-  edge_filter: a callable predicate, with the signature fn(edge), where
-               edge is a tuple with the name of the source op, and the
-               name of the destination op.
+  Args:
+    num_shards: number of shards to split graph over.
+    input_ts: tensor closest to the datafeed in graph.
+    loss_ts: tensor closest to the loss in graph.
+    edge_filter: a callable predicate, with the signature fn(edge), where edge
+      is a tuple with the name of the source op, and the name of the destination
+      op.
+
   """
   autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, edge_filter)
 
 
 @tf_contextlib.contextmanager
 def ipu_autoshard():
-  """
-  Provides a context for autosharding.  All operations created within this
+  """Provides a context for autosharding.  All operations created within this
   context will have automatically sharded.
   """
 

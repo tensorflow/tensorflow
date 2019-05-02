@@ -161,13 +161,13 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-          '__seed*', 'Copy_XLA_Args/arg*_to_Slice/slice*.clone',
+          '__seed*', 'Copy_XLA_Args/arg*_to_Slice*/slice*.clone',
           'add/add.*/AddTo', 'truediv/divide.*/Op/Divide', 'add_1/add.*/AddTo'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
 if __name__ == "__main__":
-  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
-                                os.environ.get('TF_XLA_FLAGS', ''))
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

@@ -117,11 +117,12 @@ ENTRY c1 {
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  std::set<std::string> in_place_ops = {
-      "p0_b", "p1_b", "p2_b", "u0_b", "u1_b", "root_b", "p0_c", "t", "while"};
+  std::set<std::string> in_place_ops = {"p0_b",  "p1_b",   "p2_b", "u0_b",
+                                        "u1_b",  "root_b", "p0_c", "t",
+                                        "while", "i_b"};
   auto inplace_instructions = annotations.inplace_instructions;
 
-  EXPECT_THAT(inplace_instructions.size(), 9);
+  EXPECT_THAT(inplace_instructions.size(), 10);
   for (const auto* inst : inplace_instructions) {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
@@ -682,6 +683,114 @@ ENTRY c1 {
   for (auto i : inplace_instructions) {
     EXPECT_TRUE(in_place_ops.count(i->name()));
   }
+}
+
+TEST_F(HloInplaceDependencyTest, TestInplaceReadOnly) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = s32[20] parameter(0)
+  ROOT c = s32[10,2] reshape(p0)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  auto inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 1);
+  std::set<std::string> in_place_ops = {"c"};
+  for (auto i : inplace_instructions) {
+    EXPECT_TRUE(in_place_ops.count(i->name()));
+  }
+}
+
+TEST_F(HloInplaceDependencyTest, TestInplaceReadOnlyBeforeReadWrite) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[20] parameter(0)
+  a = f32[20,1] reshape(p0)
+  ROOT b = f32[20] log(p0)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+  auto* comp = module0->entry_computation();
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  auto inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 2);
+  std::set<std::string> in_place_ops = {"a", "b"};
+  for (auto i : inplace_instructions) {
+    EXPECT_TRUE(in_place_ops.count(i->name()));
+  }
+  auto* a = comp->GetInstructionWithName("a");
+  auto* b = comp->GetInstructionWithName("b");
+  EXPECT_EQ(b->control_predecessors()[0], a);
+}
+
+TEST_F(HloInplaceDependencyTest, TestInplaceMultipleReadOnlyClusters) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[20] parameter(0)
+  a = f32[10, 2] broadcast(p0), dimensions={0}
+  b = f32[40] broadcast(p0), dimensions={0}
+  c = f32[20] negate(p0)
+
+  d = f32[20] reshape(a)
+  e = f32[10,2] log(a)
+
+  f = f32[20] slice(b), slice={[0:20]}
+  g = f32[20] slice(b), slice={[20:40]}
+
+  h = f32[20] add(d, d)
+  i = f32[20] add(f, f)
+  j = f32[20] add(g, g)
+  k = f32[20] add(h, i)
+  l = f32[20] add(j, k)
+  ROOT t = (f32[20], f32[10,2]) tuple(l, e)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+  auto* comp = module0->entry_computation();
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+  auto inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 8);
+  std::set<std::string> in_place_ops = {"c", "d", "e", "f", "g", "k", "l", "t"};
+  for (auto i : inplace_instructions) {
+    EXPECT_TRUE(in_place_ops.count(i->name()));
+  }
+  auto* e = comp->GetInstructionWithName("e");
+  auto* h = comp->GetInstructionWithName("h");
+  EXPECT_EQ(h->control_successors()[0], e);
 }
 
 }  // namespace

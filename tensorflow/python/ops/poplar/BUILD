@@ -15,6 +15,7 @@ py_library(
     deps = [
         ":popnn_ops_grad",
         ":poputil_ops_grad",
+        ":poprand_ops_grad"
     ],
 )
 
@@ -35,5 +36,15 @@ py_library(
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/compiler/plugin/poplar:poputil_ops_wrapper_py",
+    ],
+)
+
+py_library(
+    name = "poprand_ops_grad",
+    srcs = ["poprand_ops_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/compiler/plugin/poplar:poprand_ops_wrapper_py",
     ],
 )

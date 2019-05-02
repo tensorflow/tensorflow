@@ -387,6 +387,16 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, 'Output shape \(\?,'):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
 
+  def testMultipleInitializations(self):
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
+    infeed_queue.initializer
+    with self.assertRaisesRegexp(
+        ValueError,
+        'The IPUInfeedQueue `initializer` function can only be accessed once.'
+    ):
+      infeed_queue.initializer
+
   def testTrainingLoopWithInfeed(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)

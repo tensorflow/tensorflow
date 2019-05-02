@@ -36,7 +36,7 @@ class ForwardAllocation : public HloModulePass {
           input_to_deferred_allocation_path);
   TensorAllocationMap& tensor_allocation_map;
   DeferredAllocations& deferred_allocations;
-  const InplaceUtil::InplaceInstructions& inplace_instructions;
+  const InplaceInstructions& inplace_instructions;
 };
 
 }  // namespace poplarplugin
