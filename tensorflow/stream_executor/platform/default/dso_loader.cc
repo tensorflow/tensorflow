@@ -83,11 +83,11 @@ port::StatusOr<void*> GetCufftDsoHandle() {
 }
 
 port::StatusOr<void*> GetCusolverDsoHandle() {
-  return GetDsoHandle("cusolver", GetCudaVersion());
+  return GetDsoHandle("cusolver", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCusparseDsoHandle() {
-  return GetDsoHandle("cusparse", GetCudaVersion());
+  return GetDsoHandle("cusparse", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCurandDsoHandle() {
