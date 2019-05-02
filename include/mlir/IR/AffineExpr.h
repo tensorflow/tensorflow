@@ -36,11 +36,11 @@ class IntegerSet;
 
 namespace detail {
 
-class AffineExprStorage;
-class AffineBinaryOpExprStorage;
-class AffineDimExprStorage;
-class AffineSymbolExprStorage;
-class AffineConstantExprStorage;
+struct AffineExprStorage;
+struct AffineBinaryOpExprStorage;
+struct AffineDimExprStorage;
+struct AffineSymbolExprStorage;
+struct AffineConstantExprStorage;
 
 } // namespace detail
 

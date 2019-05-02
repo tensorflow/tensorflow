@@ -22,7 +22,7 @@
 #include "mlir/Support/LLVM.h"
 
 namespace llvm {
-class fltSemantics;
+struct fltSemantics;
 } // namespace llvm
 
 namespace mlir {

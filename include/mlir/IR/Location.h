@@ -34,12 +34,12 @@ class Identifier;
 
 namespace detail {
 
-class LocationStorage;
-class UnknownLocationStorage;
-class FileLineColLocationStorage;
-class NameLocationStorage;
-class CallSiteLocationStorage;
-class FusedLocationStorage;
+struct LocationStorage;
+struct UnknownLocationStorage;
+struct FileLineColLocationStorage;
+struct NameLocationStorage;
+struct CallSiteLocationStorage;
+struct FusedLocationStorage;
 
 } // namespace detail
 

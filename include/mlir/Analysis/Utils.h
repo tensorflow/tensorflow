@@ -39,7 +39,7 @@ class AffineForOp;
 class Block;
 class FlatAffineConstraints;
 class Location;
-class MemRefAccess;
+struct MemRefAccess;
 class Operation;
 class Value;
 

@@ -34,7 +34,7 @@ class BlockAndValueMapping;
 class Location;
 class MLIRContext;
 class OperandIterator;
-class OperationState;
+struct OperationState;
 class ResultIterator;
 class ResultTypeIterator;
 

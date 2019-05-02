@@ -239,7 +239,7 @@ private:
 
 /// Base class for ValueHandle, OperationHandle and BlockHandle.
 /// Not meant to be used outside of these classes.
-struct CapturableHandle {
+class CapturableHandle {
 protected:
   CapturableHandle() = default;
 };

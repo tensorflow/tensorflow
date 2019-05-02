@@ -63,8 +63,8 @@ struct NestedMatch {
   ArrayRef<NestedMatch> getMatchedChildren() { return matchedChildren; }
 
 private:
-  friend class NestedPattern;
-  friend class NestedPatternContext;
+  friend struct NestedPattern;
+  friend struct NestedPatternContext;
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
@@ -116,8 +116,8 @@ struct NestedPattern {
   unsigned getDepth() const;
 
 private:
-  friend class NestedPatternContext;
-  friend class NestedMatch;
+  friend struct NestedPatternContext;
+  friend struct NestedMatch;
   friend struct State;
 
   /// Underlying global bump allocator managed by a NestedPatternContext.

@@ -113,7 +113,8 @@ private:
 /// Assigning to an IndexedValue emits an actual `Store` operation, while
 /// converting an IndexedValue to a ValueHandle emits an actual `Load`
 /// operation.
-template <typename Load, typename Store> struct TemplatedIndexedValue {
+template <typename Load, typename Store> class TemplatedIndexedValue {
+public:
   explicit TemplatedIndexedValue(Type t) : base(t) {}
   explicit TemplatedIndexedValue(Value *v)
       : TemplatedIndexedValue(ValueHandle(v)) {}
