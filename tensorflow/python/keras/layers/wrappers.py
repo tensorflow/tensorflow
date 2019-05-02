@@ -350,64 +350,124 @@ class Bidirectional(Wrapper):
       One of {'sum', 'mul', 'concat', 'ave', None}.
       If None, the outputs will not be combined,
       they will be returned as a list.
+    backward_layer: Optional `Recurrent` instance to be used to handle
+      backwards input processing. If `backward_layer` is not provided,
+      the layer instance passed as the `layer` argument will be used to
+      generate the backward layer automatically.
+      Note that the provided `backward_layer` layer should have properties
+      matching those of the `layer` argument, in particular it should have the
+      same values for `stateful`, `return_states`, `return_sequence`, etc.
+      In addition, `backward_layer` and `layer` should have
+      different `go_backwards` argument values.
+      A `ValueError` will be raised if these requirements are not met.
 
   Call arguments:
     The call arguments for this layer are the same as those of the wrapped RNN
       layer.
 
   Raises:
-    ValueError: If not initialized with a `Layer` instance or
-      In case of invalid `merge_mode` argument.
+    ValueError:
+      1. If `layer` or `backward_layer` is not a `Layer` instance.
+      2. In case of invalid `merge_mode` argument.
+      3. If `backward_layer` has mismatched properties compared to `layer`.
 
   Examples:
 
   ```python
   model = Sequential()
-  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
-  10)))
+  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5, 10)))
   model.add(Bidirectional(LSTM(10)))
   model.add(Dense(5))
   model.add(Activation('softmax'))
   model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+
+   # With custom backward layer
+   model = Sequential()
+   forward_layer = LSTM(10, return_sequences=True)
+   backard_layer = LSTM(10, activation='relu', return_sequences=True,
+                        go_backwards=True)
+   model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
+                           input_shape=(5, 10)))
+   model.add(Dense(5))
+   model.add(Activation('softmax'))
+   model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
   ```
   """
 
-  def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
+  def __init__(self,
+               layer,
+               merge_mode='concat',
+               weights=None,
+               backward_layer=None,
+               **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
           'Please initialize `Bidirectional` layer with a '
           '`Layer` instance. You passed: {input}'.format(input=layer))
+    if backward_layer is not None and not isinstance(backward_layer, Layer):
+      raise ValueError('`backward_layer` need to be a `Layer` instance. '
+                       'You passed: {input}'.format(input=backward_layer))
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
-    if getattr(layer, 'zero_output_for_mask', None) is not None:
-      # Force the zero_output_for_mask to be True if returning sequences.
-      layer.zero_output_for_mask = layer.return_sequences
+    self.forward_layer = layer
+    if not self.forward_layer.name.startswith('forward_'):
+      self.forward_layer._name = 'forward_' + self.forward_layer.name
 
-    self.forward_layer = copy.copy(layer)
-    config = layer.get_config()
-    config['go_backwards'] = not config['go_backwards']
-    self.backward_layer = layer.__class__.from_config(config)
-    self.forward_layer._name = 'forward_' + self.forward_layer.name
-    self.backward_layer._name = 'backward_' + self.backward_layer.name
+    if backward_layer is None:
+      config = layer.get_config()
+      config['go_backwards'] = not config['go_backwards']
+      self.backward_layer = layer.__class__.from_config(config)
+      self._custom_backward_layer = False
+    else:
+      self.backward_layer = backward_layer
+      self._custom_backward_layer = True
+    if not self.backward_layer.name.startswith('backward_'):
+      self.backward_layer._name = 'backward_' + self.backward_layer.name
+
+    if self.forward_layer.go_backwards == self.backward_layer.go_backwards:
+      raise ValueError('Forward layer and backward layer should have different '
+                       '`go_backwards` value.')
+    self._verify_layer_config()
+
+    def force_zero_output_for_mask(layer):
+      # Force the zero_output_for_mask to be True if returning sequences.
+      if getattr(layer, 'zero_output_for_mask', None) is not None:
+        layer.zero_output_for_mask = layer.return_sequences
+
+    force_zero_output_for_mask(self.forward_layer)
+    force_zero_output_for_mask(self.backward_layer)
+
     self.merge_mode = merge_mode
     if weights:
       nw = len(weights)
       self.forward_layer.initial_weights = weights[:nw // 2]
       self.backward_layer.initial_weights = weights[nw // 2:]
-    self.stateful = layer.stateful
-    self.return_sequences = layer.return_sequences
-    self.return_state = layer.return_state
+    self.stateful = self.forward_layer.stateful
+    self.return_sequences = self.forward_layer.return_sequences
+    self.return_state = self.forward_layer.return_state
     self.supports_masking = True
     self._trainable = True
     self._num_constants = None
-    # We don't want to track `layer` since we're already tracking the two copies
-    # of it we actually run.
+    # We don't want to track `forward_layer` again since we're already tracking
+    # the two copies of it we actually run.
     self._setattr_tracking = False
-    super(Bidirectional, self).__init__(layer, **kwargs)
+    super(Bidirectional, self).__init__(self.forward_layer, **kwargs)
     self._setattr_tracking = True
-    self.input_spec = layer.input_spec
+    self.input_spec = self.forward_layer.input_spec
+
+  def _verify_layer_config(self):
+    """Ensure the forward and backward layers have same common property."""
+    attributes = ('stateful', 'return_sequences', 'return_state')
+    for a in attributes:
+      forward_value = getattr(self.forward_layer, a)
+      backward_value = getattr(self.backward_layer, a)
+      if forward_value != backward_value:
+        raise ValueError(
+            'Forward layer and backward layer are expected to have the same '
+            'value for attribute {attr}, got {forward} and {backward}'.format(
+                attr=a, forward=forward_value, backward=backward_value))
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
@@ -615,12 +675,26 @@ class Bidirectional(Wrapper):
     config = {'merge_mode': self.merge_mode}
     if self._num_constants is not None:
       config['num_constants'] = self._num_constants
+    if self._custom_backward_layer:
+      config['backward_layer'] = {
+          'class_name': self.backward_layer.__class__.__name__,
+          'config': self.backward_layer.get_config()
+      }
     base_config = super(Bidirectional, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
+    # Instead of updating the input, create a copy and use that.
+    config = config.copy()
     num_constants = config.pop('num_constants', None)
+    backward_layer_config = config.pop('backward_layer', None)
+    if backward_layer_config is not None:
+      from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+      backward_layer = deserialize_layer(
+          backward_layer_config, custom_objects=custom_objects)
+      config['backward_layer'] = backward_layer
+
     layer = super(Bidirectional, cls).from_config(config,
                                                   custom_objects=custom_objects)
     layer._num_constants = num_constants
