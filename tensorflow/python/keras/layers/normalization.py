@@ -650,10 +650,11 @@ class BatchNormalizationBase(Layer):
 
       mean = tf_utils.smart_cond(training,
                                  lambda: mean,
-                                 moving_mean.read_value)
-      variance = tf_utils.smart_cond(training,
-                                     lambda: variance,
-                                     moving_variance.read_value)
+                                 lambda: ops.convert_to_tensor(moving_mean))
+      variance = tf_utils.smart_cond(
+          training,
+          lambda: variance,
+          lambda: ops.convert_to_tensor(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
