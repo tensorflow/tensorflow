@@ -104,34 +104,14 @@ namespace detail {
 // MLIRContext. This class manages all creation and uniquing of types.
 class TypeUniquer {
 public:
-  /// Get an uniqued instance of a type T. This overload is used for derived
-  /// types that have complex storage or uniquing constraints.
+  /// Get an uniqued instance of a type T.
   template <typename T, typename... Args>
-  static typename std::enable_if<
-      !std::is_same<typename T::ImplType, DefaultTypeStorage>::value, T>::type
-  get(MLIRContext *ctx, unsigned kind, Args &&... args) {
-    // Lookup an instance of this complex storage type.
-    using ImplType = typename T::ImplType;
-    return ctx->getTypeUniquer().getComplex<ImplType>(
-        [&](ImplType *storage) {
-          storage->initializeDialect(lookupDialectForType<T>(ctx));
-        },
-        kind, std::forward<Args>(args)...);
-  }
-
-  /// Get an uniqued instance of a type T. This overload is used for derived
-  /// types that use the DefaultTypeStorage and thus need no additional storage
-  /// or uniquing.
-  template <typename T, typename... Args>
-  static typename std::enable_if<
-      std::is_same<typename T::ImplType, DefaultTypeStorage>::value, T>::type
-  get(MLIRContext *ctx, unsigned kind) {
-    // Lookup an instance of this simple storage type.
-    return ctx->getTypeUniquer().getSimple<TypeStorage>(
+  static T get(MLIRContext *ctx, unsigned kind, Args &&... args) {
+    return ctx->getTypeUniquer().get<typename T::ImplType>(
         [&](TypeStorage *storage) {
           storage->initializeDialect(lookupDialectForType<T>(ctx));
         },
-        kind);
+        kind, std::forward<Args>(args)...);
   }
 
 private:

@@ -122,11 +122,12 @@ public:
   /// that can be used to initialize a newly inserted storage instance. This
   /// function is used for derived types that have complex storage or uniquing
   /// constraints.
-  template <typename Storage, typename... Args>
-  Storage *getComplex(std::function<void(Storage *)> initFn, unsigned kind,
-                      Args &&... args) {
+  template <typename Storage, typename Arg, typename... Args>
+  Storage *get(std::function<void(Storage *)> initFn, unsigned kind, Arg &&arg,
+               Args &&... args) {
     // Construct a value of the derived key type.
-    auto derivedKey = getKey<Storage>(args...);
+    auto derivedKey =
+        getKey<Storage>(std::forward<Arg>(arg), std::forward<Args>(args)...);
 
     // Create a hash of the kind and the derived key.
     unsigned hashValue = getHash<Storage>(kind, derivedKey);
@@ -155,7 +156,7 @@ public:
   /// function is used for derived types that use no additional storage or
   /// uniquing outside of the kind.
   template <typename Storage>
-  Storage *getSimple(std::function<void(Storage *)> initFn, unsigned kind) {
+  Storage *get(std::function<void(Storage *)> initFn, unsigned kind) {
     auto ctorFn = [&](StorageAllocator &allocator) {
       auto *storage = new (allocator.allocate<Storage>()) Storage();
       if (initFn)
@@ -167,10 +168,11 @@ public:
 
   /// Erases a uniqued instance of 'Storage'. This function is used for derived
   /// types that have complex storage or uniquing constraints.
-  template <typename Storage, typename... Args>
-  void eraseComplex(unsigned kind, Args &&... args) {
+  template <typename Storage, typename Arg, typename... Args>
+  void erase(unsigned kind, Arg &&arg, Args &&... args) {
     // Construct a value of the derived key type.
-    auto derivedKey = getKey<Storage>(args...);
+    auto derivedKey =
+        getKey<Storage>(std::forward<Arg>(arg), std::forward<Args>(args)...);
 
     // Create a hash of the kind and the derived key.
     unsigned hashValue = getHash<Storage>(kind, derivedKey);

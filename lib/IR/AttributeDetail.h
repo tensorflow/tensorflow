@@ -67,45 +67,23 @@ struct AttributeStorage : public StorageUniquer::BaseStorage {
 // MLIRContext. This class manages all creation and uniquing of attributes.
 class AttributeUniquer {
 public:
-  /// Get an uniqued instance of attribute T. This overload is used for
-  /// derived attributes that have complex storage or uniquing constraints.
+  /// Get an uniqued instance of attribute T.
   template <typename T, typename... Args>
-  static typename std::enable_if<
-      !std::is_same<typename T::ImplType, AttributeStorage>::value, T>::type
-  get(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
-    return ctx->getAttributeUniquer().getComplex<typename T::ImplType>(
-        getInitFn(ctx), static_cast<unsigned>(kind),
-        std::forward<Args>(args)...);
-  }
-
-  /// Get an uniqued instance of attribute T. This overload is used for
-  /// derived attributes that use the AttributeStorage directly and thus need no
-  /// additional storage or uniquing.
-  template <typename T, typename... Args>
-  static typename std::enable_if<
-      std::is_same<typename T::ImplType, AttributeStorage>::value, T>::type
-  get(MLIRContext *ctx, Attribute::Kind kind) {
-    return ctx->getAttributeUniquer().getSimple<AttributeStorage>(
-        getInitFn(ctx), static_cast<unsigned>(kind));
-  }
-
-  /// Erase a uniqued instance of attribute T. This overload is used for
-  /// derived attributes that have complex storage or uniquing constraints.
-  template <typename T, typename... Args>
-  static typename std::enable_if<
-      !std::is_same<typename T::ImplType, AttributeStorage>::value>::type
-  erase(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
-    return ctx->getAttributeUniquer().eraseComplex<typename T::ImplType>(
+  static T get(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
+    return ctx->getAttributeUniquer().get<typename T::ImplType>(
+        [ctx](AttributeStorage *storage) {
+          // If the attribute did not provide a type, then default to NoneType.
+          if (!storage->getType())
+            storage->setType(NoneType::get(ctx));
+        },
         static_cast<unsigned>(kind), std::forward<Args>(args)...);
   }
 
-  /// Generate a functor to initialize a new attribute storage instance.
-  static std::function<void(AttributeStorage *)> getInitFn(MLIRContext *ctx) {
-    return [ctx](AttributeStorage *storage) {
-      // If the attribute did not provide a type, then default to NoneType.
-      if (!storage->getType())
-        storage->setType(NoneType::get(ctx));
-    };
+  /// Erase a uniqued instance of attribute T.
+  template <typename T, typename... Args>
+  static void erase(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
+    return ctx->getAttributeUniquer().erase<typename T::ImplType>(
+        static_cast<unsigned>(kind), std::forward<Args>(args)...);
   }
 };
 
