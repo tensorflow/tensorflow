@@ -44,7 +44,7 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
   SmallVector<Attribute, 4> attrs;
   attrs.reserve(position.size());
   for (auto p : position)
-    attrs.push_back(builder.getIntegerAttr(builder.getIntegerType(64), p));
+    attrs.push_back(builder.getI64IntegerAttr(p));
   return builder.getArrayAttr(attrs);
 }
 
