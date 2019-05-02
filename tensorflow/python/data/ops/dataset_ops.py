@@ -390,7 +390,7 @@ class DatasetV2(tracking_base.Trackable):
 
     ```python
     import itertools
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     def gen():
       for i in itertools.count(1):
@@ -406,7 +406,7 @@ class DatasetV2(tracking_base.Trackable):
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
-    `tf.py_func` and inherits the same constraints. In particular, it
+    `tf.compat.v1.py_func` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
@@ -424,14 +424,13 @@ class DatasetV2(tracking_base.Trackable):
 
     Args:
       generator: A callable object that returns an object that supports the
-        `iter()` protocol. If `args` is not specified, `generator` must take
-        no arguments; otherwise it must take as many arguments as there are
-        values in `args`.
+        `iter()` protocol. If `args` is not specified, `generator` must take no
+        arguments; otherwise it must take as many arguments as there are values
+        in `args`.
       output_types: A nested structure of `tf.DType` objects corresponding to
         each component of an element yielded by `generator`.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape`
-        objects corresponding to each component of an element yielded by
-        `generator`.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
+        corresponding to each component of an element yielded by `generator`.
       args: (Optional.) A tuple of `tf.Tensor` objects that will be evaluated
         and passed to `generator` as NumPy-array arguments.
 
@@ -479,8 +478,8 @@ class DatasetV2(tracking_base.Trackable):
       `iterator_id_t`, and raise `StopIteration` to terminate the iteration.
 
       Args:
-        iterator_id_t: A `tf.int64` tensor whose value uniquely identifies
-          the iterator in `generator_state` from which to generate an element.
+        iterator_id_t: A `tf.int64` tensor whose value uniquely identifies the
+          iterator in `generator_state` from which to generate an element.
 
       Returns:
         A nested structure of tensors representing an element from the iterator.
@@ -682,8 +681,8 @@ class DatasetV2(tracking_base.Trackable):
     a batch and this operation will prefetch `buffer_size` batches.
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        maximum number of elements that will be buffered when prefetching.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
+        number of elements that will be buffered when prefetching.
 
     Returns:
       Dataset: A `Dataset`.
@@ -716,7 +715,7 @@ class DatasetV2(tracking_base.Trackable):
         Defaults to `True`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
-        `tf.set_random_seed` for behavior.
+        `tf.compat.v1.set_random_seed` for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
@@ -758,9 +757,8 @@ class DatasetV2(tracking_base.Trackable):
 
     Args:
       count: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        number of times the dataset should be repeated. The default behavior
-        (if `count` is `None` or `-1`) is for the dataset be repeated
-        indefinitely.
+        number of times the dataset should be repeated. The default behavior (if
+        `count` is `None` or `-1`) is for the dataset be repeated indefinitely.
 
     Returns:
       Dataset: A `Dataset`.
@@ -812,12 +810,11 @@ class DatasetV2(tracking_base.Trackable):
     maintaining the 1,000 element buffer.
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        number of elements from this dataset from which the new
-        dataset will sample.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        random seed that will be used to create the distribution. See
-        `tf.set_random_seed` for behavior.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        elements from this dataset from which the new dataset will sample.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
+        seed that will be used to create the distribution. See
+        `tf.compat.v1.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
@@ -858,11 +855,10 @@ class DatasetV2(tracking_base.Trackable):
     """Creates a `Dataset` that skips `count` elements from this dataset.
 
     Args:
-      count: A `tf.int64` scalar `tf.Tensor`, representing the number
-        of elements of this dataset that should be skipped to form the
-        new dataset.  If `count` is greater than the size of this
-        dataset, the new dataset will contain no elements.  If `count`
-        is -1, skips the entire dataset.
+      count: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        elements of this dataset that should be skipped to form the new dataset.
+        If `count` is greater than the size of this dataset, the new dataset
+        will contain no elements.  If `count` is -1, skips the entire dataset.
 
     Returns:
       Dataset: A `Dataset`.
@@ -969,9 +965,11 @@ class DatasetV2(tracking_base.Trackable):
     determines the resulting shape for each dimension of each component in an
     output element:
 
-    * If the dimension is a constant (e.g. `tf.Dimension(37)`), the component
+    * If the dimension is a constant (e.g. `tf.compat.v1.Dimension(37)`), the
+    component
       will be padded out to that length in that dimension.
-    * If the dimension is unknown (e.g. `tf.Dimension(None)`), the component
+    * If the dimension is unknown (e.g. `tf.compat.v1.Dimension(None)`), the
+    component
       will be padded out to the maximum length of all elements in that
       dimension.
 
@@ -981,17 +979,16 @@ class DatasetV2(tracking_base.Trackable):
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
-      padded_shapes: A nested structure of `tf.TensorShape` or
-        `tf.int64` vector tensor-like objects representing the shape
-        to which the respective component of each input element should
-        be padded prior to batching. Any unknown dimensions
-        (e.g. `tf.Dimension(None)` in a `tf.TensorShape` or `-1` in a
-        tensor-like object) will be padded to the maximum size of that
-        dimension in each batch.
+      padded_shapes: A nested structure of `tf.TensorShape` or `tf.int64` vector
+        tensor-like objects representing the shape to which the respective
+        component of each input element should be padded prior to batching. Any
+        unknown dimensions (e.g. `tf.compat.v1.Dimension(None)` in a
+        `tf.TensorShape` or `-1` in a tensor-like object) will be padded to the
+        maximum size of that dimension in each batch.
       padding_values: (Optional.) A nested structure of scalar-shaped
-        `tf.Tensor`, representing the padding values to use for the
-        respective components.  Defaults are `0` for numeric types and
-        the empty string for string types.
+        `tf.Tensor`, representing the padding values to use for the respective
+        components.  Defaults are `0` for numeric types and the empty string for
+        string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -1094,9 +1091,9 @@ class DatasetV2(tracking_base.Trackable):
     will generally result in worse performance than 1).
 
     Args:
-      map_func: A function mapping a nested structure of tensors (having
-        shapes and types defined by `self.output_shapes` and
-       `self.output_types`) to another nested structure of tensors.
+      map_func: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to
+        another nested structure of tensors.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
@@ -1203,8 +1200,8 @@ class DatasetV2(tracking_base.Trackable):
         processed concurrently.
       block_length: The number of consecutive elements to produce from each
         input element before cycling to another input element.
-      num_parallel_calls: (Optional.) If specified, the implementation creates
-        a threadpool, which is used to fetch inputs from cycle elements
+      num_parallel_calls: (Optional.) If specified, the implementation creates a
+        threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
         from cycle elements synchronously with no parallelism. If the value
         `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
@@ -1344,8 +1341,8 @@ class DatasetV2(tracking_base.Trackable):
       initial_state: A nested structure of tensors, representing the initial
         state of the transformation.
       reduce_func: A function that maps `(old_state, input_element)` to
-        `new_state`. It must take two arguments and return a nested structure
-        of tensors. The structure of `new_state` must match the structure of
+        `new_state`. It must take two arguments and return a nested structure of
+        tensors. The structure of `new_state` must match the structure of
         `initial_state`.
 
     Returns:
@@ -1584,8 +1581,8 @@ class DatasetV1(DatasetV2):
 
     Args:
       shared_name: (Optional.) If non-empty, the returned iterator will be
-        shared under the given name across multiple sessions that share the
-        same devices (e.g. when using a remote server).
+        shared under the given name across multiple sessions that share the same
+        devices (e.g. when using a remote server).
 
     Returns:
       An `Iterator` over the elements of this dataset.
@@ -1916,7 +1913,7 @@ def _ensure_same_dataset_graph(dataset):
 
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
-  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
 
   Note: The returned iterator will be initialized automatically.
   A "one-shot" iterator does not support re-initialization.
@@ -1925,7 +1922,7 @@ def make_one_shot_iterator(dataset):
     dataset: A `tf.data.Dataset`.
 
   Returns:
-    A `tf.data.Iterator` over the elements of this dataset.
+    A `tf.compat.v1.data.Iterator` over the elements of this dataset.
   """
   try:
     # Call the defined `_make_one_shot_iterator()` if there is one, because some
@@ -1937,26 +1934,26 @@ def make_one_shot_iterator(dataset):
 
 @tf_export(v1=["data.make_initializable_iterator"])
 def make_initializable_iterator(dataset, shared_name=None):
-  """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
+  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
 
   Note: The returned iterator will be in an uninitialized state,
   and you must run the `iterator.initializer` operation before using it:
 
   ```python
   dataset = ...
-  iterator = tf.data.make_initializable_iterator(dataset)
+  iterator = tf.compat.v1.data.make_initializable_iterator(dataset)
   # ...
   sess.run(iterator.initializer)
   ```
 
   Args:
     dataset: A `tf.data.Dataset`.
-    shared_name: (Optional.) If non-empty, the returned iterator will be
-      shared under the given name across multiple sessions that share the
-      same devices (e.g. when using a remote server).
+    shared_name: (Optional.) If non-empty, the returned iterator will be shared
+      under the given name across multiple sessions that share the same devices
+      (e.g. when using a remote server).
 
   Returns:
-    A `tf.data.Iterator` over the elements of `dataset`.
+    A `tf.compat.v1.data.Iterator` over the elements of `dataset`.
 
   Raises:
     RuntimeError: If eager execution is enabled.
@@ -1974,8 +1971,8 @@ def get_structure(dataset_or_iterator):
   """Returns the `tf.data.experimental.Structure` of a `Dataset` or `Iterator`.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset`, `tf.compat.v1.data.Iterator`, or
+      `IteratorV2`.
 
   Returns:
     A `tf.data.experimental.Structure` representing the structure of the
@@ -2002,8 +1999,8 @@ def get_legacy_output_shapes(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_shapes` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset`, `tf.compat.v1.data.Iterator`, or
+      `IteratorV2`.
 
   Returns:
     A nested structure of `tf.TensorShape` objects corresponding to each
@@ -2020,8 +2017,8 @@ def get_legacy_output_types(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_types` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset`, `tf.compat.v1.data.Iterator`, or
+      `IteratorV2`.
 
   Returns:
     A nested structure of `tf.DType` objects corresponding to each component
@@ -2038,8 +2035,8 @@ def get_legacy_output_classes(dataset_or_iterator):
   `tf.compat.v1.Dataset.output_classes` property.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `IteratorV2`.
+    dataset_or_iterator: A `tf.data.Dataset`, `tf.compat.v1.data.Iterator`, or
+      `IteratorV2`.
 
   Returns:
     A nested structure of Python `type` or `tf.data.experimental.Structure`
@@ -2459,7 +2456,7 @@ class StructuredFunctionWrapper(object):
       # those tensors into a single tensor, because the customized
       # version of `nest.flatten()` does not recurse into lists. Since
       # it is more likely that the list arose from returning the
-      # result of an operation (such as `tf.py_func()`) that returns a
+      # result of an operation (such as `tf.compat.v1.py_func()`) that returns a
       # list of not-necessarily-stackable tensors, we treat the
       # returned value is a `tuple` instead. A user wishing to pack
       # the return value into a single tensor can use an explicit
@@ -2802,12 +2799,11 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
 
     Args:
       input_dataset: The input dataset.
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        number of elements from this dataset from which the new
-        dataset will sample.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        random seed that will be used to create the distribution. See
-        `tf.set_random_seed` for behavior.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        elements from this dataset from which the new dataset will sample.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
+        seed that will be used to create the distribution. See
+        `tf.compat.v1.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
