@@ -145,23 +145,6 @@ py_test(
 )
 
 py_test(
-    name = "enumerate_dataset_test",
-    size = "small",
-    srcs = ["enumerate_dataset_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/experimental/ops:enumerate_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_test(
     name = "get_single_element_test",
     size = "small",
     srcs = ["get_single_element_test.py"],
