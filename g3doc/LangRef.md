@@ -1246,7 +1246,7 @@ func @count(%x: i64) -> (i64, i64)
 }
 ```
 
-#### Blocks
+## Blocks
 
 Syntax:
 
@@ -1305,7 +1305,7 @@ of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
 [[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
-### Operations
+## Operations
 
 Syntax:
 
@@ -1368,7 +1368,7 @@ reason about IR dumps and manipulate operations in C++, the MLIR compiler
 infrastructure uses C++ templates to make working with them convenient and safe.
 The details of this are not described in this document.
 
-## Standard Operations
+### Standard Operations
 
 TODO: shape, which returns a 1D tensor, and can take an unknown rank tensor as
 input.
