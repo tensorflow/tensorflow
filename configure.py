@@ -1325,7 +1325,7 @@ def validate_cuda_config(environ_cp):
 
   cuda_libraries = ['cuda', 'cudnn']
   if is_linux():
-    if environ_cp.get('TF_NEED_TENSORRT', None):
+    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
       cuda_libraries.append('tensorrt')
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')

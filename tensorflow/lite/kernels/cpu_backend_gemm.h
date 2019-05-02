@@ -36,60 +36,65 @@ namespace cpu_backend_gemm {
  */
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
-struct GemmImpl
-    : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar> {};
+          typename DstScalar, QuantizationFlavor quantization_flavor>
+struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
+                                           DstScalar, quantization_flavor> {};
 
 #ifndef TFLITE_WITH_RUY
 
 /* Specializations using gemmlowp */
 
-template <typename SrcScalar, typename DstScalar>
-struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar>
+template <typename SrcScalar, typename DstScalar,
+          QuantizationFlavor quantization_flavor>
+struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar,
+                quantization_flavor>
     : detail::GemmImplUsingGemmlowp<SrcScalar, SrcScalar, std::int32_t,
-                                    DstScalar> {};
+                                    DstScalar, quantization_flavor> {};
 
 // When SrcScalar=int8 or DstScalar=int8, gemmlowp fails to compile
 // outside of NEON. We avoid the compilation failure by subspecializing these
 // cases, rerouting it back to ruy.
 #ifndef GEMMLOWP_NEON
-template <typename SrcScalar>
-struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, std::int8_t>
-    : detail::GemmImplUsingRuy<SrcScalar, SrcScalar, std::int32_t,
-                               std::int8_t> {};
+template <typename SrcScalar, QuantizationFlavor quantization_flavor>
+struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, std::int8_t,
+                quantization_flavor>
+    : detail::GemmImplUsingRuy<SrcScalar, SrcScalar, std::int32_t, std::int8_t,
+                               quantization_flavor> {};
 
-template <typename DstScalar>
-struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, DstScalar>
+template <typename DstScalar, QuantizationFlavor quantization_flavor>
+struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, DstScalar,
+                quantization_flavor>
     : detail::GemmImplUsingRuy<std::int8_t, std::int8_t, std::int32_t,
-                               DstScalar> {};
+                               DstScalar, quantization_flavor> {};
 
-template <>
-struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, std::int8_t>
+template <QuantizationFlavor quantization_flavor>
+struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, std::int8_t,
+                quantization_flavor>
     : detail::GemmImplUsingRuy<std::int8_t, std::int8_t, std::int32_t,
-                               std::int8_t> {};
+                               std::int8_t, quantization_flavor> {};
 #endif  // not GEMMLOWP_NEON
 
 /* Specializations using Eigen */
 
 template <>
-struct GemmImpl<float, float, float, float>
-    : detail::GemmImplUsingEigen<float, float, float, float> {};
+struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
+    : detail::GemmImplUsingEigen<float> {};
 
 #endif  // not TFLITE_WITH_RUY
 
 /* Public entry point */
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
+          typename DstScalar, QuantizationFlavor quantization_flavor>
 void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           const MatrixParams<RhsScalar>& rhs_params, const RhsScalar* rhs_data,
           const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
-          const GemmParams<AccumScalar, DstScalar>& params,
+          const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
           CpuBackendContext* context) {
   ValidateParams(lhs_params, rhs_params, dst_params, params);
-  GemmImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar>::Run(
-      lhs_params, lhs_data, rhs_params, rhs_data, dst_params, dst_data, params,
-      context);
+  GemmImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+           quantization_flavor>::Run(lhs_params, lhs_data, rhs_params, rhs_data,
+                                     dst_params, dst_data, params, context);
 }
 
 }  // namespace cpu_backend_gemm

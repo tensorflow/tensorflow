@@ -61,7 +61,7 @@ def fit_distributed(model,
   """Fit loop for Distribution Strategies."""
   distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
   distributed_training_utils.validate_inputs(
-      x, y, model._distribution_strategy)
+      x, y)
 
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
@@ -96,20 +96,20 @@ def fit_distributed(model,
   if validation_data:
     val_x, val_y, val_sample_weights = model._unpack_validation_data(
         validation_data)
-    distributed_training_utils.validate_inputs(
-        val_x, val_y, model._distribution_strategy)
+    distributed_training_utils.validate_inputs(val_x, val_y)
     first_valx_value = nest.flatten(val_x)[0]
     if isinstance(first_valx_value, np.ndarray):
       validation_steps, _ = distributed_training_utils.get_input_params(
           model._distribution_strategy, first_valx_value, validation_steps,
-          batch_size)
+          batch_size, mode=ModeKeys.TEST)
     val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
         batch_size=batch_size,
         validation_split=validation_split,
-        shuffle=shuffle)
+        shuffle=shuffle,
+        allow_partial_batch=True)
   elif validation_split:
     raise ValueError('validation_split argument is not supported with '
                      'distribution strategies.')
@@ -152,16 +152,18 @@ def evaluate_distributed(model,
                          steps=None,
                          callbacks=None):
   """Evaluate loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(x, y, model._distribution_strategy)
+  distributed_training_utils.validate_inputs(x, y)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
     steps, batch_size = distributed_training_utils.get_input_params(
-        model._distribution_strategy, first_x_value, steps, batch_size)
+        model._distribution_strategy, first_x_value, steps, batch_size,
+        mode=ModeKeys.TEST)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
-      batch_size=batch_size)
+      batch_size=batch_size,
+      allow_partial_batch=True)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_test_loop(
@@ -183,8 +185,7 @@ def predict_distributed(model,
                         steps=None,
                         callbacks=None):
   """Predict loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(
-      x, None, model._distribution_strategy, allow_partial_batch=True)
+  distributed_training_utils.validate_inputs(x, None)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
     steps, batch_size = distributed_training_utils.get_input_params(

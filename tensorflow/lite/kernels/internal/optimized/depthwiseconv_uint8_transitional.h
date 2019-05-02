@@ -1216,12 +1216,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     const int input_height_stride = function_params->input_height_stride;
     const int input_depth = function_params->input_depth;
 
-    static const uint8 perm_data[64] = {
-        0,  16, 32, 48, 1,  17, 33, 49, 2,  18, 34, 50, 3,  19, 35, 51,  //
-        4,  20, 36, 52, 5,  21, 37, 53, 6,  22, 38, 54, 7,  23, 39, 55,
-        8,  24, 40, 56, 9,  25, 41, 57, 10, 26, 42, 58, 11, 27, 43, 59,
-        12, 28, 44, 60, 13, 29, 45, 61, 14, 30, 46, 62, 15, 31, 47, 63};
-
     TFLITE_DCHECK_GE(depth_micro_repeats, 0);
     constexpr uint8 kSignBit = 0x80;
     const int micro_block_size = 4 * 8;
@@ -1237,10 +1231,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     // code. Note the blocks of 4x4 are still interleaved down the depth.
     int8x16_t work_reg_a;
     int8x16_t work_reg_b;
-    const int8x16_t perm_data_0 = vld1q_u8(perm_data);
-    const int8x16_t perm_data_1 = vld1q_u8(perm_data + 16);
-    const int8x16_t perm_data_2 = vld1q_u8(perm_data + 32);
-    const int8x16_t perm_data_3 = vld1q_u8(perm_data + 48);
 
     // Effect subtraction of zero-point = 128 by XOR of sign bit.
     const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
@@ -1250,9 +1240,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
     for (int k_height = 0; k_height < block_height; ++k_height) {
       const uint8* input_data_0 = input_block_data;
-      const uint8* input_data_1 = input_block_data + input_depth;
-      const uint8* input_data_2 = input_block_data + 2 * input_depth;
-      const uint8* input_data_3 = input_block_data + 3 * input_depth;
+      int8x16_t input_data_a;
+      int8x16_t input_data_b;
+      int8x16_t input_data_c;
+      int8x16_t input_data_d;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
       // of size 8.
@@ -1261,68 +1252,103 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
       // larger than is strictly needed to calculate output. This is because the
       // conv calculation is performed across complete micro blocks.
       for (int j_width = 0; j_width < input_width_micro_repeats; ++j_width) {
+        int8x16_t work_reg_a_sp;
+        int8x16_t work_reg_b_sp;
+
         int i_depth = 0;
-        for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
-          int8x16x4_t input_data;
-          input_data.val[0] = vld1q_u8(input_data_0);
-          input_data.val[1] = vld1q_u8(input_data_1);
-          input_data.val[2] = vld1q_u8(input_data_2);
-          input_data.val[3] = vld1q_u8(input_data_3);
-          input_data_1 += 16;
+
+        if (depth_micro_repeats >= 2) {
+          i_depth += 2;
+
+          //
+
+          input_data_a = vld1q_u8(input_data_0);
+          input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+          input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+          input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
           input_data_0 += 16;
 
-          int8x16_t tmp_0 = vqtbl4q_s8(input_data, perm_data_0);
-          int8x16_t tmp_1 = vqtbl4q_s8(input_data, perm_data_1);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          //
 
+          for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+            work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+            work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+            vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+            work_reg_a = veorq_s8(work_reg_a, sign_bit);
+            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+            work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+            work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+            vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+            input_data_a = vld1q_u8(input_data_0);
+            input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+            vst1q_s8(scratch_data_0, work_reg_a);
+            vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+            scratch_data_0 += depth_advance;
+
+            work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+            work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+            input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+            input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+            vst1q_s8(scratch_data_0, work_reg_a_sp);
+            vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+            scratch_data_0 += depth_advance;
+
+            //
+
+            input_data_0 += 16;
+          }
+
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+          vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+          work_reg_a = veorq_s8(work_reg_a, sign_bit);
+          work_reg_b = veorq_s8(work_reg_b, sign_bit);
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
           scratch_data_0 += depth_advance;
-          input_data_2 += 16;
-          input_data_3 += 16;
+          //
 
-          tmp_0 = vqtbl4q_s8(input_data, perm_data_2);
-          tmp_1 = vqtbl4q_s8(input_data, perm_data_3);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+          work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+          vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+          work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+          work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
 
-          vst1q_s8(scratch_data_0, work_reg_a);
-          vst1q_s8(scratch_data_0 + 16, work_reg_b);
+          vst1q_s8(scratch_data_0, work_reg_a_sp);
+          vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
           scratch_data_0 += depth_advance;
         }
         for (; i_depth < depth_micro_repeats; ++i_depth) {
-          int8x16x4_t input_data;
-          input_data.val[0] =
-              vld1q_lane_s8x8(input_data_0, input_data.val[0], 0);
-          input_data.val[1] =
-              vld1q_lane_s8x8(input_data_1, input_data.val[1], 0);
-          input_data.val[2] =
-              vld1q_lane_s8x8(input_data_2, input_data.val[2], 0);
-          input_data.val[3] =
-              vld1q_lane_s8x8(input_data_3, input_data.val[3], 0);
-          input_data_1 += 8;
+          input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+          input_data_b =
+              vld1q_lane_s8x8(input_data_0 + 1 * input_depth, input_data_b, 0);
+          input_data_c =
+              vld1q_lane_s8x8(input_data_0 + 2 * input_depth, input_data_c, 0);
+          input_data_d =
+              vld1q_lane_s8x8(input_data_0 + 3 * input_depth, input_data_d, 0);
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
           input_data_0 += 8;
 
-          int8x16_t tmp_0 = vqtbl4q_s8(input_data, perm_data_0);
-          int8x16_t tmp_1 = vqtbl4q_s8(input_data, perm_data_1);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+          work_reg_a = veorq_s8(work_reg_a, sign_bit);
+          work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
           scratch_data_0 += depth_advance;
-          input_data_2 += 8;
-          input_data_3 += 8;
         }
         scratch_data_0 += width_advance;
         input_data_0 += input_depth_skip;
-        input_data_1 += input_depth_skip;
-        input_data_2 += input_depth_skip;
-        input_data_3 += input_depth_skip;
       }
       if (width_overall_micro_repeats > input_width_micro_repeats) {
         TFLITE_DCHECK_EQ(width_overall_micro_repeats,
@@ -1330,21 +1356,22 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         TFLITE_DCHECK_GT(residual_width, 0);
         TFLITE_DCHECK_LT(residual_width, 4);
         for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-          work_reg_a = vdupq_n_u8(kSignBit);
-          work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
-          work_reg_b = vdupq_n_u8(kSignBit);
+          input_data_c = vdupq_n_u8(kSignBit);
+          input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+          input_data_d = vdupq_n_u8(kSignBit);
           if (residual_width > 1) {
-            work_reg_b =
-                vld1q_lane_s8x8(input_data_0 + input_depth, work_reg_b, 0);
+            input_data_b =
+                vld1q_lane_s8x8(input_data_0 + input_depth, input_data_b, 0);
             if (residual_width == 3) {
-              work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                           work_reg_a, 1);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
             }
           }
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
           work_reg_a = veorq_s8(work_reg_a, sign_bit);
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-          vzipq_s8_in_place(&work_reg_a, &work_reg_b);
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
           vst1q_s8(scratch_data_0, work_reg_a);
@@ -1352,16 +1379,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
           scratch_data_0 += depth_advance;
           input_data_0 += 8;
-          input_data_1 += 8;
-          input_data_2 += 8;
-          input_data_3 += 8;
         }
         scratch_data_0 += width_advance;
         input_data_0 += input_depth_skip;
-        input_data_1 += input_depth_skip;
-        input_data_2 += input_depth_skip;
-        input_data_3 += input_depth_skip;
       }
+
       scratch_data_0 += height_advance;
       input_block_data += input_height_stride;
     }
@@ -1377,7 +1399,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 #ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
-
     PackMacroBlockIntrinsics(input_block_data, scratch_block_data,
                              function_params);
   }
@@ -1460,9 +1481,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
     for (int k_height = 0; k_height < copy_block_height; ++k_height) {
       const uint8* input_data_0 = input_block_data;
-      const uint8* input_data_1 = input_block_data + input_depth;
-      const uint8* input_data_2 = input_block_data + 2 * input_depth;
-      const uint8* input_data_3 = input_block_data + 3 * input_depth;
+      int8x16_t input_data_a;
+      int8x16_t input_data_b;
+      int8x16_t input_data_c;
+      int8x16_t input_data_d;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
       // of size 8.
@@ -1485,53 +1507,126 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         }
         if (start_width == 0) {
           if (adjusted_residual_width == 4) {
-            // Load, then zero.
-            for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vld1q_lane_s8x8(input_data_2, work_reg_a, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_3, work_reg_b, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_1, work_reg_b, 0);
-              input_data_1 += 8;
-              work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
+            int8x16_t work_reg_a_sp;
+            int8x16_t work_reg_b_sp;
+
+            int i_depth = 0;
+
+            if (depth_micro_repeats >= 2) {
+              i_depth += 2;
+
+              //
+
+              input_data_a = vld1q_u8(input_data_0);
+              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_0 += 16;
+
+              //
+
+              for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+                work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+                work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+                work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+                work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+                input_data_a = vld1q_u8(input_data_0);
+                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+                scratch_data_0 += depth_advance;
+
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a_sp);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+                scratch_data_0 += depth_advance;
+
+                //
+
+                input_data_0 += 16;
+              }
+
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+              work_reg_a = veorq_s8(work_reg_a, sign_bit);
+              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              vst1q_s8(scratch_data_0, work_reg_a);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+              scratch_data_0 += depth_advance;
+              //
+
+              work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+              work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+              vst1q_s8(scratch_data_0, work_reg_a_sp);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+              scratch_data_0 += depth_advance;
+            }
+            for (; i_depth < depth_micro_repeats; ++i_depth) {
+              input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+              input_data_b = vld1q_lane_s8x8(input_data_0 + 1 * input_depth,
+                                             input_data_b, 0);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
+              input_data_d = vld1q_lane_s8x8(input_data_0 + 3 * input_depth,
+                                             input_data_d, 0);
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               input_data_0 += 8;
+
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
-              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-
               vst1q_s8(scratch_data_0, work_reg_a);
-              scratch_data_0 += 16;
-              vst1q_s8(scratch_data_0, work_reg_b);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
-              scratch_data_0 += depth_advance - 16;
-              input_data_2 += 8;
-              input_data_3 += 8;
+              scratch_data_0 += depth_advance;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           } else {
             TFLITE_DCHECK_LT(adjusted_residual_width, 4);
             for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
-              work_reg_b = vdupq_n_u8(-input_offset);
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vdupq_n_u8(-input_offset);
+              input_data_c = vdupq_n_u8(-input_offset);
+              input_data_d = vdupq_n_u8(-input_offset);
               if (adjusted_residual_width > 0) {
-                work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
+                input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
                 if (adjusted_residual_width > 1) {
-                  work_reg_b = vld1q_lane_s8x8(input_data_0 + input_depth,
-                                               work_reg_b, 0);
+                  input_data_b = vld1q_lane_s8x8(input_data_0 + input_depth,
+                                                 input_data_b, 0);
                   if (adjusted_residual_width == 3) {
-                    work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                                 work_reg_a, 1);
+                    input_data_c = vld1q_lane_s8x8(
+                        input_data_0 + 2 * input_depth, input_data_c, 0);
                   }
                 }
               }
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -1539,64 +1634,131 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
               scratch_data_0 += depth_advance;
               input_data_0 += 8;
-              input_data_1 += 8;
-              input_data_2 += 8;
-              input_data_3 += 8;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           }
         } else {
           if (adjusted_residual_width == 4) {
-            // Load, then zero.
-            for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
-              work_reg_a = vld1q_lane_s8x8(input_data_2, work_reg_a, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_3, work_reg_b, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_1, work_reg_b, 0);
-              input_data_1 += 8;
-              // Skip loading first column.
+            int8x16_t work_reg_a_sp;
+            int8x16_t work_reg_b_sp;
+
+            int i_depth = 0;
+
+            if (depth_micro_repeats >= 2) {
+              i_depth += 2;
+
+              //
+
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_0 += 16;
+
+              //
+
+              for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+                work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+                work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+                work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+                work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+                input_data_a = vdupq_n_u8(-input_offset);
+                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+                scratch_data_0 += depth_advance;
+
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a_sp);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+                scratch_data_0 += depth_advance;
+
+                //
+
+                input_data_0 += 16;
+              }
+
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+              work_reg_a = veorq_s8(work_reg_a, sign_bit);
+              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              vst1q_s8(scratch_data_0, work_reg_a);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+              scratch_data_0 += depth_advance;
+              //
+
+              work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+              work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+              vst1q_s8(scratch_data_0, work_reg_a_sp);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+              scratch_data_0 += depth_advance;
+            }
+            for (; i_depth < depth_micro_repeats; ++i_depth) {
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vld1q_lane_s8x8(input_data_0 + 1 * input_depth,
+                                             input_data_b, 0);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
+              input_data_d = vld1q_lane_s8x8(input_data_0 + 3 * input_depth,
+                                             input_data_d, 0);
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               input_data_0 += 8;
+
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
-              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-
               vst1q_s8(scratch_data_0, work_reg_a);
-              scratch_data_0 += 16;
-              vst1q_s8(scratch_data_0, work_reg_b);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
-              scratch_data_0 += depth_advance - 16;
-              input_data_2 += 8;
-              input_data_3 += 8;
+              scratch_data_0 += depth_advance;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           } else {
             TFLITE_DCHECK_LT(adjusted_residual_width, 4);
+
             for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vdupq_n_u8(-input_offset);
+              input_data_c = vdupq_n_u8(-input_offset);
+              input_data_d = vdupq_n_u8(-input_offset);
               // Skip loading first column.
-              work_reg_b = vdupq_n_u8(-input_offset);
               if (adjusted_residual_width > 1) {
-                work_reg_b =
-                    vld1q_lane_s8x8(input_data_0 + input_depth, work_reg_b, 0);
+                input_data_b = vld1q_lane_s8x8(input_data_0 + input_depth,
+                                               input_data_b, 0);
                 if (adjusted_residual_width == 3) {
-                  work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                               work_reg_a, 1);
+                  input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                                 input_data_c, 0);
                 }
               }
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -1604,15 +1766,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
               scratch_data_0 += depth_advance;
               input_data_0 += 8;
-              input_data_1 += 8;
-              input_data_2 += 8;
-              input_data_3 += 8;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           }
         }
       }

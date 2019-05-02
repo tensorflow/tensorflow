@@ -80,28 +80,24 @@ class Optimize(enum.Enum):
   # Converter will do its best to improve size and latency based on the
   # information provided.
   # Enhanced optimizations can be gained by providing a representative_dataset.
-  # Currently this is recommended, and is equivalent to the modes below.
+  # This is recommended, and is currently equivalent to the modes below.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
   DEFAULT = "DEFAULT"
 
   # Optimize for size.
   #
   # Optimizations that reduce the size of the model.
   # The model size will be reduced.
-  # Current behavior:
-  # - If RepresentativeDataset is not provided, weights will be quantized and
-  #   activations will remain float.
-  # - If RepresentativeDataset is provided, weights and activations will be
-  #   quantized.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
   OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
 
   # Optimize for latency.
   #
   # Optimizations that reduce the latency of the model.
-  # Current behavior:
-  # - If RepresentativeDataset is not provided, weights will be quantized and
-  #   activations will remain float.
-  # - If RepresentativeDataset is provided, weights and activations will be
-  #   quantized.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):
@@ -154,9 +150,10 @@ class TFLiteConverterBase(object):
   def __init__(self):
     self.representative_dataset = None
     self.optimizations = []
+    self._target_ops = set([OpsSet.TFLITE_BUILTINS])
 
-  def _grappler_config(self, target_ops):
-    is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == target_ops
+  def _grappler_config(self):
+    is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == set(self._target_ops)
     if is_only_flex_enabled:
       # The layout optimizer turns NHCW to NCHW. This provides performance
       # optimizations when Flex mode is enabled. However, this is not compatible
@@ -172,13 +169,19 @@ class TFLiteConverterBase(object):
       if self.representative_dataset.input_gen is None:
         raise ValueError(
             "Provide an input generator for representative_dataset")
+    elif self._int8_target_required():
+      raise ValueError("representative_dataset is required when specifying "
+                       "TFLITE_BUILTINs_INT8 target.")
+
+  def _int8_target_required(self):
+    return set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops)
 
   def _is_post_training_optimize(self):
-    return bool(
+    return (self._int8_target_required() or bool(
         set(self.optimizations).intersection([
             Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
             Optimize.DEFAULT
-        ]))
+        ])))
 
   def _is_weight_only_quantize(self):
     return (self._is_post_training_optimize() and
@@ -189,10 +192,11 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type):
+    allow_float = not self._int8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type)
+        inference_output_type, allow_float)
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -330,6 +334,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
         Invalid quantization parameters.
     """
     # TODO(b/130297984): Add support for converting multiple function.
+    self._target_ops = self.target_spec.supported_ops
     if len(self._funcs) != 1:
       raise ValueError("This converter can only convert a single "
                        "ConcreteFunction. Converting multiple functions is "
@@ -345,7 +350,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     # Run a Grappler pass.
     graph_def = frozen_func.graph.as_graph_def()
-    config = self._grappler_config(self.target_spec.supported_ops)
+    config = self._grappler_config()
     if config:
       graph_def = _run_graph_optimizations(
           graph_def,
@@ -787,6 +792,7 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    self._target_ops = self.target_ops
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
@@ -873,7 +879,7 @@ class TFLiteConverter(TFLiteConverterBase):
     optimized_graph = self._graph_def
     if self.inference_type != constants.QUANTIZED_UINT8:
       try:
-        config = self._grappler_config(self.target_ops)
+        config = self._grappler_config()
         if config:
           optimized_graph = _run_graph_optimizations(self._graph_def,
                                                      self._input_tensors,

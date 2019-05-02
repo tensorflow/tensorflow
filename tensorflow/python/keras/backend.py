@@ -228,7 +228,7 @@ def clear_session():
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
-    with ops.name_scope(''):
+    with name_scope(''):
       phase = array_ops.placeholder_with_default(
           False, shape=(), name='keras_learning_phase')
     _GRAPH_LEARNING_PHASES = {}
@@ -289,7 +289,7 @@ def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
     if graph not in _GRAPH_LEARNING_PHASES:
-      with ops.name_scope(''):
+      with name_scope(''):
         phase = array_ops.placeholder_with_default(
             False, shape=(), name='keras_learning_phase')
       _GRAPH_LEARNING_PHASES[graph] = phase
@@ -694,7 +694,32 @@ def to_dense(tensor):
     return tensor
 
 
-name_scope = ops.name_scope
+@keras_export('keras.backend.name_scope', v1=[])
+def name_scope(name):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      # Define some computation that uses `a`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensor `a` will have the name `MyOp/a`.
+
+  Args:
+    name: The prefix to use on all names created within the name scope.
+
+  Returns:
+    Name scope context manager.
+  """
+  return ops.name_scope_v2(name)
 
 
 @keras_export('keras.backend.variable')

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
 namespace tflite {
 
@@ -34,6 +35,7 @@ namespace {
 using cpu_backend_gemm::Gemm;
 using cpu_backend_gemm::GemmParams;
 using cpu_backend_gemm::MatrixParams;
+using cpu_backend_gemm::QuantizationFlavor;
 
 template <typename Scalar>
 std::string ToString(const std::vector<Scalar>& vector) {
@@ -125,9 +127,11 @@ void Clamp(const std::vector<Scalar>& src, Scalar clamp_min, Scalar clamp_max,
   }
 }
 
-template <typename AccumScalar, typename DstScalar>
-void Clamp(const GemmParams<AccumScalar, DstScalar>& src, DstScalar clamp_min,
-           DstScalar clamp_max, GemmParams<AccumScalar, DstScalar>* dst) {
+template <typename AccumScalar, typename DstScalar,
+          QuantizationFlavor quantization_flavor>
+void Clamp(const GemmParams<AccumScalar, DstScalar, quantization_flavor>& src,
+           DstScalar clamp_min, DstScalar clamp_max,
+           GemmParams<AccumScalar, DstScalar, quantization_flavor>* dst) {
   *dst = src;
   dst->clamp_min = clamp_min;
   dst->clamp_max = clamp_max;
@@ -236,14 +240,14 @@ void CheckErrorForAccumulation(int accumulation_depth,
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
+          typename DstScalar, QuantizationFlavor quantization_flavor>
 void PerformGemmThenCompareResultsThenAgainWithClamping(
     const MatrixParams<LhsScalar>& lhs_params,
     const std::vector<LhsScalar>& lhs_data,
     const MatrixParams<RhsScalar>& rhs_params,
     const std::vector<RhsScalar>& rhs_data,
     const MatrixParams<DstScalar>& dst_params, std::vector<DstScalar>* dst_data,
-    const GemmParams<AccumScalar, DstScalar>& params,
+    const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
     const std::vector<DstScalar>& expected,
     CpuBackendContext* cpu_backend_context) {
   const int accumulation_depth = lhs_params.cols;
@@ -253,7 +257,7 @@ void PerformGemmThenCompareResultsThenAgainWithClamping(
                                          expected);
   DstScalar expected_median = Median(expected);
   std::vector<DstScalar> expected_with_clamp;
-  GemmParams<AccumScalar, DstScalar> params_with_clamp;
+  GemmParams<AccumScalar, DstScalar, quantization_flavor> params_with_clamp;
   DstScalar clamp_min, clamp_max;
 
   clamp_min = std::numeric_limits<DstScalar>::lowest();
@@ -453,9 +457,14 @@ void TestSomeGemm(int rows, int depth, int cols,
         rows, params.multiplier_fixedpoint);
     std::vector<int> multiplier_exponent_perchannel(rows,
                                                     params.multiplier_exponent);
-    GemmParams<AccumScalar, DstScalar> params_perchannel = params;
-    params_perchannel.multiplier_fixedpoint = 0;
-    params_perchannel.multiplier_exponent = 0;
+    static constexpr QuantizationFlavor perchannel_flavor =
+        std::is_floating_point<AccumScalar>::value
+            ? QuantizationFlavor::kFloatingPoint
+            : QuantizationFlavor::kIntegerWithPerRowMultiplier;
+    GemmParams<AccumScalar, DstScalar, perchannel_flavor> params_perchannel;
+    params_perchannel.bias = params.bias;
+    params_perchannel.clamp_min = params.clamp_min;
+    params_perchannel.clamp_max = params.clamp_max;
     params_perchannel.multiplier_fixedpoint_perchannel =
         multiplier_fixedpoint_perchannel.data();
     params_perchannel.multiplier_exponent_perchannel =

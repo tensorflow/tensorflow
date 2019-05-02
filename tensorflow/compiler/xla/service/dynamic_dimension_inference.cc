@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -178,13 +179,14 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
                int64 operand_index, HloInstruction* dynamic_size) {
         HloInstruction* reduce = hlo;
         int64 operand_count = reduce->operand_count();
+        bool is_variadic_reduce = operand_count > 2;
         CHECK_EQ(operand_count % 2, 0);
         if (operand_index >= operand_count / 2) {
           // Init values doesn't have dynamic size.
           return Status::OK();
         }
         if ((absl::c_count(reduce->dimensions(), dimension) != 0)) {
-          // Dimension is to be reduce, stop tracing.
+          // Dimension is to be reduced, stop tracing.
           return Status::OK();
         }
 
@@ -192,8 +194,16 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
         int64 dimensions_not_reduced_count = 0;
         for (int i = 0; i < operand->shape().rank(); ++i) {
           if (dimension == i) {
-            parent_->SetDynamicSize(reduce, {}, dimensions_not_reduced_count,
-                                    dynamic_size);
+            ShapeIndex result_index = {};
+
+            if (is_variadic_reduce) {
+              // The result of variadic reduce is a tuple, find the subshape
+              // that contains the dynamic dimension.
+              result_index = {operand_index};
+            }
+
+            parent_->SetDynamicSize(reduce, result_index,
+                                    dimensions_not_reduced_count, dynamic_size);
 
             return Status::OK();
           }

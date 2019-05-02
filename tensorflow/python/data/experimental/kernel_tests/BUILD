@@ -389,11 +389,7 @@ py_test(
     size = "medium",
     srcs = ["parallel_interleave_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-        "notap",
-    ],
+    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -480,6 +476,7 @@ py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",

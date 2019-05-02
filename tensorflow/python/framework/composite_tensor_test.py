@@ -25,18 +25,21 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TestCompositeTensor(composite_tensor.CompositeTensor):
+class SimpleCompositeTensor(composite_tensor.CompositeTensor):
 
-  def __init__(self, *components):
+  def __init__(self, *components, **kwargs):
     self._components = components
+    self._metadata = kwargs.get('metadata', None)
 
   def _to_components(self):
     return self._components
 
+  def _component_metadata(self):
+    return self._metadata
+
   @classmethod
   def _from_components(cls, components, metadata):
-    return cls(*components)
+    return cls(metadata=metadata, *components)
 
   def _shape_invariant_to_components(self, shape=None):
     raise NotImplementedError('CompositeTensor._shape_invariant_to_components')
@@ -45,13 +48,15 @@ class TestCompositeTensor(composite_tensor.CompositeTensor):
     return False
 
   def __repr__(self):
-    return 'TestCompositeTensor%r' % (self._components,)
+    return 'SimpleCompositeTensor%r' % (self._components,)
 
   def __eq__(self, other):
-    return (isinstance(other, TestCompositeTensor) and
-            self._components == other._components)
+    return (isinstance(other, SimpleCompositeTensor) and
+            self._components == other._components and
+            self._metadata == other._metadata)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class CompositeTensorTest(test_util.TensorFlowTestCase):
 
   def assertNestEqual(self, a, b):
@@ -96,30 +101,40 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
   def testNestAssertSameStructure(self):
     st1 = sparse_tensor.SparseTensor([[0]], [0], [100])
     st2 = sparse_tensor.SparseTensor([[0, 3]], ['x'], [100, 100])
-    test = TestCompositeTensor(st1.indices, st1.values, st1.dense_shape)
+    test = SimpleCompositeTensor(st1.indices, st1.values, st1.dense_shape)
     nest.assert_same_structure(st1, st2, expand_composites=False)
     nest.assert_same_structure(st1, st2, expand_composites=True)
     nest.assert_same_structure(st1, test, expand_composites=False)
     with self.assertRaises(TypeError):
       nest.assert_same_structure(st1, test, expand_composites=True)
 
+  def testNestAssertSameStructureWithMetadata(self):
+    ct1 = SimpleCompositeTensor([1, 2, 3], metadata=(100,))
+    ct2 = SimpleCompositeTensor([4, 5, 6], metadata=(100,))
+    ct3 = SimpleCompositeTensor([7, 8, 9], metadata=(200,))
+
+    nest.assert_same_structure(ct1, ct2, expand_composites=True)
+    with self.assertRaisesRegexp(ValueError,
+                                 'CompositeTensors have different metadata'):
+      nest.assert_same_structure(ct1, ct3, expand_composites=True)
+
   def testNestMapStructure(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
 
     def func(x):
       return x + 10
 
     result = nest.map_structure(func, structure, expand_composites=True)
-    expected = [[TestCompositeTensor(11, 12, 13)], 110, {
-        'y': TestCompositeTensor(TestCompositeTensor(14, 15), 16)
+    expected = [[SimpleCompositeTensor(11, 12, 13)], 110, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(14, 15), 16)
     }]
     self.assertEqual(result, expected)
 
   def testNestMapStructureWithPaths(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
 
     def func(path, x):
@@ -127,18 +142,18 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
 
     result = nest.map_structure_with_paths(
         func, structure, expand_composites=True)
-    expected = [[TestCompositeTensor('0/0/0:1', '0/0/1:2', '0/0/2:3')], '1:100',
-                {
+    expected = [[SimpleCompositeTensor('0/0/0:1', '0/0/1:2', '0/0/2:3')],
+                '1:100', {
                     'y':
-                        TestCompositeTensor(
-                            TestCompositeTensor('2/y/0/0:4', '2/y/0/1:5'),
+                        SimpleCompositeTensor(
+                            SimpleCompositeTensor('2/y/0/0:4', '2/y/0/1:5'),
                             '2/y/1:6')
                 }]
     self.assertEqual(result, expected)
 
   def testNestMapStructureWithTuplePaths(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
 
     def func(path, x):
@@ -147,19 +162,21 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
     result = nest.map_structure_with_tuple_paths(
         func, structure, expand_composites=True)
     expected = [[
-        TestCompositeTensor(((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3))
+        SimpleCompositeTensor(((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3))
     ], ((1,), 100), {
         'y':
-            TestCompositeTensor(
-                TestCompositeTensor(((2, 'y', 0, 0), 4), ((2, 'y', 0, 1), 5)),
+            SimpleCompositeTensor(
+                SimpleCompositeTensor(((2, 'y', 0, 0), 4), ((2, 'y', 0, 1), 5)),
                 ((2, 'y', 1), 6))
     }]
     self.assertEqual(result, expected)
 
   def testNestAssertShallowStructure(self):
-    s1 = [[TestCompositeTensor(1, 2, 3)], 100, {'y': TestCompositeTensor(5, 6)}]
-    s2 = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    s1 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(5, 6)
+    }]
+    s2 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     nest.assert_shallow_structure(s1, s2, expand_composites=False)
     nest.assert_shallow_structure(s1, s2, expand_composites=True)
@@ -168,57 +185,66 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
       nest.assert_shallow_structure(s2, s1, expand_composites=True)
 
   def testNestFlattenUpTo(self):
-    s1 = [[TestCompositeTensor(1, 2, 3)], 100, {'y': TestCompositeTensor(5, 6)}]
-    s2 = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    s1 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(5, 6)
+    }]
+    s2 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     result1 = nest.flatten_up_to(s1, s2, expand_composites=True)
-    expected1 = [1, 2, 3, 100, TestCompositeTensor(4, 5), 6]
+    expected1 = [1, 2, 3, 100, SimpleCompositeTensor(4, 5), 6]
     self.assertEqual(result1, expected1)
 
     result2 = nest.flatten_up_to(s1, s2, expand_composites=False)
     expected2 = [
-        TestCompositeTensor(1, 2, 3), 100,
-        TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+        SimpleCompositeTensor(1, 2, 3), 100,
+        SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     ]
     self.assertEqual(result2, expected2)
 
   def testNestFlattenWithTuplePathsUpTo(self):
-    s1 = [[TestCompositeTensor(1, 2, 3)], 100, {'y': TestCompositeTensor(5, 6)}]
-    s2 = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    s1 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(5, 6)
+    }]
+    s2 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     result1 = nest.flatten_with_tuple_paths_up_to(
         s1, s2, expand_composites=True)
     expected1 = [((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3), ((1,), 100),
-                 ((2, 'y', 0), TestCompositeTensor(4, 5)), ((2, 'y', 1), 6)]
+                 ((2, 'y', 0), SimpleCompositeTensor(4, 5)), ((2, 'y', 1), 6)]
     self.assertEqual(result1, expected1)
 
     result2 = nest.flatten_with_tuple_paths_up_to(
         s1, s2, expand_composites=False)
-    expected2 = [((0, 0), TestCompositeTensor(1, 2, 3)), ((1,), 100),
-                 ((2, 'y'), TestCompositeTensor(TestCompositeTensor(4, 5), 6))]
+    expected2 = [((0, 0), SimpleCompositeTensor(1, 2, 3)), ((1,), 100),
+                 ((2, 'y'),
+                  SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6))]
     self.assertEqual(result2, expected2)
 
   def testNestMapStructureUpTo(self):
-    s1 = [[TestCompositeTensor(1, 2, 3)], 100, {'y': TestCompositeTensor(5, 6)}]
-    s2 = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    s1 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(5, 6)
+    }]
+    s2 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
 
     def func(x):
       return x + 10 if isinstance(x, int) else x
 
     result = nest.map_structure_up_to(s1, func, s2, expand_composites=True)
-    expected = [[TestCompositeTensor(11, 12, 13)], 110, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 16)
+    expected = [[SimpleCompositeTensor(11, 12, 13)], 110, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 16)
     }]
     self.assertEqual(result, expected)
 
   def testNestMapStructureWithTuplePathsUpTo(self):
-    s1 = [[TestCompositeTensor(1, 2, 3)], 100, {'y': TestCompositeTensor(5, 6)}]
-    s2 = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    s1 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(5, 6)
+    }]
+    s2 = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
 
     def func(path, x):
@@ -227,11 +253,11 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
     result = nest.map_structure_with_tuple_paths_up_to(
         s1, func, s2, expand_composites=True)
     expected = [[
-        TestCompositeTensor(((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3))
+        SimpleCompositeTensor(((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3))
     ], ((1,), 100), {
         'y':
-            TestCompositeTensor(((2, 'y', 0), TestCompositeTensor(4, 5)),
-                                ((2, 'y', 1), 6))
+            SimpleCompositeTensor(((2, 'y', 0), SimpleCompositeTensor(4, 5)),
+                                  ((2, 'y', 1), 6))
     }]
     self.assertEqual(result, expected)
 
@@ -239,8 +265,8 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
     pass
 
   def testNestYieldFlatPaths(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     result1 = list(nest.yield_flat_paths(structure, expand_composites=True))
     expected1 = [(0, 0, 0), (0, 0, 1), (0, 0, 2), (1,), (2, 'y', 0, 0),
@@ -252,8 +278,8 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(result2, expected2)
 
   def testNestFlattenWithJoinedStringPaths(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     result1 = nest.flatten_with_joined_string_paths(
         structure, expand_composites=True)
@@ -263,13 +289,13 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
 
     result2 = nest.flatten_with_joined_string_paths(
         structure, expand_composites=False)
-    expected2 = [('0/0', TestCompositeTensor(1, 2, 3)), ('1', 100),
-                 ('2/y', TestCompositeTensor(TestCompositeTensor(4, 5), 6))]
+    expected2 = [('0/0', SimpleCompositeTensor(1, 2, 3)), ('1', 100),
+                 ('2/y', SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6))]
     self.assertEqual(result2, expected2)
 
   def testNestFlattenWithTuplePaths(self):
-    structure = [[TestCompositeTensor(1, 2, 3)], 100, {
-        'y': TestCompositeTensor(TestCompositeTensor(4, 5), 6)
+    structure = [[SimpleCompositeTensor(1, 2, 3)], 100, {
+        'y': SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6)
     }]
     result1 = nest.flatten_with_tuple_paths(structure, expand_composites=True)
     expected1 = [((0, 0, 0), 1), ((0, 0, 1), 2), ((0, 0, 2), 3), ((1,), 100),
@@ -277,8 +303,9 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(result1, expected1)
 
     result2 = nest.flatten_with_tuple_paths(structure, expand_composites=False)
-    expected2 = [((0, 0), TestCompositeTensor(1, 2, 3)), ((1,), 100),
-                 ((2, 'y'), TestCompositeTensor(TestCompositeTensor(4, 5), 6))]
+    expected2 = [((0, 0), SimpleCompositeTensor(1, 2, 3)), ((1,), 100),
+                 ((2, 'y'),
+                  SimpleCompositeTensor(SimpleCompositeTensor(4, 5), 6))]
     self.assertEqual(result2, expected2)
 
 

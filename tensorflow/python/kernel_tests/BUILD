@@ -2677,6 +2677,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

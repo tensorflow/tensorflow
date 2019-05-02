@@ -1057,6 +1057,17 @@ class DatasetV2(tracking_base.Trackable):
     In addition to `tf.Tensor` objects, `map_func` can accept as arguments and
     return `tf.SparseTensor` objects.
 
+    Note that irrespective of the context in which `map_func` is defined (eager
+    vs. graph), tf.data traces the function and executes it as a graph. To use
+    Python code inside of the function you have two options:
+
+    1) Rely on AutoGraph to convert Python code into an equivalent graph
+    computation. The downside of this approach is that AutoGraph can convert
+    some but not all Python code.
+
+    2) Use `tf.py_function`, which allows you to write arbitrary Python code but
+    will generally result in worse performance than 1).
+
     Args:
       map_func: A function mapping a nested structure of tensors (having
         shapes and types defined by `self.output_shapes` and
@@ -2878,7 +2889,7 @@ class BatchDataset(UnaryDataset):
     return self._structure
 
 
-class _VariantTracker(tracking.TrackableResource):
+class _VariantTracker(tracking.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object

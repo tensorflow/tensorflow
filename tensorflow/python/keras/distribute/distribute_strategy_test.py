@@ -771,6 +771,49 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(batch_size=[4, 6])))
+  def test_evaluate_with_partial_batch(self, distribution, batch_size):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae']
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss, metrics=metrics)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss, metrics=metrics)
+
+      x = np.random.random((10, 3)).astype('float32')
+      y = np.random.random((10, 4)).astype('float32')
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch. Also `evaluate()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      evaluate_ground_truth = cpu_model.evaluate(x, y)
+
+      # We don't compare the loss as loss is currently not computed as metric
+      # in Keras, the loss value is inaccurate for last partial batch due to
+      # more weights for the last batch samples.
+      steps = np.ceil(10.0 / batch_size)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(
+              x, y, batch_size=batch_size, steps=steps)[1:],
+          evaluate_ground_truth[1:],
+          atol=1e-5,
+          rtol=1e-5)
+      # Test that `steps` is inferred correctly when final partial batch exists.
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(x, y, batch_size=batch_size)[1:],
+          evaluate_ground_truth[1:],
+          atol=1e-5,
+          rtol=1e-5)
+
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -1251,27 +1294,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          mode=['graph'],
-          cloning=[True, False]))
-  def test_dataset_input_shape_fully_defined(self, distribution, cloning):
-    with self.cached_session():
-      with distribution.scope():
-        model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-        loss = 'mse'
-        model.compile(optimizer, loss, cloning=cloning)
-
-      dataset = get_dataset(distribution)
-      # Input shapes are not fully known. Batch dimension is unknown as we are
-      # not using the drop_remainder argument.
-      dataset = dataset.repeat(100).batch(10)
-
-      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
-
-  @combinations.generate(
-      combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus
@@ -1343,6 +1365,47 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
+
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(batch_size=[4, 6])))
+  def test_evaluate_with_dataset_with_partial_batch(self, distribution,
+                                                    batch_size):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae']
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss, metrics=metrics)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss, metrics=metrics)
+
+      x = np.random.random((10, 3)).astype('float32')
+      y = np.random.random((10, 4)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+
+      # As sample size is 10, we make the last batch a partial batch.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      dataset_with_partial_batch = dataset.batch(batch_size)
+
+      # We don't compare the loss as loss is currently not computed as metric
+      # in Keras, the loss value is inaccurate for last partial batch due to
+      # more weights for the last batch samples.
+      steps = np.ceil(10.0 / batch_size)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(
+              dataset_with_partial_batch, steps=steps)[1:],
+          cpu_model.evaluate(dataset_with_partial_batch, steps=steps)[1:],
+          atol=1e-5,
+          rtol=1e-5)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(dataset_with_partial_batch)[1:],
+          cpu_model.evaluate(dataset_with_partial_batch)[1:],
+          atol=1e-5,
+          rtol=1e-5)
 
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),

@@ -183,8 +183,8 @@ class LIFOManager : public ReadyNodeManager {
 };
 
 // FirstReadyManager picks a node with the minimum time_ready value.
-// Behavior is unknown if there are more than one nodes with the minimum
-// time_ready value (it depends on C++ STL push_heap and pop_heap).
+// Behavior is deterministic when there are more than one nodes with the minimum
+// time_ready value with unique node names as the tie-breaker.
 class FirstReadyManager : public ReadyNodeManager {
  public:
   FirstReadyManager();
@@ -213,7 +213,7 @@ class FirstReadyManager : public ReadyNodeManager {
 
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
-  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+  const std::unordered_map<const NodeDef*, NodeState>* node_map_;
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
@@ -303,13 +303,6 @@ class VirtualScheduler {
   void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
 
  private:
-  // Constants.
-  const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "send_device";
-  const string kAttrDstDevice = "recv_device";
-  const string kAttrTensorName = "tensor_name";
-  const string kChannelDevice = "Channel";
-
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -321,10 +314,6 @@ class VirtualScheduler {
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.
-  Costs& FindOrCreateZero(const string& op_name,
-                          std::map<string, Costs>* op_cost);
-  float Round2(const float x) const;
-  bool IsPersistentNode(const NodeDef* node) const;
   void AddOutputNodesToReadyQueue(const NodeDef* node,
                                   const Costs::Duration& curr_time);
 

@@ -76,7 +76,7 @@ class RunMetadataListener {
   virtual void BeforeClearRunMetadata() = 0;
 };
 
-class EagerContext {
+class EagerContext : public core::RefCounted {
  public:
   // TODO: remove this constructor once we migrate all callers to the next one.
   EagerContext(const SessionOptions& opts,

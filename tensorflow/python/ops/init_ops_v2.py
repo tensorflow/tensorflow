@@ -389,6 +389,9 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
+    # Compatibility with keras-team/keras.
+    if distribution == "normal":
+      distribution = "truncated_normal"
     if distribution not in {"uniform", "truncated_normal",
                             "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)

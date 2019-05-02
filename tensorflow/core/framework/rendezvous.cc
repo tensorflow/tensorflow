@@ -182,7 +182,13 @@ class LocalRendezvousImpl : public Rendezvous {
 
     // There is an earliest waiter to consume this message.
     Item* item = queue->front();
-    queue->pop_front();
+
+    // Delete the queue when the last element has been consumed.
+    if (queue->size() == 1) {
+      table_.erase(key_hash);
+    } else {
+      queue->pop_front();
+    }
     mu_.unlock();
 
     // Notify the waiter by invoking its done closure, outside the

@@ -2430,6 +2430,16 @@ class Model(network.Network):
         # input shape which is required for TPUs.
         drop_remainder = (not allow_partial_batch and
                           strategy.extended.experimental_require_static_shapes)
+
+        # TODO(b/131720208): We still drop remainder here if number of examples
+        # is divisible by batch size, as sometimes dynamic padder will time out
+        # with keras.metrics.CategoricalAccuracy() metric.
+        if distributed_training_utils.is_tpu_strategy(
+            strategy) and not drop_remainder:
+          dataset_size = first_x_value.shape[0]
+          if dataset_size % batch_size == 0:
+            drop_remainder = True
+
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)

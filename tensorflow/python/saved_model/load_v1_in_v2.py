@@ -30,7 +30,7 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.tracking import tracking
 
 
-class _Initializer(tracking.TrackableResource):
+class _Initializer(tracking.CapturableResource):
   """Represents an initialization operation restored from a SavedModel.
 
   Without this object re-export of imported 1.x SavedModels would omit the

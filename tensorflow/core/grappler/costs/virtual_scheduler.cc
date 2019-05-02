@@ -37,6 +37,32 @@ namespace grappler {
 
 namespace {
 
+using ::absl::StrCat;
+using ::tensorflow::strings::HumanReadableNumBytes;
+
+constexpr char kAttrInputSrc[] = "input_source_";
+constexpr char kAttrSrcDevice[] = "send_device";
+constexpr char kAttrDstDevice[] = "recv_device";
+constexpr char kAttrTensorName[] = "tensor_name";
+constexpr char kChannelDevice[] = "Channel";
+
+float Round2(const float x) {
+  // Not using std::round from <cmath> here because not all platforms seem to
+  // support that (specifically Android).
+  return ::round(100.0 * x) / 100.0;
+}
+
+Costs& FindOrCreateZero(const string& op_name,
+                        std::map<string, Costs>* op_cost) {
+  auto it = op_cost->find(op_name);
+  if (it == op_cost->end()) {
+    // Note that default constructor of Costs sets some memory related fields
+    // to unknown values so we should explicitly initialize it with ZeroCosts.
+    it = op_cost->emplace(op_name, Costs::ZeroCosts()).first;
+  }
+  return it->second;
+}
+
 // Key to the cached _Recv ops map, and its hash and predicate structures.
 struct RecvNodeDescriptor {
   const NodeDef* node;
@@ -62,9 +88,9 @@ struct RecvNodeDescriptorEqual {
     return a.node == b.node && a.port_num == b.port_num && a.device == b.device;
   }
 };
+
 }  // namespace
 
-// ReadyNodeManager
 const NodeDef* LIFOManager::GetCurrNode() {
   CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   if (curr_pos_ == nodes_.end()) {
@@ -91,28 +117,28 @@ FirstReadyManager::FirstReadyManager() : ReadyNodeManager() {
 }
 
 void FirstReadyManager::Init(
-    const std::unordered_map<const NodeDef*, NodeState>* node_state) {
+    const std::unordered_map<const NodeDef*, NodeState>* node_map) {
   // Reset the node state since different instances of the scheduler can reuse
   // the same node_manager.
-  node_state_ = node_state;
+  node_map_ = node_map;
   nodes_.clear();
   waiting_queue_.clear();
   greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_state_->at(a).time_ready == node_state_->at(b).time_ready) {
+    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
       // Use Node name as tie-breaker for deterministic node scheduling.
       return a->name().compare(b->name()) > 0;
     } else {
-      // Note: we need a node with minimum time_ready, not
-      // maximum; hence, using a > b for comparison function.
-      return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
+      // Note: we need a node with minimum time_ready, not maximum; hence, using
+      // a > b for comparison function.
+      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
     }
   };
 }
 
 const NodeDef* FirstReadyManager::GetCurrNode() {
   if (nodes_.empty()) {
-    // Nothing in the node_; probably, the very first call. Move
-    // waiting_queue_ to node_.
+    // Nothing in the node_; probably, the very first call. Move waiting_queue_
+    // to node_.
     DrainWaitingQueue();
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   }
@@ -439,7 +465,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
 
     feed_nodes.erase(curr_node->name());
 
-    if (IsPersistentNode(curr_node)) {
+    if (IsPersistent(*curr_node)) {
       auto& device_state = device_[curr_node_device];
       for (int port_num = 0;
            port_num < curr_node_state.output_properties.size(); ++port_num) {
@@ -514,17 +540,6 @@ void VirtualScheduler::MaybeUpdateInputOutput(const NodeDef* node) {
   }
 }
 
-float VirtualScheduler::Round2(const float x) const {
-  // Not using std::round from <cmath> here because not all platforms seem to
-  // support that (specifically Android).
-  return ::round(100.0 * x) / 100.0;
-}
-
-bool VirtualScheduler::IsPersistentNode(const NodeDef* node) const {
-  // Variables are persistent nodes.
-  return IsVariable(*node);
-}
-
 string VirtualScheduler::DeviceName(const NodeDef* node) const {
   return placer_->get_canonical_device_name(*node);
 }
@@ -539,8 +554,8 @@ string VirtualScheduler::SanitizedDeviceName(const NodeDef* node) const {
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
   CHECK(!initialized_) << "ChannelDeviceName is called after Init().";
-  return kChannelDevice + "_from_" + SanitizedDeviceName(from) + "_to_" +
-         SanitizedDeviceName(to);
+  return StrCat(kChannelDevice, "_from_", SanitizedDeviceName(from), "_to_",
+                SanitizedDeviceName(to));
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
@@ -562,9 +577,9 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
   if (input_node_port_num >= 0) {
-    src_name = strings::StrCat(from->name(), "_", input_node_port_num);
+    src_name = StrCat(from->name(), "_", input_node_port_num);
   } else {
-    src_name = strings::StrCat(from->name(), "_minus1");
+    src_name = StrCat(from->name(), "_minus1");
   }
 
   // _Send op.
@@ -694,17 +709,6 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
   return it->second;
 }
 
-Costs& VirtualScheduler::FindOrCreateZero(const string& op_name,
-                                          std::map<string, Costs>* op_cost) {
-  auto it = op_cost->find(op_name);
-  if (it == op_cost->end()) {
-    // Note that default constructor of Costs sets some memory related fields
-    // to unknown values so we should explicitly initialize it with ZeroCosts.
-    it = op_cost->emplace(op_name, Costs::ZeroCosts()).first;
-  }
-  return it->second;
-}
-
 void VirtualScheduler::AddOutputNodesToReadyQueue(
     const NodeDef* node, const Costs::Duration& curr_time) {
   // Checks whether the Switch's output slots change over iterations.
@@ -788,7 +792,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   node_state.time_finished = curr_time;
 
   // Update device memory usage.
-  if (!IsPersistentNode(node)) {
+  if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
       int port_num = port_num_output_pair.first;
       // There's a chance that a specific output is not used at all.
@@ -825,7 +829,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     input_state.num_outputs_executed[port]++;
     if (input_state.num_outputs_executed[port] ==
             input_state.outputs[port].size() &&
-        !IsPersistentNode(input)) {
+        !IsPersistent(*input)) {
       // All the outputs are executed; no reference to this output port of
       // input node.
       input_state.time_no_references[port] = curr_time;
@@ -838,7 +842,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     }
   }
 
-  if (!IsPersistentNode(node)) {
+  if (!IsPersistent(*node)) {
     // Now that output memory is added and used up nodes are deallocated,
     // check max memory usage.
     if (device.memory_usage > device.max_memory_usage) {
@@ -925,13 +929,10 @@ Costs VirtualScheduler::Summary() const {
     VLOG(1) << "Device = " << name
             << ", num_nodes = " << state.nodes_executed.size()
             << ", wall_time_ns = " << wall_time_ns.count() << ", memory usage: "
-            << "persistent = "
-            << strings::HumanReadableNumBytes(persistent_memory_usage)
-            << ", peak = "
-            << strings::HumanReadableNumBytes(state.max_memory_usage)
-            << ", total = " << strings::HumanReadableNumBytes(max_memory_usage)
-            << ", at the end: "
-            << strings::HumanReadableNumBytes(state.memory_usage);
+            << "persistent = " << HumanReadableNumBytes(persistent_memory_usage)
+            << ", peak = " << HumanReadableNumBytes(state.max_memory_usage)
+            << ", total = " << HumanReadableNumBytes(max_memory_usage)
+            << ", at the end: " << HumanReadableNumBytes(state.memory_usage);
 
     // Overall statement about accuracy
     VLOG(1) << state.device_costs.num_ops_total
@@ -983,7 +984,7 @@ Costs VirtualScheduler::Summary() const {
                        static_cast<int64>(compute_cost),
                        static_cast<int64>(memory_cost),
                        static_cast<int64>(intermediate_memory_cost))
-                << " (" << strings::HumanReadableNumBytes(op_mem_usage) << " ["
+                << " (" << HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
@@ -1068,7 +1069,7 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
       // VirtualScheduler does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
       int64 persistent_memory_size = 0;
-      if (IsPersistentNode(node_def)) {
+      if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
       }
       mem_stats->set_persistent_memory_size(persistent_memory_size);

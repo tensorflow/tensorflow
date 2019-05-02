@@ -396,7 +396,7 @@ inline void DepthwiseConv(
           thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
   }
 }
 
@@ -498,7 +498,7 @@ inline void DepthwiseConvPerChannel(
           output_data, thread_start, thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
   }
 }
 
@@ -697,7 +697,7 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
 }
 #endif  // USE_NEON
 
@@ -1150,7 +1150,7 @@ inline void ShuffledFullyConnected(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
 }
 
 inline void ShuffledFullyConnected(

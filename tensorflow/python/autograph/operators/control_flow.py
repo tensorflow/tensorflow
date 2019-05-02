@@ -30,6 +30,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import tensor_array_ops
 
 
 LIMIT_PYTHON_ITERATIONS = True
@@ -108,13 +109,19 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
 
 
 def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
-  """Overload of for_stmt that iterates over objects that admit a length."""
+  """Overload of for_stmt that iterates over TF entities that admit a length."""
   _disallow_undefs_into_loop(*init_state)
 
   n = py_builtins.len_(iter_)
+  # TODO(b/117628877): Revisit performance once XLA has the necessary support.
+  # Note: using a TensorArray creates an extra copy, but in turn it may speed up
+  # gradient calculations, which at the time of this writing use a less
+  # efficient concat op.
+  ta = tensor_array_ops.TensorArray(iter_.dtype, size=n)
+  iter_ = ta.unstack(iter_)
 
   def while_body(iterate_index, *state):
-    iterate = iter_[iterate_index]
+    iterate = iter_.read(iterate_index)
     new_state = body(iterate, *state)
 
     state = (iterate_index + 1,)

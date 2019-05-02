@@ -72,28 +72,40 @@ class TestDistributionStrategyDnnCorrectness(
 
       model.compile(
           loss=keras.losses.mean_squared_error,
-          optimizer=gradient_descent_keras.SGD(0.5),
+          optimizer=gradient_descent_keras.SGD(0.05),
           metrics=['mse'],
           cloning=cloning)
       return model
 
   def get_data(self):
-    # TODO(xiejw): Change this back to 10000, once we support final partial
-    # batch.
-    num_samples = 9984
-    x_train = np.random.rand(num_samples, 1)
+    x_train = np.random.rand(9984, 1).astype('float32')
     y_train = 3 * x_train
-    x_train = x_train.astype('float32')
-    y_train = y_train.astype('float32')
     x_predict = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
     return x_train, y_train, x_predict
 
-  @combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def get_data_with_partial_last_batch(self):
+    x_train = np.random.rand(9984, 1).astype('float32')
+    y_train = 3 * x_train
+    x_eval = np.random.rand(10000, 1).astype('float32')
+    y_eval = 3 * x_eval
+    x_predict = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
+    return x_train, y_train, x_eval, y_eval, x_predict
+
+  @combinations.generate(keras_correctness_test_base.
+                         all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data,
                            cloning):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
                               cloning)
+
+  @combinations.generate(
+      keras_correctness_test_base
+      .test_combinations_with_tpu_strategies())
+  def test_dnn_correctness_with_partial_last_batch(self, distribution,
+                                                   use_numpy,
+                                                   use_validation_data):
+    self.run_correctness_test(
+        distribution, use_numpy, use_validation_data, partial_last_batch=True)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dnn_with_dynamic_learning_rate(self, distribution, cloning):
@@ -131,7 +143,7 @@ class TestDistributionStrategyDnnMetricCorrectness(
                     get_batch_size(batch_size, distribution))
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = (keras_correctness_test_base.
-                       batch_wrapper(train_dataset, batch_size, distribution))
+                       batch_wrapper(train_dataset, batch_size))
 
       history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
@@ -171,16 +183,14 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
       x = np.ones((100, 4)).astype('float32')
       y = np.ones((100, 1)).astype('float32')
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
-      dataset = (keras_correctness_test_base.
-                 batch_wrapper(dataset, 4, distribution))
+      dataset = keras_correctness_test_base.batch_wrapper(dataset, 4)
       outs = model.evaluate(dataset, steps=10)
       self.assertEqual(outs[1], 1.)
       self.assertEqual(outs[2], 1.)
 
       y = np.zeros((100, 1)).astype('float32')
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
-      dataset = (keras_correctness_test_base.
-                 batch_wrapper(dataset, 4, distribution))
+      dataset = keras_correctness_test_base.batch_wrapper(dataset, 4)
       outs = model.evaluate(dataset, steps=10)
       self.assertEqual(outs[1], 0.)
       self.assertEqual(outs[2], 0.)
@@ -263,6 +273,20 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           '`Sequential` model that is created without `input_shape`/'
           '`input_dim` set in its first layer or a subclassed model.'):
         self.run_dynamic_lr_test(distribution, cloning)
+
+  @combinations.generate(
+      keras_correctness_test_base
+      .test_combinations_with_tpu_strategies())
+  def test_dnn_correctness_with_partial_last_batch(self, distribution,
+                                                   use_numpy,
+                                                   use_validation_data):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'We currently do not support distribution strategy with a '
+        '`Sequential` model that is created without `input_shape`/'
+        '`input_dim` set in its first layer or a subclassed model.'):
+      self.run_correctness_test(
+          distribution, use_numpy, use_validation_data, partial_last_batch=True)
 
 
 if __name__ == '__main__':

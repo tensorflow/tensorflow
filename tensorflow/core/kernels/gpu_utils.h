@@ -96,7 +96,28 @@ class AutoTuneMap {
     }
     if (new_score >= min_score_threshold_) {
       VLOG(1) << GetActionSummary("accepts", params, config);
+    } else if (autotune_global_count_ >= max_autotune_global_count_) {
+      // The autotuning exceeds the max iteration threshold and we accept the
+      // the winner if it exists in the map, otherwise we accept the current
+      // winner.
+      auto winner = params_config_map_.find(params);
+      if (winner == params_config_map_.end()) {
+        VLOG(1) << GetActionSummary("creates", params, config);
+        for (int i = 0; i < min_score_threshold_; ++i) {
+          VLOG(1) << GetActionSummary("promotes", params, config);
+        }
+        params_config_map_.insert(
+            std::make_pair(params, ValueType{config, min_score_threshold_, 1}));
+      } else {
+        int promotes_times = min_score_threshold_ - winner->second.score;
+        for (int i = 0; i < promotes_times; ++i) {
+          VLOG(1) << GetActionSummary("promotes", params, config);
+        }
+        winner->second.score = min_score_threshold_;
+      }
+      VLOG(1) << GetActionSummary("accepts", params, config);
     }
+    autotune_global_count_++;
   }
 
  private:
@@ -115,6 +136,8 @@ class AutoTuneMap {
     min_score_threshold_ = std::max(min_score_threshold_, 1);
     max_autotune_count_ = std::max(
         5 * min_score_threshold_ * min_score_threshold_, min_warmup_iterations);
+    max_autotune_global_count_ = 2 * max_autotune_count_;
+    autotune_global_count_ = 0;
   }
 
   template <class Group, class Params, class Cfg>
@@ -144,6 +167,8 @@ class AutoTuneMap {
   string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;
+  int32 max_autotune_global_count_;
+  int32 autotune_global_count_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
 };

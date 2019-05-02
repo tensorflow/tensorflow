@@ -30,6 +30,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
+from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -939,6 +940,33 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     inputs_with_batch = keras.Input(batch_size=20, shape=5)
     self.assertEqual([20, 5], inputs_with_batch.shape.as_list())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_model_initialization(self):
+    # Functional model
+    inputs = input_layer_lib.Input(shape=(32,))
+    outputs = keras.layers.Dense(4)(inputs)
+
+    with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
+      model = training.Model(inputs, outputs, name='m', trainable=False,
+                             dtype='int64')
+    with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
+      model = training.Model(inputs, outputs, name='m', trainable=False,
+                             dynamic=False)
+
+    model = training.Model(inputs, outputs, name='m', trainable=False)
+    self.assertEqual('m', model.name)
+    self.assertFalse(model.trainable)
+    self.assertFalse(model.dynamic)
+
+    # Subclassed model
+    model = training.Model(name='subclassed', trainable=True, dtype='int64',
+                           dynamic=True)
+    self.assertEqual('subclassed', model.name)
+    self.assertTrue(model.dynamic)
+    self.assertTrue(model.trainable)
+    w = model.add_weight('w', [], initializer=keras.initializers.Constant(1))
+    self.assertEqual(dtypes.int64, w.dtype)
 
 
 class DeferredModeTest(test.TestCase):

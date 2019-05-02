@@ -228,7 +228,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
       remote_workers, rendezvous_id, keep_alive_secs, server_def,
-      remote_eager_workers.get(), ctx->context.Async(), &remote_contexts));
+      remote_eager_workers.get(), ctx->context->Async(), &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
@@ -247,7 +247,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  return ctx->context.InitializeRemote(
+  return ctx->context->InitializeRemote(
       std::move(server), std::move(remote_eager_workers),
       std::move(remote_device_mgr), remote_contexts, r, device_mgr,
       keep_alive_secs);
@@ -350,7 +350,7 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char enable,
                                                         TF_Status* status) {
-  status->status = ctx->context.SetAsyncForThread(enable);
+  status->status = ctx->context->SetAsyncForThread(enable);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
@@ -390,15 +390,15 @@ void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
-  ctx->context.local_device_mgr()->ListDeviceAttributes(&list->response);
-  if (ctx->context.remote_device_mgr()) {
-    ctx->context.remote_device_mgr()->ListDeviceAttributes(&list->response);
+  ctx->context->local_device_mgr()->ListDeviceAttributes(&list->response);
+  if (ctx->context->remote_device_mgr()) {
+    ctx->context->remote_device_mgr()->ListDeviceAttributes(&list->response);
   }
   return list;
 }
 
 void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.ClearCaches();
+  status->status = ctx->context->ClearCaches();
 }
 
 // Set server_def on the context, possibly updating it.
@@ -424,7 +424,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
-  ctx->context.SetThreadLocalDevicePlacementPolicy(
+  ctx->context->SetThreadLocalDevicePlacementPolicy(
       static_cast<tensorflow::ContextDevicePlacementPolicy>(policy));
 }
 
@@ -434,19 +434,19 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
   return static_cast<TFE_ContextDevicePlacementPolicy>(
-      ctx->context.GetDevicePlacementPolicy());
+      ctx->context->GetDevicePlacementPolicy());
 }
 
 void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.AsyncWait();
+  status->status = ctx->context->AsyncWait();
 }
 
 void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.GetStatus();
+  status->status = ctx->context->GetStatus();
 }
 
 void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->context.ClearAsyncError();
+  ctx->context->ClearAsyncError();
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -606,7 +606,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
     return new TFE_Op(ctx, name, false, types,
                       new TFE_OpInferenceContext(op_def));
   }
-  if (!ctx->context.FindFunctionByName(name)) {
+  if (!ctx->context->FindFunctionByName(name)) {
     status->status = tensorflow::errors::NotFound(
         "'", name,
         "' is neither a type of a primitive operation nor a name "
@@ -904,7 +904,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                const char* device_name,
                                                TF_Status* status) {
   tensorflow::TensorHandle* handle;
-  status->status = tensorflow::EagerCopyToDevice(h->handle, &ctx->context,
+  status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
                                                  device_name, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
@@ -921,26 +921,26 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
-  status->status = ctx->context.AddFunctionDef(function_def);
+  status->status = ctx->context->AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  status->status = ctx->context.AddFunctionDef(function->fdef);
+  status->status = ctx->context->AddFunctionDef(function->fdef);
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
-  return ctx->context.FindFunctionDef(name) != nullptr;
+  return ctx->context->FindFunctionDef(name) != nullptr;
 }
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(true);
-  ctx->context.SetShouldStoreStepStats(true);
+  ctx->context->SetShouldStoreGraphs(true);
+  ctx->context->SetShouldStoreStepStats(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(false);
-  ctx->context.SetShouldStoreStepStats(false);
+  ctx->context->SetShouldStoreGraphs(false);
+  ctx->context->SetShouldStoreStepStats(false);
 }
 
 }  // extern "C"
@@ -969,9 +969,9 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
   TFE_ContextAsyncWait(ctx, status);
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
-  status->status = MessageToBuffer(*ctx->context.RunMetadataProto(), buf);
-  ctx->context.ClearRunMetadata();
+  tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
+  status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);
+  ctx->context->ClearRunMetadata();
 }
 
 namespace {
@@ -987,9 +987,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }
 }  // namespace
 
-void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context.StartStep(); }
+void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context->StartStep(); }
 
-void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context.EndStep(); }
+void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context->EndStep(); }
 
 namespace tensorflow {
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,

@@ -1501,6 +1501,7 @@ string InlineFunctionBodyOptions::DebugString() const {
       "disable_inlining=", true_false(disable_inlining),
       ", ignore_noinline=", true_false(ignore_noinline),
       ", override_device=", true_false(ignore_noinline),
+      ", initialize_empty_device=", true_false(initialize_empty_device),
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs");
@@ -1699,7 +1700,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
 
-    if (options.override_device || ndef.device().empty()) {
+    if (options.override_device) {
+      ndef.set_device(caller->def().device());
+    }
+    if (options.initialize_empty_device && ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
 
