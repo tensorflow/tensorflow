@@ -1183,6 +1183,23 @@ class SingleOpTest(ComputationTest):
     c.Cholesky(c.Constant(np.dot(l, l.T)))
     self._ExecuteAndCompareClose(c, expected=l, rtol=1e-4)
 
+  def testSort(self):
+    keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
+    c = self._NewComputation()
+    c.Sort(c.Constant(keys))
+    self._ExecuteAndCompareClose(
+        c, expected=np.array([[1, 2, 3, 4], [1, 2, 3, 4]], dtype=np.float32))
+
+  def testSortKeyVal(self):
+    keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
+    values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
+    c = self._NewComputation()
+    c.SortKeyVal(c.Constant(keys), c.Constant(values), dimension=0)
+    result = c.Build().Compile().ExecuteWithPythonValues()
+    self.assertIsInstance(result, tuple)
+    np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
+    np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
+
   def testQR(self):
     a = np.array(
         [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],

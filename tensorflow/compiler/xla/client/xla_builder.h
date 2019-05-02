@@ -515,9 +515,6 @@ class XlaBuilder {
 
   XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 
-  ABSL_DEPRECATED("Use form with comparator computation instead")
-  XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
-             int64 dimension = -1);
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);
 
@@ -936,8 +933,6 @@ class XlaBuilder {
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, absl::Span<const XlaOp> values,
-                    int64 dimension);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64 dimension,
                     bool is_stable);
@@ -1712,26 +1707,6 @@ XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
 // elements in the given dimensions is reversed (i.e., the element at index i
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
-
-// Enqueues a sort (as increasing order) instruction onto the computation.
-// If only keys are provided:
-// * If the keys are an rank-1 tensor (an array), the result is a sorted array
-// of keys, in ascending order.
-// * If the keys have higher rank, the keys are sorted along the provided
-// dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
-// value of 0 will independently sort every column, and a dimension value of 1
-// will independently sort each row. If no dimension number is provided, then
-// the last dimension is chosen by default.
-//
-// If both keys and values are provided:
-// * The keys and all values must be tensors with the same dimensions. The
-// element types of the tensors may be different.
-// * The result is a tuple that consists of a sorted tensor of keys (along the
-// provided dimension, as above) as the first element, and tensors with their
-// corresponding values as the other elements.
-ABSL_DEPRECATED("Use form with comparator computation instead")
-XlaOp Sort(XlaOp keys, absl::Span<const XlaOp> values = {},
-           int64 dimension = -1);
 
 // Enqueues a sort instruction onto the computation, using 'comparator' for
 // comparisons. 'comparator' needs to define a strict weak order. 'is_stable'
