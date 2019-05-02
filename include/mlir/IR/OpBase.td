@@ -24,6 +24,16 @@
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
+// Common utilities for defining TableGen mechanisms
+//===----------------------------------------------------------------------===//
+
+// Concatenates a list of integers into a string separated with comma.
+class Stringify<list<int> integers> {
+  string result = !foldl(/*init*/!cast<string>(!head(integers)),
+                         /*list*/!tail(integers), prev, cur, prev # ", " # cur);
+}
+
+//===----------------------------------------------------------------------===//
 // Predicate definitions
 //===----------------------------------------------------------------------===//
 
@@ -320,8 +330,7 @@ class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
     // Match dims. Construct an ArrayRef with the elements of `dims` by folding
     // over the list.
     CPred<"$_self.cast<VectorType>().getShape() == ArrayRef{{" #
-      !foldl("", dims, sum, element, sum #
-       !if(!empty(sum), "", ",") # !cast<string>(element)) # "}">]>,
+      Stringify<dims>.result # "}">]>,
     "$_self.cast<VectorType>().getElementType()",
     "vector"> {
   list<int> dimensions = dims;
@@ -951,6 +960,23 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
     CPred<"$_op.getResult(" # i # ")->getType().cast<VectorOrTensorType>()."
           "getElementType() == $_op.getOperand(" # j # ")->getType()."
           "cast<VectorOrTensorType>().getElementType()">]>;
+
+// Predicate OpTrait to verify that all the operands at the given `indices`
+// have the same element type.
+// Type Constraint operands' Vector or Tensor Element type are all Same At
+// the given `indices`.
+//
+// Precondition:
+// 1) all operands involved are of vector or tensor type and
+// 2) the indices are not out of range.
+class TCopVTEtAreSameAt<list<int> indices = []> : PredOpTrait<
+    "operands indexed at " # Stringify<indices>.result #
+      " should all have the same type",
+    // We query the operands' types into a list and check they are all the same.
+    CPred<"llvm::is_splat(mlir::functional::map("
+            "[this](unsigned i) { return this->getOperand(i)->getType()"
+              ".cast<VectorOrTensorType>().getElementType(); }, "
+            "llvm::ArrayRef<unsigned>({" # Stringify<indices>.result # "})))">>;
 
 //===----------------------------------------------------------------------===//
 // Pattern definitions

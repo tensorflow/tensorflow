@@ -92,3 +92,20 @@ def OpI: NS_Op<"op_for_arr_min_value_at_index", []> {
 // CHECK-LABEL: OpI::verify()
 // CHECK: (((tblgen_attr.cast<ArrayAttr>().size() > 0)) && ((tblgen_attr.cast<ArrayAttr>().getValue()[0].cast<IntegerAttr>().getInt() >= 8)))))
 // CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute whose 0-th element must be at least 8");
+
+def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt",
+               [TCopVTEtAreSameAt<[0, 2, 3]>]> {
+  let arguments = (ins
+    Tensor:$a,
+    Tensor:$b,
+    Tensor:$c,
+    Tensor:$d,
+    Tensor:$e
+  );
+}
+
+// CHECK-LABEL: OpJ::verify()
+// CHECK:      llvm::is_splat(mlir::functional::map(
+// CHECK-SAME:   [this](unsigned i) { return this->getOperand(i)->getType().cast<VectorOrTensorType>().getElementType(); },
+// CHECK-SAME:   llvm::ArrayRef<unsigned>({0, 2, 3})))
+// CHECK:   return emitOpError("failed to verify that operands indexed at 0, 2, 3 should all have the same type");
