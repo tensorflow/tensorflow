@@ -47,6 +47,7 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",

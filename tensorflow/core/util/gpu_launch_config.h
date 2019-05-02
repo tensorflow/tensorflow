@@ -21,11 +21,12 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/base/casts.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_cuda_alias.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Usage of GetGpuLaunchConfig, GetGpu2DLaunchConfig, and
 // GetGpu3DLaunchConfig:
@@ -43,28 +44,28 @@ limitations under the License.
 // per block and number of threads per block used inside <<< >>> of a kernel
 // launch. GetGpu2DLaunchConfig and GetGpu3DLaunchConfig does the same thing
 // as GpuLaunchConfig. The only difference is the dimension. The macros
-// CUDA_1D_KERNEL_LOOP and CUDA_AXIS_KERNEL_LOOP might be used to do inner loop.
+// GPU_1D_KERNEL_LOOP and GPU_AXIS_KERNEL_LOOP might be used to do inner loop.
 //
 /* Sample code:
 
 __global__ void MyKernel1D(GpuLaunchConfig config, other_args...) {
-  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
     do_your_job_here;
   }
 }
 
 __global__ void MyKernel2D(Gpu2DLaunchConfig config, other_args...) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+  GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+    GPU_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
       do_your_job_here;
     }
   }
 }
 
 __global__ void MyKernel3D(Gpu3DLaunchConfig config, other_args...) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
-      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
+  GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+    GPU_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+      GPU_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
         do_your_job_here;
       }
     }
@@ -99,7 +100,7 @@ void MyDriverFunc(const Eigen::GpuDevice &d) {
 
 // See the test for this for more example:
 //
-https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/gpu_kernel_helper_test.cu.cc
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 
 */
 
@@ -114,12 +115,12 @@ struct GpuLaunchConfig {
   int virtual_thread_count = -1;
   // Number of threads per block.
   int thread_per_block = -1;
-  // Number of blocks for Cuda kernel launch.
+  // Number of blocks for Gpu kernel launch.
   int block_count = -1;
 };
-using CudaLaunchConfig = GpuLaunchConfig;
+CREATE_CUDA_TYPE_ALIAS(GpuLaunchConfig, CudaLaunchConfig);
 
-// Calculate the Cuda launch config we should use for a kernel launch.
+// Calculate the Gpu launch config we should use for a kernel launch.
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
 // REQUIRES: work_element_count > 0.
@@ -128,6 +129,7 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   CHECK_GT(work_element_count, 0);
   GpuLaunchConfig config;
   const int virtual_thread_count = work_element_count;
+
   const int physical_thread_count = std::min(
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       virtual_thread_count);
@@ -141,12 +143,8 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
-inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
-                                            const Eigen::GpuDevice& d) {
-  return GetGpuLaunchConfig(work_element_count, d);
-}
 
-// Calculate the Cuda launch config we should use for a kernel launch. This
+// Calculate the Gpu launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
 // REQUIRES: work_element_count > 0.
 template <typename DeviceFunc>
@@ -167,21 +165,18 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
 #elif TENSORFLOW_USE_ROCM
   // ROCM TODO re-enable this after hipOccupancyMaxPotentialBlockSize is
   // implemented
-  // hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
   //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
   //    block_size_limit);
-  // CHECK_EQ(err, hipSuccess);
+  //CHECK_EQ(err, hipSuccess);
 
-  // Apply the heuristic in GetGpuLaunchConfig(int, const Eigen::GpuDevice&)
-  // that the kernel is quite simple and will largely be memory-limited.
   const int physical_thread_count = std::min(
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
-  // Assume the kernel be simple enough that it is okay to use 1024 threads
-  // per workgroup.
   thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
-  block_count = std::min(DivUp(physical_thread_count, thread_per_block),
-                         d.getNumGpuMultiProcessors());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
 #endif
 
   block_count =
@@ -192,16 +187,9 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
-template <typename DeviceFunc>
-CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
-                                     const Eigen::GpuDevice& d, DeviceFunc func,
-                                     size_t dynamic_shared_memory_size,
-                                     int block_size_limit) {
-  return GetGpuLaunchConfig(work_element_count, d, func,
-                            dynamic_shared_memory_size, block_size_limit);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
 
-// Calculate the Cuda launch config we should use for a kernel launch. This
+// Calculate the Gpu launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
 // The returned launch config has thread_per_block set to fixed_block_size.
 // REQUIRES: work_element_count > 0.
@@ -220,23 +208,20 @@ GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   block_count = std::min(block_count * d.getNumGpuMultiProcessors(),
                          DivUp(work_element_count, fixed_block_size));
 #elif TENSORFLOW_USE_ROCM
-  // ROCM TODO re-enable this after hipOccupancyMaxActiveBlocksPerMultiprocessor
-  // is implemented
-  // hipError_t err = hipOccupancyMaxActiveBlocksPerMultiprocessor(
+  // ROCM TODO re-enable this after hipOccupancyMaxActiveBlocksPerMultiprocessor is
+  // implemented
+  //hipError_t err = hipOccupancyMaxActiveBlocksPerMultiprocessor(
   //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
   //    block_size_limit);
-  // CHECK_EQ(err, hipSuccess);
+  //CHECK_EQ(err, hipSuccess);
 
-  // Apply the heuristic in GetGpuLaunchConfig(int, const Eigen::GpuDevice&)
-  // that the kernel is quite simple and will largely be memory-limited.
   const int physical_thread_count = std::min(
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
-  // Assume the kernel be simple enough that it is okay to use 1024 threads
-  // per workgroup.
   int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
-  block_count = std::min(DivUp(physical_thread_count, thread_per_block),
-                         d.getNumGpuMultiProcessors());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
 #endif
 
   config.virtual_thread_count = work_element_count;
@@ -244,21 +229,14 @@ GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   config.block_count = block_count;
   return config;
 }
-template <typename DeviceFunc>
-CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
-    int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
-    size_t dynamic_shared_memory_size, int fixed_block_size) {
-  return GetGpuLaunchConfigFixedBlockSize(work_element_count, d, func,
-                                          dynamic_shared_memory_size,
-                                          fixed_block_size);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfigFixedBlockSize, GetCudaLaunchConfigFixedBlockSize);
 
 struct Gpu2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
   dim3 thread_per_block = dim3(0, 0, 0);
   dim3 block_count = dim3(0, 0, 0);
 };
-using Cuda2DLaunchConfig = Gpu2DLaunchConfig;
+CREATE_CUDA_TYPE_ALIAS(Gpu2DLaunchConfig, Cuda2DLaunchConfig);
 
 inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
                                               const Eigen::GpuDevice& d) {
@@ -287,16 +265,12 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
   return config;
 }
-inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
-                                                const Eigen::GpuDevice& d) {
-  return GetGpu2DLaunchConfig(xdim, ydim, d);
-}
 
-// Calculate the Cuda 2D and 3D launch config we should use for a kernel launch.
+// Calculate the Gpu 2D and 3D launch config we should use for a kernel launch.
 // This variant takes the resource limits of func into account to maximize
 // occupancy.
 using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
-using Cuda3DLaunchConfig = Gpu2DLaunchConfig;
+CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
@@ -336,18 +310,19 @@ Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-  // ROCM TODO re-enable this after hipOccupancyMaxPotentialBlockSize is
+  // XXX FIXME re-enable this after hipOccupancyMaxPotentialBlockSize is
   // implemented
-  // hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
   //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
   //    block_size_limit);
-  // CHECK_EQ(err, hipSuccess);
+  //CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count =
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
   thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
-  block_count = std::min(DivUp(physical_thread_count, thread_per_block),
-                         d.getNumGpuMultiProcessors());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
 #endif
 
   int threadsx = std::min({xdim, thread_per_block, xthreadlimit});
@@ -368,15 +343,7 @@ Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
   config.block_count = dim3(blocksx, blocksy, blocksz);
   return config;
 }
-template <typename DeviceFunc>
-Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
-                                         const Eigen::GpuDevice& d,
-                                         DeviceFunc func,
-                                         size_t dynamic_shared_memory_size,
-                                         int block_size_limit) {
-  return GetGpu3DLaunchConfig(xdim, ydim, zdim, d, func,
-                              dynamic_shared_memory_size, block_size_limit);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
@@ -387,6 +354,7 @@ Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
   return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
                               dynamic_shared_memory_size, block_size_limit);
 }
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
 #if GOOGLE_CUDA
 // Returns a raw reference to the current cuda stream.  Required by a
@@ -400,16 +368,9 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
                                                 ->GpuStreamMemberHack()));
   return *ptr;
 }
-template <typename DeviceFunc>
-Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
-                                         const Eigen::GpuDevice& d,
-                                         DeviceFunc func,
-                                         size_t dynamic_shared_memory_size,
-                                         int block_size_limit) {
-  return GetGpu2DLaunchConfig(xdim, ydim, d, func, dynamic_shared_memory_size,
-                              block_size_limit);
-}
-#endif  // GOOGLE_CUDA
+#endif // GOOGLE_CUDA
+
+#define GetGpuStream(context) context->eigen_gpu_device().stream()
 
 namespace detail {
 template <typename... Ts, size_t... Is>
@@ -457,10 +418,10 @@ Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   }
   return Status::OK();
 }
-#endif  // GOOGLE_CUDA
+
+#endif
 
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#endif  // TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
+#endif  // TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
