@@ -487,6 +487,11 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
 
+  def test_numpyIsView(self):
+    t = constant_op.constant([0.0])
+    t._numpy()[0] = 42.0
+    self.assertAllClose(t, constant_op.constant([42.0]))
+
 
 if __name__ == "__main__":
   test.main()

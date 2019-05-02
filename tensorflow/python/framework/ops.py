@@ -758,7 +758,8 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    maybe_arr = self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
@@ -772,7 +773,7 @@ class _EagerTensorBase(Tensor):
     return int(self.numpy())
 
   def __array__(self, dtype=None):
-    return np.array(self.numpy(), dtype=dtype)
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
