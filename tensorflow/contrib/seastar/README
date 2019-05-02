@@ -1,0 +1,17 @@
+Build TensorFlow with Seastar as Follows:
+1. ./configure
+2. bazel build --config=opt --config=seastar //tensorflow/tools/pip_package:build_pip_package
+
+List of Dependencies:
+libaio-dev
+libunwind-dev
+libsctp-dev
+xfslibs-dev
+systemtap-sdt-dev
+
+Run with grpc+seastar:
+Use grpc+seastar you have to create .endpoint_map file in launch dir.
+(42353 and 42354 are grpc ports, 46068 and 47079 are seastar ports)
+127.0.0.1:42353=127.0.0.1:46068
+127.0.0.1:42354=127.0.0.1:47079
+
