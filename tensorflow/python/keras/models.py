@@ -406,7 +406,6 @@ def _in_place_subclassed_model_reset(model):
       attributes_to_cache = [
           'inputs',
           'outputs',
-          '_feed_outputs',
           '_feed_output_names',
           '_feed_output_shapes',
           '_feed_loss_fns',
