@@ -559,6 +559,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "model_combinations",
+    srcs = ["model_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":combinations",
+        ":simple_models",
+    ],
+)
+
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
@@ -933,5 +943,36 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":strategy_combinations",
         "//tensorflow/python:layers",
+    ],
+)
+
+py_library(
+    name = "model_collection_base",
+    srcs = ["model_collection/model_collection_base.py"],
+)
+
+py_library(
+    name = "simple_models",
+    srcs = ["model_collection/simple_models.py"],
+    deps = [
+        ":model_collection_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saved_model_test.py"],
+    main = "saved_model_test.py",
+    deps = [
+        ":combinations",
+        ":model_combinations",
+        ":strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
+        "//third_party/py/numpy",
     ],
 )
