@@ -533,7 +533,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
     // tracer may be NULL on platforms without accelerators.
     if (trptr) {
-      tracer = trptr.release();
+      tracer = trptr.get();
       Status s = tracer->Start();
       if (!s.ok()) {
         run_state.executors_done.Notify();
