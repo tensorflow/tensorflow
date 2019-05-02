@@ -50,8 +50,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 23> kPassThroughOps = {
-    "_Retval",
+constexpr std::array<const char*, 22> kPassThroughOps = {
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
@@ -286,14 +285,16 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
   // function in flat_map.
   if (IsDatasetNodeOfType(node, kFuncDatasetOps) &&
       ReaderOpInFunction(node, *flib)) {
-    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
-                                    index);
+    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
+                                                num_workers, index));
+    return Status::OK();
   }
 
   if (IsDatasetNodeOfType(node, kReaderDatasetOps)) {
     // We reached a reader dataset directly and we try to shard input 0.
-    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
-                                    index);
+    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
+                                                num_workers, index));
+    return Status::OK();
   }
 
   if (!IsDatasetNodeOfType(node, kPassThroughOps)) {

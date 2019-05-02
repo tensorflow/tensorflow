@@ -123,8 +123,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
     GraphDef graph_def;
-    OP_REQUIRES_OK(
-        ctx, AsGraphDef(ctx, input, SerializationContext({}), &graph_def));
+    OP_REQUIRES_OK(ctx, AsGraphDef(ctx, input, &graph_def));
 
     // TODO(frankchn): Find a better way than SerializeToStringDeterministic()
     // This is not deterministic across different builds of binaries right now.

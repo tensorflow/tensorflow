@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/kernels/data/graph_rewrite_dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,7 +24,11 @@ constexpr char kOptimizerName[] = "tf_data_rebatcher";
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit RebatchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -36,32 +39,58 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, num_workers > 0,
         errors::InvalidArgument("num_workers must be greater than zero."));
 
-    auto config_factory = [num_workers]() { return CreateConfig(num_workers); };
-
-    // We only want to optimize functions for some particular datasets like
-    // FlatMapDataset, InterleaveDataset etc. So we disable generalized
-    // function optimization and explicitly handle function modifications
-    // for those datasets in the rewrite.
-    OP_REQUIRES_OK(ctx,
-                   RewriteDataset(ctx, input, std::move(config_factory),
-                                  /*optimize_function_library=*/false, output));
+    Dataset* dataset =
+        new Dataset(ctx, input, num_workers, output_types_, output_shapes_);
+    Status s = dataset->Optimize(ctx);
+    if (s.ok()) {
+      *output = dataset;
+    } else {
+      dataset->Unref();
+      OP_REQUIRES_OK(ctx, s);
+    }
   }
 
  private:
-  static RewriterConfig CreateConfig(int64 num_workers) {
-    RewriterConfig rewriter_config;
-    rewriter_config.set_fail_on_optimizer_errors(true);
-    rewriter_config.add_optimizers(kOptimizerName);
-    rewriter_config.set_meta_optimizer_iterations(
-        RewriterConfig_NumIterationsType_ONE);
-    auto custom_optimizer = rewriter_config.add_custom_optimizers();
-    custom_optimizer->set_name(kOptimizerName);
-    AttrValue num_workers_attr;
-    num_workers_attr.set_i(num_workers);
-    (*custom_optimizer->mutable_parameter_map())["num_workers"] =
-        num_workers_attr;
-    return rewriter_config;
-  }
+  class Dataset : public GraphRewriteDataset {
+   public:
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const int64 num_workers, const DataTypeVector& output_types,
+            const std::vector<PartialTensorShape>& output_shapes)
+        : GraphRewriteDataset(ctx, input, output_types, output_shapes),
+          num_workers_(num_workers) {}
+
+    string DebugString() const override { return "RebatchDatasetOp::Dataset"; }
+
+   private:
+    bool ShouldOptimizeFunctions() override {
+      // We only want to optimize functions for some particular datasets like
+      // FlatMapDataset, InterleaveDataset etc. So we disable generalized
+      // function optimization and explicitly handle function modifications
+      // for those datasets in the rewrite.
+      return false;
+    }
+
+    RewriterConfig CreateGrapplerRewriteConfig() override {
+      RewriterConfig rewriter_config;
+      rewriter_config.set_fail_on_optimizer_errors(true);
+      rewriter_config.add_optimizers(kOptimizerName);
+      rewriter_config.set_meta_optimizer_iterations(
+          RewriterConfig_NumIterationsType_ONE);
+      auto custom_optimizer = rewriter_config.add_custom_optimizers();
+      custom_optimizer->set_name(kOptimizerName);
+      AttrValue num_workers_attr;
+      num_workers_attr.set_i(num_workers_);
+      (*custom_optimizer->mutable_parameter_map())["num_workers"] =
+          num_workers_attr;
+      return rewriter_config;
+    }
+
+    const int64 num_workers_;
+  };
+
+  const int graph_def_version_;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalRebatchDataset").Device(DEVICE_CPU),

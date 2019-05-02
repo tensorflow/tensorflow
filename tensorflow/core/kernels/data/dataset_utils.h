@@ -23,14 +23,7 @@ namespace data {
 
 // Returns a GraphDef representation of the given dataset.
 Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
-
-// Rewrites the input dataset using the given config.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.

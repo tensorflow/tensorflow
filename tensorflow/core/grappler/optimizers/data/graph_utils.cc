@@ -301,11 +301,12 @@ Status EnsureNodeNamesUnique(Graph* g) {
   return Status::OK();
 }
 
-// Tries to find a "sink" node in the graph. A sink node is defined as a node
+// Tries to find a Sink node in the graph. A sink node is defined as a node
 // that has at least one input and no outputs. If there are multiple of these,
 // this might return any one of them. This is useful to identify the final
 // Dataset op in the graph but in some cases there might be multiple Identity
 // ops added to the end and this would return the last Identity op in that case.
+
 Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node) {
   absl::flat_hash_map<string, int> all_node_names;
   absl::flat_hash_map<string, int> node_input_map;
