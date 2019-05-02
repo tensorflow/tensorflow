@@ -559,6 +559,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     for epoch in range(initial_epochs):
       self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
     self.assertFalse(os.path.exists(filepath.format(epoch=initial_epochs + 1)))
+    self.skipTest('b/122958618')
     self.assertEqual(
         callback._get_most_recently_modified_file_matching_pattern(filepath),
         filepath.format(epoch=initial_epochs))
