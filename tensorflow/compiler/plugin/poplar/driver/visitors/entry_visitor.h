@@ -40,8 +40,8 @@ class EntryVisitor : public DeferredAllocationVisitor {
 
   const std::set<const HloInstruction*>& GetNonStandardParameterLayout() const;
 
-  const poplar::program::Sequence& GetHostToDevice() const;
-  const poplar::program::Sequence& GetDeviceToHost() const;
+  const poplar::program::Sequence GetHostToDevice() const;
+  const poplar::program::Sequence GetDeviceToHost() const;
 
  protected:
   StatusOr<poplar::Tensor> PostProcessParameterAllocation(
@@ -57,6 +57,8 @@ class EntryVisitor : public DeferredAllocationVisitor {
 
   poplar::program::Sequence host_to_device;
   poplar::program::Sequence device_to_host;
+
+  poplar::program::Sequence host_to_device_inter_ipu_copy;
 
   const bool always_rearrange_copies_on_the_host;
 };

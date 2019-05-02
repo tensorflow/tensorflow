@@ -54,8 +54,11 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
     module_shapes = FlattenedXlaShape(mod_shape);
   }
 
-  poplar::program::Sequence& seq =
+  poplar::program::Sequence& stream_copy_seq =
       in_info.IsStreaming() ? sequence : host_to_device;
+
+  poplar::program::Sequence& inter_ipu_copy_seq =
+      in_info.IsStreaming() ? sequence : host_to_device_inter_ipu_copy;
 
   if (!UseSyntheticData()) {
     poplar::Graph& master_graph = GetMasterGraph(resources_);
@@ -80,12 +83,12 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
         GetInputCopyHandle(inst->parameter_number(), flat_tuple_index),
         input_tensor.elementType(), input_tensor.numElements());
 
-    seq.add(poplar::program::Copy(
+    stream_copy_seq.add(poplar::program::Copy(
         fifo, input_tensor,
         !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
 
     if (HasReplicatedGraph(resources_)) {
-      seq.add(poplar::program::Copy(
+      inter_ipu_copy_seq.add(poplar::program::Copy(
           input_tensor.broadcast(replication_factor - 1, 0),
           master_tensor.slice(1, replication_factor)));
     }
@@ -210,10 +213,13 @@ EntryVisitor::GetNonStandardParameterLayout() const {
   return non_standard_parameter_layout;
 }
 
-const poplar::program::Sequence& EntryVisitor::GetHostToDevice() const {
-  return host_to_device;
+const poplar::program::Sequence EntryVisitor::GetHostToDevice() const {
+  poplar::program::Sequence seq;
+  seq.add(host_to_device);
+  seq.add(host_to_device_inter_ipu_copy);
+  return seq;
 }
-const poplar::program::Sequence& EntryVisitor::GetDeviceToHost() const {
+const poplar::program::Sequence EntryVisitor::GetDeviceToHost() const {
   return device_to_host;
 }
 
