@@ -3650,7 +3650,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   Returns:
     A `Tensor`. Has the same type as `images`.
   """
-  if colors is None and not compat.forward_compatible(2019, 5, 1):
+  if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
   return gen_image_ops.draw_bounding_boxes_v2(images, boxes, colors, name)
 
