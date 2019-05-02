@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -30,6 +34,22 @@ std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
   config.set_debug_options(debug_options);
 
   return absl::make_unique<HloModule>(TestName(), config);
+}
+
+void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
+                                         const string& pattern) {
+  std::unique_ptr<Executable> executable =
+      std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
+  string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
+  //
+  // On the ROCM platform the "ptx" string is not populated for the compiled
+  // executable, and hence the "ptx_str" will be empty. So disabling the
+  // pattern check on the ROCm platform
+#if !defined(TENSORFLOW_USE_ROCM)
+  StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
+  ASSERT_TRUE(filecheck_result.ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+#endif
 }
 
 }  // namespace gpu
