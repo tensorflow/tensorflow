@@ -29,14 +29,15 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -380,13 +381,38 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerReplica(DistributedValues):
+class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   """Holds a map from device to unsynchronized values."""
-  pass
+
+  def _to_components(self):
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is not None and replica_context.num_replicas_in_sync > 1:
+      raise ValueError(
+          "Flattening a PerReplica to components is not supported in replica "
+          "context.")
+    return self._values
+
+  def _component_metadata(self):
+    return self._device_map, self._logical_device
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    device_map, logical_device = metadata
+    return PerReplica(device_map, components, logical_device=logical_device)
+
+  def _is_graph_tensor(self):
+    return any(hasattr(t, "graph") for t in self._values)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      return tuple(v.shape for v in self._values)
+    else:
+      return tuple(shape for _ in self._values)
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
 # DistributedDelegate and so can be used directly in cross-replica mode.
+# TODO(tomhennigan) Should this extend CompositeTensor?
 class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
 
@@ -436,7 +462,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.Variable):
+class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
   """Holds a map from device to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
