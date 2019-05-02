@@ -4094,13 +4094,12 @@ tf_kernel_library(
     deps = NN_DEPS +
          [
            ":redux_functor",
+           ":reduction_ops",
       ] + if_cuda([
-        ":reduction_ops",
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm_is_configured([
-        ":reduction_ops",
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -4137,11 +4136,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS + if_cuda([
-        ":reduction_ops",
+    deps = NN_DEPS + 
+	[
+          ":reduction_ops",
+    ] + if_cuda([
         "@cub_archive//:cub",
     ]) + if_rocm_is_configured([
-        ":reduction_ops",
         "@rocprim_archive//:rocprim",
     ]),
 )
