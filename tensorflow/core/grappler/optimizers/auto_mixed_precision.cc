@@ -923,6 +923,7 @@ class AutoMixedPrecisionImpl {
   void LogSkippedNode(const NodeDef& node) const;
   bool MustPreserve(const NodeDef& node) const;
   bool IsOnGPU(const NodeDef& node) const;
+  bool IsScopeDisabled(const NodeDef& node) const;
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
   bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
@@ -1062,6 +1063,14 @@ bool AutoMixedPrecisionImpl::IsOnGPU(const NodeDef& node) const {
   return false;
 }
 
+// Returns whether the node has been disabled via allow_segment_rewrite
+bool AutoMixedPrecisionImpl::IsScopeDisabled(const NodeDef& node) const {
+  if (node.attr().count("_AutoMixedPrecisionSegmentInclude")) {
+    return !node.attr().at("_AutoMixedPrecisionSegmentInclude").b();
+  }
+  return false;
+}
+
 // Returns the GPU architecture (compute capability) as a (major, minor) pair.
 std::pair<int, int> GetDeviceGPUArch(
     const DeviceProperties& device_properties) {
@@ -1160,7 +1169,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   VLOG(2) << "Identifying nodes that should be processed";
   for (const NodeDef& node : graph_->node()) {
-    if (!MustPreserve(node) && IsOnGPU(node) &&
+    if (!MustPreserve(node) && IsOnGPU(node) && !IsScopeDisabled(node) &&
         (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node))) {
       should_process_nodes_.insert(&node);
     } else {

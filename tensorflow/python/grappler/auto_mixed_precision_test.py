@@ -31,6 +31,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -40,6 +41,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training.experimental import mixed_precision
 
 
 def _input(shape):
@@ -273,6 +275,10 @@ class AutoMixedPrecisionTest(test.TestCase):
   def _assert_output_fp16(self, node_map, node_name, output_port=0):
     self.assertEqual(node_map[node_name].output_info[output_port].dtype,
                      types_pb2.DT_HALF)
+
+  def _assert_output_fp32(self, node_map, node_name, output_port=0):
+    self.assertEqual(node_map[node_name].output_info[output_port].dtype,
+                     types_pb2.DT_FLOAT)
 
   def _run(self, fetches):
     """Runs the graph and returns the evaluation of the fetches."""
@@ -546,6 +552,30 @@ class AutoMixedPrecisionTest(test.TestCase):
   def test_propagation_through_simple_loop_8(self):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')
 
+  @test_util.run_deprecated_v1
+  def test_scope_disable(self):
+    """Test graph with convolution followed by batch norm."""
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      y = _input([2, 8, 8, 1])
+      with mixed_precision.allow_segment_rewrite(False):
+        x = _conv_bn(y)
+        with mixed_precision.allow_segment_rewrite(True):
+          x = _conv_bn(x)
+      output = gradients.gradients(x, [y])
+      output_val_ref, output_val, cost_graph = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+
+      self._assert_output_fp32(node_map, 'Conv2D')
+      self._assert_output_fp32(node_map, 'FusedBatchNorm')
+      self._assert_output_fp16(node_map, 'Conv2D_1')
+      self._assert_output_fp32(node_map, 'FusedBatchNorm_1')
+      self._assert_output_fp32(node_map, 'gradients/Conv2D_grad/Conv2DBackpropInput')
+      self._assert_output_fp16(node_map, 'gradients/Conv2D_1_grad/Conv2DBackpropInput')
+      self.assertEqual(num_to_fp16, 2)  # Before Conv2D_1:0, Conv2D_1:1
+      self.assertEqual(num_to_fp32, 2)  # After Conv2D_1
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 if __name__ == '__main__':
   test.main()

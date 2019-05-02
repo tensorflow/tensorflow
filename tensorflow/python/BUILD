@@ -6416,6 +6416,7 @@ cuda_py_test(
         ":constant_op",
         ":dtypes",
         ":math_ops",
+        ":mixed_precision",
         ":nn",
         ":ops",
         ":random_ops",

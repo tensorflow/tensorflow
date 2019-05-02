@@ -386,24 +386,47 @@ def _SymGrad(op, out_grads):
 
 
 def _MaybeCompile(scope, op, func, grad_fn):
-  """Compile the calculation in grad_fn if op was marked as compiled."""
+  """Compile the calculation in grad_fn if op was marked as compiled.
+     Also, apply mixed precision attributes to their respective gradient ops"""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
     xla_separate_compiled_gradients = func.definition.attr[
         "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    #TODO(mconley): Add auto mixed precision support when applicable
+    auto_mixed_precision_scope = False
   else:
+    try:
+      auto_mixed_precision_include = op.get_attr(
+          "_AutoMixedPrecisionSegmentInclude")
+      auto_mixed_precision_scope = True
+    except ValueError:
+      auto_mixed_precision_scope = False
     try:
       xla_compile = op.get_attr("_XlaCompile")
       xla_separate_compiled_gradients = op.get_attr(
           "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
-      return grad_fn()  # Exit early
+      xla_compile = False
+
+  if not (xla_compile or auto_mixed_precision_scope):
+    return grad_fn()  # Exit early
+
+  if auto_mixed_precision_scope:
+    auto_mixed_precision_attrs = {
+        "_AutoMixedPrecisionSegmentInclude": attr_value_pb2.AttrValue(
+                   b=auto_mixed_precision_include)
+    }
+  else:
+    auto_mixed_precision_attrs = {}
 
   if not xla_compile:
-    return grad_fn()  # Exit early
+    with ops.get_default_graph()._attr_scope(
+         auto_mixed_precision_attrs):  # pylint: disable=protected-access
+      return grad_fn()
+
 
   # If the gradients are supposed to be compiled separately, we give them a
   # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
@@ -418,6 +441,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
       "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
       "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
   }
+  attrs.update(auto_mixed_precision_attrs)
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
 
