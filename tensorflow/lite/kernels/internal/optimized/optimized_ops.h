@@ -1127,21 +1127,24 @@ inline void FullyConnectedAsGEMV(
 
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
-  std::vector<gemmlowp::Task*> tasks(thread_count);
+  std::vector<FullyConnectedAsGEMVWorkerTask> tasks;
+  // TODO(b/131746020) don't create new heap allocations every time.
+  // At least we make it a single heap allocation by using reserve().
+  tasks.reserve(thread_count);
   const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
       gemmlowp::CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
-    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data, row_start, row_end);
+    tasks.emplace_back(input_shape, input_data, input_offset, filter_shape,
+                       filter_data, filter_offset, bias_shape, bias_data,
+                       output_offset, output_multiplier, output_shift,
+                       output_activation_min, output_activation_max,
+                       output_shape, output_data, row_start, row_end);
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
 }
 #endif  // USE_NEON
 
@@ -1754,21 +1757,24 @@ inline void ShuffledFullyConnected(
 
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
-  std::vector<gemmlowp::Task*> tasks(thread_count);
+  std::vector<ShuffledFullyConnectedWorkerTask> tasks;
+  // TODO(b/131746020) don't create new heap allocations every time.
+  // At least we make it a single heap allocation by using reserve().
+  tasks.reserve(thread_count);
   const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
       gemmlowp::CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
-    tasks[i] = new ShuffledFullyConnectedWorkerTask(
-        shuffled_input_workspace_data,
-        int8_shuffled_weights_data + row_start * accum_depth, batches,
-        row_end - row_start, output_depth, accum_depth, bias_data + row_start,
-        output_multiplier, output_shift, output_data + row_start);
+    tasks.emplace_back(shuffled_input_workspace_data,
+                       int8_shuffled_weights_data + row_start * accum_depth,
+                       batches, row_end - row_start, output_depth, accum_depth,
+                       bias_data + row_start, output_multiplier, output_shift,
+                       output_data + row_start);
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
-  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
 }
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
@@ -1964,26 +1970,29 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int capped_thread_count =
       std::min(thread_count, gemmlowp_context->max_num_threads());
 
-  if (thread_count == 1) {
+  if (capped_thread_count == 1) {
     MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
              output_shape, output_data, output_zero_point, output_scale, 0,
              output_depth);
   } else {
     // Instead parrallel for batch, we loop for the output_depth since batch
     // is typical 1.
-    std::vector<gemmlowp::Task*> tasks(capped_thread_count);
+    std::vector<MeanWorkerTask> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(capped_thread_count);
     int depth_start = 0;
     for (int i = 0; i < capped_thread_count; ++i) {
       // Try to distribute the tasks as even as possible.
       int depth_end = depth_start +
                       (output_depth - depth_start) / (capped_thread_count - i);
-      tasks[i] = new MeanWorkerTask(op_params, input_shape, input_data,
-                                    input_zero_point, input_scale, output_shape,
-                                    output_data, output_zero_point,
-                                    output_scale, depth_start, depth_end);
+      tasks.emplace_back(op_params, input_shape, input_data, input_zero_point,
+                         input_scale, output_shape, output_data,
+                         output_zero_point, output_scale, depth_start,
+                         depth_end);
       depth_start = depth_end;
     }
-    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
   }
 }
 

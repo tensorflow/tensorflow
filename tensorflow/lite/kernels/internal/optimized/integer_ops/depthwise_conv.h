@@ -2014,18 +2014,21 @@ inline void DepthwiseConvPerChannel(
                       bias_data, output_shape, output_data, /*thread_start=*/0,
                       /*thread_end=*/output_rows, /*thread_dim=*/1);
   } else {
-    std::vector<gemmlowp::Task*> tasks(thread_count);
+    std::vector<DepthwiseConvWorkerTask<int8, int32>> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(thread_count);
     int thread_start = 0;
     for (int i = 0; i < thread_count; ++i) {
       int thread_end =
           thread_start + (thread_dim_size - thread_start) / (thread_count - i);
-      tasks[i] = new DepthwiseConvWorkerTask<int8, int32>(
-          params, output_multiplier, output_shift, input_shape, input_data,
-          filter_shape, filter_data, bias_shape, bias_data, output_shape,
-          output_data, thread_start, thread_end, thread_dim);
+      tasks.emplace_back(params, output_multiplier, output_shift, input_shape,
+                         input_data, filter_shape, filter_data, bias_shape,
+                         bias_data, output_shape, output_data, thread_start,
+                         thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
   }
 }
 
