@@ -38,6 +38,10 @@ message Feed {
 message Fetch {
   TensorId id = 1;
   string name = 2;  // Optional name for generated code.
+
+  // Optional shape and data type. If specified, may be used for validation.
+  TensorShapeProto shape = 3;
+  DataType type = 4;
 }
 
 // Variable represents a resource variable with the given name, shape and type.
