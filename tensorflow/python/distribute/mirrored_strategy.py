@@ -432,7 +432,7 @@ class MirroredStrategy(distribute_lib.Strategy):
     devices: a list of device strings.  If `None`, all available GPUs are used.
     If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
-      set, nccl will be use by default.
+      set, nccl will be used by default.
   """
 
   def __init__(self, devices=None, cross_device_ops=None):
