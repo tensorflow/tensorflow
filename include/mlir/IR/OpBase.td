@@ -735,6 +735,9 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
         ]>,
     "whose " # index # "-th element must be at least " # min>;
 
+def IsNullAttr : AttrConstraint<
+    CPred<"!$_self">, "empty attribute (for optional attributes)">;
+
 //===----------------------------------------------------------------------===//
 // OpTrait definitions
 //===----------------------------------------------------------------------===//

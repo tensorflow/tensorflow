@@ -331,8 +331,8 @@ struct UniformRealAddEwPattern : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const {
     auto addOp = op->cast<RealAddEwOp>();
-    const UniformBinaryOpInfo info(op, addOp.x(), addOp.y(), addOp.clamp_min(),
-                                   addOp.clamp_max());
+    const UniformBinaryOpInfo info(op, addOp.lhs(), addOp.rhs(),
+                                   addOp.clamp_min(), addOp.clamp_max());
     if (!info.isValid()) {
       return matchFailure();
     }
@@ -353,8 +353,8 @@ struct UniformRealMulEwPattern : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const {
     auto mulOp = op->cast<RealMulEwOp>();
-    const UniformBinaryOpInfo info(op, mulOp.x(), mulOp.y(), mulOp.clamp_min(),
-                                   mulOp.clamp_max());
+    const UniformBinaryOpInfo info(op, mulOp.lhs(), mulOp.rhs(),
+                                   mulOp.clamp_min(), mulOp.clamp_max());
     if (!info.isValid()) {
       return matchFailure();
     }
