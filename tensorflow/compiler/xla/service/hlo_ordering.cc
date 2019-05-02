@@ -177,37 +177,6 @@ bool HloOrdering::UseIsBeforeValueDefinition(
     return true;
   }
 
-  auto instructions_are_in_different_conditional_branch =
-      [this](const HloInstruction* a, const HloInstruction* b) {
-        const HloInstruction* a_ancestor;
-        const HloInstruction* b_ancestor;
-        std::tie(a_ancestor, b_ancestor) =
-            call_graph_->NearestAncestorsInSameComputation(
-                const_cast<HloInstruction*>(a), const_cast<HloInstruction*>(b));
-        if (a_ancestor == nullptr) {
-          return false;
-        }
-        if (a_ancestor == b_ancestor &&
-            (a_ancestor->opcode() == HloOpcode::kConditional)) {
-          int a_branch = -1;
-          int b_branch = -1;
-          for (int j = 0; j < a_ancestor->branch_count(); ++j) {
-            if (call_graph_->InstructionIsNestedIn(
-                    a, a_ancestor->branch_computation(j))) {
-              a_branch = j;
-            }
-            if (call_graph_->InstructionIsNestedIn(
-                    b, a_ancestor->branch_computation(j))) {
-              b_branch = j;
-            }
-          }
-          if (a_branch != -1 && b_branch != -1 && a_branch != b_branch) {
-            return true;
-          }
-        }
-        return false;
-      };
-
   // If the use is at the instruction where the value is defined, then the use
   // is before the def if the instruction allows buffer sharing (in place
   // computation).
@@ -217,13 +186,6 @@ bool HloOrdering::UseIsBeforeValueDefinition(
           use.operand_index, value.defining_instruction(),
           value.defining_index())) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
-    return true;
-  }
-
-  // If the use and value definition are in different if branches, use is
-  // considered before value definition since only one branch will be executed.
-  if (instructions_are_in_different_conditional_branch(
-          use.instruction, value.defining_instruction())) {
     return true;
   }
 
