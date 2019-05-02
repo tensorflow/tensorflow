@@ -322,6 +322,10 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
           self).__init__(learning_rate, False, clip_weight_min, clip_weight_max)
 
 
+DeviceConfig = collections.namedtuple('DeviceConfig',
+                                      ['num_hosts', 'num_cores', 'job_name'])
+
+
 class TPUEmbedding(object):
   """API for using TPU for embedding.
 
@@ -409,11 +413,12 @@ class TPUEmbedding(object):
                feature_to_config_dict,
                batch_size,
                mode,
-               master,
+               master=None,
                optimization_parameters=None,
                cluster_def=None,
                pipeline_execution_with_tensor_core=False,
-               partition_strategy='div'):
+               partition_strategy='div',
+               device_config=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -437,6 +442,8 @@ class TPUEmbedding(object):
       partition_strategy: A string, either 'mod' or 'div', specifying how to map
         the lookup id to the embedding tensor. For more information see
         `tf.nn.embedding_lookup_sparse`.
+      device_config: A DeviceConfig instance, used when `master` and
+        `cluster_def` are both `None`.
 
     Raises:
       ValueError: if any input is invalid.
@@ -461,23 +468,38 @@ class TPUEmbedding(object):
 
     self._batch_size = batch_size
 
-    self._master = master
-    self._cluster_def = cluster_def
-    self._tpu_system_metadata = (
-        tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
-            self._master, cluster_def=self._cluster_def))
-    if self._tpu_system_metadata.num_cores == 0:
-      raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
-                       'TPUs.'.format(self._master))
-    self._num_hosts = self._tpu_system_metadata.num_hosts
-    master_job_name = tpu_system_metadata_lib.master_job(self._master,
-                                                         self._cluster_def)
-    self._hosts = [
-        device.name for device in self._tpu_system_metadata.devices
-        if 'device:CPU:' in device.name and (master_job_name is None or
-                                             master_job_name in device.name)]
-    self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
-    self._num_cores = self._tpu_system_metadata.num_cores
+    if master is None and cluster_def is None:
+      if device_config is None:
+        raise ValueError('When master and cluster_def are both None,'
+                         'device_config must be set but is not.')
+      if device_config.num_cores % device_config.num_hosts:
+        raise ValueError('num_hosts ({}) should divide num_cores ({}) '
+                         'but does not.'.format(device_config.num_cores,
+                                                device_config.num_hosts))
+      self._num_hosts = device_config.num_hosts
+      self._num_cores = device_config.num_cores
+      self._num_cores_per_host = self._num_cores // self._num_hosts
+      self._hosts = [
+          '{}/replica:0/task:{}/device:CPU:0'.format(device_config.job_name, i)
+          for i in range(self._num_hosts)
+      ]
+    else:
+      tpu_system_metadata = (
+          tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
+              master,
+              cluster_def=cluster_def))
+      if tpu_system_metadata.num_cores == 0:
+        raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
+                         'TPUs.'.format(master))
+      self._num_hosts = tpu_system_metadata.num_hosts
+      master_job_name = tpu_system_metadata_lib.master_job(master, cluster_def)
+      self._hosts = []
+      for device in tpu_system_metadata.devices:
+        if 'device:CPU:' in device.name and (
+            master_job_name is None or master_job_name in device.name):
+          self._hosts.append(device.name)
+      self._num_cores_per_host = tpu_system_metadata.num_of_cores_per_host
+      self._num_cores = tpu_system_metadata.num_cores
 
     _validate_batch_size(self._batch_size, self._num_cores)
     self._batch_size_per_core = self._batch_size // self._num_cores
@@ -908,7 +930,7 @@ class TPUEmbedding(object):
         table_gradients.append(gradient)
       interleaved_table_grads = array_ops.reshape(
           array_ops.concat(table_gradients, axis=1),
-          [-1, table_gradients[0].shape[-1]])
+          [-1, array_ops.shape(table_gradients[0])[-1]])
       gradients.append(interleaved_table_grads)
     return tpu_ops.send_tpu_embedding_gradients(
         inputs=gradients, config=self.config_proto.SerializeToString())
