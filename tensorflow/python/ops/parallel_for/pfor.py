@@ -1710,6 +1710,15 @@ def _convert_expanddims(pfor_input):
   return wrap(array_ops.expand_dims(t, axis=dim), True)
 
 
+@RegisterPFor("MatrixBandPart")
+def _convert_matrix_band_part(pfor_input):
+  t = pfor_input.stacked_input(0)
+  num_lower = pfor_input.unstacked_input(1)
+  num_upper = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_band_part(
+      t, num_lower=num_lower, num_upper=num_upper), True)
+
+
 @RegisterPFor("MatrixSetDiag")
 def _convert_matrix_set_diag(pfor_input):
   pfor_input.stack_inputs()
@@ -2443,6 +2452,15 @@ def _convert_multinomial(pfor_input):
 def _convert_cholesky(pfor_input):
   t = pfor_input.stacked_input(0)
   return wrap(linalg_ops.cholesky(t), True)
+
+
+@RegisterPFor("LogMatrixDeterminant")
+def _convert_log_matrix_determinant(pfor_input):
+  # Input must have shape [N, M, M], so we need to flatten.
+  t = _flatten_first_two_dims(pfor_input.stacked_input(0))
+  sign, log_abs_det = linalg_ops.log_matrix_determinant(t)
+  return [wrap(_unflatten_first_dim(x, pfor_input.pfor.loop_len_vector), True)
+          for x in (sign, log_abs_det)]
 
 
 @RegisterPFor("MatrixTriangularSolve")
