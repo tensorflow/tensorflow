@@ -66,6 +66,7 @@ class NcclManagerTest : public ::testing::Test {
   static void SetUpTestCase() {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
+    setenv("TF_CPP_VMODULE", "nccl_manager=2", 1 /* replace */);
     devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
     LOG(INFO) << "Running test with " << devices_->size() << " gpus";
   }
