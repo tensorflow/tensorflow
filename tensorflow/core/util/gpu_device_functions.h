@@ -34,6 +34,7 @@ limitations under the License.
 #include "cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 
 namespace tensorflow {
 
@@ -42,6 +43,7 @@ namespace tensorflow {
 // assert is not supported by HIP. While we are waiting for assert support in hip kernels, the assert
 // call should be macroed to NOP so that it does not block us from creating a debug build
 #if TENSORFLOW_USE_ROCM
+  #undef assert
   #define assert(x) {}
 #endif
 
@@ -90,6 +92,10 @@ class GpuGridRange {
   T end_;
 };
 
+#ifndef TENSORFLOW_USE_ROCM
+template <typename... T>
+using CudaGridRange = GpuGridRange<T...>;
+#endif
 }  // namespace detail
 
 // Helper to visit indices in the range 0 <= i < count, using the x-coordinate
@@ -102,6 +108,8 @@ __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
                                   gridDim.x * blockDim.x, count);
 }
 
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
+
 // Helper to visit indices in the range 0 <= i < count using the y-coordinate.
 // Usage: for(int i : GpuGridRangeY(count)) { visit(i); }
 template <typename T>
@@ -109,6 +117,7 @@ __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
   return detail::GpuGridRange<T>(blockIdx.y * blockDim.y + threadIdx.y,
                                   gridDim.y * blockDim.y, count);
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
 // Helper to visit indices in the range 0 <= i < count using the z-coordinate.
 // Usage: for(int i : GpuGridRangeZ(count)) { visit(i); }
@@ -117,14 +126,15 @@ __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
   return detail::GpuGridRange<T>(blockIdx.z * blockDim.z + threadIdx.z,
                                   gridDim.z * blockDim.z, count);
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
 #if GOOGLE_CUDA
 // Mask for all 32 threads in a warp.
-const unsigned kCudaWarpAll = 0xffffffff;
+__device__ const unsigned kCudaWarpAll = 0xffffffff;
 #elif TENSORFLOW_USE_ROCM
 // ROCM TODO add ROCM implementation
 // Mask for all 64 threads in a wavefront.
-const unsigned kCudaWarpAll = 0xffffffff;
+__device__ const unsigned kCudaWarpAll = 0xffffffff;
 #endif
 
 // Returns the warp lane ID of the calling thread
@@ -141,6 +151,7 @@ __device__ inline unsigned GpuLaneId() {
 #endif
   return lane_id;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLaneId, CudaLaneId);
 
 namespace detail {
 // Returns true if mask is a valid parameter for __shfl*sync to return a well
@@ -169,6 +180,7 @@ __device__ inline bool GpuValidateShuffleSyncMask(unsigned mask,
 #endif
   return (src_dst_mask & ~mask) == 0 && src_lane_mask == mask;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuValidateShuffleSyncMask, CudaValidateShuffleSyncMask);
 
 // Returns the actual source lane for shuffle.
 __device__ inline unsigned GpuShuffleGetSrcLane(int src_lane, int width) {
@@ -177,6 +189,7 @@ __device__ inline unsigned GpuShuffleGetSrcLane(int src_lane, int width) {
   int lane_offset = src_lane & width - 1;
   return lane_base + lane_offset;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleGetSrcLane, CudaShuffleGetSrcLane);
 
 // Returns the source lane for shuffle up.
 __device__ inline unsigned GpuShuffleUpGetSrcLane(unsigned delta, int width) {
@@ -186,6 +199,7 @@ __device__ inline unsigned GpuShuffleUpGetSrcLane(unsigned delta, int width) {
   }
   return lane_id - delta;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleUpGetSrcLane, CudaShuffleUpGetSrcLane);
 
 // Returns the source lane for shuffle down.
 __device__ inline unsigned GpuShuffleDownGetSrcLane(unsigned delta,
@@ -196,6 +210,7 @@ __device__ inline unsigned GpuShuffleDownGetSrcLane(unsigned delta,
   }
   return lane_id + delta;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleDownGetSrcLane, CudaShuffleDownGetSrcLane);
 
 // Returns the source lane for shuffle xor.
 __device__ inline unsigned GpuShuffleXorGetSrcLane(int lane_mask, int width) {
@@ -206,6 +221,7 @@ __device__ inline unsigned GpuShuffleXorGetSrcLane(int lane_mask, int width) {
   }
   return src_lane;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorGetSrcLane, CudaShuffleXorGetSrcLane);
 }  // namespace detail
 
 // For all *_sync wrappers below, it is illegal to synchronize threads from
@@ -224,6 +240,7 @@ __device__ inline void GpuSyncWarp(unsigned mask = kCudaWarpAll) {
   __syncwarp(mask);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuSyncWarp, CudaSyncWarp);
 
 // Wrapper for __ballot_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -235,6 +252,7 @@ __device__ inline unsigned GpuBallotSync(unsigned mask, int pred) {
   return __ballot(pred) & mask;  // Apply mask to match __ballot_sync's spec.
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuBallotSync, CudaBallotSync);
 
 // Wrapper for __any_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -246,6 +264,7 @@ __device__ inline int GpuAnySync(unsigned mask, int pred) {
   return __any(pred);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAnySync, CudaAnySync);
 
 // Wrapper for __all_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -257,6 +276,7 @@ __device__ inline int GpuAllSync(unsigned mask, int pred) {
   return __all(pred);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAllSync, CudaAllSync);
 
 // Wrapper for __shfl_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -295,6 +315,7 @@ __device__ inline double GpuShuffleSync(unsigned mask, double value,
                              static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleSync, CudaShuffleSync);
 
 // Wrapper for __shfl_up_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -432,6 +453,7 @@ __device__ inline double GpuShuffleXorSync(unsigned mask, double value,
                              static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorSync, CudaShuffleXorSync);
 
 // Wrapper for __ldg.
 template <typename T>
@@ -442,6 +464,7 @@ __host__ __device__ T GpuLdg(const T* address) {
   return *address;
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 
 __host__ __device__ inline bool GpuLdg(const bool* address) {
   return GpuLdg(reinterpret_cast<const char*>(address)) != 0;
@@ -503,6 +526,7 @@ __device__ T GpuAtomicCasHelper(T* ptr, F accumulate) {
   } while (assumed != old);
   return old;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicCasHelper, CudaAtomicCasHelper);
 
 // Overload for floating point (using integer comparison to handle NaN
 // correctly).
@@ -637,6 +661,7 @@ __device__ inline std::complex<double> GpuAtomicAdd(
                               GpuAtomicAdd(ptr_scalar + 1, value.imag()));
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicAdd, CudaAtomicAdd);
 
 // GpuAtomicSub
 template <typename T, typename U>
@@ -663,6 +688,7 @@ __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a - value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 
 // GpuAtomicMax
 template <typename T, typename U>
@@ -722,6 +748,7 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
       ptr, [value](tensorflow::uint64 a) { return max(a, value); });
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 
 // GpuAtomicMin
 template <typename T, typename U>
@@ -781,18 +808,21 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
       ptr, [value](tensorflow::uint64 a) { return min(a, value); });
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
 
 // GpuAtomicMul
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMul(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a * value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMul, CudaAtomicMul);
 
 // GpuAtomicDiv
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a / value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicDiv, CudaAtomicDiv);
 
 // Operator overloads for complex numbers.
 #if GOOGLE_CUDA
