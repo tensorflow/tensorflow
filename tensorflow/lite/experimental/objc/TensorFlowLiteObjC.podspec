@@ -2,11 +2,11 @@
 
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '2b96dde' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '37c101d' }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
