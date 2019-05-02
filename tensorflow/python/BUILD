@@ -443,6 +443,7 @@ cc_library(
         ":numpy_lib",
         ":safe_ptr",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
