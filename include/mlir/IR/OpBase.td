@@ -576,7 +576,7 @@ class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
-  let convertFromStorage = "$_self";
+  let convertFromStorage = "cast<ElementsAttr>($_self)";
 }
 
 def ElementsAttr: ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,

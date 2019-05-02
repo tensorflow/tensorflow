@@ -90,6 +90,27 @@ def AndOp : IntArithmeticOp<"and", [Commutative]> {
   let hasFolder = 1;
 }
 
+def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
+  let summary = "constant";
+
+  let arguments = (ins AnyAttr:$value);
+  let results = (outs AnyType);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Attribute value",
+    [{ build(builder, result, value.getType(), value); }]>];
+
+  let parser = [{ return parseConstantOp(parser, result); }];
+  let printer = [{ return printConstantOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    Attribute getValue() { return getAttr("value"); }
+  }];
+
+  let hasConstantFolder = 1;
+}
+
 def DivFOp : FloatArithmeticOp<"divf"> {
   let summary = "floating point division operation";
 }

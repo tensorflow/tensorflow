@@ -356,36 +356,6 @@ private:
   }
 };
 
-/// The "constant" operation requires a single attribute named "value".
-/// It returns its value as an SSA value.  For example:
-///
-///   %1 = "std.constant"(){value: 42} : i32
-///   %2 = "std.constant"(){value: @foo} : (f32)->f32
-///
-class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
-                             OpTrait::OneResult, OpTrait::HasNoSideEffect> {
-public:
-  using Op::Op;
-
-  /// Builds a constant op with the specified attribute value and result type.
-  static void build(Builder *builder, OperationState *result, Type type,
-                    Attribute value);
-
-  /// Builds a constant op with the specified attribute value and the
-  /// attribute's type.
-  static void build(Builder *builder, OperationState *result, Attribute value);
-
-  Attribute getValue() { return getAttr("value"); }
-
-  static StringRef getOperationName() { return "std.constant"; }
-
-  // Hooks to customize behavior of this op.
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  LogicalResult verify();
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
-};
-
 /// This is a refinement of the "constant" op for the case where it is
 /// returning a float value of FloatType.
 ///

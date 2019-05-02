@@ -62,9 +62,8 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
   addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpIOp, CondBranchOp,
-                ConstantOp, DeallocOp, DimOp, DmaStartOp, DmaWaitOp,
-                ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
-                StoreOp, TensorCastOp,
+                DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
+                LoadOp, MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -913,32 +912,18 @@ void CondBranchOp::eraseFalseOperand(unsigned index) {
 // Constant*Op
 //===----------------------------------------------------------------------===//
 
-/// Builds a constant op with the specified attribute value and result type.
-void ConstantOp::build(Builder *builder, OperationState *result, Type type,
-                       Attribute value) {
-  result->addAttribute("value", value);
-  result->types.push_back(type);
-}
-
-/// Builds a constant with the specified attribute value and type extracted
-/// from the attribute.  The attribute must have a type.
-void ConstantOp::build(Builder *builder, OperationState *result,
-                       Attribute value) {
-  return build(builder, result, value.getType(), value);
-}
-
-void ConstantOp::print(OpAsmPrinter *p) {
+static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
   *p << "constant ";
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"value"});
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"value"});
 
-  if (getAttrs().size() > 1)
+  if (op.getAttrs().size() > 1)
     *p << ' ';
-  *p << getValue();
-  if (!getValue().isa<FunctionAttr>())
-    *p << " : " << getType();
+  *p << op.getValue();
+  if (!op.getValue().isa<FunctionAttr>())
+    *p << " : " << op.getType();
 }
 
-bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
+static bool parseConstantOp(OpAsmParser *parser, OperationState *result) {
   Attribute valueAttr;
   Type type;
 
@@ -963,16 +948,16 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
-LogicalResult ConstantOp::verify() {
-  auto value = getValue();
+static LogicalResult verify(ConstantOp &op) {
+  auto value = op.getValue();
   if (!value)
-    return emitOpError("requires a 'value' attribute");
+    return op.emitOpError("requires a 'value' attribute");
 
-  auto type = this->getType();
+  auto type = op.getType();
   if (type.isa<IntegerType>() || type.isIndex()) {
     auto intAttr = value.dyn_cast<IntegerAttr>();
     if (!intAttr)
-      return emitOpError(
+      return op.emitOpError(
           "requires 'value' to be an integer for an integer result type");
 
     // If the type has a known bitwidth we verify that the value can be
@@ -981,36 +966,36 @@ LogicalResult ConstantOp::verify() {
       auto bitwidth = type.cast<IntegerType>().getWidth();
       auto intVal = intAttr.getValue();
       if (!intVal.isSignedIntN(bitwidth) && !intVal.isIntN(bitwidth))
-        return emitOpError("requires 'value' to be an integer within the range "
-                           "of the integer result type");
+        return op.emitOpError(
+            "requires 'value' to be an integer within the range "
+            "of the integer result type");
     }
     return success();
   }
 
   if (type.isa<FloatType>()) {
     if (!value.isa<FloatAttr>())
-      return emitOpError("requires 'value' to be a floating point constant");
+      return op.emitOpError("requires 'value' to be a floating point constant");
     return success();
   }
 
   if (type.isa<VectorOrTensorType>()) {
     if (!value.isa<ElementsAttr>())
-      return emitOpError("requires 'value' to be a vector/tensor constant");
+      return op.emitOpError("requires 'value' to be a vector/tensor constant");
     return success();
   }
 
   if (type.isa<FunctionType>()) {
     if (!value.isa<FunctionAttr>())
-      return emitOpError("requires 'value' to be a function reference");
+      return op.emitOpError("requires 'value' to be a function reference");
     return success();
   }
 
-  auto attrType = value.getType();
-  if (attrType != type)
-    return emitOpError("requires the type of the 'value' attribute to match "
-                       "that of the operation result");
+  if (value.getType() != type)
+    return op.emitOpError("requires the type of the 'value' attribute to match "
+                          "that of the operation result");
 
-  return emitOpError(
+  return op.emitOpError(
       "requires a result type that aligns with the 'value' attribute");
 }
 
