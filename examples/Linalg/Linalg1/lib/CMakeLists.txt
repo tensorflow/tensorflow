@@ -43,6 +43,7 @@ target_link_libraries(Linalg1
 add_llvm_library(Linalg1LLVMConversion
   ConvertToLLVMDialect.cpp
   )
+target_link_libraries(Linalg1LLVMConversion PUBLIC MLIRStandardOps)
 
 add_llvm_library(Linalg1DialectConstruction
   DialectConstruction.cpp

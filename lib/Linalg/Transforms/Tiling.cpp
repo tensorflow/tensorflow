@@ -56,7 +56,7 @@ public:
     if (it != map.end())
       return it->second;
     edsc::ScopedContext s(&f);
-    return map.insert(make_pair(v, edsc::intrinsics::constant_index(v)))
+    return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
         .first->getSecond();
   }
 
