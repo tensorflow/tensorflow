@@ -4029,7 +4029,7 @@ cuda_py_test(
 )
 
 py_library(
-    name = "training",
+    name = "training_lib",
     srcs = glob(
         ["training/**/*.py"],
         exclude = [
@@ -4099,11 +4099,19 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "training",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_lib",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:python_state",
         "//tensorflow/python/training/tracking:util",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

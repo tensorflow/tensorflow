@@ -191,7 +191,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
     ],
 )
 
@@ -338,7 +338,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
     ],
 )
 

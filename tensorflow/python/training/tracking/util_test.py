@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -88,6 +89,17 @@ class InterfaceTests(test.TestCase):
     model.l2 = layer_two
     model.l1 = layer_one
     self.assertEqual([layer_one, layer_two], model.layers)
+
+  def testSaveWithOnlyKerasSession(self):
+
+    with ops.Graph().as_default():
+      inp = input_layer.Input([1])
+      dense = core.Dense(1)(inp)
+      model = training.Model(inp, dense)
+      model.compile(optimizer="sgd", loss="mse")
+      model.fit([1.], [2.])
+      checkpoint = trackable_utils.Checkpoint(model=model)
+      checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAddVariable(self):
