@@ -25,6 +25,7 @@ import csv
 import io
 import json
 import os
+import re
 import tempfile
 import time
 
@@ -42,6 +43,7 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -902,10 +904,14 @@ class ModelCheckpoint(Callback):
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return
 
-    if (self.load_weights_on_restart and self.filepath is not None and
-        os.path.exists(self.filepath)):
+    if self.load_weights_on_restart:
       try:
-        self.model.load_weights(self.filepath)
+        # `filepath` may contain placeholders such as `{epoch:02d}`, and thus
+        # it attempts to load the most recently modified file with file name
+        # matching the pattern.
+        self.model.load_weights(
+            self._get_most_recently_modified_file_matching_pattern(
+                self.filepath))
       except (IOError, ValueError) as e:
         raise ValueError('Error loading file from {}. Reason: {}'.format(
             self.filepath, e))
@@ -990,6 +996,61 @@ class ModelCheckpoint(Callback):
       ) and not dc_context.get_current_worker_context().should_checkpoint:
         os.close(file_handle)
         os.remove(filepath)
+
+  def _get_most_recently_modified_file_matching_pattern(self, pattern):
+    """Returns the most recently modified filepath matching pattern.
+
+    Pattern may contain python formatting placeholder. If
+    `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
+    check for most recently modified one that matches the pattern. This utility
+    function is best demonstrated via an example:
+
+    ```python
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      # Write something to each of the files
+    self.assertEqual(
+        _get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+    ```
+
+    Arguments:
+        pattern: The file pattern that may optionally contain python placeholder
+            such as `{epoch:02d}`.
+
+    Returns:
+        The most recently modified file's full filepath matching `pattern`. If
+        `pattern` does not contain any placeholder, this returns the filepath
+        that
+        exactly matches `pattern`. Returns `None` if no match is found.
+    """
+    dir_name = os.path.dirname(pattern)
+    base_name = os.path.basename(pattern)
+    base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
+
+    # If tf.train.latest_checkpoint tells us there exists a latest checkpoint,
+    # use that as it is more robust than `os.path.getmtime()`.
+    latest_tf_checkpoint = checkpoint_management.latest_checkpoint(dir_name)
+    if latest_tf_checkpoint is not None and re.match(
+        base_name_regex, os.path.basename(latest_tf_checkpoint)):
+      return latest_tf_checkpoint
+
+    latest_mod_time = 0
+    file_path_with_latest_mod_time = None
+    for file_name in os.listdir(dir_name):
+      if re.match(base_name_regex, file_name):
+        file_path = os.path.join(dir_name, file_name)
+        mod_time = os.path.getmtime(file_path)
+        if mod_time > latest_mod_time:
+          latest_mod_time = mod_time
+          file_path_with_latest_mod_time = file_path
+    return file_path_with_latest_mod_time
 
 
 @keras_export('keras.callbacks.EarlyStopping')
