@@ -470,6 +470,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.io.decode_raw": {
             "bytes": "input_bytes",
+        },
+        "tf.contrib.framework.load_variable": {
+            "checkpoint_dir": "ckpt_dir_or_file",
         }
     }
 
