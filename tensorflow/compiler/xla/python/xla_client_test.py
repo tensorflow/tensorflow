@@ -1280,6 +1280,33 @@ class SingleOpTest(ComputationTest):
     expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
     np.testing.assert_allclose(g, expected, rtol=1e-4)
 
+  def testFft(self):
+    shape = [2, 3, 4, 5]
+    rng = np.random.RandomState(0)
+    a = rng.randn(*shape) + 1.0j * rng.randn(*shape)
+    a = a.astype(np.complex64)
+    # FFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.FFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.fftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # IFFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.IFFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.ifftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # RFFT
+    b = rng.randn(*shape).astype(np.float32)
+    c = self._NewComputation()
+    c.Fft(c.Constant(b), xla_client.FftType.RFFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.rfftn(b, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # IRFFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.IRFFT, [3, 4, 8])
+    self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+
 
 class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""

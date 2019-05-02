@@ -1650,6 +1650,13 @@ class ComputationBuilder(object):
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers)
 
+  def Fft(self, operand, fft_type, fft_lengths):
+    """Enqueues a FFT operation onto the computation."""
+    return ops.Fft(operand, fft_type, fft_lengths)
+
+
+FftType = _xla.FftType
+
 
 _UNARY_OPS = [
     'Not',

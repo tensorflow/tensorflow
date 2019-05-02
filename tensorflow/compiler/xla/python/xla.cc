@@ -339,6 +339,14 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("DynamicUpdateSlice",
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
               &DynamicUpdateSlice));
+
+  ops.def("Fft", &Fft);
+  py::enum_<FftType>(m, "FftType")
+      .value("FFT", FftType::FFT)
+      .value("IFFT", FftType::IFFT)
+      .value("RFFT", FftType::RFFT)
+      .value("IRFFT", FftType::IRFFT);
+
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"));
   ops.def("GetTupleElement", &GetTupleElement);
