@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.linalg_ops.self_adjoint_eig."""
+"""Tests for tensorflow.ops.linalg_ops.eig."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -38,7 +38,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
   setattr(test_class, test_name, fn)
 
 
-class SelfAdjointEigTest(test.TestCase):
+class EigTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWrongDimensions(self):
@@ -46,10 +46,10 @@ class SelfAdjointEigTest(test.TestCase):
     # at least rank 2.
     scalar = constant_op.constant(1.)
     with self.assertRaises(ValueError):
-      linalg_ops.self_adjoint_eig(scalar)
+      linalg_ops.eig(scalar)
     vector = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
-      linalg_ops.self_adjoint_eig(vector)
+      linalg_ops.eig(vector)
 
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
@@ -59,12 +59,12 @@ class SelfAdjointEigTest(test.TestCase):
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)
         if compute_v_:
-          e1, v1 = linalg_ops.self_adjoint_eig(matrix1)
-          e2, v2 = linalg_ops.self_adjoint_eig(matrix2)
+          e1, v1 = linalg_ops.eig(matrix1)
+          e2, v2 = linalg_ops.eig(matrix2)
           all_ops += [e1, v1, e2, v2]
         else:
-          e1 = linalg_ops.self_adjoint_eigvals(matrix1)
-          e2 = linalg_ops.self_adjoint_eigvals(matrix2)
+          e1 = linalg_ops.eigvals(matrix1)
+          e2 = linalg_ops.eigvals(matrix2)
           all_ops += [e1, e2]
       val = self.evaluate(all_ops)
       self.assertAllEqual(val[0], val[2])
@@ -119,7 +119,7 @@ def EquilibrateEigenVectorPhases(x, y):
   return phases * x
 
 
-def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
+def _GetEigTest(dtype_, shape_, compute_v_):
 
   def CompareEigenVectors(self, x, y, tol):
     x = EquilibrateEigenVectorPhases(x, y)
@@ -143,21 +143,21 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
     n = shape_[-1]
     batch_shape = shape_[:-2]
     np_dtype = dtype_.as_numpy_dtype
+    # most of matrices are diagonalizable # TODO
     a = np.random.uniform(
         low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
     if dtype_.is_complex:
       a += 1j * np.random.uniform(
           low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-    a += np.conj(a.T)
     a = np.tile(a, batch_shape + (1, 1))
     if dtype_ in (dtypes_lib.float32, dtypes_lib.complex64):
       atol = 1e-4
     else:
       atol = 1e-12
-    np_e, np_v = np.linalg.eigh(a)
+    np_e, np_v = np.linalg.eig(a)
     with self.session(use_gpu=True):
       if compute_v_:
-        tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
+        tf_e, tf_v = linalg_ops.eig(constant_op.constant(a))
 
         # Check that V*diag(E)*V^T is close to A.
         a_ev = math_ops.matmul(
@@ -166,92 +166,25 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
             adjoint_b=True)
         self.assertAllClose(self.evaluate(a_ev), a, atol=atol)
 
-        # Compare to numpy.linalg.eigh.
+        # Compare to numpy.linalg.eig.
         CompareEigenDecompositions(self, np_e, np_v, self.evaluate(tf_e),
                                    self.evaluate(tf_v), atol)
       else:
-        tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
+        tf_e = linalg_ops.eigvals(constant_op.constant(a))
         self.assertAllClose(
             np.sort(np_e, -1), np.sort(self.evaluate(tf_e), -1), atol=atol)
 
   return Test
 
 
-class SelfAdjointEigGradTest(test.TestCase):
-  pass  # Filled in below
-
-
-def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
-
-  def Test(self):
-    np.random.seed(1)
-    n = shape_[-1]
-    batch_shape = shape_[:-2]
-    np_dtype = dtype_.as_numpy_dtype
-
-    def RandomInput():
-      a = np.random.uniform(
-          low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-      if dtype_.is_complex:
-        a += 1j * np.random.uniform(
-            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-      a += np.conj(a.T)
-      a = np.tile(a, batch_shape + (1, 1))
-      return a
-
-    # Optimal stepsize for central difference is O(epsilon^{1/3}).
-    epsilon = np.finfo(np_dtype).eps
-    delta = 0.1 * epsilon**(1.0 / 3.0)
-    # tolerance obtained by looking at actual differences using
-    # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-    # after discarding one random input sample
-    _ = RandomInput()
-    if dtype_ in (dtypes_lib.float32, dtypes_lib.complex64):
-      tol = 1e-2
-    else:
-      tol = 1e-7
-    with self.session(use_gpu=True):
-      def Compute(x):
-        e, v = linalg_ops.self_adjoint_eig(x)
-        # (complex) Eigenvectors are only unique up to an arbitrary phase
-        # We normalize the vectors such that the first component has phase 0.
-        top_rows = v[..., 0:1, :]
-        if dtype_.is_complex:
-          angle = -math_ops.angle(top_rows)
-          phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
-        else:
-          phase = math_ops.sign(top_rows)
-        v *= phase
-        return e, v
-
-      if compute_v_:
-        funcs = [lambda x: Compute(x)[0], lambda x: Compute(x)[1]]
-      else:
-        funcs = [linalg_ops.self_adjoint_eigvals]
-
-      for f in funcs:
-        theoretical, numerical = gradient_checker_v2.compute_gradient(
-            f,
-            [RandomInput()],
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
-
-  return Test
-
-
 if __name__ == "__main__":
-  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64]
-  if not test.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [dtypes_lib.complex64, dtypes_lib.complex128]
   for compute_v in True, False:
-    for dtype in dtypes_to_test:
+    for dtype in (dtypes_lib.complex64, dtypes_lib.complex128):
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
           shape = batch_dims + (size, size)
           name = "%s_%s_%s" % (dtype.name, "_".join(map(str, shape)), compute_v)
-          _AddTest(SelfAdjointEigTest, "SelfAdjointEig", name,
-                   _GetSelfAdjointEigTest(dtype, shape, compute_v))
-          _AddTest(SelfAdjointEigGradTest, "SelfAdjointEigGrad", name,
-                   _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
+          _AddTest(EigTest, "Eig", name,
+                   _GetEigTest(dtype, shape, compute_v))
+          # No gradient yet
   test.main()

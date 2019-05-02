@@ -257,6 +257,24 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "eig_op_test",
+    size = "medium",
+    srcs = ["eig_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+
+tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],

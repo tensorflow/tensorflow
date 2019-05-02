@@ -3373,6 +3373,7 @@ cc_library(
         ":qr_op",
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
+        ":eig_op",
         ":svd_op",
         ":tridiagonal_matmul_op",
         ":tridiagonal_solve_op",
@@ -3467,6 +3468,15 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
+    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"] + if_cuda([
+        ":cast_op",
+        ":cwise_op",
+    ]),
+)
+
+tf_kernel_library(
+    name = "eig_op",
+    prefix = "eig_op",
     deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"] + if_cuda([
         ":cast_op",
         ":cwise_op",

@@ -305,6 +305,49 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
     return gen_linalg_ops.matrix_solve_ls(
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
+@tf_export('linalg.eig', v1=[])
+def eig(tensor, name=None):
+  """Computes the eigen decomposition of a batch of matrices.
+
+  Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
+  in `tensor` such that
+  `tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+      each inner inner matrix is referenced.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+      matrices contain eigenvectors of the corresponding matrices in `tensor`
+  """
+  e, v = gen_linalg_ops.eig(tensor, compute_v=True, name=name)
+  return e, v
+
+
+@tf_export('linalg.eigvals', v1=[])
+@deprecation.deprecated_endpoints('self_adjoint_eigvals')
+def eigvals(tensor, name=None):
+  """Computes the eigenvalues of one or more matrices.
+
+  Note: If your program backpropagates through this function, you should replace
+  it with a call to tf.linalg.eig (possibly ignoring the second output) to
+  avoid computing the eigen decomposition twice. This is because the
+  eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
+  _SelfAdjointEigV2Grad in linalg_grad.py.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+      eigenvalues of `tensor[..., :, :]`.
+  """
+  e, _ = gen_linalg_ops.eig(tensor, compute_v=False, name=name)
+  return e
 
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
 @deprecation.deprecated_endpoints('self_adjoint_eig')
