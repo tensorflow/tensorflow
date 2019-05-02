@@ -3348,8 +3348,10 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       batch_var_opaque = nullptr;
     }
 
-    if (reserve_space_allocator != nullptr) {
+    bool called = false;
 #if CUDNN_VERSION >= 7402
+    if (reserve_space_allocator != nullptr) {
+      called = true;
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTrainingEx(
           /*handle=*/cudnn.handle(),
           /*mode=*/mode,
@@ -3376,15 +3378,9 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*workSpaceSizeInBytes=*/workspace.size(),
           /*reserveSpace=*/reserve_space.opaque(),
           /*reserveSpaceSizeInBytes=*/reserve_space.size()));
-#else
-      RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
-          cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
-          x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
-          scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
-          batch_var_opaque, epsilon, saved_mean->opaque(),
-          saved_inv_var->opaque()));
+    }
 #endif
-    } else {
+    if (!called) {
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
           cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
           x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
@@ -3464,8 +3460,10 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  if (reserve_space_data != nullptr) {
+  bool called = false;
 #if CUDNN_VERSION >= 7402
+  if (reserve_space_data != nullptr) {
+    called = true;
     cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
                         CreateBatchNormBackwardWorkspace(
@@ -3502,16 +3500,9 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),
         /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
-#else
-    RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
-        cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
-        x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
-        x_descriptor.handle(), x_backprop->opaque(),
-        scale_offset_descriptor.handle(), scale.opaque(),
-        scale_backprop->opaque(), offset_backprop->opaque(), epsilon,
-        mean.opaque(), inv_var.opaque()));
+  }
 #endif
-  } else {
+  if (!called) {
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
         cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
         x.opaque(), x_descriptor.handle(), y_backprop.opaque(),

@@ -100,6 +100,9 @@ struct ToTFDataType<double> : std::integral_constant<DataType, DT_DOUBLE> {};
 template <>
 struct ToTFDataType<uint8> : std::integral_constant<DataType, DT_UINT8> {};
 
+// A helper to allocate temporary scratch memory for Cudnn BatchNormEx ops. It 
+// takes the ownership of the underlying memory. The expectation is that the
+// memory should be alive for the span of the Cudnn BatchNormEx itself.
 template <typename T>
 class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
  public:
@@ -143,6 +146,10 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
   std::vector<Tensor> allocated_tensors_;
 };
 
+// A helper to allocate memory for Cudnn BatchNormEx as a kernel output. It is
+// used by forward pass kernel to feed the output to the backward pass.
+// The memory is expected to live long enough after the backward pass is
+// finished.
 template <typename T>
 class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
  public:
