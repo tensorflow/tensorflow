@@ -23,11 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Variant::~Variant() { clear(); }
-
 bool Variant::Decode(VariantTensorData data) {
   if (!is_empty()) {
-    return GetValue()->Decode(std::move(data));
+    return value_->Decode(std::move(data));
   }
   return true;
 }
@@ -37,7 +35,7 @@ void* Variant::get() {
   if (is_empty()) {
     return nullptr;
   }
-  return GetValue()->RawPtr();
+  return value_->RawPtr();
 }
 
 template <>
@@ -45,7 +43,7 @@ const void* Variant::get() const {
   if (is_empty()) {
     return nullptr;
   }
-  return GetValue()->RawPtr();
+  return value_->RawPtr();
 }
 
 template <>

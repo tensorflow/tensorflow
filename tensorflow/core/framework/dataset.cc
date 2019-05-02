@@ -50,14 +50,6 @@ class DatasetVariantWrapper {
     if (dataset_) dataset_->Ref();
   }
 
-  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
-    if (&other == this) return *this;
-    std::swap(dataset_, other.dataset_);
-    return *this;
-  }
-
-  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
-
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
   }
@@ -83,7 +75,7 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* dataset_;  // Owns one reference.
+  DatasetBase* const dataset_;  // Owns one reference.
 };
 
 const char kWrappedDatasetVariantTypeName[] =

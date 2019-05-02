@@ -62,10 +62,6 @@ class VariantTensorData {
     return GetMetadata<T>(value, PODResolver<T>());
   }
 
-  string& metadata_string() { return metadata_; }
-
-  const string& metadata_string() const { return metadata_; }
-
   // Tensors contained within objects being serialized.
   int tensors_size() const;
   const Tensor& tensors(int index) const;
