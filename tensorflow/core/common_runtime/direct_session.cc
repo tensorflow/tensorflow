@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -527,11 +528,12 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-  std::unique_ptr<DeviceTracer> tracer;
+  DeviceTracer* tracer = nullptr;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer = CreateDeviceTracer();
+    std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
     // tracer may be NULL on platforms without accelerators.
-    if (tracer) {
+    if (trptr) {
+      tracer = trptr.release();
       Status s = tracer->Start();
       if (!s.ok()) {
         run_state.executors_done.Notify();
@@ -540,6 +542,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       }
     }
   }
+  args.trace_collector = static_cast<tracing::TraceCollector*>(tracer);
 
   if (run_options.inter_op_thread_pool() < -1 ||
       run_options.inter_op_thread_pool() >=
