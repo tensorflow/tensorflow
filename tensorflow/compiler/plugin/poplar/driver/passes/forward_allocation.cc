@@ -330,8 +330,9 @@ ForwardAllocation::FindInputs(HloComputation* comp) {
   absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>
       input_to_deferred_allocation_path;
   for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kParameter ||
-        inst->opcode() == HloOpcode::kInfeed) {
+    if (inst->opcode() == HloOpcode::kConstant ||
+        inst->opcode() == HloOpcode::kInfeed ||
+        inst->opcode() == HloOpcode::kParameter) {
       FlattenInputs(inst, {inst}, input_to_deferred_allocation_path);
     }
   }

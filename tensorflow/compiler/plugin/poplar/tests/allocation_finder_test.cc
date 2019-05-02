@@ -1457,6 +1457,79 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.backward_path.size(), 0);
 }
 
+TEST_F(AllocationFinderTest, ConstantInput) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[2], arg3.36.25: f32[2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[1,4,4,2] {
+ %arg0.36.22 = f32[1,4,4,2] parameter(0)
+ %arg1.36.23 = f32[1,1,2,2] parameter(1)
+ %convolution.36.29 = f32[1,4,4,2] convolution(%arg0.36.22, %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
+ %arg2.36.24 = f32[2] constant({0.0, 1.1})
+ %arg3.36.25 = f32[2] constant({0.0, 1.1})
+ %arg4.36.26 = f32[2] parameter(2)
+ %arg5.36.27 = f32[2] parameter(3)
+ ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %arg2.36.24, %arg3.36.25, %arg4.36.26, %arg5.36.27), epsilon=0.001, feature_index=3
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_argument_count(4);
+  config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3});
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* bn = root;
+  const auto* conv = bn->operand(0);
+  const auto* ip0 = conv->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip2 = bn->operand(1);
+  const auto* ip3 = bn->operand(2);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+}
+
 TEST_F(AllocationFinderTest, BatchNormInfParamsWithPath) {
   std::string hlo = R"(
 HloModule top
