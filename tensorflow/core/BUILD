@@ -1678,6 +1678,13 @@ tf_cuda_library(
 )
 
 # -----------------------------------------------------------------------------
+# MKL targets
+cc_library(
+    name = "mkl_graph_util",
+    hdrs = ["graph/mkl_graph_util.h"],
+)
+
+# -----------------------------------------------------------------------------
 # Public Android targets
 
 # Android-specific BUILD targets

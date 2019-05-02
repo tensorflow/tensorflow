@@ -879,9 +879,11 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   FusedBatchNorm                        fused_batch_norm;
   ContractionWithBiasAdd                contract_with_bias;
   ContractionWithBiasAddAndActivation   contract_with_bias_and_activation;
+#ifndef INTEL_MKL
   ContractionWithBatchNorm              contract_with_batch_norm;
   ContractionWithBatchNormAndActivation contract_with_batch_norm_and_activation;
   ContractionWithSqueezeAndBiasAdd      contract_with_squeeze_and_bias;
+#endif  // INTEL_MKL
   // clang-format on
 
   // Processing graph in reverse-topological sorted order allows to remap

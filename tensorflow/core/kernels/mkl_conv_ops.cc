@@ -919,10 +919,6 @@ class MklConvOp : public OpKernel {
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
 
-      // Data from persistent (cached) filter tensor
-      const Tensor& cached_filter_data_tensor =
-          *cached_filter_data_ptensor_.AccessTensor(context);
-
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape);
@@ -1187,8 +1183,8 @@ class MklConvOp : public OpKernel {
     // Similarly, if the data format is NCHW, indices 0, 1, 2 and 3 of
     // paddings(_tf) will be zero.
     // i.e. for the above example, paddings = {0, 0, 0, 0, 1, 2, 3, 4}.
-    int64 pad_top, pad_left;
-    int64 pad_bottom, pad_right;
+    int64 pad_top = 0, pad_left = 0;
+    int64 pad_bottom = 0, pad_right = 0;
     string data_format = ToString(data_format_);
     if (data_format == "NHWC") {
       pad_top = paddings[2];
@@ -1672,9 +1668,11 @@ class MklQuantizedConv2DOp
       } else {
         bias_attr.set_output_scales(1, scales);
       }
-      auto bias_pd = memory::primitive_desc(
-          {{bias_tensor.NumElements()}, MklDnnType<Tbias>(), memory::format::x},
-          this->cpu_engine_);
+      auto bias_pd =
+          memory::primitive_desc({{static_cast<int>(bias_tensor.NumElements())},
+                                  MklDnnType<Tbias>(),
+                                  memory::format::x},
+                                 this->cpu_engine_);
 
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
@@ -1785,7 +1783,6 @@ class MklQuantizedConv2DSumReluOp
                             memory::format output_tf_format,
                             Tensor** output_tensor) override {
     int summand_idx = context->num_inputs() / 2 - 1;
-    float reorder_sum_scale = 1.0;
     if (std::is_same<Toutput, quint8>::value) {
       summand_idx -= 2;
       DataType summand_type = this->input_type(summand_idx);

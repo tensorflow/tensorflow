@@ -1132,7 +1132,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status FuseNode(std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
                   const MklLayoutRewritePass::FusionInfo fi);
 
-  // Fuse tranpose(to "NHWC") + mklop("NHWC") + transpose(to "NCHW") into
+  // Fuse transpose(to "NHWC") + mklop("NHWC") + transpose(to "NCHW") into
   // mklop("NCHW").
   // Here "mklop" can be any MKL-DNN supported op, such as Conv2D.
   static Status FuseTransposeMklOpTranspose(
@@ -1180,34 +1180,25 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           TF_CHECK_OK(GetNodeAttr(perm_node->def(), "value", &proto));
 
           DataType type;
-          GetNodeAttr(perm_node->def(), "dtype", &type);
+          TF_CHECK_OK(GetNodeAttr(perm_node->def(), "dtype", &type));
+          if (type != DT_INT32 && type != DT_INT64) return false;
 
-          // Here we directly access to the "tensor_content", rather than
-          // "int_val". This is because we find "int_val" is
-          // not set properly under some circumstances.
+          Tensor tensor;
+          DCHECK(tensor.FromProto(*proto))
+              << "Could not construct Tensor from TensorProto in node: "
+              << node->name();
+          DCHECK_EQ(tensor.dims(), 1);
+          DCHECK_EQ(tensor.dim_size(0), perm.size());
           if (type == DT_INT32) {
-            const int type_size = 4;
-            const int* tensor_content =
-                reinterpret_cast<const int*>(proto->tensor_content().c_str());
-            const int tensor_content_size =
-                proto->tensor_content().size() / type_size;
-
-            std::vector<int> perm_value(tensor_content,
-                                        tensor_content + tensor_content_size);
-
-            return perm_value == perm;
+            const auto tensor_content = tensor.flat<int>().data();
+            for (int i = 0; i < perm.size(); ++i)
+              if (tensor_content[i] != perm[i]) return false;
+            return true;
           } else if (type == DT_INT64) {
-            const int type_size = 8;
-            const long* tensor_content =
-                reinterpret_cast<const long*>(proto->tensor_content().c_str());
-            const int tensor_content_size =
-                proto->tensor_content().size() / type_size;
-
-            std::vector<long> perm_value(tensor_content,
-                                         tensor_content + tensor_content_size);
-            std::vector<long> long_perm(perm.cbegin(), perm.cend());
-
-            return perm_value == long_perm;
+            const auto tensor_content = tensor.flat<int64>().data();
+            for (int i = 0; i < perm.size(); ++i)
+              if (tensor_content[i] != perm[i]) return false;
+            return true;
           }
           return false;
         }
@@ -1248,9 +1239,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool DequantizeRewrite(const Node* n) {
     DCHECK(n);
     Node* input = nullptr;
-    n->input_node(0, &input);
+    TF_CHECK_OK(n->input_node(0, &input));
     string mode_string;
-    GetNodeAttr(n->def(), "mode", &mode_string);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     if (mode_string != "SCALED") {
       VLOG(1) << "DequantizeRewrite: Mode is not SCALED. "
               << "This case is not optimized by Intel MKL kernel, thus using "
@@ -1279,10 +1270,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string data_format_str;
     TensorFormat data_format;
     std::vector<int32> ksize, strides;
-    CHECK_EQ(GetNodeAttr(n->def(), "ksize", &ksize).ok(), true);
-    CHECK_EQ(GetNodeAttr(n->def(), "strides", &strides).ok(), true);
-    CHECK_EQ(GetNodeAttr(n->def(), "data_format", &data_format_str).ok(), true);
-    CHECK_EQ(FormatFromString(data_format_str, &data_format), true);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "ksize", &ksize));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "strides", &strides));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "data_format", &data_format_str));
+    bool result = FormatFromString(data_format_str, &data_format);
+    DCHECK(result);
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
     if (GetTensorDim(ksize, data_format, 'N') == 1 &&
@@ -1303,7 +1295,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_NOTNULL(n);
 
     int depth_radius;
-    CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "depth_radius", &depth_radius));
 
     // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
     // and use eigen node instead
@@ -1361,11 +1353,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool QuantizeOpRewrite(const Node* n) {
     DCHECK(n);
     Node* filter_node = nullptr;
-    n->input_node(0, &filter_node);
+    TF_CHECK_OK(n->input_node(0, &filter_node));
     string mode_string;
     string round_mode_string;
-    GetNodeAttr(n->def(), "mode", &mode_string);
-    GetNodeAttr(n->def(), "round_mode", &round_mode_string);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
     if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
       VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
               << "rounding mode is not HALF_TO_EVEN. "
@@ -2150,7 +2142,7 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
 
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -2237,7 +2229,7 @@ void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tpaddings", &Tpaddings));
 
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -2261,7 +2253,7 @@ void MklLayoutRewritePass::CopyAttrsPadWithFusedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tpaddings", &Tpaddings));
   // Check if filter is a constant.
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("Tpaddings", Tpaddings);
@@ -2378,7 +2370,7 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
 
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -2535,7 +2527,7 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   }
 
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("Tinput", Tinput);
@@ -2743,7 +2735,7 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
 
   Node* filter_node = nullptr;
-  orig_node->input_node(1, &filter_node);
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
 
   // Add attributes to new node.
   nb->Attr("T", T);
