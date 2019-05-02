@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_NNPAI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
-#define TENSORFLOW_LITE_DELEGATES_NNPAI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
+#define TENSORFLOW_LITE_DELEGATES_NNAPI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
 
 #include <jni.h>
 
@@ -34,4 +34,4 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDeleg
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_DELEGATES_NNPAI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_NNAPI_JAVA_SRC_MAIN_NATIVE_NNAPI_DELEGATE_JNI_H_
