@@ -4,7 +4,9 @@ about: Use this template for documentation related issues
 
 ---
 
-<em>Thanks so much for taking the time to file a documentation issue and even more thanks if you intend to contribute to updating it! Please do introduce yourself on our Mailing List via [Google Groups](https://groups.google.com/a/tensorflow.org/forum/#!forum/docs) or [email](mailto:docs@tensorflow.org list) and let us know if you have any questions. We also encourage you to review our [Documentation Contributor Guide](https://www.tensorflow.org/community/contribute/docs). As a side note, per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:doc_template</em>
+<em>Thanks so much for taking the time to file a documentation issue and even more thanks if you intend to contribute to updating it! Please do introduce yourself on our mailing list with
+[Google Groups](https://groups.google.com/a/tensorflow.org/forum/#!forum/docs) or
+[email](mailto:docs@tensorflow.org) and let us know if you have any questions. We also encourage you to review our [Documentation Contributor Guide](https://www.tensorflow.org/community/contribute/docs). As a side note, per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:doc_template</em>
 
 ## Existing URLs containing the issue:
 Link to the documentation entry, for example: https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/MyMethod
