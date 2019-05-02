@@ -41,8 +41,9 @@ Status RebatchOptimizer::Init(
 namespace {
 
 constexpr char kCastOp[] = "Cast";
-constexpr char kRealDivOp[] = "RealDiv";
 constexpr char kConstOp[] = "Const";
+constexpr char kIdentityOp[] = "Identity";
+constexpr char kRealDivOp[] = "RealDiv";
 
 constexpr std::array<const char*, 5> kBatchDatasetOps = {
     "BatchDataset",
@@ -135,12 +136,24 @@ bool IsDatasetNodeOfType(const NodeDef& node,
   return false;
 }
 
+Status UpdateOutputShapes(const string& node_name, int64 num_workers,
+                          MutableGraphView* graph) {
+  NodeDef* node = graph->GetNode(node_name);
+  if (node->op() == kIdentityOp) {
+    return Status::OK();
+  }
+  AttrValue output_shapes = node->attr().at("output_shapes");
+  for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
+    shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+  }
+  (*node->mutable_attr())["output_shapes"] = output_shapes;
+  return Status::OK();
+}
+
 // Given a "batch" dataset node, modifies the batch_size input to divide the
 // current batch size by num_workers.
 Status MutateBatchSize(const NodeDef& node, int64 num_workers,
                        MutableGraphView* graph) {
-  // TODO(rohanj): Fix up the output_shapes attribute as well. For this Dataset
-  // as well as all the downstream datasets.
   // For all the batching datasets the batch_size is input number 1.
   NodeDef* batch_size_node = graph_utils::GetInputNode(node, *graph, 1);
   // By the time this optimization is run, the batch_size is computed and
@@ -187,7 +200,8 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
                            FunctionLibraryDefinition* flib,
                            MutableGraphView* graph) {
   if (IsDatasetNodeOfType(node, kBatchDatasetOps)) {
-    return MutateBatchSize(node, num_workers, graph);
+    TF_RETURN_IF_ERROR(MutateBatchSize(node, num_workers, graph));
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kMultipleInputsDatasetOps)) {
     // For all multiple input datasets, all inputs are datasets themselves.
     for (int i = 0; i < node.input_size(); ++i) {
@@ -195,12 +209,14 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
       TF_RETURN_IF_ERROR(
           RecursivelyHandleOp(*input_node, num_workers, flib, graph));
     }
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kPassThroughOps)) {
     // For all the dataset ops that are pass through, the input dataset is
     // input 0.
     NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
     TF_RETURN_IF_ERROR(
         RecursivelyHandleOp(*input_node, num_workers, flib, graph));
+    TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kFuncDatasetOps)) {
     const string func_name = node.attr().at("f").func().name();
     const FunctionDef* fdef = flib->Find(func_name);
@@ -226,6 +242,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
 
       // Replace optimized function with a new FunctionDef.
       TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, optimized_func));
+      TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
     } else {
       VLOG(2) << "Failed to optimize dataset function. Error: "
               << s.error_message();
