@@ -36,59 +36,6 @@
 
 namespace mlir {
 namespace detail {
-/// Base storage class appearing in an attribute. Derived storage classes should
-/// only be constructed within the context of the AttributeUniquer.
-struct AttributeStorage : public StorageUniquer::BaseStorage {
-  /// Construct a new attribute storage instance with the given type and a
-  /// boolean that signals if the derived attribute is or contains a function
-  /// pointer.
-  /// Note: All attributes require a valid type. If a null type is provided
-  ///       here, the type of the attribute will automatically default to
-  ///       NoneType upon initialization in the uniquer.
-  AttributeStorage(Type type = {}, bool isOrContainsFunctionCache = false)
-      : typeAndContainsFunctionAttrPair(type, isOrContainsFunctionCache) {}
-  AttributeStorage(bool isOrContainsFunctionCache)
-      : AttributeStorage(/*type=*/{}, isOrContainsFunctionCache) {}
-
-  bool isOrContainsFunctionCache() const {
-    return typeAndContainsFunctionAttrPair.getInt();
-  }
-
-  Type getType() const { return typeAndContainsFunctionAttrPair.getPointer(); }
-  void setType(Type type) { typeAndContainsFunctionAttrPair.setPointer(type); }
-
-  /// This field is a pair of:
-  ///  - The type of the attribute value.
-  ///  - A boolean that is true if this is, or contains, a function attribute.
-  llvm::PointerIntPair<Type, 1, bool> typeAndContainsFunctionAttrPair;
-};
-
-// A utility class to get, or create, unique instances of attributes within an
-// MLIRContext. This class manages all creation and uniquing of attributes.
-class AttributeUniquer {
-public:
-  /// Get an uniqued instance of attribute T.
-  template <typename T, typename... Args>
-  static T get(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
-    return ctx->getAttributeUniquer().get<typename T::ImplType>(
-        [ctx](AttributeStorage *storage) {
-          // If the attribute did not provide a type, then default to NoneType.
-          if (!storage->getType())
-            storage->setType(NoneType::get(ctx));
-        },
-        static_cast<unsigned>(kind), std::forward<Args>(args)...);
-  }
-
-  /// Erase a uniqued instance of attribute T.
-  template <typename T, typename... Args>
-  static void erase(MLIRContext *ctx, Attribute::Kind kind, Args &&... args) {
-    return ctx->getAttributeUniquer().erase<typename T::ImplType>(
-        static_cast<unsigned>(kind), std::forward<Args>(args)...);
-  }
-};
-
-using AttributeStorageAllocator = StorageUniquer::StorageAllocator;
-
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
   using KeyTy = std::pair<MLIRContext *, bool>;

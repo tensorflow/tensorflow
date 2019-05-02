@@ -26,6 +26,40 @@
 using namespace mlir;
 using namespace mlir::detail;
 
+//===----------------------------------------------------------------------===//
+// AttributeStorage
+//===----------------------------------------------------------------------===//
+
+AttributeStorage::AttributeStorage(Type type, bool isOrContainsFunctionCache)
+    : typeAndContainsFunctionAttrPair(type.getAsOpaquePointer(),
+                                      isOrContainsFunctionCache) {}
+AttributeStorage::AttributeStorage(bool isOrContainsFunctionCache)
+    : AttributeStorage(/*type=*/nullptr, isOrContainsFunctionCache) {}
+AttributeStorage::AttributeStorage()
+    : AttributeStorage(/*type=*/nullptr, /*isOrContainsFunctionCache=*/false) {}
+
+Type AttributeStorage::getType() const {
+  return Type::getFromOpaquePointer(
+      typeAndContainsFunctionAttrPair.getPointer());
+}
+void AttributeStorage::setType(Type type) {
+  typeAndContainsFunctionAttrPair.setPointer(type.getAsOpaquePointer());
+}
+
+/// Returns a functor used to initialize new attribute storage instances.
+std::function<void(AttributeStorage *)>
+AttributeUniquer::getInitFn(MLIRContext *ctx) {
+  return [ctx](AttributeStorage *storage) {
+    // If the attribute did not provide a type, then default to NoneType.
+    if (!storage->getType())
+      storage->setType(NoneType::get(ctx));
+  };
+}
+
+//===----------------------------------------------------------------------===//
+// Attribute
+//===----------------------------------------------------------------------===//
+
 Attribute::Kind Attribute::getKind() const {
   return static_cast<Kind>(attr->getKind());
 }

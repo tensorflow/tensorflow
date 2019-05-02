@@ -18,6 +18,7 @@
 #ifndef MLIR_IR_ATTRIBUTES_H
 #define MLIR_IR_ATTRIBUTES_H
 
+#include "mlir/IR/AttributeSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -37,7 +38,6 @@ class VectorOrTensorType;
 
 namespace detail {
 
-struct AttributeStorage;
 struct BoolAttributeStorage;
 struct IntegerAttributeStorage;
 struct FloatAttributeStorage;
@@ -86,11 +86,11 @@ public:
     FIRST_ELEMENTS_ATTR = SplatElements,
     LAST_ELEMENTS_ATTR = SparseElements,
 
-    FIRST_KIND = Bool,
+    FIRST_KIND = Unit,
     LAST_KIND = SparseElements,
   };
 
-  using ImplType = detail::AttributeStorage;
+  using ImplType = AttributeStorage;
   using ValueType = void;
 
   Attribute() : attr(nullptr) {}
