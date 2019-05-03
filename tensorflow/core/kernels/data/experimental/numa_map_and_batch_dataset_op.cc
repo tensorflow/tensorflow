@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -1043,8 +1044,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           size_t sequence_number = 0;
           WORKER_VLOG(4) << "retrieving input.";
           {
-            tracing::ScopedActivity trace(
-                "NumaMapAndBatch::Iterator::Worker::RetrieveInput");
+            profiler::TraceMe activity(
+                "NumaMapAndBatch::Iterator::Worker::RetrieveInput",
+                profiler::TraceMeLevel::kInfo);
             if (!block->manager.RetrieveInput(ctx.get(), &input, &index,
                                               &sequence_number)) {
               return;
@@ -1057,8 +1059,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           std::vector<Tensor> return_values;
           Status s;
           {
-            tracing::ScopedActivity trace(
-                "NumaMapAndBatch::Iterator::Worker::FunctionExecution");
+            profiler::TraceMe activity(
+                "NumaMapAndBatch::Iterator::Worker::FunctionExecution",
+                profiler::TraceMeLevel::kInfo);
             s = instantiated_captured_func_->Run(ctx.get(), std::move(input),
                                                  &return_values);
           }
@@ -1074,8 +1077,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 });
             WORKER_VLOG(4) << "copying tensors to batch output.";
             {
-              tracing::ScopedActivity trace(
-                  "NumaMapAndBatch::Iterator::Worker::BatchCopy");
+              profiler::TraceMe activity(
+                  "NumaMapAndBatch::Iterator::Worker::BatchCopy",
+                  profiler::TraceMeLevel::kInfo);
               for (size_t i = 0; i < return_values.size() && s.ok(); ++i) {
                 Tensor& tensor = return_values.at(i);
                 Tensor* batch = &output->at(i);

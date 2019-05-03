@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
@@ -114,9 +114,9 @@ TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
                                /*finalized=*/false};
   }
 
-  VLOG(1) << port::Printf(
-      "stream %p allocated temporary device memory at %p (size %llu) in "
-      "generation %llu",
+  VLOG(1) << absl::StreamFormat(
+      "stream %p allocated temporary device memory at %p (size %u) in "
+      "generation %u",
       stream_, device_memory.opaque(), byte_size, generation);
   std::unique_ptr<TemporaryDeviceMemoryBase> result(
       new TemporaryDeviceMemoryBase(stream_, device_memory, generation));

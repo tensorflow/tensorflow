@@ -971,9 +971,8 @@ struct TensorFlowIdentityOperator : Operator {
   TensorFlowIdentityOperator() : Operator(OperatorType::kIdentity) {}
 };
 
-// Batch matrix multiplication operator. This comes from the (deprecated)
-// tf.batch_matmul or a tf.matmul that has rank 3. dims(0) is the batch count
-// and it can be trivially unrolled into a series of matmuls on each element.
+// Batch matrix multiplication operator. This comes from a tf.matmul where one
+// of the operands has rank 3 or more.
 //
 // Inputs:
 //   inputs[0]: required: the left-hand side matrix

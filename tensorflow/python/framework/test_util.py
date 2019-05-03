@@ -1337,8 +1337,12 @@ def run_cuda_only(func=None):
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
+  Warning: if not GPU version of the package is installed, the function would
+  also, return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
+  was build with CUDA support.
+
   Args:
-    cuda_only: limit the search to CUDA gpus.
+    cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
       CUDA compute capability required, or None if no requirement.
 
@@ -1358,7 +1362,7 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
      "cuda_or_rocm_only" instead of "cuda_only"
 
   Returns:
-    True if a gpu device of the requested kind is available.
+    True if a GPU device of the requested kind is available.
   """
 
   def compute_capability_from_device_desc(device_desc):
@@ -1579,6 +1583,31 @@ def disable_all_xla(description):
     return cls
 
   return disable_all_impl
+
+
+# The description is just for documentation purposes.
+def no_xla_auto_jit(description):  # pylint: disable=unused-argument
+
+  def no_xla_auto_jit_impl(func):
+    """This test is not intended to be run with XLA auto jit enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Skip test if using XLA is forced.
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return no_xla_auto_jit_impl
 
 
 class EagerSessionWarner(object):

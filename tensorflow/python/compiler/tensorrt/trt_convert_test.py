@@ -29,7 +29,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -50,7 +49,6 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import nest
 
 _SAVED_MODEL_SIGNATURE_KEY = "mypredict"
 
@@ -330,7 +328,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
             is_dynamic_op=True,
             maximum_cached_engines=2,
             use_function_backup=False))
-    converted_concrete_func = converter.convert()
+    converted_func = converter.convert()
 
     def _check_trt_ops(graph_def):
       trt_op_names = [
@@ -344,31 +342,31 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       self.assertIn("TRTEngineOp_0", trt_op_names[0])
 
     # Verify the converted GraphDef and ConcreteFunction.
-    self.assertIsInstance(converted_concrete_func, function.ConcreteFunction)
-    converted_graph_def = converted_concrete_func.graph.as_graph_def()
-    _check_trt_ops(converted_graph_def)
-    output_with_trt = converted_concrete_func(ops.convert_to_tensor(np_input))
-    self.assertEqual(1, len(output_with_trt))
-    self.assertAllClose(
-        expected_output, output_with_trt[0].numpy(), atol=1e-6, rtol=1e-6)
+    self.assertIsInstance(converted_func, def_function.Function)
+    converted_concrete_func = converted_func.get_concrete_function(
+        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32))
+    _check_trt_ops(converted_concrete_func.graph.as_graph_def())
 
-    # Run the converted ConcreteFunction as a function and make sure it works.
-    @def_function.function
-    def wrapper_func(*args, **kwargs):
-      return nest.flatten(converted_concrete_func(*args, **kwargs))
+    # Save the converted model without any TRT engine cache.
+    output_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    converter.save(output_saved_model_dir)
+    unexpected_asset_file = os.path.join(
+        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+    self.assertFalse(os.path.exists(unexpected_asset_file))
 
-    _check_trt_ops(
-        wrapper_func.get_concrete_function(
-            tensor_spec.TensorSpec(shape=[None, 1, 1],
-                                   dtype=dtypes.float32)).graph.as_graph_def())
-    output_with_trt = wrapper_func(np_input)
+    # Run the converted function to populate the engine cache.
+    output_with_trt = converted_func(np_input)
     self.assertEqual(1, len(output_with_trt))
     self.assertAllClose(
         expected_output, output_with_trt[0], atol=1e-6, rtol=1e-6)
 
-    # Save the converted model.
+    # Save the converted model again with serialized engine cache.
     output_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
     converter.save(output_saved_model_dir)
+    expected_asset_file = os.path.join(
+        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+    self.assertTrue(os.path.exists(expected_asset_file))
+    self.assertTrue(os.path.getsize(expected_asset_file))
 
     # Load and verify the converted model.
     #

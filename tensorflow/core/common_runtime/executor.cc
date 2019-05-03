@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
@@ -64,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -1586,11 +1590,11 @@ bool MightTrace(const NodeItem& item,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `tracing::ScopedActivity`,
-  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
-  // these properties internally in their constructors, the cost of passing the
-  // necessary arguments to them can be significant, so we avoid constructing
-  // them in the common case (when we know they will not be used).
+  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // `tracing::ScopedRegion` check subsets of these properties internally in
+  // their constructors, the cost of passing the necessary arguments to them can
+  // be significant, so we avoid constructing them in the common case (when we
+  // know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
@@ -1598,12 +1602,10 @@ bool MightTrace(const NodeItem& item,
   if (trace_collector) {
     if (using_annotations) {
       return trace_collector->IsEnabledForAnnotations();
-    } else {
-      return trace_collector->IsEnabledForActivities(
-          item.kernel->IsExpensive());
     }
   }
-  return false;
+  return profiler::TraceMeRecorder::Active(
+      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
@@ -1807,16 +1809,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
-            // 'ScopedActivity' will trace the OpKernel scheduling time.
-            tracing::ScopedActivity activity(kernel_label);
+            // 'TraceMe' will trace the OpKernel scheduling time.
+            profiler::TraceMe activity(absl::string_view(kernel_label),
+                                       profiler::TraceMeLevel::kInfo);
             // 'ScopedAnnotation' will trace the OpKernel execution time.
             tracing::ScopedAnnotation annotation(kernel_label);
             device->Compute(op_kernel, &ctx);
           } else {
-            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // Use the cheaper `TraceMe` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(kernel_label,
-                                             op_kernel->IsExpensive());
+            profiler::TraceMe activity(
+                absl::string_view(kernel_label),
+                profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
             device->Compute(op_kernel, &ctx);
           }
         } else {
@@ -2085,23 +2089,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
-  auto activity_handle =
-      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
-    auto* trace_collector = tracing::GetTraceCollector();
-    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
-                         trace_collector->IsEnabledForActivities(
-                             false /* is_expensive */))) {
-      const string& op_name = item->kernel->name();
-      // Intentionally using ExecutorPropagateOutputs as the first key so that
-      // users are aware that it's not the op invocation.
-      return trace_collector->CreateActivityHandle(
-          "ExecutorPropagateOutputs",
-          strings::StrCat(op_name, "#id=", step_id_, "#"),
-          false /* is_expensive */);
-    } else {
-      return nullptr;
-    }
-  }();
+  auto activity_handle = absl::make_unique<profiler::TraceMe>(
+      [&]() {
+        return strings::StrCat("ExecutorPropagateOutputs:",
+                               item->kernel->name(), "#id=", step_id_, "#");
+      },
+      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;

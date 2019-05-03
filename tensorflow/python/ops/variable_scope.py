@@ -893,7 +893,7 @@ class _VariableStore(object):
       else:
         # Instantiate initializer if provided initializer is a type object.
         if tf_inspect.isclass(initializer):
-          initializer = initializer(dtype=dtype)
+          initializer = initializer()
         if shape is not None and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(),

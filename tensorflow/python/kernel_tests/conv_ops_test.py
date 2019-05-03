@@ -163,7 +163,6 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
-
     if use_gpu and not test_util.GpuSupportsHalfMatMulAndConv():
       return [dtypes.float32] + ([dtypes.float64] if not test.is_built_with_rocm else [])
     else:

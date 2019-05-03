@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 #define TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 
+/**
+ * Wrappers and helpers for CUDA device code.
+ *
+ * Wraps the warp-cooperative intrinsics introduced in CUDA 9 to provide
+ * backwards compatibility, see go/volta-porting for details.
+ * Provides atomic operations on types that aren't natively supported.
+ */
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
@@ -133,9 +141,12 @@ __device__ const unsigned kCudaWarpAll = 0xffffffff;
 __device__ inline unsigned GpuLaneId() {
   unsigned int lane_id;
 #if GOOGLE_CUDA
+#if __clang__
+  return __nvvm_read_ptx_sreg_laneid();
+#else   // __clang__
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+#endif  // __clang__
 #elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
   lane_id = __lane_id();
 #endif
   return lane_id;
@@ -163,7 +174,8 @@ __device__ inline bool GpuValidateShuffleSyncMask(unsigned mask,
 #if GOOGLE_CUDA
   unsigned src_lane_mask = __shfl(mask, src_lane);
 #elif TENSORFLOW_USE_ROCM
-  unsigned src_lane_mask = __shfl(static_cast<int>(mask), static_cast<int>(src_lane));
+  unsigned src_lane_mask =
+      __shfl(static_cast<int>(mask), static_cast<int>(src_lane));
 #endif
 #endif
   return (src_dst_mask & ~mask) == 0 && src_lane_mask == mask;
@@ -286,20 +298,21 @@ __device__ T GpuShuffleSync(unsigned mask, T value, int src_lane,
 // See b/69446944.
 __device__ inline double GpuShuffleSync(unsigned mask, double value,
                                          int src_lane, int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleSync(mask, hi, src_lane, width);
   lo = GpuShuffleSync(mask, lo, src_lane, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl(static_cast<int>(hi), src_lane, width);
   lo = __shfl(static_cast<int>(lo), src_lane, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleSync, CudaShuffleSync);
@@ -325,20 +338,21 @@ __device__ inline T GpuShuffleUpSync(unsigned mask, T value, unsigned delta,
 __device__ inline double GpuShuffleUpSync(unsigned mask, double value,
                                            unsigned delta,
                                            int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleUpSync(mask, hi, delta, width);
   lo = GpuShuffleUpSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_up(static_cast<int>(hi), delta, width);
   lo = __shfl_up(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
 
@@ -363,20 +377,21 @@ __device__ inline T GpuShuffleDownSync(unsigned mask, T value, unsigned delta,
 __device__ inline double GpuShuffleDownSync(unsigned mask, double value,
                                              unsigned delta,
                                              int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleDownSync(mask, hi, delta, width);
   lo = GpuShuffleDownSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_down(static_cast<int>(hi), delta, width);
   lo = __shfl_down(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
 
@@ -400,14 +415,18 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
 #endif
 }
 
-
 #if TENSORFLOW_USE_ROCM
-__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value, int lane_mask,
-                                int width = warpSize) {
+__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask,
+                                                Eigen::half value,
+                                                int lane_mask,
+                                                int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
-  return static_cast<Eigen::half>(__shfl_xor(static_cast<float>(value), lane_mask, width));
+  // TODO(rocm): This doesn't preserve NaN payload and flushes denorms to zero,
+  // maybe this should be implemented differently?
+  return static_cast<Eigen::half>(
+      __shfl_xor(static_cast<float>(value), lane_mask, width));
 }
 #endif
 
@@ -417,20 +436,21 @@ __device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value
 __device__ inline double GpuShuffleXorSync(unsigned mask, double value,
                                             int lane_mask,
                                             int width = warpSize) {
-  unsigned lo, hi;
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleXorSync(mask, hi, lane_mask, width);
   lo = GpuShuffleXorSync(mask, lo, lane_mask, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_xor(static_cast<int>(hi), lane_mask, width);
   lo = __shfl_xor(static_cast<int>(lo), lane_mask, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorSync, CudaShuffleXorSync);
@@ -520,15 +540,16 @@ __device__ float GpuAtomicCasHelper(float* ptr, F accumulate) {
 template <typename F>
 __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
 #if TENSORFLOW_USE_ROCM
-  // FIXME : remove the workaround below once bug is fixed
+  // FIXME: remove the workaround below once bug is fixed.
   // HIP has a bug in the implementation of __longlong_as_double
-  // So workaround it by using reinterpret_cast<double*>
-  uint64_t result = GpuAtomicCasHelper(
-      reinterpret_cast<tensorflow::uint64*>(ptr),
-      [accumulate](tensorflow::uint64 a) {
-	return __double_as_longlong(accumulate(*(reinterpret_cast<double*>(&a))));
-      });
- return *(reinterpret_cast<double*>(&result));
+  // So workaround it by using reinterpret_cast<double*>.
+  uint64_t result =
+      GpuAtomicCasHelper(reinterpret_cast<tensorflow::uint64*>(ptr),
+                          [accumulate](tensorflow::uint64 a) {
+                            return __double_as_longlong(
+                                accumulate(*(reinterpret_cast<double*>(&a))));
+                          });
+  return *(reinterpret_cast<double*>(&result));
 #else
   return __longlong_as_double(GpuAtomicCasHelper(
       reinterpret_cast<tensorflow::uint64*>(ptr),
@@ -803,9 +824,8 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicDiv, CudaAtomicDiv);
 
-#if GOOGLE_CUDA
 // Operator overloads for complex numbers.
-
+#if GOOGLE_CUDA
 __device__ inline std::complex<float> operator+(const std::complex<float>& a,
                                                 const std::complex<float>& b) {
   auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
@@ -861,7 +881,7 @@ __device__ inline std::complex<double> operator/(
                        make_cuDoubleComplex(b.real(), b.imag()));
   return std::complex<double>(result.x, result.y);
 }
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 

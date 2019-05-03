@@ -302,7 +302,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

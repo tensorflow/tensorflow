@@ -262,6 +262,14 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     self.assertEqual(_nested_value("2"),
                      values.select_device_mirrored(_device_str(1), result))
 
+  def testWrapAListOfTwoTuples(self):
+    device_map = values.ReplicaDeviceMap((_device_str(0), _device_str(1)))
+    result = values.regroup(device_map, [("1", "2"), ("3", "4")])
+    self.assertIsInstance(result, tuple)
+    self.assertEqual(2, len(result))
+    self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
+    self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
+
   def testMirroredContainer(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")

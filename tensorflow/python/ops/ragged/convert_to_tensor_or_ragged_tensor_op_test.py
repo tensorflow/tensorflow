@@ -41,6 +41,17 @@ class RaggedConvertToTensorOrRaggedTensorTest(
       dict(pylist=[[1, 2], [3]]),
       dict(pylist=[[1, 2], [3]], preferred_dtype=dtypes.float32),
       dict(pylist=[[1, 2], [3]], preferred_dtype=dtypes.string),
+      # Note: Conversion of a single np.array is tested below. These tests
+      # check nestings consisting of multiple or irregularily-shaped np.arrays.
+      dict(
+          pylist=[np.array([1, 2]), np.array([3])],
+          preferred_dtype=dtypes.string),
+      dict(pylist=np.array([[1, 2], [3]]), preferred_dtype=dtypes.float32),
+      dict(pylist=np.array([[1, 2], [3]]), preferred_dtype=dtypes.string),
+      dict(
+          pylist=[np.array([[1], np.array([2])]), [np.array([3])]],
+          preferred_dtype=dtypes.float32),
+      dict(pylist=[np.array(1)], preferred_dtype=dtypes.string),
   ])
   def testConvertRaggedTensor(self, pylist, dtype=None, preferred_dtype=None):
     rt = ragged_factory_ops.constant(pylist)
@@ -51,6 +62,11 @@ class RaggedConvertToTensorOrRaggedTensorTest(
   @parameterized.parameters([
       dict(
           pylist=[[1, 2], [3, 4]],
+          dtype=dtypes.float32,
+          message=('Tensor conversion requested dtype float32 for '
+                   'RaggedTensor with dtype int32')),
+      dict(
+          pylist=np.array([[1, 2], [3, 4]]),
           dtype=dtypes.float32,
           message=('Tensor conversion requested dtype float32 for '
                    'RaggedTensor with dtype int32')),

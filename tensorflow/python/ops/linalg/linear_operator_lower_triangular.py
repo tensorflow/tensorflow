@@ -191,7 +191,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         message="Singular operator:  Diagonal contained zero values.")
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    return linear_operator_util.matmul_with_broadcast(
+    return math_ops.matmul(
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):

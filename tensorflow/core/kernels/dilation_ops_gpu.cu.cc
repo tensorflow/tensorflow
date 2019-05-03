@@ -195,7 +195,7 @@ struct Dilation<GPUDevice, T> {
     const int total_count = batch * output_rows * output_cols * depth;
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
 
-    GPU_LAUNCH_KERNEL(DilationKernel,
+    GPU_LAUNCH_KERNEL(DilationKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input.data(), filter.data(), batch,
         input_rows, input_cols, depth, filter_rows, filter_cols, output_rows,
@@ -229,14 +229,14 @@ struct DilationBackpropInput<GPUDevice, T> {
     // Initialize in_backprop with all zeros.
     total_count = batch * input_rows * input_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(SetZero,
+    GPU_LAUNCH_KERNEL(SetZero<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         total_count, in_backprop.data());
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(DilationBackpropInputKernel,
+    GPU_LAUNCH_KERNEL(DilationBackpropInputKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input.data(), filter.data(),
         out_backprop.data(), batch, input_rows, input_cols, depth, filter_rows,
@@ -270,14 +270,14 @@ struct DilationBackpropFilter<GPUDevice, T> {
     // Initialize filter_backprop with all zeros.
     total_count = filter_rows * filter_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(SetZero,
+    GPU_LAUNCH_KERNEL(SetZero<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         total_count, filter_backprop.data());
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(DilationBackpropFilterKernel,
+    GPU_LAUNCH_KERNEL(DilationBackpropFilterKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input.data(), filter.data(),
         out_backprop.data(), batch, input_rows, input_cols, depth, filter_rows,

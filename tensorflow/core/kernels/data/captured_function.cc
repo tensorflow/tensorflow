@@ -633,8 +633,14 @@ void InstantiatedCapturedFunction::RunAsync(
     FunctionLibraryRuntime::DoneCallback done, const string& prefix) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    done(RunShortCircuit(info, std::move(args),
-                         captured_func_->captured_inputs(), rets));
+    // Run the `done` callback on a threadpool thread, because it will
+    // potentially do a non-trivial amount of (e.g. copying) work, and we may
+    // want to run that concurrently with the next invocation.
+    Status s = RunShortCircuit(info, std::move(args),
+                               captured_func_->captured_inputs(), rets);
+    (*ctx->runner())(
+        std::bind([s](FunctionLibraryRuntime::DoneCallback& done) { done(s); },
+                  std::move(done)));
     return;
   }
 

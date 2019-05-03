@@ -52,7 +52,7 @@ limitations under the License.
 // You can convert to Hexadecimal output rather than Decimal output using Hex.
 // To do this, pass strings::Hex(my_int) as a parameter to StrCat. You may
 // specify a minimum field width using a separate parameter, so the equivalent
-// of Printf("%04x", my_int) is StrCat(Hex(my_int, strings::ZERO_PAD_4))
+// of Printf("%04x", my_int) is StrCat(Hex(my_int, strings::kZeroPad4))
 //
 // This class has implicit constructors.
 namespace tensorflow {

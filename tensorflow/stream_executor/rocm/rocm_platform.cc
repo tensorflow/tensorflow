@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/rocm/rocm_platform.h"
-
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -90,7 +90,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
 
   return port::Status{
       port::error::NOT_FOUND,
-      port::Printf("Executor for bus %d not found.", bus_ordinal)};
+      absl::StrFormat("Executor for bus %d not found.", bus_ordinal)};
 }
 
 Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
@@ -107,6 +107,11 @@ int ROCmPlatform::VisibleDeviceCount() const {
 }
 
 const string& ROCmPlatform::Name() const { return name_; }
+
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+ROCmPlatform::DescriptionForDevice(int ordinal) const {
+  return GpuExecutor::CreateDeviceDescription(ordinal);
+}
 
 port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
@@ -139,7 +144,7 @@ ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   if (!init_status.ok()) {
     return port::Status{
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for ROCM device ordinal %d: %s",
             config.ordinal, init_status.ToString().c_str())};
   }

@@ -126,6 +126,16 @@ xla::PrimitiveType XlaOpKernelContext::input_xla_type(int index) {
   return type;
 }
 
+xla::PrimitiveType XlaOpKernelContext::InputXlaType(absl::string_view name) {
+  xla::PrimitiveType type;
+  Status status = DataTypeToPrimitiveType(InputType(name), &type);
+  if (!status.ok()) {
+    SetStatus(status);
+    return xla::PRIMITIVE_TYPE_INVALID;
+  }
+  return type;
+}
+
 Status XlaOpKernelContext::ConstantInput(int index,
                                          xla::Literal* constant_literal) {
   return ConstantInputReshaped(

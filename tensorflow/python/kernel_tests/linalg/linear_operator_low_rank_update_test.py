@@ -46,19 +46,19 @@ class BaseLinearOperatorLowRankUpdatetest(object):
   # If False, A = L + UDU^H or A = L + UU^H, depending on _use_diag_update
   _use_v = None
 
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     # Previously we had a (2, 10, 10) shape at the end.  We did this to test the
     # inversion and determinant lemmas on not-tiny matrices, since these are
     # known to have stability issues.  This resulted in test timeouts, so this
     # shape has been removed, but rest assured, the tests did pass.
     return [
-        build_info((0, 0)),
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 4, 4))]
+        shape_info((0, 0)),
+        shape_info((1, 1)),
+        shape_info((1, 3, 3)),
+        shape_info((3, 4, 4)),
+        shape_info((2, 1, 4, 4))]
 
   def _gen_positive_diag(self, dtype, diag_shape):
     if dtype.is_complex:
@@ -69,10 +69,10 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     return linear_operator_test_util.random_uniform(
         diag_shape, minval=1e-4, maxval=1., dtype=dtype)
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder,
-                           ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self, shape_info, dtype, use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     # Recall A = L + UDV^H
-    shape = list(build_info.shape)
+    shape = list(shape_info.shape)
     diag_shape = shape[:-1]
     k = shape[-2] // 2 + 1
     u_perturbation_shape = shape[:-1] + [k]
@@ -179,8 +179,8 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UDU^H, D !> 0, L > 0 ==> A !> 0 and we cannot use a Cholesky."""
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     return ["cholesky"]
 
   _use_diag_update = True
@@ -222,8 +222,8 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UV^H, L > 0 ==> A is not symmetric and we cannot use a Cholesky."""
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     return ["cholesky"]
 
   _use_diag_update = False
@@ -323,4 +323,14 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(
+      LinearOperatorLowRankUpdatetestWithDiagUseCholesky)
+  linear_operator_test_util.add_tests(
+      LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky)
+  linear_operator_test_util.add_tests(
+      LinearOperatorLowRankUpdatetestNoDiagUseCholesky)
+  linear_operator_test_util.add_tests(
+      LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky)
+  linear_operator_test_util.add_tests(
+      LinearOperatorLowRankUpdatetestWithDiagNotSquare)
   test.main()

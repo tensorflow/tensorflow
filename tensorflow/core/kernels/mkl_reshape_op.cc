@@ -263,6 +263,7 @@ class MklReshapeOp : public OpKernel {
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklReshapeOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
 

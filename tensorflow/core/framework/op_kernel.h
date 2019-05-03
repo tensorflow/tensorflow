@@ -1225,6 +1225,8 @@ class OpKernelContext {
 
   bool input_is_ref(int index) const;
 
+  void set_record_memory_consumption(bool v) { record_memory_consumption_ = v; }
+
   // Used by OpKernel implementations to track actively running deferred ops.
   //
   // A deferred op is one whose Compute method returns (or whose ComputeAsync
@@ -1245,6 +1247,7 @@ class OpKernelContext {
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);
+  bool record_memory_consumption_ = false;
 
   // Internal method to add a tensor's buffer to the list of buffers
   // referenced during the execution of the Op, so that GPUs may

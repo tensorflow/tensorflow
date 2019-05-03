@@ -210,6 +210,18 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertTrue(test_model.uses_custom_build, 'Model should use user '
                                                   'defined build when called.')
 
+  def test_attribute_conflict_error(self):
+
+    class ModelWithProperty(keras.Model):
+
+      @property
+      def read_only(self):
+        return 1.
+
+    m = ModelWithProperty()
+    with self.assertRaisesRegexp(AttributeError, 'read_only'):
+      m.read_only = 2.
+
   def test_custom_build_with_fit(self):
 
     class DummyModel(keras.Model):

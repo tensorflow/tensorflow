@@ -246,11 +246,11 @@ tf_module {
   }
   member_method {
     name: "ssim"
-    argspec: "args=[\'img1\', \'img2\', \'max_val\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'11\', \'1.5\', \'0.01\', \'0.03\'], "
   }
   member_method {
     name: "ssim_multiscale"
-    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\'], "
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\', \'11\', \'1.5\', \'0.01\', \'0.03\'], "
   }
   member_method {
     name: "total_variation"

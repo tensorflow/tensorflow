@@ -215,10 +215,10 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
       });
-  typed_visitors_[OPAQUE] =
+  typed_visitors_[OPAQUE_TYPE] =
       absl::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
-            "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
+            "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE_TYPE.");
       });
   typed_visitors_[TOKEN] =
       absl::make_unique<FunctionVisitor>([](HloInstruction*) {
@@ -497,7 +497,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   switch (elem_ty) {
     case PRED:
     case TUPLE:
-    case OPAQUE:
+    case OPAQUE_TYPE:
     case TOKEN:
     case S8:
     case S16:

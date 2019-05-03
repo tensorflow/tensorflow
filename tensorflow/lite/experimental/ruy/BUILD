@@ -8,6 +8,8 @@ package(
     default_visibility = ["//visibility:private"],
 )
 
+load(":ruy_visibility.bzl", "ruy_visibility")
+
 cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
@@ -127,6 +129,7 @@ cc_library(
     hdrs = [
         "thread_pool.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
         ":check_macros",
@@ -174,6 +177,7 @@ cc_library(
     hdrs = [
         "context.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":check_macros",
@@ -245,8 +249,6 @@ cc_library(
     ],
 )
 
-load(":ruy_visibility.bzl", "ruy_visibility")
-
 # The main library.
 cc_library(
     name = "ruy",
@@ -254,7 +256,11 @@ cc_library(
         "dispatch.h",
         "impl.h",
     ],
-    hdrs = ["ruy.h"],
+    hdrs = [
+        "matrix.h",
+        "path.h",
+        "ruy.h",
+    ],
     visibility = ruy_visibility(),
     deps = [
         ":allocator",
@@ -263,10 +269,8 @@ cc_library(
         ":common",
         ":context",
         ":kernel",
-        ":matrix",
         ":opt_set",
         ":pack",
-        ":path",
         ":size_util",
         ":spec",
         ":thread_pool",

@@ -1312,6 +1312,36 @@ class RNNTest(keras_parameterized.TestCase):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, None))
 
+  @parameterized.parameters(
+      [keras.layers.SimpleRNNCell, keras.layers.GRUCell, keras.layers.LSTMCell])
+  def test_state_spec_with_stack_cell(self, cell):
+    # See https://github.com/tensorflow/tensorflow/issues/27817 for more detail.
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    output_dim = 8
+
+    def create_cell():
+      return [cell(output_dim),
+              cell(output_dim),
+              cell(output_dim)]
+
+    inputs = keras.Input((timesteps, input_dim))
+    encoder_output = keras.layers.RNN(create_cell(), return_state=True)(inputs)
+
+    states = encoder_output[1:]
+
+    decoder_output = keras.layers.RNN(
+        create_cell())(inputs, initial_state=states)
+
+    model = keras.models.Model(inputs, decoder_output)
+    model.compile(optimizer='rmsprop', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)),
+        np.zeros((batch, output_dim)))
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
 
 class RNNCellWithConstants(keras.layers.Layer):
 

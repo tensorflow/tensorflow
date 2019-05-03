@@ -45,6 +45,7 @@ struct PerThreadState {
 struct Context final {
   Path last_taken_path = Path::kNone;
   Tuning explicit_tuning = Tuning::kAuto;
+  // TODO(benoitjacob) rename that thread_pool. Current name is gemmlowp legacy.
   ThreadPool workers_pool;
   int max_num_threads = 1;
   // State for each thread in the thread pool. Entry 0 is the main thread.

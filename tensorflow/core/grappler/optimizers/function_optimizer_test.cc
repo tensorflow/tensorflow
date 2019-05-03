@@ -59,131 +59,26 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  int count = 0;
-  for (const NodeDef& node : output.node()) {
-    if (node.name() == "y/inlined_inputs") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-    } else if (node.name() == "y/x") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/inlined_inputs:0", node.input(0));
-    } else if (node.name() == "y/two") {
-      count++;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^y/inlined_inputs", node.input(0));
-    } else if (node.name() == "y/scale") {
-      count++;
-      EXPECT_EQ("Cast", node.op());
-      EXPECT_EQ(kDevice, node.device());
-    } else if (node.name() == "y/y") {
-      count++;
-      EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("y/x", node.input(0));
-      EXPECT_EQ("y/scale", node.input(1));
-    } else if (node.name() == "y") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/y", node.input(0));
-    } else if (node.name() == "z") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y", node.input(0));
-    }
-  }
-  EXPECT_EQ(7, count);
+  const string arg0 = "Func/y/input/_0";
+  const string ret0 = "Func/y/output/_1";
+
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  GraphDef expected = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+       NDef(arg0, "Identity", {"x"}, {{"T", DT_FLOAT}}),
+       NDef("y/two", "Const", {}, {{"dtype", DT_INT64}, {"value", kTwo}}),
+       NDef("y/scale", "Cast", {"y/two"},
+            {{"DstT", DT_FLOAT}, {"SrcT", DT_INT64}}),
+       NDef("y/y", "Mul", {arg0, "y/scale"}, {{"T", DT_FLOAT}}),
+       NDef(ret0, "Identity", {"y/y"}, {{"T", DT_FLOAT}}),
+       NDef("z", "Identity", {ret0}, {{"T", DT_FLOAT}})},
+      {});
+  for (NodeDef& node : *expected.mutable_node()) node.set_device(kDevice);
+
+  CompareGraphs(expected, output);
 
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};
-  item.feed.emplace_back("x", pi);
-  auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized = item.WithGraph(std::move(output));
-  auto tensors = EvaluateFetchNodes(optimized);
-  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
-}
-
-TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
-  using test::function::NDef;
-
-  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
-
-  // Standard XTimesTwo() function.
-  FunctionDef x_times_two = test::function::XTimesTwo();
-
-  // Function signature has non-type attribute (currently not supported).
-  FunctionDef my_identity_n = FunctionDefHelper::Create(
-      // Name
-      "MyIdentityN",
-      // Args
-      {"x: N*T"},
-      // Return values
-      {"out: N*T"},
-      // Attrs
-      {"N:int", "T:{float, double, int32, int64}"},
-      // Nodes (just forward inputs through IdentityN)
-      {
-          {{"Id"}, "IdentityN", {"x"}, {{"T", "$T"}, {"N", "$N"}}},
-      },
-      // Output mapping
-      {{"out", "Id:output:0"}});
-
-  GrapplerItem item;
-  item.graph = test::function::GDef(
-      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
-       NDef("y1", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, kDevice),
-       NDef("y2", "MyIdentityN", {"x"}, {{"T", DT_FLOAT}, {"N", 1}}, kDevice),
-       NDef("z1", "Identity", {"y1:0"}, {{"T", DT_FLOAT}}, kDevice),
-       NDef("z2", "Identity", {"y2:0"}, {{"T", DT_FLOAT}}, kDevice)},
-      // FunctionLib
-      {x_times_two, my_identity_n});
-
-  GraphDef output;
-  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
-
-  // Verify that only MyIdentityN is in the function library after optimization.
-  ASSERT_EQ(1, output.library().function().size());
-  EXPECT_EQ("MyIdentityN", output.library().function(0).signature().name());
-
-  // And that XTimesTwo was successfully inlined.
-  int found = 0;
-  for (const NodeDef& node : output.node()) {
-    if (node.name() == "y1/inlined_inputs") {
-      found++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-    } else if (node.name() == "y1") {
-      found++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y1/y", node.input(0));
-    } else if (node.name() == "y2") {
-      found++;
-      EXPECT_EQ("MyIdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-    }
-  }
-  EXPECT_EQ(3, found);
-
-  Tensor pi = test::AsScalar<float>(3.14f);
-  item.fetch = {"z1"};
   item.feed.emplace_back("x", pi);
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
@@ -234,53 +129,12 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  int count = 0;
+  // Calls to XTimesTwo were removed from the graph.
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "y/inlined_inputs") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-    } else if (node.name() == "y/x") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/inlined_inputs:0", node.input(0));
-    } else if (node.name() == "y/two") {
-      count++;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^y/inlined_inputs", node.input(0));
-      EXPECT_EQ(kDevice, node.device());
-    } else if (node.name() == "y/y") {
-      count++;
-      EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("y/x", node.input(0));
-      EXPECT_EQ("y/two", node.input(1));
-    } else if (node.name() == "y") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/y", node.input(0));
-    } else if (node.name() == "z") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y", node.input(0));
-    } else if (node.name() == "y/enter") {
-      count++;
-      EXPECT_TRUE(IsEnter(node));
-      const string frame_name = node.attr().at("frame_name").s();
-      EXPECT_EQ("y/frame", frame_name);
-    }
+    EXPECT_NE(node.op(), "XTimesTwo");
   }
-  EXPECT_EQ(7, count);
+  // And the function itself was removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
 
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};
@@ -324,47 +178,12 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithOutputMapping) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  int count = 0;
+  // Function call was removed from the graph.
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "y/inlined_inputs") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-    } else if (node.name() == "y/in") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/inlined_inputs:0", node.input(0));
-    } else if (node.name() == "y/Linear_func") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/in", node.input(0));
-    } else if (node.name() == "y/Exp") {
-      count++;
-      EXPECT_EQ("Exp", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/Linear_func", node.input(0));
-    } else if (node.name() == "y") {
-      count++;
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y/Exp", node.input(0));
-    } else if (node.name() == "z") {
-      count++;
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("y", node.input(0));
-    }
+    EXPECT_NE(node.op(), "Exp_func");
   }
-  EXPECT_EQ(6, count);
+  // And the function itself was removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
 
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};
@@ -413,6 +232,13 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithInputForwarding) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
+  // Function call was removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "ForwardInputs");
+  }
+  // And the function itself was removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
+
   item.fetch = {"z0", "z1", "z2"};
   item.feed.emplace_back("x0", test::AsScalar<float>(3.14f));
   item.feed.emplace_back("x1", test::AsScalar<float>(2.7f));
@@ -449,7 +275,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
 
   GrapplerItem item;
   item.graph = test::function::GDef(
-      {NDef("y", "GenerateTwo", {}, {}, kDevice),
+      {NDef("y", "GenerateTwo", {}, {{"T", DT_FLOAT}}, kDevice),
        NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, kDevice)},
       // FunctionLib
       {
@@ -459,8 +285,18 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  // For now we won't inline the function.
-  EXPECT_EQ(item.graph.DebugString(), output.DebugString());
+  // Function call was removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "GenerateTwo");
+  }
+  // And the function itself was removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
+
+  item.fetch = {"z"};
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized = item.WithGraph(std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithNestedFunctionCall) {
@@ -494,58 +330,13 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithNestedFunctionCall) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  int count = 0;
+  // Function calls were removed from the graph.
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "square/inlined_inputs" && ++count) {
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("a", node.input(0));
-    } else if (node.name() == "square/x" && ++count) {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/inlined_inputs:0", node.input(0));
-    } else if (node.name() == "square/output/inlined_inputs" && ++count) {
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("square/x", node.input(0));
-      EXPECT_EQ("square/x", node.input(1));
-    } else if (node.name() == "square/output/x" && ++count) {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output/inlined_inputs:0", node.input(0));
-    } else if (node.name() == "square/output/y" && ++count) {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output/inlined_inputs:1", node.input(0));
-    } else if (node.name() == "square/output/output" && ++count) {
-      EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("square/output/x", node.input(0));
-      EXPECT_EQ("square/output/y", node.input(1));
-    } else if (node.name() == "square/output" && ++count) {
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output/output", node.input(0));
-    } else if (node.name() == "square" && ++count) {
-      EXPECT_EQ("IdentityN", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square/output", node.input(0));
-    } else if (node.name() == "outputs" && ++count) {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(kDevice, node.device());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("square:0", node.input(0));
-    }
+    EXPECT_NE(node.op(), "MySquare");
+    EXPECT_NE(node.op(), "MyMul");
   }
-  EXPECT_EQ(9, count);
+  // And functions were removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
 
   item.fetch = {"outputs"};
   item.feed.emplace_back("a", test::AsScalar<float>(2.0f));
@@ -1925,7 +1716,7 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
     } else if (node.name() == "use_fn4_2" && ++found) {
       EXPECT_EQ("fn4:0", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
-      EXPECT_EQ("fn5:0", node.input(0));
+      EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
       EXPECT_EQ("fn5:1", node.input(0));
     }
@@ -2086,7 +1877,7 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
     } else if (node.name() == "use_fn4_2" && ++found) {
       EXPECT_EQ("fn4:0", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
-      EXPECT_EQ("fn5:0", node.input(0));
+      EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
       EXPECT_EQ("fn5:1", node.input(0));
     }

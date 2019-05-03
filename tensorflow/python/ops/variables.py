@@ -670,7 +670,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -687,7 +687,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -734,7 +734,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -836,7 +836,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -887,7 +887,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -1993,7 +1993,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2017,7 +2017,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2071,7 +2071,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2176,7 +2176,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2228,7 +2228,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.

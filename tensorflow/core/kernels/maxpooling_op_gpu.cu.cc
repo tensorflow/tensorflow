@@ -419,14 +419,14 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
   const int output_size = batch * channels * pooled_height * pooled_width;
   if (output_size == 0) return true;
   if (propagate_nans) {
-    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<true>,
+    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<true, T>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
         output_size, bottom_data, height, width, channels, pooled_height,
         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
         top_data, mask, include_batch_in_index);
   } else {
-    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<false>,
+    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<false, T>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
         output_size, bottom_data, height, width, channels, pooled_height,
@@ -447,13 +447,13 @@ bool MaxPoolBackwardNoMask<T>::operator()(
 
   const int bottom_size = batch * channels * height * width;
   if (bottom_size == 0) return true;
-    GPU_LAUNCH_KERNEL(SetZero,
+    GPU_LAUNCH_KERNEL(SetZero<T>,
       dim3((bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       bottom_size, bottom_diff);
 
   const int top_size = batch * channels * pooled_height * pooled_width;
-  GPU_LAUNCH_KERNEL(MaxPoolBackwardNoMaskNHWC,
+  GPU_LAUNCH_KERNEL(MaxPoolBackwardNoMaskNHWC<T>,
       dim3((top_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       top_size, bottom_data, height, width, channels, pooled_height,
@@ -470,11 +470,11 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
   if (input_size == 0) return true;
-  GPU_LAUNCH_KERNEL(SetZero,
+  GPU_LAUNCH_KERNEL(SetZero<T>,
       dim3((input_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       input_size, bottom_diff);
-  GPU_LAUNCH_KERNEL(MaxPoolBackward,
+  GPU_LAUNCH_KERNEL(MaxPoolBackward<T>,
       dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff,
@@ -495,13 +495,13 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
   GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
-    GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNHWC,
+    GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNHWC<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         num_kernels, bottom_data, output_data, pooled_height, pooled_width,
         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
         pad_l, top_diff, bottom_diff);
   } else {
-      GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNCHW, dim3(config.block_count),
+      GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNCHW<T>, dim3(config.block_count),
          dim3(config.thread_per_block), 0, d.stream(), num_kernels,
          bottom_data, output_data, pooled_height, pooled_width,
          channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
@@ -518,7 +518,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-  GPU_LAUNCH_KERNEL(MaxPoolGradBackward, dim3(config.block_count),
+  GPU_LAUNCH_KERNEL(MaxPoolGradBackward<T>, dim3(config.block_count),
         dim3(config.thread_per_block), 0, d.stream(), output_size, top_diff,
         mask, top_offset, bottom_offset, bottom_diff,
         include_batch_in_index);

@@ -814,19 +814,17 @@ class ControlFlowTest(test.TestCase):
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": 210, "b": 210}, test_result)
 
-  @test_util.run_deprecated_v1
   def testEmbeddedListOutput(self):
-    with self.cached_session() as sess:
-      x = constant_op.constant(10)
-      y = constant_op.constant(200)
-      pred = math_ops.less(1, 2)
-      fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
-      fn2 = lambda: [[y, y]]
-      # Pass strict=True flag as cond_v2 allows for tensors to be
-      # in nested output structures as singletons
-      r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
-      test_result = self.evaluate(r)
-      self.assertListEqual([[210, 210]], test_result)
+    x = constant_op.constant(10)
+    y = constant_op.constant(200)
+    pred = math_ops.less(1, 2)
+    fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
+    fn2 = lambda: [[y, y]]
+    # Pass strict=True flag as cond_v2 allows for tensors to be
+    # in nested output structures as singletons
+    r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
+    test_result = self.evaluate(r)
+    self.assertListEqual([[210, 210]], test_result)
 
   def testEmbeddedTupleOutput(self):
     with self.cached_session() as sess:
@@ -1790,6 +1788,18 @@ class ControlFlowTest(test.TestCase):
       r = r[1] * array_ops.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), self.evaluate(r))
 
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShape(self):
+    x = constant_op.constant([2.0, 4.0], name="values")
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+    b = lambda i, x: [i + 1, x + 1]
+    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+      # Shape of x is [2], but we specify a shape of [5].
+      control_flow_ops.while_loop(
+          c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
+
   @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
@@ -1807,7 +1817,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], self.evaluate(r))
 
-  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInference(self):
     with self.cached_session():
       i = constant_op.constant(0)
@@ -1822,19 +1831,23 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           c, b, [i, m],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
-      self.assertIsNone(r[1].shape.dims[0].value)
-      self.assertEqual(r[1].shape.dims[1], tensor_shape.Dimension(2))
+      self.assertTrue(r[1].shape.is_compatible_with([8, 2]))
 
+  @test_util.run_v1_only("b/120545219")
+  def testWhileShapeInferenceBadShape(self):
+    with self.cached_session():
+      i = constant_op.constant(0)
+      m = array_ops.ones([2, 2])
+      c = lambda i, j: math_ops.less(i, 2)
+      b = lambda i, j: [i + 1, array_ops.concat([j, j], 0)]
       with self.assertRaisesRegexp(
           ValueError,
           r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
           r"shape \(4, 2\) after one iteration. To allow the shape to vary "
           r"across iterations, use the `shape_invariants` argument of "
           r"tf.while_loop to specify a less-specific shape."):
-        r = control_flow_ops.while_loop(c, b, [i, m])
+        control_flow_ops.while_loop(c, b, [i, m])
 
-  @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
-  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInferenceSparseTensor(self):
     values = constant_op.constant([2.0, 4.0], name="values")
     indices = constant_op.constant([[0], [3]],
@@ -1873,61 +1886,72 @@ class ControlFlowTest(test.TestCase):
               array_ops.concat([x.dense_shape, [10]], axis=0))
       ]
 
+    def check_shapes(r, indices, values, dense_shape):
+      self.assertTrue(r.indices.shape.is_compatible_with(indices))
+      self.assertTrue(r.values.shape.is_compatible_with(values))
+      self.assertTrue(r.dense_shape.shape.is_compatible_with(dense_shape))
+
     # Default shape invariant; b1 only modifies values.
     _, r = control_flow_ops.while_loop(c, b1, [i, x])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, 1])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [1])
+    check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Default shape invariant; b2 adds new values
     _, r = control_flow_ops.while_loop(c, b2, [i, x])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, 1])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [1])
-
-    # Default shape invariant; b3 modifies rank (which is not allowed).
-    with self.assertRaises(ValueError):
-      _, r = control_flow_ops.while_loop(c, b3, [i, x])
+    check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Explicit shape invariant, allowing any rank; b1 only modifies values.
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Explicit shape invariant, allowing any rank; b3 modifies rank.
     _, r = control_flow_ops.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Shape invariant with ndims=None.  Technically, this isn't supported
     # according to the docs, but we support it for backwards compatibility.
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
     _, r = control_flow_ops.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
+
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShapeSparseTensor(self):
+    values = constant_op.constant([2.0, 4.0], name="values")
+    indices = constant_op.constant([[0], [3]],
+                                   dtype=dtypes.int64,
+                                   name="indices")
+    shape = constant_op.constant([10], dtype=dtypes.int64, name="dense_shape")
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
+    c = lambda i, _: i < 10
+    b1 = lambda i, x: [i+1, x]
+    def b2(i, x):  # modifies rank.  (shape of all components is changed.)
+      return [
+          i + 1,
+          sparse_tensor.SparseTensor(
+              array_ops.concat([x.indices, [[i], [i]]], axis=1), x.values * 2.0,
+              array_ops.concat([x.dense_shape, [10]], axis=0))
+      ]
 
     # Explicit shape invariant, with a specific (incompatible) rank.
     with self.assertRaisesRegexp(ValueError, "is not compatible with"):
-      _, r = control_flow_ops.while_loop(
+      control_flow_ops.while_loop(
           c, b1, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
 
-  @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
-  @test_util.run_v1_only("b/120545219")
+    # Default shape invariant, but b2 modifies rank (which is not allowed).
+    with self.assertRaises(ValueError):
+      control_flow_ops.while_loop(c, b2, [i, x])
+
   def testWhileShapeInferenceIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([[2.0, 4.0], [3.0, 5.0]], name="values")
@@ -1953,17 +1977,28 @@ class ControlFlowTest(test.TestCase):
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
       self.assertEqual(r.dense_shape.get_shape()[0], 2)
-      self.assertEqual(r.values.get_shape().as_list(), [None, 2])
+      self.assertTrue(r.values.get_shape().is_compatible_with([None, 2]))
 
-      with self.assertRaisesRegexp(ValueError, "is not compatible with"):
-        _, r = control_flow_ops.while_loop(
-            c, b, [i, x],
-            [i.get_shape(), tensor_shape.TensorShape([None, 5])])
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShapeIndexedSlices(self):
+    values = constant_op.constant([2.0, 4.0], name="values")
+    indices = constant_op.constant([[0], [3]],
+                                   dtype=dtypes.int64,
+                                   name="indices")
+    shape = constant_op.constant([10], dtype=dtypes.int64, name="dense_shape")
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
+    c = lambda i, _: 10
+    b = lambda i, x: [i+1, x]
 
-  @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
+    # Explicit shape invariant, with a specific (incompatible) rank.
+    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+      control_flow_ops.while_loop(
+          c, b, [i, x],
+          [i.get_shape(), tensor_shape.TensorShape([5])])
+
   def testWhileShapeInferenceRaggedTensor(self):
-    if context.executing_eagerly():
-      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
     c = lambda i, _: i < 10
@@ -1980,11 +2015,13 @@ class ControlFlowTest(test.TestCase):
           array_ops.concat([x, x], axis=0)
       ]
 
+    def check_shapes(r, values, splits):
+      self.assertTrue(r.values.shape.is_compatible_with(values))
+      self.assertTrue(r.row_splits.shape.is_compatible_with(splits))
+
     # Default shape invariant; b1 adds new values to rows.
     _, r = control_flow_ops.while_loop(c, b1, [i, x])
-    self.assertEqual(r.row_splits.shape.as_list(), [4])
-
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[4])
 
     # Default shape invariant; b2 adds new rows (not allowed).
     if not context.executing_eagerly():
@@ -1995,20 +2032,15 @@ class ControlFlowTest(test.TestCase):
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
-    self.assertTrue(r.row_splits.shape.as_list() in ([4], [None]))
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[None])
 
     # Explicit shape invariant; b2 adds new rows.
     _, r = control_flow_ops.while_loop(
         c, b2, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
-    self.assertTrue(r.row_splits.shape.as_list() in ([3 * 2**10 + 1], [None]))
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[None])
 
-  @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
-    if context.executing_eagerly():
-      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[[1, 2], [3], [4, 5, 6]],
                                      [[], [8, 9, 10]]])
@@ -2776,7 +2808,6 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(self.evaluate(fn()), 32.)
 
-  @test_util.disable_xla("b/128643381")
   def testWhileGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2797,7 +2828,6 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
-  @test_util.disable_xla("b/128643461")
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
 
     @def_function.function
@@ -2848,7 +2878,6 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
-  @test_util.disable_xla("b/128639858")
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -3043,7 +3072,6 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(foo()), 9.0)
 
-  @test_util.disable_xla("b/128643398")
   def testNestedResourceAccess(self):
     var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
 
@@ -3477,8 +3505,7 @@ class ControlFlowTest(test.TestCase):
     self.assertEqual(0, value_x)
     self.assertEqual(73, value_x_grad)
 
-  @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testWhileGrad_IndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -3500,8 +3527,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testWhileGrad_SparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -3524,7 +3550,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testCallGradInLoop(self):
     with self.cached_session() as sess:
       i0 = constant_op.constant(0)

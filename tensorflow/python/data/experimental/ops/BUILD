@@ -153,6 +153,19 @@ py_library(
 )
 
 py_library(
+    name = "snapshot",
+    srcs = [
+        "snapshot.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "enumerate_ops",
     srcs = ["enumerate_ops.py"],
     srcs_version = "PY2AND3",
@@ -455,6 +468,7 @@ py_library(
         ":scan_ops",
         ":shuffle_ops",
         ":sleep",
+        ":snapshot",
         ":stats_ops",
         ":take_while_ops",
         ":threadpool",

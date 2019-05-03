@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NOLINT
+
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
@@ -45,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -90,6 +95,7 @@ string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
@@ -247,6 +253,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
+#endif  // !IS_MOBILE_PLATFORM
 
 tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
                                            TFE_TensorHandle* input) {
@@ -400,6 +407,10 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+#else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -408,6 +419,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
   }
   status->status =
       UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def, ctx);
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(

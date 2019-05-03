@@ -67,6 +67,7 @@ class TfliteInferenceStage : public EvaluationStage {
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<ops::builtin::BuiltinOpResolver> resolver_;
   std::unique_ptr<Interpreter> interpreter_;
+  std::vector<Interpreter::TfLiteDelegatePtr> delegates_;
 
   TfLiteModelInfo model_info_;
   std::vector<void*>* inputs_ = nullptr;

@@ -210,13 +210,23 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
 // For Uint8 input and output, leading op is Quantize (uint8 to
 // int8, can be thought as "requant") and tailing op is also Quantize (int8 to
 // uint8, can be thought as "requant").
-void SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
-                            const TensorType& output_type) {
+TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
+                                    const TensorType& output_type,
+                                    ErrorReporter* error_reporter) {
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
 
     for (int i = 0; i < subgraph->inputs.size(); ++i) {
+      TensorT* tensor = subgraph->tensors[subgraph->inputs[i]].get();
+      // TODO(suharshs): Add support for this case if it ever comes up.
+      if (tensor->type == TensorType_FLOAT32 && input_type != tensor->type) {
+        error_reporter->Report(
+            "Unsupported input type %s for input tensor %d of type %s.",
+            EnumNameTensorType(input_type), subgraph->inputs[i],
+            EnumNameTensorType(tensor->type));
+        return kTfLiteError;
+      }
       const int32_t input_idx =
           SetInputType(model, subgraph, subgraph->inputs[i], input_type);
       if (input_idx < 0) {
@@ -225,6 +235,15 @@ void SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       subgraph->inputs[i] = input_idx;
     }
     for (int i = 0; i < subgraph->outputs.size(); ++i) {
+      TensorT* tensor = subgraph->tensors[subgraph->outputs[i]].get();
+      // TODO(suharshs): Add support for this case if it ever comes up.
+      if (tensor->type == TensorType_FLOAT32 && output_type != tensor->type) {
+        error_reporter->Report(
+            "Unsupported output type %s for output tensor %d of type %s.",
+            EnumNameTensorType(output_type), subgraph->outputs[i],
+            EnumNameTensorType(tensor->type));
+        return kTfLiteError;
+      }
       const int32_t output_idx =
           SetOutputType(model, subgraph, subgraph->outputs[i], output_type);
       if (output_idx < 0) {
@@ -233,6 +252,7 @@ void SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       subgraph->outputs[i] = output_idx;
     }
   }
+  return kTfLiteOk;
 }
 
 // Apply constraints to ops if they have any.
@@ -250,9 +270,11 @@ TfLiteStatus ApplyConstraints(flatbuffers::FlatBufferBuilder* builder,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property;
-      TF_LITE_ENSURE_STATUS(
-          operator_property::GetOperatorProperty(op_code, &property));
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(op_code);
+      if (!property.quantizable) {
+        continue;
+      }
       // Basically only Concat passes this check.
       if (!property.restrict_same_input_output_scale ||
           (property.input_indexes.size() == 1 &&
@@ -311,10 +333,215 @@ TfLiteStatus ApplyConstraints(flatbuffers::FlatBufferBuilder* builder,
   return kTfLiteOk;
 }
 
+std::vector<int> GetInputIndexes(const OperatorT* op,
+                                 operator_property::OperatorProperty property) {
+  std::vector<int> input_indexes;
+  if (property.arbitrary_inputs || !property.quantizable) {
+    for (int i = 0; i < op->inputs.size(); ++i) {
+      input_indexes.push_back(i);
+    }
+  } else {
+    input_indexes = property.input_indexes;
+  }
+  return input_indexes;
+}
+
+bool ShouldRestrictSameInputOutputScale(
+    operator_property::OperatorProperty property) {
+  return (property.input_indexes.size() == 1 &&
+          property.output_indexes.size() == 1 && property.biases.empty() &&
+          property.restrict_same_input_output_scale);
+}
+
+bool IsSubgraphInput(SubGraphT* subgraph, int32_t index) {
+  for (const int32_t input_idx : subgraph->inputs) {
+    if (index == input_idx) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Quantize the op input. Will increment op_idx if ops are added.
+TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
+                             size_t* op_idx,
+                             operator_property::OperatorProperty property,
+                             int32_t input_idx, ErrorReporter* error_reporter) {
+  SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+  OperatorT* op = subgraph->operators[*op_idx].get();
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
+  const int32_t tensor_idx = op->inputs[input_idx];
+  TensorT* tensor = subgraph->tensors[tensor_idx].get();
+  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
+  if (input_idx >= op->inputs.size()) {
+    error_reporter->Report(
+        "Required input index %d is larger than the input length of op "
+        "%s at index %d in subgraph %d",
+        input_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code), *op_idx,
+        subgraph_idx);
+    return kTfLiteError;
+  }
+  if (property.quantizable && !is_input_quantized) {
+    // The operation is quantizable, but the input isn't yet quantized.
+    if (utils::HasBuffer(model, subgraph, tensor_idx)) {
+      if (utils::QuantizeWeight(model, tensor, property.per_axis,
+                                property.per_axis_index) == kTfLiteError) {
+        error_reporter->Report(
+            "Unable to quantize buffer or min/max value for input %d "
+            "in op %s in subgraph %d, node: %d",
+            input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
+        return kTfLiteError;
+      }
+    } else if (utils::HasMinMax(tensor)) {
+      if (IsSubgraphInput(subgraph, tensor_idx)) {
+        utils::QuantizeActivation(tensor);
+      } else {
+        // If the tensor is not a model input, we need to add a Quantize
+        // operation since the preceding op may require a float output.
+        std::unique_ptr<TensorT> op_output;
+        utils::MakeTensor(tensor->name + "_int8", tensor->shape,
+                          TensorType_INT8, &op_output);
+        op_output->quantization = absl::make_unique<QuantizationParametersT>();
+        op_output->quantization->min.push_back(tensor->quantization->min[0]);
+        op_output->quantization->max.push_back(tensor->quantization->max[0]);
+        utils::QuantizeActivation(op_output.get());
+        const int32_t quant_op_output_idx = subgraph->tensors.size();
+        subgraph->tensors.push_back(std::move(op_output));
+        std::unique_ptr<OperatorT> quant_op;
+        utils::MakeQuantizeOperator(model, &quant_op, tensor_idx,
+                                    quant_op_output_idx);
+        subgraph->operators.insert(subgraph->operators.begin() + *op_idx,
+                                   std::move(quant_op));
+        op->inputs[input_idx] = quant_op_output_idx;
+        *op_idx += 1;
+      }
+    } else {
+      error_reporter->Report(
+          "Unable to find buffer or min/max value for input activation "
+          "%d "
+          "in %s in subgraph %d, node: %d",
+          input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
+      return kTfLiteError;
+    }
+  } else if (!property.quantizable && is_input_quantized) {
+    // If the tensor is quantized, we have to add a Dequantize op after
+    // since this op is not quantizable.
+    std::unique_ptr<TensorT> op_output;
+    utils::MakeTensor(tensor->name + "_float", tensor->shape,
+                      TensorType_FLOAT32, &op_output);
+    const int32_t dequant_op_output_idx = subgraph->tensors.size();
+    subgraph->tensors.push_back(std::move(op_output));
+    std::unique_ptr<OperatorT> dequant_op;
+    utils::MakeDequantizeOperator(model, &dequant_op, tensor_idx,
+                                  dequant_op_output_idx);
+    subgraph->operators.insert(subgraph->operators.begin() + *op_idx,
+                               std::move(dequant_op));
+    op->inputs[input_idx] = dequant_op_output_idx;
+    *op_idx += 1;
+  }
+  return kTfLiteOk;
+}
+
+// Quantize the op output.
+TfLiteStatus QuantizeOpOutput(ModelT* model, int32_t subgraph_idx,
+                              int32_t op_idx,
+                              operator_property::OperatorProperty property,
+                              int32_t output_idx,
+                              ErrorReporter* error_reporter) {
+  // If the operator is not quantizable, we don't need to do anything for the
+  // output.
+  if (!property.quantizable) {
+    return kTfLiteOk;
+  }
+  SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+  OperatorT* op = subgraph->operators[op_idx].get();
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
+  if (output_idx >= op->outputs.size()) {
+    error_reporter->Report(
+        "Required output index %d is larger than the output length of "
+        "op %s at index %d in subgraph %d",
+        output_idx, op->outputs.size(), EnumNameBuiltinOperator(op_code),
+        op_idx, subgraph_idx);
+    return kTfLiteError;
+  }
+
+  TensorT* output_tensor = subgraph->tensors[op->outputs[output_idx]].get();
+  if (ShouldRestrictSameInputOutputScale(property)) {
+    // Copy quantization parameter. For average pool, max pool, etc
+    // min/max can be different but we want them to be the same.
+    // Get scale and zero point of input.
+    if (property.input_indexes[0] >= op->inputs.size()) {
+      error_reporter->Report(
+          "Required input index %d is larger than the input length of "
+          "op  %s at index %d in subgraph %d",
+          property.input_indexes[0], op->inputs.size(),
+          EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
+      return kTfLiteError;
+    }
+    const int input_index = op->inputs[property.input_indexes[0]];
+    TensorT* input_tensor = subgraph->tensors[input_index].get();
+    if (input_tensor->quantization->scale.size() != 1 ||
+        input_tensor->quantization->zero_point.size() != 1 ||
+        input_tensor->quantization->min.size() != 1 ||
+        input_tensor->quantization->max.size() != 1) {
+      error_reporter->Report(
+          "Invalid quantization params for op %s at index %d "
+          "in subgraph %d",
+          EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
+      return kTfLiteError;
+    }
+
+    const float input_scale = input_tensor->quantization->scale[0];
+    const int32_t input_zero_point = input_tensor->quantization->zero_point[0];
+
+    const float min = input_tensor->quantization->min[0];
+    const float max = input_tensor->quantization->max[0];
+    if (utils::HasMinMax(output_tensor)) {
+      if (output_tensor->quantization->min[0] != min ||
+          output_tensor->quantization->max[0] != max) {
+        printf(
+            "Note the output min/max is different from the input min/max "
+            "for op %s at index %d in subgraph %d. This is legal but "
+            "should happens rarely.",
+            EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
+      }
+    }
+
+    // Apply to output.
+    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization->scale.push_back(input_scale);
+    output_tensor->quantization->zero_point.push_back(input_zero_point);
+    output_tensor->quantization->min.push_back(min);
+    output_tensor->quantization->max.push_back(max);
+    output_tensor->type = TensorType_INT8;
+  } else if (property.restriction_on_output) {
+    const auto scale_and_zp = property.restricted_value_on_output;
+    // Apply to output.
+    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization->scale.push_back(scale_and_zp.first);
+    output_tensor->quantization->zero_point.push_back(scale_and_zp.second);
+    output_tensor->type = TensorType_INT8;
+  } else {
+    // Process regular output that doesn't have any restrictions.
+    if (utils::HasMinMax(output_tensor)) {
+      utils::QuantizeActivation(output_tensor);
+    } else {
+      error_reporter->Report(
+          "Unable to find min/max value for output %d in %s in "
+          "subgraph %d, node: %d",
+          output_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, op_idx);
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
 // Quantize inputs and weights.
 // Because of ops such as lstm, still need to do per op, instead of weights.
 TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
-                                        ModelT* model,
+                                        ModelT* model, bool allow_float,
                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -323,154 +550,25 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property;
-      if (operator_property::GetOperatorProperty(op_code, &property) ==
-          kTfLiteError) {
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(op_code);
+
+      if (!property.quantizable && !allow_float) {
         error_reporter->Report("Quantization not yet supported for op: %s",
                                EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       }
-      // Quantize weight and inputs.
-      std::vector<int> input_indexes;
-      if (property.arbitrary_inputs) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
-          input_indexes.push_back(i);
-        }
-      } else {
-        input_indexes = property.input_indexes;
+
+      // Quantize operator inputs/weights.
+      for (const int input_idx : GetInputIndexes(op, property)) {
+        TF_LITE_ENSURE_STATUS(QuantizeOpInput(
+            model, subgraph_idx, &op_idx, property, input_idx, error_reporter));
       }
-      for (const int input_idx : input_indexes) {
-        if (input_idx >= op->inputs.size()) {
-          error_reporter->Report(
-              "Required input index %d is larger than the input length of op "
-              "%s at index %d in subgraph %d",
-              input_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
-              op_idx, subgraph_idx);
-          return kTfLiteError;
-        }
-        TensorT* tensor = subgraph->tensors[op->inputs[input_idx]].get();
-        // Quantize if it is not quantized already as the output of
-        // another op or input of another op.
-        if (!utils::IsQuantized(subgraph, op->inputs[input_idx])) {
-          if (utils::HasBuffer(model, subgraph, op->inputs[input_idx])) {
-            TensorT* tensor = subgraph->tensors[op->inputs[input_idx]].get();
-            utils::QuantizeWeight(model, tensor, property.per_axis,
-                                  property.per_axis_index);
-            continue;
-          }
-          if (utils::HasMinMax(tensor)) {
-            utils::QuantizeActivation(tensor);
-            continue;
-          }
-          // TODO(jianlijianli): Eventually we can insert a dequantize operation
-          // for all inputs and weights here, in the case that min/max is
-          // missing.
-          error_reporter->Report(
-              "Unable to find buffer or min/max value for input activation %d "
-              "in %s in subgraph %d, node: %d",
-              input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx,
-              op_idx);
-          return kTfLiteError;
-        }
-      }
-      // Quantize output.
+
+      // Quantize operator outputs.
       for (const int output_idx : property.output_indexes) {
-        if (output_idx >= op->outputs.size()) {
-          error_reporter->Report(
-              "Requaired output index %d is larger than the output length of "
-              "op %s at index %d in subgraph %d",
-              output_idx, op->outputs.size(), EnumNameBuiltinOperator(op_code),
-              op_idx, subgraph_idx);
-          return kTfLiteError;
-        }
-        if (property.input_indexes.size() == 1 &&
-            property.output_indexes.size() == 1 && property.biases.empty() &&
-            property.restrict_same_input_output_scale) {
-          // Copy quantization parameter. For average pool, max pool, etc
-          // min/max can be different but we want them to be the same.
-          // Get scale and zero point of input.
-          if (property.input_indexes[0] >= op->inputs.size()) {
-            error_reporter->Report(
-                "Requaired input index %d is larger than the input length of "
-                "op  %s at index %d in subgraph %d",
-                property.input_indexes[0], op->inputs.size(),
-                EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
-            return kTfLiteError;
-          }
-          const int input_index = op->inputs[property.input_indexes[0]];
-          TensorT* input_tensor = subgraph->tensors[input_index].get();
-          if (input_tensor->quantization->scale.size() != 1 ||
-              input_tensor->quantization->min.size() != 1 ||
-              input_tensor->quantization->max.size() != 1) {
-            error_reporter->Report(
-                "Quantization dimension is not 1 for op %s at index %d in "
-                "subgraph %d",
-                EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
-            return kTfLiteError;
-          }
-          const float input_scale = input_tensor->quantization->scale[0];
-          const float input_zero_point =
-              input_tensor->quantization->zero_point[0];
-          const float min = input_tensor->quantization->min[0];
-          const float max = input_tensor->quantization->max[0];
-
-          // Log a warning when we have to override the min/max (scale and zero
-          // point) of output using input.
-          TensorT* output_tensor =
-              subgraph->tensors[op->outputs[output_idx]].get();
-          if (utils::HasMinMax(output_tensor)) {
-            if (output_tensor->quantization->min[0] != min ||
-                output_tensor->quantization->max[0] != max) {
-              printf(
-                  "Note the output min/max is different from the input min/max "
-                  "for op %s at index %d in subgraph %d. This is legal but "
-                  "should happens rarely. ",
-                  EnumNameBuiltinOperator(op_code), static_cast<int>(op_idx),
-                  static_cast<int>(subgraph_idx));
-            }
-          }
-
-          // Apply to output.
-          output_tensor->quantization =
-              absl::make_unique<QuantizationParametersT>();
-          output_tensor->quantization->scale.push_back(input_scale);
-          output_tensor->quantization->zero_point.push_back(input_zero_point);
-          output_tensor->quantization->min.push_back(min);
-          output_tensor->quantization->max.push_back(max);
-          output_tensor->type = TensorType_INT8;
-          continue;
-        }
-        if (property.restriction_on_output) {
-          const std::pair<float, float> scale_and_zp =
-              property.restricted_value_on_output;
-          // Copy scale and zero point since they are fixed.
-          // Applies to softmax, tanh etc.
-          TensorT* output_tensor =
-              subgraph->tensors[op->outputs[output_idx]].get();
-          output_tensor->quantization =
-              absl::make_unique<QuantizationParametersT>();
-          output_tensor->quantization->scale.push_back(scale_and_zp.first);
-          output_tensor->quantization->zero_point.push_back(
-              scale_and_zp.second);
-          output_tensor->type = TensorType_INT8;
-          continue;
-        }
-
-        // Process regular output that doesn't have any restrictions.
-        TensorT* output_tensor =
-            subgraph->tensors[op->outputs[output_idx]].get();
-        if (utils::HasMinMax(output_tensor)) {
-          utils::QuantizeActivation(output_tensor);
-        } else {
-          // TODO(jianlijianli): Eventually we can insert a dequantize operation
-          // for output here, in the case that min/max is missing.
-          error_reporter->Report(
-              "Unable to find min/max value for output activation %d in %s in "
-              "subgraph %d, node: %d",
-              output_idx, EnumNameBuiltinOperator(op_code), subgraph_idx,
-              op_idx);
-          return kTfLiteError;
-        }
+        TF_LITE_ENSURE_STATUS(QuantizeOpOutput(
+            model, subgraph_idx, op_idx, property, output_idx, error_reporter));
       }
     }
   }
@@ -487,9 +585,11 @@ TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property;
-      TF_LITE_ENSURE_STATUS(
-          operator_property::GetOperatorProperty(op_code, &property));
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(op_code);
+      if (!property.quantizable) {
+        continue;
+      }
       for (const int bias_idx : property.biases) {
         if (bias_idx >= op->inputs.size()) {
           error_reporter->Report(
@@ -533,14 +633,15 @@ TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
 // Assumes that the operators in the model have been topologically sorted.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
-                           const TensorType& output_type,
+                           const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter) {
   TF_LITE_ENSURE_STATUS(
-      QuantizeWeightsInputOutput(builder, model, error_reporter));
+      QuantizeWeightsInputOutput(builder, model, allow_float, error_reporter));
   TF_LITE_ENSURE_STATUS(ApplyConstraints(builder, model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeBiases(builder, model, error_reporter));
-  TF_LITE_ENSURE_STATUS(utils::SetOperatorCodeVersion(model));
-  SetInputAndOutputTypes(model, input_type, output_type);
+  utils::SetOperatorCodeVersion(model);
+  TF_LITE_ENSURE_STATUS(
+      SetInputAndOutputTypes(model, input_type, output_type, error_reporter));
 
   flatbuffers::Offset<Model> output_model_location =
       Model::Pack(*builder, model);
@@ -550,9 +651,17 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type,
+                           ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type,
+                       /*allow_float=*/false, error_reporter);
+}
+
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, TensorType_FLOAT32, TensorType_FLOAT32,
-                       error_reporter);
+                       /*allow_float=*/false, error_reporter);
 }
 
 }  // namespace optimize

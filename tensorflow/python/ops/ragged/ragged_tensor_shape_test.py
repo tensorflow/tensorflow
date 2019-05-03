@@ -32,8 +32,8 @@ from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
-                                  parameterized.TestCase):
+class RaggedTensorShapeTest(ragged_test_util.RaggedTensorTestCase,
+                            parameterized.TestCase):
 
   def assertShapeEq(self, x, y):
     assert isinstance(x, RaggedTensorDynamicShape)

@@ -17,6 +17,7 @@ filegroup(
 py_library(
     name = "test_modules",
     srcs = [
+        "decorators.py",
         "future_import_module.py",
     ],
     srcs_version = "PY2AND3",
@@ -41,6 +42,7 @@ py_test(
     name = "codegen_test",
     size = "large",
     srcs = ["codegen_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

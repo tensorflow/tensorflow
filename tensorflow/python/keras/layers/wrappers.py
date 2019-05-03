@@ -206,8 +206,10 @@ class TimeDistributed(Wrapper):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
                                                  input_shape[2:])
-    child_output_shape = self.layer.compute_output_shape(
-        child_input_shape).as_list()
+    child_output_shape = self.layer.compute_output_shape(child_input_shape)
+    if not isinstance(child_output_shape, tensor_shape.TensorShape):
+      child_output_shape = tensor_shape.TensorShape(child_output_shape)
+    child_output_shape = child_output_shape.as_list()
     timesteps = input_shape[1]
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
                                     child_output_shape[1:])
@@ -409,8 +411,10 @@ class Bidirectional(Wrapper):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    output_shape = tuple(self.forward_layer.compute_output_shape(
-        input_shape).as_list())
+    output_shape = self.forward_layer.compute_output_shape(input_shape)
+    if not isinstance(output_shape, tensor_shape.TensorShape):
+      output_shape = tensor_shape.TensorShape(output_shape)
+    output_shape = tuple(output_shape.as_list())
     if self.return_state:
       state_shape = output_shape[1:]
       output_shape = output_shape[0]

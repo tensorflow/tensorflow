@@ -196,6 +196,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // a layout.
   int64 GetShapeSize(const Shape& shape) const;
 
+  // Traverses a fusion operand to find the actual bytes accessed by the fusion
+  // node.
+  int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
+
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods
   // return an error.

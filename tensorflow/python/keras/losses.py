@@ -87,6 +87,7 @@ class Loss(object):
   """
 
   def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name=None):
+    losses_utils.ReductionV2.validate(reduction)
     self.reduction = reduction
     self.name = name
 

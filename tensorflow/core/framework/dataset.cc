@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -398,6 +400,26 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     return Status::OK();
   }
   return status;
+}
+
+Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence) {
+  profiler::TraceMe activity(absl::string_view(params_.prefix),
+                             profiler::TraceMeLevel::kInfo);
+  RecordStart(ctx, /*stop_output=*/true);
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
+    s = errors::Internal(
+        "Iterator \"", params_.prefix,
+        "\" returned OutOfRange without setting `*end_of_sequence`. This "
+        "indicates that an error may have occurred. Original message: ",
+        s.error_message());
+    LOG(ERROR) << s;
+  }
+  return s;
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {

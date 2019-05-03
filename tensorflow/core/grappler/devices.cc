@@ -36,16 +36,15 @@ int GetNumAvailableGPUs(
     if (gpu_manager != nullptr) {
       int num_gpus = gpu_manager->VisibleDeviceCount();
       for (int i = 0; i < num_gpus; i++) {
-        auto exec_status = gpu_manager->ExecutorForDevice(i);
-        if (exec_status.ok()) {
-          se::StreamExecutor* se = exec_status.ValueOrDie();
-          const se::DeviceDescription& desc = se->GetDeviceDescription();
+        auto desc_status = gpu_manager->DescriptionForDevice(i);
+        if (desc_status.ok()) {
+          auto desc = desc_status.ConsumeValueOrDie();
           int cc_major = 0;
           int cc_minor = 0;
-          desc.cuda_compute_capability(&cc_major, &cc_minor);
+          desc->cuda_compute_capability(&cc_major, &cc_minor);
           std::pair<int, int> cuda_compute_capability(cc_major, cc_minor);
           int min_gpu_core_count = 8;
-          if (desc.core_count() >= min_gpu_core_count &&
+          if (desc->core_count() >= min_gpu_core_count &&
               cuda_compute_capability >= min_cuda_compute_capability) {
             num_eligible_gpus++;
           }

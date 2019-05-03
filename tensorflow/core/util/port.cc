@@ -34,9 +34,9 @@ bool IsBuiltWithROCm() {
 #endif
 }
 
-  
 bool GpuSupportsHalfMatMulAndConv() {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   return true;
 #else
   return false;

@@ -51,7 +51,7 @@ _STRUCTURES_HAVE_MISMATCHING_TYPES = (
     "type {shallow_type}, while shallow structure has type {input_type}.")
 
 _INPUT_TREE_SMALLER_THAN_SHALLOW_TREE = (
-    "The input_tree has fewer elements than the input_tree. Input structure "
+    "The input_tree has fewer elements than the shallow_tree. Input structure "
     "has length {input_size}, while shallow structure has length "
     "{shallow_size}.")
 

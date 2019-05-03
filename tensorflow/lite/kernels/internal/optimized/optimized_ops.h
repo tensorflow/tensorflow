@@ -27,6 +27,8 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "public/gemmlowp.h"
+
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
@@ -34,8 +36,8 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -780,7 +782,7 @@ inline void FullyConnected(
     const float* input_data, const RuntimeShape& weights_shape,
     const float* weights_data, const RuntimeShape& bias_shape,
     const float* optional_bias_data, const RuntimeShape& output_shape,
-    float* output_data) {
+    float* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
@@ -1100,7 +1102,9 @@ inline void FullyConnectedAsGEMV(
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context) {
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   const int output_dim_count = output_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
@@ -1172,7 +1176,9 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context) {
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1200,7 +1206,8 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data, gemmlowp_context);
+          output_activation_max, output_shape, output_data,
+          cpu_backend_context);
     }
   }
 #endif  // USE_NEON
@@ -1231,7 +1238,7 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data_int32, const RuntimeShape& output_shape,
-    int16* output_data, gemmlowp::GemmContext* gemmlowp_context) {
+    int16* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1240,9 +1247,6 @@ inline void FullyConnected(
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
-  (void)gemmlowp_context;  // only used in properly optimized code.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
@@ -1309,8 +1313,8 @@ inline void FullyConnected(
                       saturating_cast_int16_stage);
   gemmlowp::GemmWithOutputPipeline<uint8, int16,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemmlowp_context, weights_matrix, input_matrix, &output_matrix,
-      filter_offset, input_offset, output_pipeline);
+      cpu_backend_context->gemmlowp_context(), weights_matrix, input_matrix,
+      &output_matrix, filter_offset, input_offset, output_pipeline);
 }
 
 // Internal function doing the actual arithmetic work for
@@ -1638,13 +1642,14 @@ inline void ShuffledFullyConnected(
     const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     int16* output_data, uint8* shuffled_input_workspace_data,
-    gemmlowp::GemmContext* gemmlowp_context) {
+    CpuBackendContext* cpu_backend_context) {
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
-  (void)gemmlowp_context;  // only used in optimized code.
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
@@ -1922,9 +1927,10 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const uint8_t* input_data, int32 input_zero_point,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
-                 float output_scale, gemmlowp::GemmContext* gemmlowp_context) {
+                 float output_scale, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
-
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
@@ -1977,7 +1983,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* filter_data, const RuntimeShape& bias_shape,
                  const float* bias_data, const RuntimeShape& output_shape,
                  float* output_data, const RuntimeShape& im2col_shape,
-                 float* im2col_data) {
+                 float* im2col_data, CpuBackendContext* cpu_backend_context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -1992,7 +1998,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   (void)im2col_shape;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
-  // NB: static_cast<float>(0x00000000h) == 0.0f
+  // NB: the float 0.0f value is represented by all zero bytes.
   const uint8 float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
@@ -2160,7 +2166,9 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, gemmlowp::GemmContext* gemmlowp_context) {
+                 uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2242,7 +2250,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
         *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
         filter_data, filter_offset, bias_shape, bias_data, output_offset,
         output_multiplier, output_shift, output_activation_min,
-        output_activation_max, output_shape, output_data, gemmlowp_context);
+        output_activation_max, output_shape, output_data, cpu_backend_context);
   }
 #endif
 
@@ -3357,7 +3365,8 @@ inline void LstmCell(
     const RuntimeShape& unextended_output_state_shape, float* output_state_data,
     const RuntimeShape& unextended_output_activ_shape, float* output_activ_data,
     const RuntimeShape& unextended_concat_temp_shape, float* concat_temp_data,
-    const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data) {
+    const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data,
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("LstmCell");
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
@@ -3431,7 +3440,7 @@ inline void LstmCell(
   fc_params.float_activation_max = std::numeric_limits<float>::max();
   FullyConnected(fc_params, concat_temp_shape, concat_temp_data, weights_shape,
                  weights_data, bias_shape, bias_data, activ_temp_shape,
-                 activ_temp_data);
+                 activ_temp_data, cpu_backend_context);
 
   // Map raw arrays to Eigen arrays so we can use Eigen's optimized array
   // operations.
@@ -3464,9 +3473,6 @@ inline void LstmCell(
       output_state_map.tanh();
 }
 
-// Quantized LSTM cell. Currently just a copy of the reference impl in
-// reference_ops.h. See the big function comment there, not replicating it
-// here.
 template <int StateIntegerBits>
 inline void LstmCell(
     const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
@@ -3484,9 +3490,11 @@ inline void LstmCell(
     const RuntimeShape& unextended_concat_temp_shape,
     uint8* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
+    int16* activ_temp_data_int16, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
+  gemmlowp::GemmContext* gemmlowp_context =
+      cpu_backend_context->gemmlowp_context();
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
   int accum_shift = params.accum_shift;

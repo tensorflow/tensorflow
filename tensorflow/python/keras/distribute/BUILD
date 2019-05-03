@@ -23,7 +23,10 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
@@ -52,9 +55,11 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
@@ -68,7 +73,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 32,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -108,11 +113,14 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -144,9 +152,7 @@ distribute_py_test(
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # b/129793413
@@ -164,9 +170,7 @@ distribute_py_test(
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # b/129793413
@@ -204,9 +208,7 @@ distribute_py_test(
     srcs = ["keras_stateful_lstm_model_correctness_test.py"],
     full_precision = True,
     main = "keras_stateful_lstm_model_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 31,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -223,7 +225,7 @@ distribute_py_test(
     srcs = ["keras_utils_test.py"],
     full_precision = True,
     main = "keras_utils_test.py",
-    shard_count = 32,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # b/129793413
@@ -325,7 +327,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/keras",
     ],
-    shard_count = 12,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
     ],
