@@ -5066,9 +5066,11 @@ cc_library(
         ":string_format_op",
         ":string_join_op",
         ":string_length_op",
+        ":string_lower_op",
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
+        ":string_upper_op",
         ":substr_op",
         ":unicode_ops",
         ":unicode_script_op",
@@ -5202,6 +5204,24 @@ tf_kernel_library(
     name = "string_strip_op",
     prefix = "string_strip_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_lower_op",
+    prefix = "string_lower_op",
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@icu//:common",
+    ],
+)
+
+tf_kernel_library(
+    name = "string_upper_op",
+    prefix = "string_upper_op",
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@icu//:common",
+    ],
 )
 
 tf_kernel_library(
@@ -6193,6 +6213,8 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
+            "string_lower_op.cc",  # Requires ICU for unicode.
+            "string_upper_op.cc",  # Requires ICU for unicode.
             "unicode_ops.cc",
             "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
