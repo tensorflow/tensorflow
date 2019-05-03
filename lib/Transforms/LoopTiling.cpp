@@ -293,7 +293,7 @@ static void adjustToDivisorsOfTripCounts(ArrayRef<AffineForOp> band,
     // Adjust the tile size to largest factor of the trip count less than
     // tSize.
     uint64_t constTripCount = mayConst.getValue();
-    if (tSizeAdjusted > constTripCount / 2)
+    if (constTripCount > 1 && tSizeAdjusted > constTripCount / 2)
       tSizeAdjusted = constTripCount / 2;
     while (constTripCount % tSizeAdjusted != 0)
       tSizeAdjusted--;
