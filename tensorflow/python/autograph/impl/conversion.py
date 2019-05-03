@@ -46,7 +46,6 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
@@ -584,8 +583,6 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
-    ag_internal.rewrite_graph_construction_error = (
-        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>

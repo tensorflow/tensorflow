@@ -36,9 +36,6 @@ from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core.converter import ConversionOptions
 from tensorflow.python.autograph.core.converter import Feature
-from tensorflow.python.autograph.core.errors import GraphConstructionError
-from tensorflow.python.autograph.core.errors import improved_errors
-from tensorflow.python.autograph.core.errors import TfRuntimeError
 from tensorflow.python.autograph.impl.api import convert
 from tensorflow.python.autograph.impl.api import converted_call
 from tensorflow.python.autograph.impl.api import do_not_convert
@@ -66,10 +63,6 @@ _allowed_symbols = [
     'to_graph',
     # Overloaded operators
     'operators',
-    # Errors
-    'improved_errors',
-    'GraphConstructionError',
-    'TfRuntimeError',
     # Python language "extensions"
     'set_element_type',
     'set_loop_options',
