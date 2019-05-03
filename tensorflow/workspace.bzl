@@ -149,11 +149,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "366e978cc0cb8a8bf2fa67c65f5647e27167325bf284806e05059a3336d2f497",
-        strip_prefix = "eigen-eigen-fb5130011791",
+        sha256 = "39ddb7d05b5b49f7d2485cdfc8be4d4b528d40ae6524821a2b91d464f6e317b9",
+        strip_prefix = "eigen-eigen-8adbe5681ed1",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/fb5130011791.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/fb5130011791.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/8adbe5681ed1.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/8adbe5681ed1.tar.gz",
         ],
     )
 
