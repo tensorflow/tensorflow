@@ -239,11 +239,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_STRIDED_SLICE(reference_ops, int8_t);
       }
       break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, int16_t);
+      }
+      break;
     default:
       context->ReportError(context,
-                           "Type %d is currently not supported "
+                           "Type %s is currently not supported "
                            "by StridedSlice.",
-                           op_context.input->type);
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE
