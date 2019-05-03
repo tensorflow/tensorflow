@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -373,7 +373,7 @@ class MarkForCompilationPassImpl {
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   absl::flat_hash_map<const Cluster*, bool> should_compile_cluster_cache_;
-  DeviceInfoCache device_info_cache_;
+  jit::DeviceInfoCache device_info_cache_;
 
   bool initialized_ = false;
   bool edges_contracted_ = false;
@@ -509,8 +509,8 @@ void MarkForCompilationPassImpl::Cluster::Merge(Cluster* other) {
   other->resource_var_operation_node_ids_.clear();
 }
 
-Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
-                                         const Node& n, bool* ignore) {
+Status IgnoreResourceOpForSafetyAnalysis(
+    jit::DeviceInfoCache* device_info_cache, const Node& n, bool* ignore) {
   // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
   // ignore it during resource operation safety analysis.  We need this hack
   // because of two reasons:
