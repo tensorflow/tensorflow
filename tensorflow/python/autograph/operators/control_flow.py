@@ -114,9 +114,8 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
 
   n = py_builtins.len_(iter_)
   # TODO(b/117628877): Revisit performance once XLA has the necessary support.
-  # Note: using a TensorArray creates an extra copy, but in turn it may speed up
-  # gradient calculations, which at the time of this writing use a less
-  # efficient concat op.
+  # Note: using a TensorArray creates an extra copy, but can calculate
+  # gradients more efficiently than StridedSlice.
   ta = tensor_array_ops.TensorArray(iter_.dtype, size=n)
   iter_ = ta.unstack(iter_)
 
