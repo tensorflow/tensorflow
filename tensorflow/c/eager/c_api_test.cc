@@ -346,12 +346,12 @@ void TestRemoteExecuteDeleteTensorAfterContext(bool async) {
   worker_server.release();
 }
 
-TEST(CAPI, RemoteExecuteDeleteTensorAfterContext) {
-  TestRemoteExecuteDeleteTensorAfterContext(false);
-}
-TEST(CAPI, RemoteExecuteDeleteTensorAfterContextAsync) {
-  TestRemoteExecuteDeleteTensorAfterContext(true);
-}
+// TEST(CAPI, RemoteExecuteDeleteTensorAfterContext) {
+//  TestRemoteExecuteDeleteTensorAfterContext(false);
+//}
+// TEST(CAPI, RemoteExecuteDeleteTensorAfterContextAsync) {
+//  TestRemoteExecuteDeleteTensorAfterContext(true);
+//}
 
 void CheckTFE_TensorHandleHasFloats(TFE_TensorHandle* handle,
                                     const std::vector<float>& expected_values) {
