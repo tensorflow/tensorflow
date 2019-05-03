@@ -115,6 +115,26 @@ TEST(TileTest, Uint8Matrix) {
       /*multiply_type=*/TensorType_INT32);
 }
 
+TEST(TileTest, Int8Matrix) {
+  Check<int8_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{-11, 12, 13, 21, -22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{-11, 12, 13, 21, -22, 23, -11, 12, 13, 21, -22, 23},
+      /*input_type=*/TensorType_INT8,
+      /*multiply_type=*/TensorType_INT32);
+}
+
+TEST(TileTest, Int16Matrix) {
+  Check<int16_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{-11, 12, 13, 21, -22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{-11, 12, 13, 21, -22, 23, -11, 12, 13, 21, -22, 23},
+      /*input_type=*/TensorType_INT16,
+      /*multiply_type=*/TensorType_INT32);
+}
+
 TEST(TileTest, Int32Matrix) {
   Check<int32_t>(
       /*input_shape=*/{2, 3},
