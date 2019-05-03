@@ -21,7 +21,9 @@ from __future__ import print_function
 import collections
 import functools
 import gc
+import imp
 import os
+import textwrap
 import types
 
 import numpy as np
@@ -506,6 +508,20 @@ class ApiTest(test.TestCase):
     x = api.converted_call(gen_math_ops.add, None, opts, (1, 1), {})
 
     self.assertAllEqual(self.evaluate(x), 2)
+
+  def test_converted_call_exec_generated_code(self):
+
+    temp_mod = imp.new_module('test_module')
+    dynamic_code = '''
+      def foo(x):
+        return x + 1
+    '''
+    exec(textwrap.dedent(dynamic_code), temp_mod.__dict__)  # pylint:disable=exec-used
+    opts = converter.ConversionOptions(optional_features=None)
+
+    x = api.converted_call(temp_mod.foo, None, opts, (1,), {})
+
+    self.assertAllEqual(x, 2)
 
   def test_converted_call_namedtuple(self):
 
