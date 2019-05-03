@@ -518,7 +518,7 @@ cc_library(
     deps = [
         "compilability_check_util",
         ":common",
-        ":device_info_cache",
+        ":device_util",
         ":encapsulate_util",
         ":flags",
         ":resource_operation_safety_analysis",
@@ -585,17 +585,29 @@ cc_library(
 )
 
 cc_library(
-    name = "device_info_cache",
-    srcs = ["device_info_cache.cc"],
-    hdrs = ["device_info_cache.h"],
+    name = "device_util",
+    srcs = ["device_util.cc"],
+    hdrs = ["device_util.h"],
     deps = [
-        ":xla_cluster_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "device_util_test",
+    srcs = ["device_util_test.cc"],
+    deps = [
+        ":device_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -772,7 +784,7 @@ cc_library(
     hdrs = ["compilability_check_util.h"],
     deps = [
         ":common",
-        ":device_info_cache",
+        ":device_util",
         ":flags",
         ":resource_operation_safety_analysis",
         ":union_find",

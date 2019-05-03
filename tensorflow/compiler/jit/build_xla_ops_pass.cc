@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/logging_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -233,7 +235,7 @@ void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
 // Returns true (into `result`) if a node placed on `device` must be compiled.
 Status DeviceRequiresCompilation(const string& device, bool* result) {
   DeviceType device_type("");
-  TF_RETURN_IF_ERROR(DeviceToDeviceType(device, &device_type));
+  TF_RETURN_IF_ERROR(DeviceNameToDeviceType(device, &device_type));
   const XlaOpRegistry::DeviceRegistration* registration = nullptr;
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
     return errors::Internal("Could not find compilation device ",

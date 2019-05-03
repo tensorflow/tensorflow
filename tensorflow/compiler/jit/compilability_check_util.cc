@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
