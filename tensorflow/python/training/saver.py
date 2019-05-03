@@ -1377,7 +1377,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   NOTE: Restarting training from saved `meta_graph` only works if the
   device assignments have not changed.
 
-  Example 2:
+  Example:
   Variables, placeholders, and independent operations can also be stored, as
   shown in the following example.
 
@@ -1385,12 +1385,12 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   # Saving contents and operations.
   v1 = tf.placeholder(tf.float32, name="v1")
   v2 = tf.placeholder(tf.float32, name="v2")
-  v3 = tf.mul(v1, v2)
+  v3 = tf.multiply(v1, v2)
   vx = tf.Variable(10.0, name="vx")
   v4 = tf.add(v3, vx, name="v4")
   saver = tf.train.Saver([vx])
   sess = tf.Session()
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   sess.run(vx.assign(tf.add(vx, vx)))
   result = sess.run(v4, feed_dict={v1:12.0, v2:3.3})
   print(result)
