@@ -52,7 +52,7 @@ function build_libtensorflow_tarball() {
 
   TARBALL_SUFFIX="${1}"
   BAZEL_OPTS="--config=opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
-  export CC_OPT_FLAGS="--copt=-mavx --copt=msse4.2"
+  export CC_OPT_FLAGS="-mavx -msse4.2"
   if [ "${TF_NEED_CUDA}" == "1" ]; then
     BAZEL_OPTS="${BAZEL_OPTS} --config=cuda"
     export TF_NEED_ROCM=0
