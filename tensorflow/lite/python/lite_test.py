@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -1587,6 +1588,40 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     converter.post_training_quantize = False
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+
+@test_util.run_v1_only('Incompatible with 2.0.')
+class GrapplerTest(test_util.TensorFlowTestCase):
+
+  def testConstantFolding(self):
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
+    y_const = constant_op.constant([1., 2., 3.])
+    y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+    out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
+    sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([3, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([3, 3] == output_details[0]['shape']).all())
 
 
 class ImportOpsUtilTest(test_util.TensorFlowTestCase):
