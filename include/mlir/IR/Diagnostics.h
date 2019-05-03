@@ -31,7 +31,7 @@
 namespace mlir {
 class DiagnosticEngine;
 class Identifier;
-class LogicalResult;
+struct LogicalResult;
 class Type;
 
 namespace detail {
