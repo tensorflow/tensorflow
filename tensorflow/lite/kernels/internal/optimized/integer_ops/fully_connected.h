@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -427,10 +428,7 @@ inline void FullyConnected(
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedInt8/8bit");
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
 
-#ifdef USE_NEON
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -448,6 +446,8 @@ inline void FullyConnected(
   const int output_dim_count = output_shape.DimensionsCount();
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+
+#ifdef USE_NEON
   if (batches == 1) {
     const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
                                         output_shape, output_dim_count - 1);
@@ -462,7 +462,6 @@ inline void FullyConnected(
   }
 #endif  // USE_NEON
 
-#ifdef GEMMLOWP_NEON
   const int filter_rows = filter_shape.Dims(filter_dim_count - 2);
   const int filter_cols = filter_shape.Dims(filter_dim_count - 1);
   TFLITE_DCHECK_EQ(filter_shape.FlatSize(), filter_rows * filter_cols);
@@ -470,30 +469,30 @@ inline void FullyConnected(
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
 
-  gemmlowp::MatrixMap<const int8, gemmlowp::MapOrder::RowMajor> filter_matrix(
-      filter_data, output_rows, filter_cols, filter_cols);
-  gemmlowp::MatrixMap<const int8, gemmlowp::MapOrder::ColMajor> input_matrix(
-      input_data, filter_cols, batches, filter_cols);
-  gemmlowp::MatrixMap<int8, gemmlowp::MapOrder::ColMajor> output_matrix(
-      output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipelineInt8::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max);
-
-  gemmlowp::GemmWithOutputPipeline<
-      int8, int8, gemmlowp::SignedL8R8WithLhsNonzeroBitDepthParams>(
-      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
-      filter_offset, input_offset, output_pipeline);
-  return;
-#endif  // GEMMLOWP_NEON
-
-  (void)gemmlowp_context;
-
-  // If both GEMMLOWP_NEON && NEON paths are skipped, fallback to reference
-  // implementation.
-  reference_integer_ops::FullyConnected(params, input_shape, input_data,
-                                        filter_shape, filter_data, bias_shape,
-                                        bias_data, output_shape, output_data);
+  cpu_backend_gemm::MatrixParams<int8> lhs_params;
+  lhs_params.rows = filter_rows;
+  lhs_params.cols = filter_cols;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.zero_point = -filter_offset;
+  cpu_backend_gemm::MatrixParams<int8> rhs_params;
+  rhs_params.rows = filter_cols;
+  rhs_params.cols = batches;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.zero_point = -input_offset;
+  cpu_backend_gemm::MatrixParams<int8> dst_params;
+  dst_params.rows = filter_rows;
+  dst_params.cols = batches;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.zero_point = output_offset;
+  cpu_backend_gemm::GemmParams<int32, int8> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  gemm_params.multiplier_fixedpoint = output_multiplier;
+  gemm_params.multiplier_exponent = output_shift;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 }  // namespace optimized_integer_ops
