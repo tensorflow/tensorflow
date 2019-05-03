@@ -36,7 +36,7 @@
 
 using namespace mlir;
 
-#define DEBUG_TYPE "loop-tile"
+#define DEBUG_TYPE "affine-loop-tile"
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
@@ -413,4 +413,4 @@ void LoopTiling::runOnFunction() {
 constexpr unsigned LoopTiling::kDefaultTileSize;
 constexpr uint64_t LoopTiling::kDefaultCacheMemCapacity;
 
-static PassRegistration<LoopTiling> pass("loop-tile", "Tile loop nests");
+static PassRegistration<LoopTiling> pass("affine-loop-tile", "Tile loop nests");

@@ -34,7 +34,7 @@
 
 using namespace mlir;
 
-#define DEBUG_TYPE "loop-unroll"
+#define DEBUG_TYPE "affine-loop-unroll"
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
@@ -188,4 +188,4 @@ FunctionPassBase *mlir::createLoopUnrollPass(
       unrollFull == -1 ? None : Optional<bool>(unrollFull), getUnrollFactor);
 }
 
-static PassRegistration<LoopUnroll> pass("loop-unroll", "Unroll loops");
+static PassRegistration<LoopUnroll> pass("affine-loop-unroll", "Unroll loops");

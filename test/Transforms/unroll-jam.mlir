@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -loop-unroll-jam -unroll-jam-factor=2 | FileCheck %s
+// RUN: mlir-opt %s -affine-loop-unroll-jam -unroll-jam-factor=2 | FileCheck %s
 
 // CHECK-DAG: [[MAP_PLUS_1:#map[0-9]+]] = (d0) -> (d0 + 1)
 // CHECK-DAG: [[M1:#map[0-9]+]] = ()[s0] -> (s0 + 8)

@@ -41,7 +41,7 @@
 #include <iomanip>
 #include <sstream>
 
-#define DEBUG_TYPE "loop-fusion"
+#define DEBUG_TYPE "affine-loop-fusion"
 
 using llvm::SetVector;
 
@@ -2271,4 +2271,5 @@ void LoopFusion::runOnFunction() {
         .run();
 }
 
-static PassRegistration<LoopFusion> pass("loop-fusion", "Fuse loop nests");
+static PassRegistration<LoopFusion> pass("affine-loop-fusion",
+                                         "Fuse loop nests");

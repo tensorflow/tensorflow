@@ -85,7 +85,7 @@
 
 using namespace mlir;
 
-#define DEBUG_TYPE "lower-vector-transfers"
+#define DEBUG_TYPE "affine-lower-vector-transfers"
 
 namespace {
 
@@ -380,5 +380,6 @@ FunctionPassBase *mlir::createLowerVectorTransfersPass() {
 }
 
 static PassRegistration<LowerVectorTransfersPass>
-    pass("lower-vector-transfers", "Materializes vector transfer ops to a "
-                                   "proper abstraction for the hardware");
+    pass("affine-lower-vector-transfers",
+         "Materializes vector transfer ops to a "
+         "proper abstraction for the hardware");

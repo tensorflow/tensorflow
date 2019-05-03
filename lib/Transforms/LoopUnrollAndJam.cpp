@@ -56,7 +56,7 @@
 
 using namespace mlir;
 
-#define DEBUG_TYPE "loop-unroll-jam"
+#define DEBUG_TYPE "affine-loop-unroll-jam"
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
@@ -240,5 +240,5 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   return success();
 }
 
-static PassRegistration<LoopUnrollAndJam> pass("loop-unroll-jam",
+static PassRegistration<LoopUnrollAndJam> pass("affine-loop-unroll-jam",
                                                "Unroll and jam loops");

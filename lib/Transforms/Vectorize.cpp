@@ -1262,5 +1262,5 @@ mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
 }
 
 static PassRegistration<Vectorize>
-    pass("vectorize",
+    pass("affine-vectorize",
          "Vectorize to a target independent n-D vector abstraction");

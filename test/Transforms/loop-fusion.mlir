@@ -1,5 +1,5 @@
-// RUN: mlir-opt %s -loop-fusion -split-input-file -verify | FileCheck %s
-// RUN: mlir-opt %s -loop-fusion -fusion-maximal -split-input-file -verify | FileCheck %s --check-prefix=MAXIMAL
+// RUN: mlir-opt %s -affine-loop-fusion -split-input-file -verify | FileCheck %s
+// RUN: mlir-opt %s -affine-loop-fusion -fusion-maximal -split-input-file -verify | FileCheck %s --check-prefix=MAXIMAL
 
 // TODO(andydavis) Add more tests:
 // *) Add nested fusion test cases when non-constant loop bound support is

@@ -34,7 +34,7 @@
 #include "llvm/Support/Debug.h"
 #include <algorithm>
 
-#define DEBUG_TYPE "dma-generate"
+#define DEBUG_TYPE "affine-dma-generate"
 
 using namespace mlir;
 using llvm::SmallMapVector;
@@ -773,4 +773,4 @@ void DmaGeneration::runOnFunction() {
 }
 
 static PassRegistration<DmaGeneration>
-    pass("dma-generate", "Generate DMAs for memory operations");
+    pass("affine-dma-generate", "Generate DMAs for memory operations");

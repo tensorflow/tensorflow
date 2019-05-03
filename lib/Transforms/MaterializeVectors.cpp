@@ -772,7 +772,8 @@ mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
 }
 
 static PassRegistration<MaterializeVectorsPass>
-    pass("materialize-vectors", "Materializes super-vectors to vectors of the "
-                                "proper size for the hardware");
+    pass("affine-materialize-vectors",
+         "Materializes super-vectors to vectors of the "
+         "proper size for the hardware");
 
 #undef DEBUG_TYPE

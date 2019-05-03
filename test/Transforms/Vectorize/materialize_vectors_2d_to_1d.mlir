@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -vectorize -virtual-vector-size 3 -virtual-vector-size 16 --test-fastest-varying=1 --test-fastest-varying=0 -materialize-vectors -vector-size=8 | FileCheck %s
+// RUN: mlir-opt %s -affine-vectorize -virtual-vector-size 3 -virtual-vector-size 16 --test-fastest-varying=1 --test-fastest-varying=0 -affine-materialize-vectors -vector-size=8 | FileCheck %s
 
 // vector<3x16xf32> -> vector<8xf32>
 // CHECK-DAG: [[ID1:#.*]] = (d0) -> (d0)

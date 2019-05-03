@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -vectorizer-test -normalize-maps |  FileCheck %s
+// RUN: mlir-opt %s -affine-vectorizer-test -normalize-maps |  FileCheck %s
 
 // CHECK-DAG: #[[ZERO:[a-zA-Z0-9]+]] = () -> (0)
 // CHECK-DAG: #[[ID1:[a-zA-Z0-9]+]] = (d0) -> (d0)

@@ -32,7 +32,7 @@
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
-#define DEBUG_TYPE "pipeline-data-transfer"
+#define DEBUG_TYPE "affine-pipeline-data-transfer"
 
 using namespace mlir;
 
@@ -379,6 +379,6 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
 }
 
 static PassRegistration<PipelineDataTransfer> pass(
-    "pipeline-data-transfer",
+    "affine-pipeline-data-transfer",
     "Pipeline non-blocking data transfers between explicitly managed levels of "
     "the memory hierarchy");

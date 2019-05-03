@@ -126,5 +126,5 @@ void LoopInvariantCodeMotion::runOnFunction() {
 }
 
 static PassRegistration<LoopInvariantCodeMotion>
-    pass("loop-invariant-code-motion",
+    pass("affine-loop-invariant-code-motion",
          "Hoist loop invariant instructions outside of the loop");

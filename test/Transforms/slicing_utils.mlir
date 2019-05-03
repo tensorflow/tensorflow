@@ -1,6 +1,6 @@
-// RUN: mlir-opt %s -vectorizer-test -forward-slicing=true 2>&1 | FileCheck %s --check-prefix=FWD
-// RUN: mlir-opt %s -vectorizer-test -backward-slicing=true 2>&1 | FileCheck %s --check-prefix=BWD
-// RUN: mlir-opt %s -vectorizer-test -slicing=true 2>&1 | FileCheck %s --check-prefix=FWDBWD
+// RUN: mlir-opt %s -affine-vectorizer-test -forward-slicing=true 2>&1 | FileCheck %s --check-prefix=FWD
+// RUN: mlir-opt %s -affine-vectorizer-test -backward-slicing=true 2>&1 | FileCheck %s --check-prefix=BWD
+// RUN: mlir-opt %s -affine-vectorizer-test -slicing=true 2>&1 | FileCheck %s --check-prefix=FWDBWD
 
 ///   1       2      3      4
 ///   |_______|      |______|

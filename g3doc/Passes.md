@@ -76,7 +76,7 @@ value is returned, packed into an LLVM IR struct type. Function calls and
 returns are updated accordingly. Block argument types are updated to use LLVM IR
 types.
 
-## DMA generation (`-dma-generate`)
+## DMA generation (`-affine-dma-generate`)
 
 Replaces all loads and stores on memref's living in 'slowMemorySpace' by
 introducing DMA operations (strided DMA if necessary) to transfer data to/from
@@ -143,22 +143,22 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
 }
 ```
 
-## Loop tiling (`-loop-tile`)
+## Loop tiling (`-affine-loop-tile`)
 
 Performs tiling or blocking of loop nests. It currently works on perfect loop
 nests.
 
-## Loop unroll (`-loop-unroll`)
+## Loop unroll (`-affine-loop-unroll`)
 
 This pass implements loop unrolling. It is able to unroll loops with arbitrary
 bounds, and generate a cleanup loop when necessary.
 
-## Loop unroll and jam (`-loop-unroll-jam`)
+## Loop unroll and jam (`-affine-loop-unroll-jam`)
 
 This pass implements unroll and jam for loops. It works on both perfect or
 imperfect loop nests.
 
-## Loop fusion (`-loop-fusion`)
+## Loop fusion (`-affine-loop-fusion`)
 
 Performs fusion of loop nests using a slicing-based approach. The fused loop
 nests, when possible, are rewritten to access significantly smaller local
@@ -245,7 +245,7 @@ test/Transforms/memref-dataflow-opt.mlir:232:7: note: dependence from 2 to 1 at 
       store %cf9, %m[%idx] : memref<10xf32>
 ```
 
-## Pipeline data transfer (`-pipeline-data-transfer`)
+## Pipeline data transfer (`-affine-pipeline-data-transfer`)
 
 This pass performs a transformation to overlap non-blocking DMA operations in a
 loop with computations through double buffering. This is achieved by advancing

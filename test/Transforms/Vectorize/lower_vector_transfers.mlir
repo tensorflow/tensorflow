@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -lower-vector-transfers | FileCheck %s
+// RUN: mlir-opt %s -affine-lower-vector-transfers | FileCheck %s
 
 // CHECK: #[[ADD:map[0-9]+]] = (d0, d1) -> (d0 + d1)
 // CHECK: #[[SUB:map[0-9]+]] = ()[s0] -> (s0 - 1)

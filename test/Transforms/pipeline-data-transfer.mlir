@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -pipeline-data-transfer | FileCheck %s
+// RUN: mlir-opt %s -affine-pipeline-data-transfer | FileCheck %s
 
 // CHECK-DAG: [[MOD_2:#map[0-9]+]] = (d0) -> (d0 mod 2)
 // CHECK-DAG: [[FLOOR_MOD_2:#map[0-9]+]] = (d0) -> ((d0 floordiv 4) mod 2)

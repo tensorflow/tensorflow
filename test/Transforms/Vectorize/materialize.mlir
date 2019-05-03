@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -materialize-vectors -vector-size=4 -vector-size=4 | FileCheck %s
+// RUN: mlir-opt %s -affine-materialize-vectors -vector-size=4 -vector-size=4 | FileCheck %s
 
 // CHECK-DAG: #[[ID1:map[0-9]+]] = (d0) -> (d0)
 // CHECK-DAG: #[[D0D1D2D3TOD1D0:map[0-9]+]] = (d0, d1, d2, d3) -> (d1, d0)

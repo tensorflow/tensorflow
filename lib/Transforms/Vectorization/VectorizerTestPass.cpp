@@ -36,7 +36,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
-#define DEBUG_TYPE "vectorizer-test"
+#define DEBUG_TYPE "affine-vectorizer-test"
 
 using namespace mlir;
 
@@ -306,6 +306,7 @@ FunctionPassBase *mlir::createVectorizerTestPass() {
 }
 
 static PassRegistration<VectorizerTestPass>
-    pass("vectorizer-test", "Tests vectorizer standalone functionality.");
+    pass("affine-vectorizer-test",
+         "Tests vectorizer standalone functionality.");
 
 #undef DEBUG_TYPE

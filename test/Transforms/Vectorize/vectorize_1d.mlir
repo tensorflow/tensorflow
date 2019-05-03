@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -vectorize -virtual-vector-size 128 --test-fastest-varying=0 | FileCheck %s
+// RUN: mlir-opt %s -affine-vectorize -virtual-vector-size 128 --test-fastest-varying=0 | FileCheck %s
 
 // Permutation maps used in vectorization.
 // CHECK: #[[map_proj_d0d1_0:map[0-9]+]] = (d0, d1) -> (0)

@@ -1,5 +1,5 @@
-// RUN: mlir-opt %s -split-input-file -dma-generate -dma-skip-non-unit-stride-loops -verify | FileCheck %s
-// RUN: mlir-opt %s -split-input-file -dma-generate -dma-fast-mem-capacity=16 -dma-fast-mem-space=2 | FileCheck %s --check-prefix FAST-MEM-16KB
+// RUN: mlir-opt %s -split-input-file -affine-dma-generate -dma-skip-non-unit-stride-loops -verify | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -affine-dma-generate -dma-fast-mem-capacity=16 -dma-fast-mem-space=2 | FileCheck %s --check-prefix FAST-MEM-16KB
 
 // We run most test cases with -dma-skip-non-unit-stride-loops to allow testing
 // DMA generation at inner levels easily - since the DMA generation would
