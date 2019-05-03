@@ -28,6 +28,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -155,6 +156,22 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     expected_output = [[k**2 for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
                        for i in range(0, 1024, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testMapAndBatchWithCapturedInput(self, drop_remainder):
+    captured_t = variables.Variable(42)
+    dataset = dataset_ops.Dataset.range(1024).apply(
+        batching.map_and_batch(
+            lambda x: captured_t, 32, drop_remainder=drop_remainder))
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    self.assertEqual([[32 if drop_remainder else None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    self.assertEqual([[8 if drop_remainder else None]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+    expected_output = [[42 for _ in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
+                       for i in range(0, 1024, 8)]
+    self.evaluate(variables.global_variables_initializer())
+    self.assertDatasetProduces(
+        rebatched_dataset, expected_output, requires_initialization=True)
 
   def testPaddedBatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(128).batch(4).padded_batch(
