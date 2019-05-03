@@ -199,6 +199,7 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -241,6 +242,7 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
     ] + select({
         ":haswell": tflite_deps_intel,

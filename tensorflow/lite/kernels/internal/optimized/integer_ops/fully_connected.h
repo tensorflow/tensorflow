@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 
@@ -257,7 +258,7 @@ inline void FullyConnectedAsGEMVWorkerImpl(
   }
 }
 
-struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
+struct FullyConnectedAsGEMVWorkerTask : public cpu_backend_threadpool::Task {
   FullyConnectedAsGEMVWorkerTask(
       const RuntimeShape& input_shape, const int8_t* input_data,
       int32 input_offset, const RuntimeShape& filter_shape,
@@ -320,14 +321,14 @@ inline void FullyConnectedAsGEMV(
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    int8_t* output_data, gemmlowp::GemmContext* gemmlowp_context) {
+    int8_t* output_data, CpuBackendContext* cpu_backend_context) {
   const int output_dim_count = output_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
   const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemmlowp_context->max_num_threads(), output_rows, batches, input_size);
+      cpu_backend_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -358,7 +359,8 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
 }
 #endif  // USE_NEON
 
@@ -454,7 +456,8 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data, gemmlowp_context);
+          output_activation_max, output_shape, output_data,
+          cpu_backend_context);
     }
   }
 #endif  // USE_NEON
