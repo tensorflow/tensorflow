@@ -122,6 +122,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_TRANSPOSE(reference_ops, int8_t);
       }
       break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_TRANSPOSE(reference_ops, int16_t);
+      }
+      break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
         TF_LITE_TRANSPOSE(reference_ops, int32_t);
@@ -134,8 +139,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Type %d is currently not supported by Transpose.",
-                           op_context.input->type);
+                           "Type %s is currently not supported by Transpose.",
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE
