@@ -341,21 +341,24 @@ inline void FullyConnectedAsGEMV(
 
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
-  std::vector<gemmlowp::Task*> tasks(thread_count);
+  std::vector<FullyConnectedAsGEMVWorkerTask> tasks;
+  // TODO(b/131746020) don't create new heap allocations every time.
+  // At least we make it a single heap allocation by using reserve().
+  tasks.reserve(thread_count);
   const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
       gemmlowp::CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
-    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data, row_start, row_end);
+    tasks.emplace_back(input_shape, input_data, input_offset, filter_shape,
+                       filter_data, filter_offset, bias_shape, bias_data,
+                       output_offset, output_multiplier, output_shift,
+                       output_activation_min, output_activation_max,
+                       output_shape, output_data, row_start, row_end);
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->LegacyExecuteAndDestroyTasks(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks.size(), tasks.data());
 }
 #endif  // USE_NEON
 

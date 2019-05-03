@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 
 #include <algorithm>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -94,6 +95,7 @@ class NcclReducerTest : public ::testing::Test {
   void Init(int num_ranks) {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
+    setenv("TF_CPP_VMODULE", "nccl_manager=2", 1 /* replace */);
     InitGPUDevices();
     std::vector<std::unique_ptr<Device>> local_devices;
     std::vector<string> device_names;

@@ -12,98 +12,93 @@ application</a>
 
 ## Explore the code
 
-We're now going to walk through the most important parts of the sample code.
+The app is written entirely in Swift and uses the TensorFlow Lite
+[Swift library](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/swift)
+for performing image classification.
 
-This example is written in both Swift and Objective-C. All application
-functionality, image processing, and results formatting is developed in Swift.
-Objective-C is used via
-[bridging](https://developer.apple.com/documentation/swift/imported_c_and_objective-c_apis/importing_objective-c_into_swift)
-to make the TensorFlow Lite C++ framework calls.
+Note: Objective-C developers should use the TensorFlow Lite
+[Objective-C library](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/objc).
+
+We're now going to walk through the most important parts of the sample code.
 
 ### Get camera input
 
-The main logic of this app is in the Swift source file
-[`ViewController.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ViewControllers/ViewController.swift).
-
-The app's main view is represented by the `ViewController` class, which we
-extend with functionality from `CameraFeedManagerDelegate`, a class created to
-handle a camera feed. To run inference on the feed, we implement the `didOutput`
-method, which is called whenever a frame is available from the camera.
+The app's main view is represented by the `ViewController` class in
+[`ViewController.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ViewControllers/ViewController.swift),
+which we extend with functionality from the `CameraFeedManagerDelegate` protocol
+to process frames from a camera feed. To run inference on a given frame, we
+implement the `didOutput` method, which is called whenever a frame is available
+from the camera.
 
 Our implementation of `didOutput` includes a call to the `runModel` method of a
 `ModelDataHandler` instance. As we will see below, this class gives us access to
-the TensorFlow Lite interpreter and the image classification model we are using.
+the TensorFlow Lite `Interpreter` class for performing image classification.
 
 ```swift
 extension ViewController: CameraFeedManagerDelegate {
 
   func didOutput(pixelBuffer: CVPixelBuffer) {
-
-    // Run the live camera pixelBuffer through TensorFlow to get the result
     let currentTimeMs = Date().timeIntervalSince1970 * 1000
-
-    guard  (currentTimeMs - previousInferenceTimeMs) >= delayBetweenInferencesMs else {
-      return
-    }
-
+    guard (currentTimeMs - previousInferenceTimeMs) >= delayBetweenInferencesMs else { return }
     previousInferenceTimeMs = currentTimeMs
+
+    // Pass the pixel buffer to TensorFlow Lite to perform inference.
     result = modelDataHandler?.runModel(onFrame: pixelBuffer)
 
+    // Display results by handing off to the InferenceViewController.
     DispatchQueue.main.async {
-
       let resolution = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-
-      // Display results by handing off to the InferenceViewController
       self.inferenceViewController?.inferenceResult = self.result
       self.inferenceViewController?.resolution = resolution
       self.inferenceViewController?.tableView.reloadData()
-
     }
   }
 ...
 ```
 
-### TensorFlow Lite wrapper
-
-The app uses TensorFlow Lite's C++ library via an Objective-C wrapper defined in
-[`TfliteWrapper.h`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/TensorFlowLiteWrapper/TfliteWrapper.h)
-and
-[`TfliteWrapper.mm`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/TensorFlowLiteWrapper/TfliteWrapper.mm).
-
-This wrapper is required because currently there is no interoperability between
-Swift and C++. The wrapper is exposed to Swift via bridging so that the
-Tensorflow Lite methods can be called from Swift.
-
 ### ModelDataHandler
 
-The Swift class `ModelDataHandler`, defined by
+The Swift class `ModelDataHandler`, defined in
 [`ModelDataHandler.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ModelDataHandler/ModelDataHandler.swift),
 handles all data preprocessing and makes calls to run inference on a given frame
-through the TfliteWrapper. It then formats the inferences obtained and returns
-the top N results for a successful inference.
+using the TensorFlow Lite [`Interpreter`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/Interpreter.swift).
+It then formats the inferences obtained from invoking the `Interpreter` and
+returns the top N results for a successful inference.
 
 The following sections show how this works.
 
 #### Initialization
 
-The method `init` instantiates a `TfliteWrapper` and loads the supplied model
-and labels files from disk.
+The `init` method creates a new instance of the `Interpreter` and loads the
+specified model and labels files from the app's main bundle.
 
 ```swift
-init?(modelFileName: String, labelsFileName: String, labelsFileExtension: String) {
+init?(modelFileInfo: FileInfo, labelsFileInfo: FileInfo, threadCount: Int = 1) {
+  let modelFilename = modelFileInfo.name
 
-  // Initializes TFliteWrapper and based on the setup result of interpreter, initializes the object of this class
-  self.tfLiteWrapper = TfliteWrapper(modelFileName: modelFileName)
-  guard self.tfLiteWrapper.setUpModelAndInterpreter() else {
+  // Construct the path to the model file.
+  guard let modelPath = Bundle.main.path(
+    forResource: modelFilename,
+    ofType: modelFileInfo.extension
+  ) else {
+    print("Failed to load the model file with name: \(modelFilename).")
     return nil
   }
 
-  super.init()
-
-  tfLiteWrapper.setNumberOfThreads(threadCount)
-
-  // Opens and loads the classes listed in the labels file
-  loadLabels(fromFileName: labelsFileName, fileExtension: labelsFileExtension)
+  // Specify the options for the `Interpreter`.
+  self.threadCount = threadCount
+  var options = InterpreterOptions()
+  options.threadCount = threadCount
+  options.isErrorLoggingEnabled = true
+  do {
+    // Create the `Interpreter`.
+    interpreter = try Interpreter(modelPath: modelPath, options: options)
+  } catch let error {
+    print("Failed to create the interpreter with error: \(error.localizedDescription)")
+    return nil
+  }
+  // Load the classes listed in the labels file.
+  loadLabels(fileInfo: labelsFileInfo)
 }
 ```
 
@@ -112,110 +107,118 @@ init?(modelFileName: String, labelsFileName: String, labelsFileExtension: String
 The method `runModel` accepts a `CVPixelBuffer` of camera data, which can be
 obtained from the `didOutput` method defined in `ViewController`.
 
-We crop the image, call `CVPixelBufferLockBaseAddress` to prepare the buffer to
-be read by the CPU, and then create an input tensor using the TensorFlow Lite
-wrapper:
-
-```swift
-guard  let tensorInputBaseAddress = tfLiteWrapper.inputTensor(at: 0) else {
-  return nil
-}
-```
+We crop the image to the size that the model was trained on. For example,
+`224x224` for the MobileNet v1 model.
 
 The image buffer contains an encoded color for each pixel in `BGRA` format
-(where `A` represents Alpha, or transparency), and our model expects it in `RGB`
-format. We now step through the buffer four bytes at a time, copying the three
-bytes we care about (`R`, `G`, and `B`) to the input tensor.
-
-Note: Since we are using a quantized model, we can directly use the `UInt8`
-values from the buffer. If we were using a float model, we would have to convert
-them to floating point by dividing by 255.
+(where `A` represents Alpha, or transparency). Our model expects the format to
+be `RGB`, so we use the following helper method to remove the alpha component
+from the image buffer to get the `RGB` data representation:
 
 ```swift
-let inputImageBaseAddress = sourceStartAddrss.assumingMemoryBound(to: UInt8.self)
-
-for y in 0...wantedInputHeight - 1 {
-  let tensorInputRow = tensorInputBaseAddress.advanced(by: (y * wantedInputWidth * wantedInputChannels))
-  let inputImageRow = inputImageBaseAddress.advanced(by: y * wantedInputWidth * imageChannels)
-
-  for x in 0...wantedInputWidth - 1 {
-
-    let out_pixel = tensorInputRow.advanced(by: x * wantedInputChannels)
-    let in_pixel = inputImageRow.advanced(by: x * imageChannels)
-
-    var b = 2
-    for c in 0...(wantedInputChannels) - 1 {
-
-      // We are reversing the order of pixels since the source pixel format is BGRA, but the model requires RGB format.
-      out_pixel[c] = in_pixel[b]
-      b = b - 1
-    }
+private let alphaComponent = (baseOffset: 4, moduloRemainder: 3)
+private func rgbDataFromBuffer(
+  _ buffer: CVPixelBuffer,
+  byteCount: Int,
+  isModelQuantized: Bool
+) -> Data? {
+  CVPixelBufferLockBaseAddress(buffer, .readOnly)
+  defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+  guard let mutableRawPointer = CVPixelBufferGetBaseAddress(buffer) else {
+    return nil
   }
+  let count = CVPixelBufferGetDataSize(buffer)
+  let bufferData = Data(bytesNoCopy: mutableRawPointer, count: count, deallocator: .none)
+  var rgbBytes = [UInt8](repeating: 0, count: byteCount)
+  var index = 0
+  for component in bufferData.enumerated() {
+    let offset = component.offset
+    let isAlphaComponent = (offset % alphaComponent.baseOffset) == alphaComponent.moduloRemainder
+    guard !isAlphaComponent else { continue }
+    rgbBytes[index] = component.element
+    index += 1
+  }
+  if isModelQuantized { return Data(bytes: rgbBytes) }
+  return Data(copyingBufferOf: rgbBytes.map { Float($0) / 255.0 })
 }
 ```
 
 #### Run inference
 
-Running inference is a simple call to `tfLiteWrapper.invokeInterpreter()`. The
-result of this synchronous call can be obtained by calling
-`tfLiteWrapper.outputTensor()`.
+Here's the code for getting the `RGB` data representation of the pixel buffer,
+copying that data to the input
+[`Tensor`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/Tensor.swift),
+and running inference by invoking the `Interpreter`:
 
 ```swift
-guard tfLiteWrapper.invokeInterpreter() else {
-  return nil
-}
+let outputTensor: Tensor
+do {
+  // Allocate memory for the model's input `Tensor`s.
+  try interpreter.allocateTensors()
+  let inputTensor = try interpreter.input(at: 0)
 
-guard let outputTensor = tfLiteWrapper.outputTensor(at: 0) else {
-  return nil
+  // Remove the alpha component from the image buffer to get the RGB data.
+  guard let rgbData = rgbDataFromBuffer(
+    thumbnailPixelBuffer,
+    byteCount: batchSize * inputWidth * inputHeight * inputChannels,
+    isModelQuantized: inputTensor.dataType == .uInt8
+  ) else {
+    print("Failed to convert the image buffer to RGB data.")
+    return
+  }
+
+  // Copy the RGB data to the input `Tensor`.
+  try interpreter.copy(rgbData, toInputAt: 0)
+
+  // Run inference by invoking the `Interpreter`.
+  try interpreter.invoke()
+
+  // Get the output `Tensor` to process the inference results.
+  outputTensor = try interpreter.output(at: 0)
+} catch let error {
+  print("Failed to invoke the interpreter with error: \(error.localizedDescription)")
+  return
 }
 ```
 
 #### Process results
 
-The `getTopN` method, also declared in `ModelDataHandler.swift`, interprets the
-contents of the output tensor. It returns a list of the top N predictions,
-ordered by confidence.
-
-The output tensor contains one `UInt8` value per class label, with a value
-between 0 and 255 corresponding to a confidence of 0 to 100% that each label is
-present in the image.
-
-First, the results are mapped into an array of `Inference` instances, each with
-a `confidence` between 0 and 1 and a `className` representing the label.
+If the model is quantized, the output `Tensor` contains one `UInt8` value per
+class label. Dequantize the results so the values are floats, ranging from 0.0
+to 1.0, where each value represents the confidence that a label is present in
+the image:
 
 ```swift
-for i in 0...predictionSize - 1 {
-  let value = Double(prediction[i]) / 255.0
+guard let quantization = outputTensor.quantizationParameters else {
+  print("No results returned because the quantization values for the output tensor are nil.")
+  return
+}
 
-  guard i < labels.count else {
-    continue
-  }
+// Get the quantized results from the output tensor's `data` property.
+let quantizedResults = [UInt8](outputTensor.data)
 
-  let inference = Inference(confidence: value, className: labels[i])
-  resultsArray.append(inference)
+// Dequantize the results using the quantization values.
+let results = quantizedResults.map {
+  quantization.scale * Float(Int($0) - quantization.zeroPoint)
 }
 ```
 
-Next, the results are sorted, and we return the top `N` (where N is
-`resultCount`).
+Next, the results are sorted to get the top `N` results (where `N` is
+`resultCount`):
 
 ```swift
-resultsArray.sort { (first, second) -> Bool in
-  return first.confidence  > second.confidence
-}
+// Create a zipped array of tuples [(labelIndex: Int, confidence: Float)].
+let zippedResults = zip(labels.indices, results)
 
-guard resultsArray.count > resultCount else {
-  return resultsArray
-}
-let finalArray = resultsArray[0..<resultCount]
+// Sort the zipped results by confidence value in descending order.
+let sortedResults = zippedResults.sorted { $0.1 > $1.1 }.prefix(resultCount)
 
-return Array(finalArray)
+// Get the top N `Inference` results.
+let topNInferences = sortedResults.map { result in Inference(confidence: result.1, label: labels[result.0]) }
 ```
 
 ### Display results
 
 The file
 [`InferenceViewController.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ViewControllers/InferenceViewController.swift)
-defines the app's UI.
-
-A `UITableView` instance, `tableView`, is used to display the results.
+defines the app's UI. A `UITableView` is used to display the results.

@@ -966,8 +966,8 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
        255},
       {TensorType_UINT8,
        {depth, filter_size, filter_size, filter_count},
-       0,
-       255},
+       -128,
+       127},
       {TensorType_UINT8, {}, 0, 255}, stride_width, stride_height, padding,
       ActivationFunctionType_NONE, dilation_width_factor,
       dilation_height_factor);

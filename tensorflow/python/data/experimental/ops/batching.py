@@ -61,14 +61,13 @@ def dense_to_sparse_batch(batch_size, row_shape):
   ```
 
   Args:
-    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the
-      number of consecutive elements of this dataset to combine in a
-      single batch.
-    row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like
-      object representing the equivalent dense shape of a row in the
-      resulting `tf.SparseTensor`. Each element of this dataset must
-      have the same rank as `row_shape`, and must have size less
-      than or equal to `row_shape` in each dimension.
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
+      representing the equivalent dense shape of a row in the resulting
+      `tf.SparseTensor`. Each element of this dataset must have the same rank as
+      `row_shape`, and must have size less than or equal to `row_shape` in each
+      dimension.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -225,6 +224,7 @@ def unbatch():
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
+
     # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
     # are normalized to the rank-1 dense representation, so that the
     # sparse-oblivious unbatching logic will slice them
@@ -356,8 +356,8 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
       output_types: A nested structure of `tf.DType` objects.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
         If omitted, the shapes will be inherited from `dataset`.
-      output_classes: (Optional.) A nested structure of class types.
-        If omitted, the class types will be inherited from `dataset`.
+      output_classes: (Optional.) A nested structure of class types. If omitted,
+        the class types will be inherited from `dataset`.
       allow_unsafe_cast: (Optional.) If `True`, the caller may switch the
         reported output types and shapes of the restructured dataset, e.g. to
         switch a sparse tensor represented as `tf.variant` to its user-visible

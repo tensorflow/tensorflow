@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.enumerate_dataset()`."""
+"""Tests for `tf.data.Dataset.enumerate()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import enumerate_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -28,14 +27,14 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class EnumerateDatasetTest(test_base.DatasetTestBase):
+class EnumerateTest(test_base.DatasetTestBase):
 
-  def testEnumerateDataset(self):
+  def testEnumerate(self):
     components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
-        enumerate_ops.enumerate_dataset(start))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).enumerate(
+        start)
 
     self.assertEqual(dtypes.int64,
                      dataset_ops.get_legacy_output_types(dataset)[0])

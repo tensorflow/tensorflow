@@ -96,6 +96,11 @@ class RecursiveCompilabilityChecker {
     // don't auto-cluster these ops because we don't yet support live-in or
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
+
+    // Whether the "Svd" op should be auto-clustered.  The XLA implemenation of
+    // this op has some performance (b/128001705) and possibly correctness
+    // (b/127344411) issues so we avoid auto-clustering it.
+    bool allow_svd_op;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,

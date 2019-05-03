@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "@com_google_googletest//:gtest",
@@ -878,8 +879,9 @@ cc_test(
     srcs = ["embedding_lookup_test.cc"],
     deps = [
         ":builtin_ops",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
     ],
 )

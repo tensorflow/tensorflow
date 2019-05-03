@@ -1576,122 +1576,6 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-namespace {
-// Switch from a floating point value to a integer value in such a way that when
-// using the integer value to compare, we get the same result for normal values,
-// and -Nan is treated as the smallest value, and Nan is treated as the largest
-// value.
-// If f is a float, and
-// x = bit_cast<int32>(f);
-// y = x < 0 ? numeric_limits<int32>::max() - x : x;
-// then y is ordered as an int32 such that finite values have the obvious order,
-// -0 is ordered before 0, and -NaN and NaN appear at the beginning and end of
-// the ordering.
-// Note that in order to avoid -x to overflow, we calculate
-// numeric_limits<int32>::max() - x as unsigned, and then convert back to
-// signed.
-XlaOp BitcastConvertFloatingPointToIntegral(const XlaOp& value,
-                                            int64 bit_width) {
-  PrimitiveType signed_type;
-  PrimitiveType unsigned_type;
-  XlaOp max_value;
-  switch (bit_width) {
-    case 16:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint16>(std::numeric_limits<int16>::max()));
-      signed_type = S16;
-      unsigned_type = U16;
-      break;
-    case 32:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint32>(std::numeric_limits<int32>::max()));
-      signed_type = S32;
-      unsigned_type = U32;
-      break;
-    case 64:
-      max_value =
-          ConstantR0(value.builder(),
-                     static_cast<uint64>(std::numeric_limits<int64>::max()));
-      signed_type = S64;
-      unsigned_type = U64;
-      break;
-    default:
-      return value.builder()->ReportError(
-          InvalidArgument("Invalid bit width %lld for Comparator floating "
-                          "point parameter.",
-                          bit_width));
-  }
-  auto signed_value = BitcastConvertType(value, signed_type);
-  auto unsigned_value = BitcastConvertType(value, unsigned_type);
-  auto flipped_value =
-      BitcastConvertType(Sub(max_value, unsigned_value), signed_type);
-  auto is_negative =
-      Lt(signed_value,
-         ConstantLiteral(value.builder(), LiteralUtil::Zero(signed_type)));
-  return Select(is_negative, flipped_value, signed_value);
-}
-}  // namespace
-
-XlaOp XlaBuilder::Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
-                       int64 dimension) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    std::vector<XlaOp> operands{keys};
-    for (const XlaOp& value : values) {
-      operands.push_back(value);
-    }
-    // Build the default less-than comparator (copied from lib/comparators.cc).
-    // TODO(b/122298745): Remove the deprecated API method so that this code
-    // duplication can be deleted.
-    auto b = this->CreateSubBuilder("comparator");
-    std::vector<PrimitiveType> operand_types;
-    for (const XlaOp& operand : operands) {
-      TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(operand));
-      operand_types.push_back(operand_shape.element_type());
-    }
-
-    int64 parameter_count = 0;
-    XlaOp first_lhs_param;
-    XlaOp first_rhs_param;
-
-    for (auto operand_type : operand_types) {
-      auto scalar_shape = ShapeUtil::MakeShape(operand_type, {});
-      auto lhs_param =
-          b->Parameter(parameter_count * 2, scalar_shape,
-                       absl::StrCat("p.", parameter_count, ".lhs"));
-      auto rhs_param =
-          b->Parameter(parameter_count * 2 + 1, scalar_shape,
-                       absl::StrCat("p.", parameter_count, ".rhs"));
-      if (parameter_count == 0) {
-        first_lhs_param = lhs_param;
-        first_rhs_param = rhs_param;
-      }
-      ++parameter_count;
-    }
-    if (primitive_util::IsFloatingPointType(operand_types[0])) {
-      PrimitiveType compare_type = operand_types[0];
-      // Special-case handling for BF16. We currently do not support direct
-      // comparisons with BF16, so we convert to F32 and then use the F32
-      // comparison logic.
-      if (compare_type == BF16) {
-        compare_type = F32;
-        first_lhs_param = b->ConvertElementType(first_lhs_param, F32);
-        first_rhs_param = b->ConvertElementType(first_rhs_param, F32);
-      }
-      int64 bit_width = primitive_util::BitWidth(compare_type);
-      first_lhs_param =
-          BitcastConvertFloatingPointToIntegral(first_lhs_param, bit_width);
-      first_rhs_param =
-          BitcastConvertFloatingPointToIntegral(first_rhs_param, bit_width);
-    }
-    Lt(first_lhs_param, first_rhs_param);
-
-    TF_ASSIGN_OR_RETURN(auto comparator, b->Build());
-    return Sort(operands, comparator, dimension, /*is_stable=*/false);
-  });
-}
-
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
                        const XlaComputation& comparator, int64 dimension,
                        bool is_stable) {
@@ -3388,10 +3272,6 @@ XlaOp Transpose(const XlaOp operand, absl::Span<const int64> permutation) {
 
 XlaOp Rev(const XlaOp operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
-}
-
-XlaOp Sort(const XlaOp keys, absl::Span<const XlaOp> values, int64 dimension) {
-  return keys.builder()->Sort(keys, values, dimension);
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,

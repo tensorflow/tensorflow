@@ -1607,11 +1607,11 @@ class ComputationBuilder(object):
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
-    return ops.Sort(operand, [], dimension)
+    return ops.Sort(self._builder, [operand], dimension)
 
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
-    return ops.Sort(keys, [values], dimension)
+    return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""
@@ -1649,6 +1649,13 @@ class ComputationBuilder(object):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers)
+
+  def Fft(self, operand, fft_type, fft_lengths):
+    """Enqueues a FFT operation onto the computation."""
+    return ops.Fft(operand, fft_type, fft_lengths)
+
+
+FftType = _xla.FftType
 
 
 _UNARY_OPS = [

@@ -39,7 +39,6 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",

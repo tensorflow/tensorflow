@@ -93,10 +93,21 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/core/*.cc) \
+$(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/c/*.c) \
 $(wildcard tensorflow/lite/experimental/c/*.cc) \
-$(wildcard tensorflow/lite/core/*.cc) \
-$(wildcard tensorflow/lite/core/api/*.cc)
+$(wildcard tensorflow/lite/experimental/ruy/allocator.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/block_map.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/blocking_counter.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/context.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/detect_dotprod.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/tune.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -157,10 +168,13 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
+EVALUATION_UTILS_SRCS := \
+  tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+  $(CMD_LINE_TOOLS_SRCS) \
+	$(EVALUATION_UTILS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
@@ -228,11 +242,15 @@ $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
+lib: $(LIB_PATH)
+
 $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(MINIMAL_BINARY) $(MINIMAL_OBJS) \
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+minimal: $(MINIMAL_BINARY)
 
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_OBJS)
 	@mkdir -p $(dir $@)

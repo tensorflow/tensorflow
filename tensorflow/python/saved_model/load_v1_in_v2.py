@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.tracking import tracking
 
@@ -131,24 +132,23 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     saver, = load_graph_returns
     self.restore_variables(wrapped, saver)
     with wrapped.graph.as_default():
-      init_op = loader_impl.get_init_op(meta_graph_def)
+      init_op = loader_impl.get_init_op(
+          meta_graph_def) or monitored_session.Scaffold.default_local_init_op()
+
     root = tracking.AutoTrackable()
-    if init_op is not None:
-      asset_feed_tensors = []
-      asset_paths = []
-      for tensor_name, value in loader_impl.get_asset_tensors(
-          self._export_dir, meta_graph_def).items():
-        asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
-        asset_paths.append(tracking.TrackableAsset(value))
-      init_fn = wrapped.prune(
-          feeds=asset_feed_tensors,
-          fetches=[wrapped.graph.as_graph_element(init_op)])
-      initializer = _Initializer(init_fn, asset_paths)
-      initializer._initialize()  # pylint: disable=protected-access
-      root.initializer = initializer
-      root.asset_paths = asset_paths
-    else:
-      root.asset_paths = []
+    asset_feed_tensors = []
+    asset_paths = []
+    for tensor_name, value in loader_impl.get_asset_tensors(
+        self._export_dir, meta_graph_def).items():
+      asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
+      asset_paths.append(tracking.TrackableAsset(value))
+    init_fn = wrapped.prune(
+        feeds=asset_feed_tensors,
+        fetches=[wrapped.graph.as_graph_element(init_op)])
+    initializer = _Initializer(init_fn, asset_paths)
+    initializer._initialize()  # pylint: disable=protected-access
+    root.initializer = initializer
+    root.asset_paths = asset_paths
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
 
     root.signatures = signature_serialization.create_signature_map(

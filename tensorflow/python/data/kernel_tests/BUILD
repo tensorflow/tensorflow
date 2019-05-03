@@ -104,6 +104,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "enumerate_test",
+    size = "small",
+    srcs = ["enumerate_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],

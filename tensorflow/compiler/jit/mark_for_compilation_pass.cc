@@ -1414,6 +1414,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_control_trigger = true;
   op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
+  op_filter.allow_svd_op = true;
 
   return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
       .IsCompilableCall(ndef, flr);

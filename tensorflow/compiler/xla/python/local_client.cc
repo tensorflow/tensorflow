@@ -512,7 +512,7 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
 
   for (Shape& layout : argument_layouts) {
     argument_layout_pointers.push_back(&layout);
-    assign_layouts(&layout);
+    TF_RETURN_IF_ERROR(assign_layouts(&layout));
   }
 
   ExecutableBuildOptions options;
@@ -529,7 +529,7 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
     result_layout = program_shape.result();
     LayoutUtil::ClearLayout(&result_layout);
   }
-  assign_layouts(&result_layout);
+  TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
   options.set_result_layout(result_layout);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<LocalExecutable> local_executable,

@@ -230,7 +230,79 @@ def _CheckAtLeast3DImage(image, require_static=True):
         check_ops.assert_positive(
             array_ops.shape(image),
             ["all dims of 'image.shape' "
-             'must be > 0.'])
+             'must be > 0.']),
+        check_ops.assert_greater_equal(
+            array_ops.rank(image),
+            3,
+            message="'image' must be at least three-dimensional.")
+    ]
+  else:
+    return []
+
+
+def _AssertGrayscaleImage(image):
+  """Assert that we are working with a properly shaped
+
+     grayscale image.
+
+    Performs the check statically if possible (i.e. if the shape
+    is statically known). Otherwise adds a control dependency
+    to an assert op that checks the dynamic shape.
+
+    Args:
+      image: >= 3-D Tensor of size [*, height, width, depth]
+
+    Raises:
+      ValueError: if image.shape is not a [>= 3] vector or if
+                last dimension is not size 1.
+
+    Returns:
+      If the shape of `image` could be verified statically, `image` is
+      returned unchanged, otherwise there will be a control dependency
+      added that asserts the correct dynamic shape.
+  """
+  return control_flow_ops.with_dependencies(
+      _CheckGrayscaleImage(image, require_static=False), image)
+
+
+def _CheckGrayscaleImage(image, require_static=True):
+  """Assert that we are working with properly shaped
+
+  grayscale image.
+
+  Args:
+    image: >= 3-D Tensor of size [*, height, width, depth]
+
+  Raises:
+    ValueError: if image.shape is not a [>= 3] vector or if
+              last dimension is not size 1.
+
+  Returns:
+    An empty list, if `image` has fully defined dimensions. Otherwise, a list
+    containing an assert op is returned.
+  """
+  try:
+    if image.get_shape().ndims is None:
+      image_shape = image.get_shape().with_rank(3)
+    else:
+      image_shape = image.get_shape().with_rank_at_least(3)
+  except ValueError:
+    raise ValueError('A grayscale image must be at least three-dimensional.')
+  if require_static and not image_shape.is_fully_defined():
+    raise ValueError('\'image\' must be fully defined.')
+  if image_shape.is_fully_defined():
+    if image_shape[-1] != 1:
+      raise ValueError('Last dimension of a grayscale image should be size 1.')
+  if not image_shape.is_fully_defined():
+    return [
+        check_ops.assert_equal(
+            array_ops.shape(image)[-1],
+            1,
+            message='Last dimension of a grayscale image should be size 1.'),
+        check_ops.assert_greater_equal(
+            array_ops.rank(image),
+            3,
+            message='A grayscale image must be at least three-dimensional.')
     ]
   else:
     return []
@@ -1586,50 +1658,46 @@ def adjust_contrast(images, contrast_factor):
 @tf_export('image.adjust_gamma')
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
-
-  Also known as Power Law Transform. This function transforms the
-  input image pixelwise according to the equation `Out = In**gamma`
-  after scaling each pixel to the range 0 to 1.
-
+  Also known as Power Law Transform. This function converts the
+  input images at first to float representation, then transforms them
+  pixelwise according to the equation `Out = gain * In**gamma`,
+  and then converts the back to the original data type.
   Args:
-    image : A Tensor.
+    image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
     gain  : A scalar or tensor. The constant multiplier.
-
   Returns:
-    A Tensor. Gamma corrected output image.
-
+    A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
   Raises:
     ValueError: If gamma is negative.
-
   Notes:
     For gamma greater than 1, the histogram will shift towards left and
     the output image will be darker than the input image.
     For gamma less than 1, the histogram will shift towards right and
     the output image will be brighter than the input image.
-
   References:
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
   with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
-    # Convert pixel value to DT_FLOAT for computing adjusted image.
-    img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
-    # Keep image dtype for computing the scale of corresponding dtype.
     image = ops.convert_to_tensor(image, name='image')
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     assert_op = _assert(gamma >= 0, ValueError,
                         'Gamma should be a non-negative real number.')
     if assert_op:
       gamma = control_flow_ops.with_dependencies(assert_op, gamma)
 
-    # scale = max(dtype) - min(dtype).
-    scale = constant_op.constant(
-        image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
     # According to the definition of gamma correction.
-    adjusted_img = (img / scale)**gamma * scale * gain
+    adjusted_img = gain * flt_image**gamma
 
-    return adjusted_img
+    return convert_image_dtype(adjusted_img, orig_dtype, saturate=True)
 
 
 @tf_export('image.convert_image_dtype')
@@ -1747,6 +1815,7 @@ def grayscale_to_rgb(images, name=None):
 
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
+  The input images' last dimension must be size 1.
 
   Args:
     images: The Grayscale tensor to convert. Last dimension must be size 1.
@@ -1756,6 +1825,8 @@ def grayscale_to_rgb(images, name=None):
     The converted grayscale image(s).
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
+    images = _AssertGrayscaleImage(images)
+
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = ([array_ops.ones(rank_1, dtype=dtypes.int32)] +
@@ -3650,7 +3721,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   Returns:
     A `Tensor`. Has the same type as `images`.
   """
-  if colors is None and not compat.forward_compatible(2019, 5, 1):
+  if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
   return gen_image_ops.draw_bounding_boxes_v2(images, boxes, colors, name)
 

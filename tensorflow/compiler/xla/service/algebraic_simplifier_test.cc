@@ -336,6 +336,29 @@ TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
                                                     m::ConstantScalar(3.0))))));
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       MultiplyReassociateMultiplyOfConstantAndBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c0 = f32[4] constant({2.0, 3.0, 4.0, 5.0})
+      c1 = f32[] constant(3.0)
+      c2 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c1), dimensions={}
+      b1 = f32[4] broadcast(c2), dimensions={}
+      multiply0 = f32[4] multiply(c0, b0)
+      ROOT multiply1 = f32[4] multiply(multiply0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Constant(), m::Broadcast(m::Multiply(m::ConstantScalar(3.0),
+                                                  m::ConstantScalar(4.0))))));
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});

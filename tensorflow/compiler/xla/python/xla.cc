@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
@@ -336,6 +339,14 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("DynamicUpdateSlice",
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
               &DynamicUpdateSlice));
+
+  ops.def("Fft", &Fft);
+  py::enum_<FftType>(m, "FftType")
+      .value("FFT", FftType::FFT)
+      .value("IFFT", FftType::IFFT)
+      .value("RFFT", FftType::RFFT)
+      .value("IRFFT", FftType::IRFFT);
+
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"));
   ops.def("GetTupleElement", &GetTupleElement);
@@ -395,9 +406,22 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Slice", &Slice);
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
-  ops.def("Sort",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>, int64)>(&Sort),
-          py::arg("keys"), py::arg("values"), py::arg("dimension") = -1);
+  ops.def(
+      "Sort",
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
+         int64 dimension) -> XlaOp {
+        return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+          std::vector<PrimitiveType> operand_types;
+          for (const auto& operand : operands) {
+            TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
+            operand_types.push_back(operand_shape.element_type());
+          }
+          return Sort(operands,
+                      CreateScalarLtComputation(operand_types, builder),
+                      dimension);
+        });
+      },
+      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
