@@ -197,13 +197,18 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
             ShapeIndex result_index = {};
 
             if (is_variadic_reduce) {
-              // The result of variadic reduce is a tuple, find the subshape
-              // that contains the dynamic dimension.
-              result_index = {operand_index};
+              // The dimensions of all data operands of a variadic reduce have
+              // to be the same.  This means that if one operand of variadic
+              // reduce has a dynamic dimension, we set all outputs to use the
+              // same dynamic size in corresponding dimensions.
+              for (int64 i = 0; i < operand_count / 2; ++i) {
+                parent_->SetDynamicSize(
+                    reduce, {i}, dimensions_not_reduced_count, dynamic_size);
+              }
+            } else {
+              parent_->SetDynamicSize(reduce, {}, dimensions_not_reduced_count,
+                                      dynamic_size);
             }
-
-            parent_->SetDynamicSize(reduce, result_index,
-                                    dimensions_not_reduced_count, dynamic_size);
 
             return Status::OK();
           }
