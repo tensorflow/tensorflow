@@ -251,15 +251,15 @@ public:
 
   /// Emit an error about fatal conditions with this function, reporting up to
   /// any diagnostic handlers that may be listening.
-  InFlightDiagnostic emitError(const Twine &message);
+  InFlightDiagnostic emitError(const Twine &message = {});
 
   /// Emit a warning about this function, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitWarning(const Twine &message);
+  InFlightDiagnostic emitWarning(const Twine &message = {});
 
   /// Emit a remark about this function, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitRemark(const Twine &message);
+  InFlightDiagnostic emitRemark(const Twine &message = {});
 
   /// Displays the CFG in a window. This is for use from the debugger and
   /// depends on Graphviz to generate the graph.

@@ -305,10 +305,10 @@ void Operation::walk(const std::function<void(Operation *)> &callback) {
 // Other
 //===----------------------------------------------------------------------===//
 
-/// Emit a remark about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-InFlightDiagnostic Operation::emitRemark(const Twine &message) {
-  return getContext()->emitRemark(getLoc(), message);
+/// Emit an error about fatal conditions with this operation, reporting up to
+/// any diagnostic handlers that may be listening.
+InFlightDiagnostic Operation::emitError(const Twine &message) {
+  return getContext()->emitError(getLoc(), message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
@@ -317,10 +317,10 @@ InFlightDiagnostic Operation::emitWarning(const Twine &message) {
   return getContext()->emitWarning(getLoc(), message);
 }
 
-/// Emit an error about fatal conditions with this operation, reporting up to
-/// any diagnostic handlers that may be listening.
-InFlightDiagnostic Operation::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message);
+/// Emit a remark about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+InFlightDiagnostic Operation::emitRemark(const Twine &message) {
+  return getContext()->emitRemark(getLoc(), message);
 }
 
 /// Given an operation 'other' that is within the same parent block, return
@@ -542,7 +542,7 @@ LogicalResult Operation::fold(SmallVectorImpl<Value *> &results) {
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 InFlightDiagnostic Operation::emitOpError(const Twine &message) {
-  return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
+  return emitError() << "'" << getName().getStringRef() << "' op " << message;
 }
 
 //===----------------------------------------------------------------------===//
@@ -671,22 +671,21 @@ InFlightDiagnostic OpState::emitRemark(const Twine &message) {
 
 LogicalResult OpTrait::impl::verifyZeroOperands(Operation *op) {
   if (op->getNumOperands() != 0)
-    return op->emitOpError("requires zero operands");
+    return op->emitOpError() << "requires zero operands";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyOneOperand(Operation *op) {
   if (op->getNumOperands() != 1)
-    return op->emitOpError("requires a single operand");
+    return op->emitOpError() << "requires a single operand";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyNOperands(Operation *op,
                                              unsigned numOperands) {
   if (op->getNumOperands() != numOperands) {
-    return op->emitOpError("expected " + Twine(numOperands) +
-                           " operands, but found " +
-                           Twine(op->getNumOperands()));
+    return op->emitOpError() << "expected " << numOperands
+                             << " operands, but found " << op->getNumOperands();
   }
   return success();
 }
@@ -694,8 +693,8 @@ LogicalResult OpTrait::impl::verifyNOperands(Operation *op,
 LogicalResult OpTrait::impl::verifyAtLeastNOperands(Operation *op,
                                                     unsigned numOperands) {
   if (op->getNumOperands() < numOperands)
-    return op->emitOpError("expected " + Twine(numOperands) +
-                           " or more operands");
+    return op->emitOpError()
+           << "expected " << numOperands << " or more operands";
   return success();
 }
 
@@ -715,7 +714,7 @@ LogicalResult OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
   for (auto *operand : op->getOperands()) {
     auto type = getTensorOrVectorElementType(operand->getType());
     if (!type.isIntOrIndex())
-      return op->emitOpError("requires an integer or index type");
+      return op->emitOpError() << "requires an integer or index type";
   }
   return success();
 }
@@ -729,34 +728,34 @@ LogicalResult OpTrait::impl::verifySameTypeOperands(Operation *op) {
   auto type = op->getOperand(0)->getType();
   for (unsigned i = 1; i < nOperands; ++i)
     if (op->getOperand(i)->getType() != type)
-      return op->emitOpError("requires all operands to have the same type");
+      return op->emitOpError() << "requires all operands to have the same type";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyZeroResult(Operation *op) {
   if (op->getNumResults() != 0)
-    return op->emitOpError("requires zero results");
+    return op->emitOpError() << "requires zero results";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyOneResult(Operation *op) {
   if (op->getNumResults() != 1)
-    return op->emitOpError("requires one result");
+    return op->emitOpError() << "requires one result";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyNResults(Operation *op,
                                             unsigned numOperands) {
   if (op->getNumResults() != numOperands)
-    return op->emitOpError("expected " + Twine(numOperands) + " results");
+    return op->emitOpError() << "expected " << numOperands << " results";
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
                                                    unsigned numOperands) {
   if (op->getNumResults() < numOperands)
-    return op->emitOpError("expected " + Twine(numOperands) +
-                           " or more results");
+    return op->emitOpError()
+           << "expected " << numOperands << " or more results";
   return success();
 }
 
@@ -788,13 +787,13 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
   auto type = op->getOperand(0)->getType();
   for (unsigned i = 0, e = op->getNumResults(); i < e; ++i) {
     if (failed(verifyShapeMatch(op->getResult(i)->getType(), type)))
-      return op->emitOpError(
-          "requires the same shape for all operands and results");
+      return op->emitOpError()
+             << "requires the same shape for all operands and results";
   }
   for (unsigned i = 1, e = op->getNumOperands(); i < e; ++i) {
     if (failed(verifyShapeMatch(op->getOperand(i)->getType(), type)))
-      return op->emitOpError(
-          "requires the same shape for all operands and results");
+      return op->emitOpError()
+             << "requires the same shape for all operands and results";
   }
   return success();
 }
@@ -806,13 +805,13 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   auto type = op->getResult(0)->getType();
   for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
     if (op->getResult(i)->getType() != type)
-      return op->emitOpError(
-          "requires the same type for all operands and results");
+      return op->emitOpError()
+             << "requires the same type for all operands and results";
   }
   for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
     if (op->getOperand(i)->getType() != type)
-      return op->emitOpError(
-          "requires the same type for all operands and results");
+      return op->emitOpError()
+             << "requires the same type for all operands and results";
   }
   return success();
 }
@@ -821,14 +820,14 @@ static LogicalResult verifyBBArguments(Operation::operand_range operands,
                                        Block *destBB, Operation *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
-    return op->emitError("branch has " + Twine(operandCount) +
-                         " operands, but target block has " +
-                         Twine(destBB->getNumArguments()));
+    return op->emitError() << "branch has " << operandCount
+                           << " operands, but target block has "
+                           << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError("type mismatch in bb argument #" + Twine(i));
+      return op->emitError() << "type mismatch in bb argument #" << i;
   }
 
   return success();
@@ -864,7 +863,7 @@ LogicalResult OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
     auto elementType = getTensorOrVectorElementType(result->getType());
     bool isBoolType = elementType.isInteger(1);
     if (!isBoolType)
-      return op->emitOpError("requires a bool result type");
+      return op->emitOpError() << "requires a bool result type";
   }
 
   return success();
@@ -873,7 +872,7 @@ LogicalResult OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
 LogicalResult OpTrait::impl::verifyResultsAreFloatLike(Operation *op) {
   for (auto *result : op->getResults())
     if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
-      return op->emitOpError("requires a floating point type");
+      return op->emitOpError() << "requires a floating point type";
 
   return success();
 }
@@ -882,7 +881,7 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
   for (auto *result : op->getResults()) {
     auto type = getTensorOrVectorElementType(result->getType());
     if (!type.isIntOrIndex())
-      return op->emitOpError("requires an integer or index type");
+      return op->emitOpError() << "requires an integer or index type";
   }
   return success();
 }

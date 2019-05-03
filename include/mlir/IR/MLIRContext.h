@@ -62,12 +62,15 @@ public:
   MLIRContextImpl &getImpl() { return *impl.get(); }
 
   /// Emit an error message using the diagnostic engine.
+  InFlightDiagnostic emitError(Location location);
   InFlightDiagnostic emitError(Location location, const Twine &message);
 
   /// Emit a warning message using the diagnostic engine.
+  InFlightDiagnostic emitWarning(Location location);
   InFlightDiagnostic emitWarning(Location location, const Twine &message);
 
   /// Emit a remark message using the diagnostic engine.
+  InFlightDiagnostic emitRemark(Location location);
   InFlightDiagnostic emitRemark(Location location, const Twine &message);
 
   /// Returns the diagnostic engine for this context.

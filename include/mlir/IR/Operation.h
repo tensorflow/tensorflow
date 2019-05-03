@@ -431,19 +431,19 @@ public:
 
   /// Emit an error with the op name prefixed, like "'dim' op " which is
   /// convenient for verifiers.
-  InFlightDiagnostic emitOpError(const Twine &message);
+  InFlightDiagnostic emitOpError(const Twine &message = {});
 
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.
-  InFlightDiagnostic emitError(const Twine &message);
+  InFlightDiagnostic emitError(const Twine &message = {});
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitWarning(const Twine &message);
+  InFlightDiagnostic emitWarning(const Twine &message = {});
 
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitRemark(const Twine &message);
+  InFlightDiagnostic emitRemark(const Twine &message = {});
 
 private:
   Operation(Location location, OperationName name, unsigned numResults,

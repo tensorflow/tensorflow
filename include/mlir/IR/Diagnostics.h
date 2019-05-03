@@ -30,6 +30,7 @@
 
 namespace mlir {
 class DiagnosticEngine;
+class Identifier;
 class LogicalResult;
 class Type;
 
@@ -91,13 +92,16 @@ public:
 private:
   friend class Diagnostic;
 
-  // Construct from an int64_t.
+  // Construct from a signed integer.
   explicit DiagnosticArgument(int64_t val)
       : kind(DiagnosticArgumentKind::Integer), opaqueVal(val) {}
+  explicit DiagnosticArgument(int val) : DiagnosticArgument(int64_t(val)) {}
 
-  // Construct from an uint64_t.
+  // Construct from an unsigned integer.
   explicit DiagnosticArgument(uint64_t val)
       : kind(DiagnosticArgumentKind::Unsigned), opaqueVal(val) {}
+  explicit DiagnosticArgument(unsigned val)
+      : DiagnosticArgument(uint64_t(val)) {}
 
   // Construct from a string reference.
   explicit DiagnosticArgument(StringRef val)
@@ -179,6 +183,8 @@ public:
     stringArguments.emplace_back(std::move(str), arguments.size());
     return *this;
   }
+  /// Stream in an Identifier.
+  Diagnostic &operator<<(Identifier val);
 
   /// Outputs this diagnostic to a stream.
   void print(raw_ostream &os) const;

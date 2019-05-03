@@ -163,7 +163,7 @@ static FloatAttr getFloatAttr(Type type, double value,
                               llvm::Optional<Location> loc) {
   if (!type.isa<FloatType>()) {
     if (loc)
-      type.getContext()->emitError(*loc, "expected floating point type");
+      type.getContext()->emitError(*loc) << "expected floating point type";
     return nullptr;
   }
 

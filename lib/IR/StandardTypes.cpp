@@ -36,8 +36,8 @@ LogicalResult IntegerType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, unsigned width) {
   if (width > IntegerType::kMaxWidth) {
     if (loc)
-      context->emitError(*loc, "integer bitwidth is limited to " +
-                                   Twine(IntegerType::kMaxWidth) + " bits");
+      context->emitError(*loc) << "integer bitwidth is limited to "
+                               << IntegerType::kMaxWidth << " bits";
     return failure();
   }
   return success();

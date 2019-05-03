@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/Twine.h"
@@ -61,6 +62,14 @@ void DiagnosticArgument::print(raw_ostream &os) const {
 //===----------------------------------------------------------------------===//
 // Diagnostic
 //===----------------------------------------------------------------------===//
+
+/// Stream in an Identifier.
+Diagnostic &Diagnostic::operator<<(Identifier val) {
+  // An identifier is stored in the context, so we don't need to worry about the
+  // lifetime of its data.
+  arguments.push_back(DiagnosticArgument(val.strref()));
+  return *this;
+}
 
 /// Outputs this diagnostic to a stream.
 void Diagnostic::print(raw_ostream &os) const {

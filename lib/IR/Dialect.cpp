@@ -70,8 +70,8 @@ Dialect::~Dialect() {}
 
 /// Parse a type registered to this dialect.
 Type Dialect::parseType(StringRef tyData, Location loc) const {
-  getContext()->emitError(loc, "dialect '" + getNamespace() +
-                                   "' provides no type parsing hook");
+  getContext()->emitError(loc)
+      << "dialect '" << getNamespace() << "' provides no type parsing hook";
   return Type();
 }
 

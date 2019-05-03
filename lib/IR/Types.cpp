@@ -77,8 +77,8 @@ LogicalResult OpaqueType::verifyConstructionInvariants(
     StringRef typeData) {
   if (!Dialect::isValidNamespace(dialect.strref())) {
     if (loc)
-      context->emitError(*loc, "invalid dialect namespace '" +
-                                   dialect.strref() + "'");
+      context->emitError(*loc)
+          << "invalid dialect namespace '" << dialect << "'";
     return failure();
   }
   return success();

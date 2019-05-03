@@ -422,24 +422,42 @@ static ArrayRef<T> copyArrayRefInto(llvm::BumpPtrAllocator &allocator,
 // Diagnostic Handlers
 //===----------------------------------------------------------------------===//
 
+/// Helper function used to emit a diagnostic with an optionally empty twine
+/// message. If the message is empty, then it is not inserted into the
+/// diagnostic.
+static InFlightDiagnostic emitDiag(MLIRContextImpl &ctx, Location location,
+                                   DiagnosticSeverity severity,
+                                   const llvm::Twine &message) {
+  auto diag = ctx.diagEngine.emit(location, severity);
+  if (!message.isTriviallyEmpty())
+    diag << message;
+  return diag;
+}
+
+InFlightDiagnostic MLIRContext::emitError(Location location) {
+  return emitError(location, /*message=*/{});
+}
 InFlightDiagnostic MLIRContext::emitError(Location location,
                                           const llvm::Twine &message) {
-  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Error)
-         << message;
+  return emitDiag(getImpl(), location, DiagnosticSeverity::Error, message);
 }
 
 /// Emit a warning message using the diagnostic engine.
+InFlightDiagnostic MLIRContext::emitWarning(Location location) {
+  return emitWarning(location, /*message=*/{});
+}
 InFlightDiagnostic MLIRContext::emitWarning(Location location,
                                             const Twine &message) {
-  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Warning)
-         << message;
+  return emitDiag(getImpl(), location, DiagnosticSeverity::Warning, message);
 }
 
 /// Emit a remark message using the diagnostic engine.
+InFlightDiagnostic MLIRContext::emitRemark(Location location) {
+  return emitRemark(location, /*message=*/{});
+}
 InFlightDiagnostic MLIRContext::emitRemark(Location location,
                                            const Twine &message) {
-  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Remark)
-         << message;
+  return emitDiag(getImpl(), location, DiagnosticSeverity::Remark, message);
 }
 
 /// Returns the diagnostic engine for this context.
