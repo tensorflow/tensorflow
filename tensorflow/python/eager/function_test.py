@@ -1712,7 +1712,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
   def testInputSignatureWithPartialFunction(self):
-    self.skipTest('b/124441704')
     def full_function(a, b, c=3.0):
       return a, b, c
 
