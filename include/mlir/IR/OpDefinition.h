@@ -104,26 +104,24 @@ public:
   void erase() { state->erase(); }
 
   /// Emit an error about fatal conditions with this operation, reporting up to
-  /// any diagnostic handlers that may be listening.  This function always
-  /// returns failure.  NOTE: This may terminate the containing application,
-  /// only use when the IR is in an inconsistent state.
-  LogicalResult emitError(const Twine &message);
+  /// any diagnostic handlers that may be listening.
+  InFlightDiagnostic emitError(const Twine &message);
 
   /// Emit an error with the op name prefixed, like "'dim' op " which is
   /// convenient for verifiers.  This always returns failure.
-  LogicalResult emitOpError(const Twine &message);
+  InFlightDiagnostic emitOpError(const Twine &message);
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitWarning(const Twine &message);
+  InFlightDiagnostic emitWarning(const Twine &message);
 
   /// Emit a note about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitNote(const Twine &message);
+  InFlightDiagnostic emitNote(const Twine &message);
 
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitRemark(const Twine &message);
+  InFlightDiagnostic emitRemark(const Twine &message);
 
   // These are default implementations of customization hooks.
 public:

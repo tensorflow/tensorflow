@@ -17,6 +17,7 @@
 
 #include "mlir/IR/Types.h"
 #include "TypeDetail.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "llvm/ADT/Twine.h"
 

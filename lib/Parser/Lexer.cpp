@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Lexer.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/SourceMgr.h"

@@ -307,30 +307,29 @@ void Operation::walk(const std::function<void(Operation *)> &callback) {
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void Operation::emitRemark(const Twine &message) {
-  getContext()->emitRemark(getLoc(), message);
+InFlightDiagnostic Operation::emitRemark(const Twine &message) {
+  return getContext()->emitRemark(getLoc(), message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void Operation::emitNote(const Twine &message) {
-  getContext()->getDiagEngine().emit(getLoc(), message,
-                                     DiagnosticSeverity::Note);
+InFlightDiagnostic Operation::emitNote(const Twine &message) {
+  return getContext()->getDiagEngine().emit(getLoc(), DiagnosticSeverity::Note)
+         << message;
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void Operation::emitWarning(const Twine &message) {
-  getContext()->getDiagEngine().emit(getLoc(), message,
-                                     DiagnosticSeverity::Warning);
+InFlightDiagnostic Operation::emitWarning(const Twine &message) {
+  return getContext()->getDiagEngine().emit(getLoc(),
+                                            DiagnosticSeverity::Warning)
+         << message;
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
-/// any diagnostic handlers that may be listening.  This function always
-/// returns failure.  NOTE: This may terminate the containing application, only
-/// use when the IR is in an inconsistent state.
-LogicalResult Operation::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message), failure();
+/// any diagnostic handlers that may be listening.
+InFlightDiagnostic Operation::emitError(const Twine &message) {
+  return getContext()->emitError(getLoc(), message);
 }
 
 /// Given an operation 'other' that is within the same parent block, return
@@ -551,7 +550,7 @@ LogicalResult Operation::fold(SmallVectorImpl<Value *> &results) {
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-LogicalResult Operation::emitOpError(const Twine &message) {
+InFlightDiagnostic Operation::emitOpError(const Twine &message) {
   return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
@@ -652,35 +651,33 @@ bool OpState::parse(OpAsmParser *parser, OperationState *result) {
 void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getOperation()); }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
-/// any diagnostic handlers that may be listening.  NOTE: This may terminate
-/// the containing application, only use when the IR is in an inconsistent
-/// state.
-LogicalResult OpState::emitError(const Twine &message) {
+/// any diagnostic handlers that may be listening.
+InFlightDiagnostic OpState::emitError(const Twine &message) {
   return getOperation()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-LogicalResult OpState::emitOpError(const Twine &message) {
+InFlightDiagnostic OpState::emitOpError(const Twine &message) {
   return getOperation()->emitOpError(message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpState::emitWarning(const Twine &message) {
-  getOperation()->emitWarning(message);
+InFlightDiagnostic OpState::emitWarning(const Twine &message) {
+  return getOperation()->emitWarning(message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpState::emitNote(const Twine &message) {
-  getOperation()->emitNote(message);
+InFlightDiagnostic OpState::emitNote(const Twine &message) {
+  return getOperation()->emitNote(message);
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpState::emitRemark(const Twine &message) {
-  getOperation()->emitRemark(message);
+InFlightDiagnostic OpState::emitRemark(const Twine &message) {
+  return getOperation()->emitRemark(message);
 }
 
 //===----------------------------------------------------------------------===//

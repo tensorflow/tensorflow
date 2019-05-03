@@ -118,23 +118,24 @@ void Function::erase() {
 
 /// Emit a remark about this function, reporting up to any diagnostic
 /// handlers that may be listening.
-void Function::emitRemark(const Twine &message) {
-  getContext()->emitRemark(getLoc(), message);
+InFlightDiagnostic Function::emitRemark(const Twine &message) {
+  return getContext()->emitRemark(getLoc(), message);
 }
 
 /// Emit a warning about this function, reporting up to any diagnostic
 /// handlers that may be listening.
-void Function::emitWarning(const Twine &message) {
-  getContext()->getDiagEngine().emit(getLoc(), message,
-                                     DiagnosticSeverity::Warning);
+InFlightDiagnostic Function::emitWarning(const Twine &message) {
+  return getContext()->getDiagEngine().emit(getLoc(),
+                                            DiagnosticSeverity::Warning)
+         << message;
 }
 
 /// Emit an error about fatal conditions with this function, reporting up to
 /// any diagnostic handlers that may be listening.  This function always
 /// returns failure.  NOTE: This may terminate the containing application, only
 /// use when the IR is in an inconsistent state.
-LogicalResult Function::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message), failure();
+InFlightDiagnostic Function::emitError(const Twine &message) {
+  return getContext()->emitError(getLoc(), message);
 }
 
 /// Clone the internal blocks from this function into dest and all attributes

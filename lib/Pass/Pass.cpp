@@ -222,7 +222,7 @@ struct ParallelDiagnosticHandler {
     // Emit the diagnostics back to the context.
     emitDiagnostics(
         [&](Location loc, StringRef message, DiagnosticSeverity kind) {
-          return context.getDiagEngine().emit(loc, message, kind);
+          return context.getDiagEngine().emit(loc, kind) << message;
         });
   }
 

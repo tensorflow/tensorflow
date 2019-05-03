@@ -22,11 +22,16 @@
 #ifndef MLIR_IR_DIAGNOSTICS_H
 #define MLIR_IR_DIAGNOSTICS_H
 
+#include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Twine.h"
 #include <functional>
 
 namespace mlir {
-class Location;
+class DiagnosticEngine;
+class LogicalResult;
+class Type;
 
 namespace detail {
 struct DiagnosticEngineImpl;
@@ -38,6 +43,217 @@ enum class DiagnosticSeverity {
   Warning,
   Error,
   Remark,
+};
+
+//===----------------------------------------------------------------------===//
+// DiagnosticArgument
+//===----------------------------------------------------------------------===//
+
+/// A variant type that holds a single argument for a diagnostic.
+class DiagnosticArgument {
+public:
+  /// Enum that represents the different kinds of diagnostic arguments
+  /// supported.
+  enum class DiagnosticArgumentKind {
+    Integer,
+    String,
+    Type,
+    Unsigned,
+  };
+
+  /// Outputs this argument to a stream.
+  void print(raw_ostream &os) const;
+
+  /// Returns the kind of this argument.
+  DiagnosticArgumentKind getKind() const { return kind; }
+
+  /// Returns this argument as a string.
+  StringRef getAsString() const {
+    assert(getKind() == DiagnosticArgumentKind::String);
+    return stringVal;
+  }
+
+  /// Returns this argument as a signed integer.
+  int64_t getAsInteger() const {
+    assert(getKind() == DiagnosticArgumentKind::Integer);
+    return static_cast<int64_t>(opaqueVal);
+  }
+
+  /// Returns this argument as a Type.
+  Type getAsType() const;
+
+  /// Returns this argument as an unsigned integer.
+  uint64_t getAsUnsigned() const {
+    assert(getKind() == DiagnosticArgumentKind::Unsigned);
+    return static_cast<uint64_t>(opaqueVal);
+  }
+
+private:
+  friend class Diagnostic;
+
+  // Construct from an int64_t.
+  explicit DiagnosticArgument(int64_t val)
+      : kind(DiagnosticArgumentKind::Integer), opaqueVal(val) {}
+
+  // Construct from an uint64_t.
+  explicit DiagnosticArgument(uint64_t val)
+      : kind(DiagnosticArgumentKind::Unsigned), opaqueVal(val) {}
+
+  // Construct from a string reference.
+  explicit DiagnosticArgument(StringRef val)
+      : kind(DiagnosticArgumentKind::String), stringVal(val) {}
+
+  // Construct from a Type.
+  explicit DiagnosticArgument(Type val);
+
+  /// The kind of this argument.
+  DiagnosticArgumentKind kind;
+
+  /// The value of this argument.
+  union {
+    intptr_t opaqueVal;
+    StringRef stringVal;
+  };
+};
+
+inline raw_ostream &operator<<(raw_ostream &os, const DiagnosticArgument &arg) {
+  arg.print(os);
+  return os;
+}
+
+//===----------------------------------------------------------------------===//
+// Diagnostic
+//===----------------------------------------------------------------------===//
+
+/// This class contains all of the information necessary to report a diagnostic
+/// to the DiagnosticEngine. It should generally not be constructed directly,
+/// and instead used transitively via InFlightDiagnostic.
+class Diagnostic {
+public:
+  Diagnostic(Location loc, DiagnosticSeverity severity)
+      : loc(loc), severity(severity) {}
+  Diagnostic(Diagnostic &&) = default;
+  Diagnostic &operator=(Diagnostic &&) = default;
+
+  /// Returns the severity of this diagnostic.
+  DiagnosticSeverity getSeverity() const { return severity; }
+
+  /// Returns the source location for this diagnostic.
+  Location getLocation() const { return loc; }
+
+  /// Returns the current list of diagnostic arguments.
+  MutableArrayRef<DiagnosticArgument> getArguments() { return arguments; }
+  ArrayRef<DiagnosticArgument> getArguments() const { return arguments; }
+
+  /// Stream operator for inserting new diagnostic arguments.
+  template <typename Arg>
+  typename std::enable_if<!std::is_convertible<Arg, StringRef>::value,
+                          Diagnostic &>::type
+  operator<<(Arg &&val) {
+    arguments.push_back(DiagnosticArgument(std::forward<Arg>(val)));
+    return *this;
+  }
+  Diagnostic &operator<<(const char *val) {
+    arguments.push_back(DiagnosticArgument(val));
+    return *this;
+  }
+  Diagnostic &operator<<(const Twine &val) {
+    llvm::SmallString<0> str;
+    arguments.push_back(DiagnosticArgument(val.toStringRef(str)));
+    stringArguments.emplace_back(std::move(str), arguments.size());
+    return *this;
+  }
+
+  /// Outputs this diagnostic to a stream.
+  void print(raw_ostream &os) const;
+
+  /// Converts the diagnostic to a string.
+  std::string str() const;
+
+private:
+  Diagnostic(const Diagnostic &rhs) = delete;
+  Diagnostic &operator=(const Diagnostic &rhs) = delete;
+
+  /// The source location.
+  Location loc;
+
+  /// The severity of this diagnostic.
+  DiagnosticSeverity severity;
+
+  /// The current list of arguments.
+  SmallVector<DiagnosticArgument, 4> arguments;
+
+  /// A list of string values used as arguments and the corresponding index of
+  /// those arguments. This is used to guarantee the liveness of non-constant
+  /// strings used in diagnostics.
+  std::vector<std::pair<llvm::SmallString<0>, unsigned>> stringArguments;
+};
+
+inline raw_ostream &operator<<(raw_ostream &os, const Diagnostic &diag) {
+  diag.print(os);
+  return os;
+}
+
+//===----------------------------------------------------------------------===//
+// InFlightDiagnostic
+//===----------------------------------------------------------------------===//
+
+/// This class represents a diagnostic that is inflight and set to be reported.
+/// This allows for last minute modifications of the diagnostic before it is
+/// emitted by a DiagnosticEngine.
+class InFlightDiagnostic {
+public:
+  InFlightDiagnostic() = default;
+  InFlightDiagnostic(InFlightDiagnostic &&rhs)
+      : owner(rhs.owner), impl(std::move(rhs.impl)) {
+    // Reset the rhs diagnostic.
+    rhs.impl.reset();
+  }
+  ~InFlightDiagnostic() {
+    if (isInFlight())
+      report();
+  }
+
+  /// Stream operator for new diagnostic arguments.
+  template <typename Arg> InFlightDiagnostic &&operator<<(Arg &&arg) && {
+    appendArgument(std::forward<Arg>(arg));
+    return std::move(*this);
+  }
+  template <typename Arg> InFlightDiagnostic &operator<<(Arg &&arg) & {
+    appendArgument(std::forward<Arg>(arg));
+    return *this;
+  }
+
+  /// Reports the diagnostic to the engine.
+  void report();
+
+  /// Allow an inflight diagnostic to be converted to 'failure', otherwise
+  /// 'success' if this is an empty diagnostic.
+  operator LogicalResult() const;
+
+  /// Returns if the diagnostic is still in flight.
+  bool isInFlight() const { return impl.hasValue(); }
+
+private:
+  InFlightDiagnostic &operator=(const InFlightDiagnostic &) = delete;
+  InFlightDiagnostic &operator=(InFlightDiagnostic &&) = delete;
+  InFlightDiagnostic(DiagnosticEngine *owner, Diagnostic &&rhs)
+      : owner(owner), impl(std::move(rhs)) {}
+
+  /// Add an argument to the internal diagnostic.
+  template <typename Arg> void appendArgument(Arg &&arg) {
+    assert(isInFlight() && "diagnostic not inflight");
+    *impl << std::forward<Arg>(arg);
+  }
+
+  // Allow access to the constructor.
+  friend DiagnosticEngine;
+
+  /// The engine that this diagnostic is to report to.
+  DiagnosticEngine *owner;
+
+  /// The raw diagnostic that is inflight to be reported.
+  llvm::Optional<Diagnostic> impl;
 };
 
 //===----------------------------------------------------------------------===//
@@ -60,7 +276,7 @@ public:
   //
   // Tools using MLIR are encouraged to register error handlers and define a
   // schema for their location information.  If they don't, then warnings and
-  // notes will be dropped and errors will terminate the process with exit(1).
+  // notes will be dropped and errors will be emitted to errs.
 
   using HandlerTy =
       std::function<void(Location, StringRef, DiagnosticSeverity)>;
@@ -74,10 +290,14 @@ public:
   /// Return the current diagnostic handler, or null if none is present.
   HandlerTy getHandler();
 
+  /// Create a new inflight diagnostic with the given location and severity.
+  InFlightDiagnostic emit(Location loc, DiagnosticSeverity severity) {
+    return InFlightDiagnostic(this, Diagnostic(loc, severity));
+  }
+
   /// Emit a diagnostic using the registered issue handle if present, or with
-  /// the default behavior if not.  The MLIR compiler should not generally
-  /// interact with this, it should use methods on Operation instead.
-  void emit(Location loc, const Twine &msg, DiagnosticSeverity severity);
+  /// the default behavior if not.
+  void emit(const Diagnostic &diag);
 
 private:
   friend class MLIRContextImpl;

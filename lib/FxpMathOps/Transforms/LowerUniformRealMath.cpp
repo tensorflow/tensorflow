@@ -52,10 +52,10 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
   // Pre-conditions.
   if (!elementType.isSigned()) {
     // TODO: Support unsigned storage type.
-    return rewriter.getContext()->getDiagEngine().emit(
-               loc, "unimplemented: dequantize signed uniform",
-               DiagnosticSeverity::Warning),
-           nullptr;
+    rewriter.getContext()->getDiagEngine().emit(loc,
+                                                DiagnosticSeverity::Warning)
+        << "unimplemented: dequantize signed uniform";
+    return nullptr;
   }
 
   Type storageType = elementType.castToStorageType(input->getType());
@@ -94,10 +94,9 @@ emitUniformPerAxisDequantize(Location loc, Value *input,
                              UniformQuantizedPerAxisType elementType,
                              PatternRewriter &rewriter) {
   // TODO: Support per-axis dequantize.
-  return rewriter.getContext()->getDiagEngine().emit(
-             loc, "unimplemented: per-axis uniform dequantization",
-             DiagnosticSeverity::Warning),
-         nullptr;
+  rewriter.getContext()->getDiagEngine().emit(loc, DiagnosticSeverity::Warning)
+      << "unimplemented: per-axis uniform dequantization";
+  return nullptr;
 }
 
 static Value *emitDequantize(Location loc, Value *input,

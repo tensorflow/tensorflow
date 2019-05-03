@@ -422,14 +422,17 @@ static ArrayRef<T> copyArrayRefInto(llvm::BumpPtrAllocator &allocator,
 // Diagnostic Handlers
 //===----------------------------------------------------------------------===//
 
-bool MLIRContext::emitError(Location location, const llvm::Twine &message) {
-  getImpl().diagEngine.emit(location, message, DiagnosticSeverity::Error);
-  return true;
+InFlightDiagnostic MLIRContext::emitError(Location location,
+                                          const llvm::Twine &message) {
+  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Error)
+         << message;
 }
 
 /// Emit a remark message using the diagnostic engine.
-void MLIRContext::emitRemark(Location location, const Twine &message) {
-  getImpl().diagEngine.emit(location, message, DiagnosticSeverity::Remark);
+InFlightDiagnostic MLIRContext::emitRemark(Location location,
+                                           const Twine &message) {
+  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Remark)
+         << message;
 }
 
 /// Returns the diagnostic engine for this context.

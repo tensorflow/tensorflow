@@ -339,10 +339,12 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
       // NB: Attribute already verified to be boolean, so check if we can indeed
       // attach the attribute to this argument, based on its type.
       auto argTy = mlirArg->getType().dyn_cast<LLVM::LLVMType>();
-      if (!argTy.getUnderlyingType()->isPointerTy())
-        return argTy.getContext()->emitError(
+      if (!argTy.getUnderlyingType()->isPointerTy()) {
+        argTy.getContext()->emitError(
             func.getLoc(),
             "llvm.noalias attribute attached to LLVM non-pointer argument");
+        return true;
+      }
       if (attr.getValue())
         llvmArg.addAttr(llvm::Attribute::AttrKind::NoAlias);
     }
