@@ -1646,18 +1646,20 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   def _from_variant(cls,
                     variant,
                     dtype,
-                    input_ragged_rank,
-                    output_ragged_rank=None,
+                    output_ragged_rank,
+                    input_ragged_rank=None,
                     name=None):
     """Converts a `variant` Tensor into a `RaggedTensor`.
 
     The input `variant` could be a scalar, meaning it encodes a single
-    `RaggedTensor` with ragged_rank `input_ragged_rank`. Alternatively it could
+    `RaggedTensor` with ragged_rank `output_ragged_rank`. Alternatively it could
     have an arbitrary rank, in which case each element is decoded into a
     `RaggedTensor` with ragged_rank `input_ragged_rank` and these are then
     stacked according to the input shape to output a single `RaggedTensor`
-    with ragged_rank `output_ragged_rank`. Note that the following must be true:
-    `output_ragged_rank` = `input_ragged_rank` + `rank(variant)`.
+    with ragged_rank `output_ragged_rank`. If `input_ragged_rank` is not
+    provided, it is inferred dynamically as `output_ragged_rank` -
+    `rank(variant)`. If `input_ragged_rank` is provided, the following must be
+    true: `output_ragged_rank` = `input_ragged_rank` + `rank(variant)`.
 
     Example:
 
@@ -1666,12 +1668,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     >>> et = rt._to_variant()
     >>> stacked_et = ragged.stack([et, et])
     >>> ragged.RaggedTensor._from_variant(  # scalar input.
-          et, dtype=tf.int32, input_ragged_rank=1,
-          output_ragged_rank=1).eval().tolist()
+          et, dtype=tf.int32, output_ragged_rank=1).eval().tolist()
     [[0], [1, 2]]
     >>> ragged.RaggedTensor._from_variant(  # batched input.
-          stacked_et, dtype=tf.int32, input_ragged_rank=1,
-          output_ragged_rank=2).eval().tolist()
+          stacked_et, dtype=tf.int32, output_ragged_rank=2).eval().tolist()
     [[[0], [1, 2]], [[0], [1, 2]]]
     ```
 
@@ -1679,37 +1679,29 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       variant: A `variant` Tensor representing an encoded (possibly
         nested-batched) `RaggedTensor`.
       dtype: The dtype of the encoded `RaggedTensor`.
-      input_ragged_rank: The ragged rank of each encoded `RaggedTensor`.
       output_ragged_rank: The expected ragged rank of the output `RaggedTensor`.
-        By default, this is set to `input_ragged_rank + variant.shape.ndims` if
-        rank of `variant` is known.
+      input_ragged_rank: The ragged rank of each encoded `RaggedTensor`. This
+        is optional and inferred dynamically if not provided.
       name: A name prefix for the returned tensors (optional).
 
     Returns:
       A `RaggedTensor` of dtype `dtype` and ragged rank `output_ragged_rank`.
 
     Raises:
-      ValueError: If the input rank is unknown and `output_ragged_rank` is not
-        provided; or if `output_ragged_rank` = `input_ragged_rank` +
-          `rank(variant)` does not hold.
+      ValueError: If the input rank is known, `input_ragged_rank` is provided
+          and `output_ragged_rank` = `input_ragged_rank` + `rank(variant)` does
+          not hold.
     """
     variant = ops.convert_to_tensor(
         variant, name="variant", dtype=dtypes.variant)
-    if output_ragged_rank is None:
-      if variant.shape.ndims is None:
-        raise ValueError(
-            "output_ragged_rank must be provided since the rank of the input"
-            "variant is statically unknown.")
-      output_ragged_rank = input_ragged_rank + variant.shape.ndims
-
-    if (variant.shape.ndims is not None and
+    if (variant.shape.ndims is not None and input_ragged_rank is not None and
         output_ragged_rank != input_ragged_rank + variant.shape.ndims):
       raise ValueError(
           "output_ragged_rank must be equal to input_ragged_rank +"
           "variant.shape.ndims, found variant.shape.ndims: %d, "
           "input_ragged_rank: %d, output_ragged_rank: %d" %
           (variant.shape.ndims, input_ragged_rank, output_ragged_rank))
-
+    input_ragged_rank = -1 if input_ragged_rank is None else input_ragged_rank
     with ops.name_scope(
         name, "RaggedFromVariant",
         [variant, dtype, input_ragged_rank, output_ragged_rank]):
