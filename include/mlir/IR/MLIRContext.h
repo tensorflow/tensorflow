@@ -64,6 +64,9 @@ public:
   /// Emit an error message using the diagnostic engine.
   InFlightDiagnostic emitError(Location location, const Twine &message);
 
+  /// Emit a warning message using the diagnostic engine.
+  InFlightDiagnostic emitWarning(Location location, const Twine &message);
+
   /// Emit a remark message using the diagnostic engine.
   InFlightDiagnostic emitRemark(Location location, const Twine &message);
 

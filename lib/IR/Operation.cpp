@@ -314,9 +314,7 @@ InFlightDiagnostic Operation::emitRemark(const Twine &message) {
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
-  return getContext()->getDiagEngine().emit(getLoc(),
-                                            DiagnosticSeverity::Warning)
-         << message;
+  return getContext()->emitWarning(getLoc(), message);
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to

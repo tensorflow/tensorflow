@@ -125,9 +125,7 @@ InFlightDiagnostic Function::emitRemark(const Twine &message) {
 /// Emit a warning about this function, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Function::emitWarning(const Twine &message) {
-  return getContext()->getDiagEngine().emit(getLoc(),
-                                            DiagnosticSeverity::Warning)
-         << message;
+  return getContext()->emitWarning(getLoc(), message);
 }
 
 /// Emit an error about fatal conditions with this function, reporting up to

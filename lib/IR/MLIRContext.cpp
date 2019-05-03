@@ -428,6 +428,13 @@ InFlightDiagnostic MLIRContext::emitError(Location location,
          << message;
 }
 
+/// Emit a warning message using the diagnostic engine.
+InFlightDiagnostic MLIRContext::emitWarning(Location location,
+                                            const Twine &message) {
+  return getImpl().diagEngine.emit(location, DiagnosticSeverity::Warning)
+         << message;
+}
+
 /// Emit a remark message using the diagnostic engine.
 InFlightDiagnostic MLIRContext::emitRemark(Location location,
                                            const Twine &message) {
