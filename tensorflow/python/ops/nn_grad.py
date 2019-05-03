@@ -836,9 +836,9 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
   Args:
     op: The BatchNormOp for which we need to compute gradients.
     version: Integer indicating which version to use of the fused batch
-            norm gradient.
+             norm gradient.
     *grad: An argument list for tensors of gradients wrt the outputs
-          with grad[0] as grad_y.
+           with grad[0] as grad_y.
 
   Returns:
     grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *
@@ -869,14 +869,14 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     grad_fun = gen_nn_ops.fused_batch_norm_grad
   if is_training:
     args = {
-        "y_backprop":grad_y,
-        "x":x,
-        "scale":scale,
-        "reserve_space_1":op.outputs[3],
-        "reserve_space_2":op.outputs[4],
-        "epsilon":epsilon,
-        "data_format":data_format,
-        "is_training":is_training
+        "y_backprop": grad_y,
+        "x": x,
+        "scale": scale,
+        "reserve_space_1": op.outputs[3],
+        "reserve_space_2": op.outputs[4],
+        "epsilon": epsilon,
+        "data_format": data_format,
+        "is_training": is_training
     }
     if version == 2:
       args["reserve_space"] = op.outputs[5]
@@ -888,14 +888,14 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
       x = array_ops.transpose(x, [0, 2, 3, 1])
       grad_y = array_ops.transpose(grad_y, [0, 2, 3, 1])
     args = {
-        "y_backprop":grad_y,
-        "x":x,
-        "scale":scale,
-        "reserve_space_1":pop_mean,
-        "reserve_space_2":pop_var,
-        "epsilon":epsilon,
-        "data_format":"NHWC",
-        "is_training":is_training
+        "y_backprop": grad_y,
+        "x": x,
+        "scale": scale,
+        "reserve_space_1": pop_mean,
+        "reserve_space_2": pop_var,
+        "epsilon": epsilon,
+        "data_format": "NHWC",
+        "is_training": is_training
     }
     if version == 2:
       args["reserve_space"] = op.outputs[5]

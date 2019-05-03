@@ -3304,7 +3304,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 #endif
   DeviceMemory<uint8> workspace;
   DeviceMemory<uint8> reserve_space;
-  if (reserve_space_allocator != nullptr) {
+  if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
 #if CUDNN_VERSION >= 7402
     SE_ASSIGN_OR_RETURN(workspace,
                         CreateBatchNormForwardWorkspace(
@@ -3317,14 +3317,6 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
               /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
               /*activationDesc=*/NULL, /*xDesc=*/x_descriptor.handle(),
               /*sizeInBytes=*/&reserve_space_size_in_bytes));
-      SE_ASSIGN_OR_RETURN(reserve_space,
-                          reserve_space_allocator->AllocateBytes(
-                              stream, reserve_space_size_in_bytes));
-    }
-#else
-    if (is_training) {
-      // dummy allocation for reserve_space
-      size_t reserve_space_size_in_bytes = 0;
       SE_ASSIGN_OR_RETURN(reserve_space,
                           reserve_space_allocator->AllocateBytes(
                               stream, reserve_space_size_in_bytes));
@@ -3350,7 +3342,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 
     bool called = false;
 #if CUDNN_VERSION >= 7402
-    if (reserve_space_allocator != nullptr) {
+    if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
       called = true;
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTrainingEx(
           /*handle=*/cudnn.handle(),
@@ -3462,7 +3454,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 
   bool called = false;
 #if CUDNN_VERSION >= 7402
-  if (reserve_space_data != nullptr) {
+  if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
     cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
