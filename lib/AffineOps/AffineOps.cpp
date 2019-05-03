@@ -154,9 +154,9 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 void AffineApplyOp::print(OpAsmPrinter *p) {
-  auto map = getAffineMap();
-  *p << "affine.apply " << map;
-  printDimAndSymbolList(operand_begin(), operand_end(), map.getNumDims(), p);
+  *p << "affine.apply " << getAttr("map");
+  printDimAndSymbolList(operand_begin(), operand_end(),
+                        getAffineMap().getNumDims(), p);
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
@@ -939,8 +939,10 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
-  AffineMap map = bound.getMap();
+static void printBound(AffineMapAttr boundMap,
+                       Operation::operand_range boundOperands,
+                       const char *prefix, OpAsmPrinter *p) {
+  AffineMap map = boundMap.getValue();
 
   // Check if this bound should be printed using custom assembly form.
   // The decision to restrict printing custom assembly form to trivial cases
@@ -963,7 +965,7 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
     // single symbol.
     if (map.getNumDims() == 0 && map.getNumSymbols() == 1) {
       if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
-        p->printOperand(bound.getOperand(0));
+        p->printOperand(*boundOperands.begin());
         return;
       }
     }
@@ -973,8 +975,8 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
   }
 
   // Print the map and its operands.
-  p->printAffineMap(map);
-  printDimAndSymbolList(bound.operand_begin(), bound.operand_end(),
+  *p << boundMap;
+  printDimAndSymbolList(boundOperands.begin(), boundOperands.end(),
                         map.getNumDims(), p);
 }
 
@@ -982,9 +984,9 @@ void AffineForOp::print(OpAsmPrinter *p) {
   *p << "affine.for ";
   p->printOperand(getBody()->getArgument(0));
   *p << " = ";
-  printBound(getLowerBound(), "max", p);
+  printBound(getLowerBoundMapAttr(), getLowerBoundOperands(), "max", p);
   *p << " to ";
-  printBound(getUpperBound(), "min", p);
+  printBound(getUpperBoundMapAttr(), getUpperBoundOperands(), "min", p);
 
   if (getStep() != 1)
     *p << " step " << getStep();

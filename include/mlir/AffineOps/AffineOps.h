@@ -177,12 +177,14 @@ public:
   }
 
   /// Returns affine map for the lower bound.
-  AffineMap getLowerBoundMap() {
-    return getAttr(getLowerBoundAttrName()).cast<AffineMapAttr>().getValue();
+  AffineMap getLowerBoundMap() { return getLowerBoundMapAttr().getValue(); }
+  AffineMapAttr getLowerBoundMapAttr() {
+    return getAttr(getLowerBoundAttrName()).cast<AffineMapAttr>();
   }
   /// Returns affine map for the upper bound. The upper bound is exclusive.
-  AffineMap getUpperBoundMap() {
-    return getAttr(getUpperBoundAttrName()).cast<AffineMapAttr>().getValue();
+  AffineMap getUpperBoundMap() { return getUpperBoundMapAttr().getValue(); }
+  AffineMapAttr getUpperBoundMapAttr() {
+    return getAttr(getUpperBoundAttrName()).cast<AffineMapAttr>();
   }
 
   /// Set lower bound. The new bound must have the same number of operands as

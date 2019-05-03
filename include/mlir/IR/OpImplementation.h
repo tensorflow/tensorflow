@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
@@ -30,8 +29,6 @@
 
 namespace mlir {
 
-class AffineExpr;
-class AffineMap;
 class Builder;
 class Function;
 
@@ -71,8 +68,6 @@ public:
   virtual void printFunctionReference(Function *func) = 0;
   virtual void printAttribute(Attribute attr) = 0;
   virtual void printAttributeAndType(Attribute attr) = 0;
-  virtual void printAffineMap(AffineMap map) = 0;
-  virtual void printAffineExpr(AffineExpr expr) = 0;
 
   /// Print a successor, and use list, of a terminator operation given the
   /// terminator and the successor index.
@@ -113,19 +108,13 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
   return p;
 }
 
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, AffineMap map) {
-  p.printAffineMap(map);
-  return p;
-}
-
 // Support printing anything that isn't convertible to one of the above types,
 // even if it isn't exactly one of them.  For example, we want to print
 // FunctionType with the Type& version above, not have it match this.
 template <typename T, typename std::enable_if<
                           !std::is_convertible<T &, Value &>::value &&
                               !std::is_convertible<T &, Type &>::value &&
-                              !std::is_convertible<T &, Attribute &>::value &&
-                              !std::is_convertible<T &, AffineMap &>::value,
+                              !std::is_convertible<T &, Attribute &>::value,
                           T>::type * = nullptr>
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
   p.getStream() << other;

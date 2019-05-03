@@ -1180,15 +1180,6 @@ public:
   void printAttributeAndType(Attribute attr) {
     ModulePrinter::printAttributeAndType(attr);
   }
-  void printAffineMap(AffineMap map) {
-    return ModulePrinter::printAffineMapReference(map);
-  }
-  void printIntegerSet(IntegerSet set) {
-    return ModulePrinter::printIntegerSetReference(set);
-  }
-  void printAffineExpr(AffineExpr expr) {
-    return ModulePrinter::printAffineExpr(expr);
-  }
   void printFunctionReference(Function *func) {
     return ModulePrinter::printFunctionReference(func);
   }
