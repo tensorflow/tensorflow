@@ -44,6 +44,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       memset(GetTensorData<int64_t>(output), 0, num_elements * sizeof(int64_t));
       break;
+    case kTfLiteInt8:
+      memset(GetTensorData<int8_t>(output), 0, num_elements * sizeof(int8_t));
+      break;
+    case kTfLiteUInt8:
+      memset(GetTensorData<uint8_t>(output), 0, num_elements * sizeof(uint8_t));
+      break;
+    case kTfLiteInt16:
+      memset(GetTensorData<int16_t>(output), 0, num_elements * sizeof(int16_t));
+      break;
     case kTfLiteInt32:
       memset(GetTensorData<int32_t>(output), 0, num_elements * sizeof(int32_t));
       break;
@@ -53,7 +62,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       context->ReportError(context,
                            "ZerosLike only currently supports int64, int32, "
-                           "and float32, got %d.",
+                           "int16, int8, unit8 and float32, got %d.",
                            input->type);
       return kTfLiteError;
   }
