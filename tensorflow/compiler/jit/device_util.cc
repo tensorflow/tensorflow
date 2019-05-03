@@ -94,10 +94,8 @@ Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
 
   absl::flat_hash_set<absl::string_view> device_names_set;
   for (absl::string_view device_name : device_names) {
-    if (!device_name.empty()) {
-      // TODO(sanjoy): Figure out if this is necessary.
-      device_names_set.insert(device_name);
-    }
+    TF_RET_CHECK(!device_name.empty());
+    device_names_set.insert(device_name);
   }
 
   absl::optional<absl::string_view> maybe_gpu_device;
