@@ -3139,8 +3139,9 @@ inline bool IsIntegerInBounds(const Input& inp) {
   static_assert(std::is_integral<Input>::value,
                 "This function is only implemented for integral types.");
   // If Input is always within the range of Bounds, return true.
-  if (std::numeric_limits<Input>::lowest() >= std::numeric_limits<Bounds>::lowest()
-      && std::numeric_limits<Input>::max() <= std::numeric_limits<Bounds>::max()) {
+  if (std::numeric_limits<Input>::lowest() >=
+          std::numeric_limits<Bounds>::lowest() &&
+      std::numeric_limits<Input>::max() <= std::numeric_limits<Bounds>::max()) {
     return true;
   }
   // Otherwise, we need to check the value of the input.
@@ -3176,7 +3177,8 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   DataType converted_dtype = dtype;
   if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
       dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16 ||
-      dtype == DataType::DT_INT64) {
+      dtype == DataType::DT_UINT32 || dtype == DataType::DT_INT64 ||
+      dtype == DataType::DT_UINT64) {
     converted_dtype = DT_INT32;
   }
 
@@ -3217,8 +3219,14 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
     case DT_UINT16:
       CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
       break;
+    case DT_UINT32:
+      CopyToTrtInt32Array<DT_UINT32>(tensor, dst);
+      break;
     case DT_INT64:
       CopyToTrtInt32Array<DT_INT64>(tensor, dst);
+      break;
+    case DT_UINT64:
+      CopyToTrtInt32Array<DT_UINT64>(tensor, dst);
       break;
     default:
       return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
