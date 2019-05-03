@@ -163,7 +163,7 @@ class BatchNormalizationBase(Layer):
       self.axis = axis
     else:
       raise TypeError('axis must be int or list, type given: %s'
-                      % type(self.axis))
+                      % type(axis))
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
