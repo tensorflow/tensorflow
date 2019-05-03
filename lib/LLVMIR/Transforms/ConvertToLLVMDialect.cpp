@@ -25,6 +25,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/LLVMIR/LLVMLowering.h"
 #include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
@@ -63,11 +64,13 @@ public:
 
   // Convert a function signature type to the LLVM IR dialect.  The outer
   // function type remains `mlir::FunctionType`.  Argument types are converted
-  // to LLVM IR as is.  If the function returns a single result, its type is
-  // converted.  Otherwise, the types of results are packed into an LLVM IR
-  // structure type.
-  static FunctionType convertFunctionSignature(FunctionType t,
-                                               llvm::Module &llvmModule);
+  // to LLVM IR using `typeConversionCallback` if provided and using
+  // `TypeConverter::convert` otherwise.  If the function returns a single
+  // result, its type is converted.  Otherwise, the types of results are packed
+  // into an LLVM IR structure type.
+  static FunctionType convertFunctionSignature(
+      FunctionType t, llvm::Module &llvmModule,
+      llvm::function_ref<Type(Type)> typeConversionCallback = {});
 
 private:
   // Construct a type converter.
@@ -83,7 +86,8 @@ private:
 
   // Convert function type arguments and results without converting the
   // function type itself.
-  FunctionType convertFunctionSignatureType(FunctionType type);
+  FunctionType convertFunctionSignatureType(
+      FunctionType type, llvm::function_ref<Type(Type)> typeConversionCallback);
 
   // Convert the index type.  Uses llvmModule data layout to create an integer
   // of the pointer bitwidth.
@@ -224,10 +228,14 @@ Type TypeConverter::convertFunctionType(FunctionType type) {
                   ->getPointerTo());
 }
 
-FunctionType TypeConverter::convertFunctionSignatureType(FunctionType type) {
+FunctionType TypeConverter::convertFunctionSignatureType(
+    FunctionType type, llvm::function_ref<Type(Type)> typeConversionCallback) {
+  if (!typeConversionCallback)
+    typeConversionCallback = [this](Type t) { return convertType(t); };
+
   SmallVector<Type, 8> argTypes;
   for (auto t : type.getInputs()) {
-    auto converted = convertType(t);
+    auto converted = typeConversionCallback(t);
     if (!converted)
       return {};
     argTypes.push_back(converted);
@@ -298,11 +306,6 @@ Type TypeConverter::convertType(Type type) {
   if (auto llvmType = type.dyn_cast<LLVM::LLVMType>())
     return llvmType;
 
-  std::string message;
-  llvm::raw_string_ostream os(message);
-  os << "unsupported type: ";
-  type.print(os);
-  mlirContext->emitError(UnknownLoc::get(mlirContext), os.str());
   return {};
 }
 
@@ -310,9 +313,11 @@ Type TypeConverter::convert(Type t, llvm::Module &module) {
   return TypeConverter(module, t.getContext()).convertType(t);
 }
 
-FunctionType TypeConverter::convertFunctionSignature(FunctionType t,
-                                                     llvm::Module &module) {
-  return TypeConverter(module, t.getContext()).convertFunctionSignatureType(t);
+FunctionType TypeConverter::convertFunctionSignature(
+    FunctionType t, llvm::Module &module,
+    llvm::function_ref<Type(Type)> typeConversionCallback) {
+  return TypeConverter(module, t.getContext())
+      .convertFunctionSignatureType(t, typeConversionCallback);
 }
 
 Type TypeConverter::getMemRefElementPtrType(MemRefType t,
@@ -1089,60 +1094,73 @@ void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
   }
 };
 
-/// A dialect converter from the Standard dialect to the LLVM IR dialect.
-class LLVMLowering : public DialectConversion {
+// Create a set of converters that live in the pass object by passing them a
+// reference to the LLVM IR dialect.  Store the module associated with the
+// dialect for further type conversion.
+llvm::DenseSet<DialectOpConversion *>
+LLVMLowering::initConverters(MLIRContext *mlirContext) {
+  converterStorage.Reset();
+  llvmDialect = static_cast<LLVM::LLVMDialect *>(
+      mlirContext->getRegisteredDialect("llvm"));
+  if (!llvmDialect) {
+    mlirContext->emitError(UnknownLoc::get(mlirContext),
+                           "LLVM IR dialect is not registered");
+    return {};
+  }
+
+  module = &llvmDialect->getLLVMModule();
+
+  // FIXME: this should be tablegen'ed
+  auto converters = ConversionListBuilder<
+      AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
+      BranchOpLowering, CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
+      CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
+      DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
+      LoadOpLowering, MemRefCastOpLowering, MulFOpLowering, MulIOpLowering,
+      OrOpLowering, RemISOpLowering, RemIUOpLowering, RemFOpLowering,
+      ReturnOpLowering, SelectOpLowering, StoreOpLowering, SubFOpLowering,
+      SubIOpLowering, XOrOpLowering>::build(&converterStorage, *llvmDialect);
+  auto extraConverters = initAdditionalConverters();
+  converters.insert(extraConverters.begin(), extraConverters.end());
+  return converters;
+}
+
+// Convert types using the stored LLVM IR module.
+Type LLVMLowering::convertType(Type t) {
+  if (auto result = TypeConverter::convert(t, *module))
+    return result;
+  if (auto result = convertAdditionalType(t))
+    return result;
+
+  auto *mlirContext = llvmDialect->getContext();
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "unsupported type: ";
+  t.print(os);
+  mlirContext->emitError(UnknownLoc::get(mlirContext), os.str());
+  return {};
+}
+
+// Convert function signatures using the stored LLVM IR module.
+FunctionType LLVMLowering::convertFunctionSignatureType(
+    FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
+    SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
+
+  convertedArgAttrs.reserve(argAttrs.size());
+  for (auto attr : argAttrs)
+    convertedArgAttrs.push_back(attr);
+  return TypeConverter::convertFunctionSignature(
+      t, *module, [this](Type t) { return convertType(t); });
+}
+
+namespace {
+// Make sure LLVM conversion pass errors out on the unsupported types instead
+// of keeping them as is and resulting in a more cryptic verifier error.
+class LLVMStandardLowering : public LLVMLowering {
 protected:
-  // Create a set of converters that live in the pass object by passing them a
-  // reference to the LLVM IR dialect.  Store the module associated with the
-  // dialect for further type conversion.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *mlirContext) override {
-    converterStorage.Reset();
-    auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(
-        mlirContext->getRegisteredDialect("llvm"));
-    if (!llvmDialect) {
-      mlirContext->emitError(UnknownLoc::get(mlirContext),
-                             "LLVM IR dialect is not registered");
-      return {};
-    }
-
-    module = &llvmDialect->getLLVMModule();
-
-    // FIXME: this should be tablegen'ed
-    return ConversionListBuilder<
-        AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
-        BranchOpLowering, CallIndirectOpLowering, CallOpLowering,
-        CmpIOpLowering, CondBranchOpLowering, ConstLLVMOpLowering,
-        DeallocOpLowering, DimOpLowering, DivISOpLowering, DivIUOpLowering,
-        DivFOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
-        MulIOpLowering, OrOpLowering, RemISOpLowering, RemIUOpLowering,
-        RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
-        SubFOpLowering, SubIOpLowering, XOrOpLowering>::build(&converterStorage,
-                                                              *llvmDialect);
-  }
-
-  // Convert types using the stored LLVM IR module.
-  Type convertType(Type t) override {
-    return TypeConverter::convert(t, *module);
-  }
-
-  // Convert function signatures using the stored LLVM IR module.
-  FunctionType convertFunctionSignatureType(
-      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
-      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) override {
-
-    convertedArgAttrs.reserve(argAttrs.size());
-    for (auto attr : argAttrs)
-      convertedArgAttrs.push_back(attr);
-    return TypeConverter::convertFunctionSignature(t, *module);
-  }
-
-private:
-  // Storage for the conversion patterns.
-  llvm::BumpPtrAllocator converterStorage;
-  // LLVM IR module used to parse/create types.
-  llvm::Module *module;
+  Type convertAdditionalType(Type) override { return {}; }
 };
+} // namespace
 
 /// A pass converting MLIR Standard operations into the LLVM IR dialect.
 class LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
@@ -1156,7 +1174,7 @@ public:
   }
 
 private:
-  LLVMLowering impl;
+  LLVMStandardLowering impl;
 };
 
 ModulePassBase *mlir::createConvertToLLVMIRPass() {

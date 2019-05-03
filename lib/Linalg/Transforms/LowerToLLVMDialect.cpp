@@ -26,6 +26,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/LLVMIR/LLVMLowering.h"
 #include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
@@ -375,62 +376,22 @@ public:
   }
 };
 
-llvm::DenseSet<mlir::DialectOpConversion *>
-allocateDescriptorConverters(llvm::BumpPtrAllocator *allocator,
-                             mlir::MLIRContext *context) {
-  return ConversionListBuilder<BufferSizeOpConversion, DotOpConversion,
-                               RangeOpConversion, SliceOpConversion,
-                               ViewOpConversion>::build(allocator, context);
-}
-
 namespace {
 // The conversion class from Linalg to LLVMIR.
-class Lowering : public DialectConversion {
-public:
-  explicit Lowering(std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-                        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
-                        conversions)
-      : setup(conversions) {}
-
-  Lowering &setLLVMModule(MLIRContext *context) {
-    llvmModule = getLLVMModule(context);
-    return *this;
-  }
-
+class Lowering : public LLVMLowering {
 protected:
-  // Initialize the list of converters.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *context) override {
-    converterStorage.Reset();
-    return setup(&converterStorage, context);
+  llvm::DenseSet<DialectOpConversion *> initAdditionalConverters() override {
+    return ConversionListBuilder<
+        BufferSizeOpConversion, DotOpConversion, RangeOpConversion,
+        SliceOpConversion, ViewOpConversion>::build(&converterStorage,
+                                                    llvmDialect->getContext());
   }
 
-  // This gets called for block and region arguments, and attributes.
-  Type convertType(Type t) override {
-    if (auto res = convertLinalgType(t, *llvmModule))
-      return res;
-    return convertToLLVMDialectType(t, *llvmModule);
+  Type convertAdditionalType(Type t) override {
+    return convertLinalgType(t, *module);
   }
-
-private:
-  // Storage for individual converters.
-  llvm::BumpPtrAllocator converterStorage;
-
-  // Conversion setup.
-  std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-      llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
-      setup;
-
-  llvm::Module *llvmModule;
 };
 } // end anonymous namespace
-
-std::unique_ptr<mlir::DialectConversion> makeLinalgToLLVMLowering(
-    std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
-        initer) {
-  return llvm::make_unique<Lowering>(initer);
-}
 
 namespace {
 struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
@@ -441,18 +402,8 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 void LowerLinalgToLLVMPass::runOnModule() {
   auto &module = getModule();
 
-  // Convert Linalg ops to the LLVM IR dialect using the converter defined
-  // above.
-  auto r = Lowering(allocateDescriptorConverters)
-               .setLLVMModule(module.getContext())
-               .convert(&module);
-  if (failed(r))
-    signalPassFailure();
-
-  // Convert the remaining standard MLIR operations to the LLVM IR dialect using
-  // the default converter.
-  auto converter = createStdToLLVMConverter();
-  r = converter->convert(&module);
+  // Convert to the LLVM IR dialect using the converter defined above.
+  auto r = Lowering().convert(&module);
   if (failed(r))
     signalPassFailure();
 }
