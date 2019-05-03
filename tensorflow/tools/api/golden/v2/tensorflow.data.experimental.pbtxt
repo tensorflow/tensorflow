@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RaggedTensorStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }

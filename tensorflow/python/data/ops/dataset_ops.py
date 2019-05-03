@@ -1352,17 +1352,7 @@ class DatasetV2(tracking_base.Trackable):
     """
 
     with ops.name_scope("initial_state"):
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      initial_state = nest.pack_sequence_as(initial_state, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(initial_state))
-      ])
-
-    # Compute initial values for the state classes, shapes and types based on
-    # the initial state.
+      initial_state = structure_lib.normalize_tensors(initial_state)
     state_structure = structure_lib.Structure.from_value(initial_state)
 
     # Iteratively rerun the reduce function until reaching a fixed point on
@@ -2185,12 +2175,7 @@ class TensorSliceDataset(DatasetSource):
   def __init__(self, tensors):
     """See `Dataset.from_tensor_slices()` for details."""
     with ops.name_scope("tensors"):
-      tensors = nest.pack_sequence_as(tensors, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(tensors))
-      ])
+      tensors = structure_lib.normalize_tensors(tensors)
 
     batched_structure = structure_lib.Structure.from_value(tensors)
     # pylint: disable=protected-access

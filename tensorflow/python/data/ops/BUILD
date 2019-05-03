@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
+        "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
 )
