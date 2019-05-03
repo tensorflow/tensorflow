@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
