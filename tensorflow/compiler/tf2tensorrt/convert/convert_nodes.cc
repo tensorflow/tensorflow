@@ -3135,16 +3135,17 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
 }
 
 template <typename Bounds, typename Input>
-constexpr bool IsIntegerInBounds(const Input& inp) {
+inline bool IsIntegerInBounds(const Input& inp) {
   static_assert(std::is_integral<Input>::value,
                 "This function is only implemented for integral types.");
-  return (sizeof(Bounds) >= sizeof(Input))
-             // Since Input is smaller, it will always be in range of Bounds.
-             ? true
-             // Since Input is larger, we cast all values to that.
-             : (inp >=
-                    static_cast<Input>(std::numeric_limits<Bounds>::lowest()) &&
-                inp <= static_cast<Input>(std::numeric_limits<Bounds>::max()));
+  // If Input is always within the range of Bounds, return true.
+  if (std::numeric_limits<Input>::lowest() >= std::numeric_limits<Bounds>::lowest()
+      && std::numeric_limits<Input>::max() <= std::numeric_limits<Bounds>::max()) {
+    return true;
+  }
+  // Otherwise, we need to check the value of the input.
+  return (inp >= static_cast<Input>(std::numeric_limits<Bounds>::lowest()) &&
+          inp <= static_cast<Input>(std::numeric_limits<Bounds>::max()));
 }
 
 template <DataType dtype>
@@ -3152,9 +3153,9 @@ Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
   typedef typename EnumToDataType<dtype>::Type CType;
   const CType* src = tensor.flat<CType>().data();
   for (int i = 0; i < tensor.NumElements(); ++i) {
-    // This becomes a no-op if sizeof(CType) < sizeof(int32)
+    // This becomes a no-op if CType is within bounds of int32
     if (!IsIntegerInBounds<int32>(src[i])) {
-      return errors::InvalidArgument("Value at index " + std::to_string(i) +
+      return errors::InvalidArgument("Value at index ", i,
                                      " is outside the range of int32");
     }
     dst[i] = static_cast<int32>(src[i]);
