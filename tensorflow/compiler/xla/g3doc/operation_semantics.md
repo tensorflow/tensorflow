@@ -595,8 +595,7 @@ executed depending on the value of `pred`.
 
 | Arguments             | Type                  | Semantics                    |
 | --------------------- | --------------------- | ---------------------------- |
-| `branch_index`        | `XlaOp`               | Scalar of type `PRED` or     |
-:                       :                       : `S32`                        :
+| `branch_index`        | `XlaOp`               | Scalar of type `S32`         |
 | `branch_computations` | sequence of N         | XlaComputations of type $$   |
 :                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
 :                       :                       : T_{N-1} \to S $$             :
@@ -604,9 +603,8 @@ executed depending on the value of `pred`.
 :                       :                       : T_1 , ..., T_{N-1} $$        :
 
 Executes `branch_computations[branch_index]`, and returns the result. If
-`branch_index` is a `PRED`, then the `true` branch is in position 0 and the
-`false` branch is in position 1. If `branch_index` is an `S32` which is < 0
-or >= N, then `branch_computations[N-1]` is executed as the default branch.
+`branch_index` is an `S32` which is < 0 or >= N, then `branch_computations[N-1]`
+is executed as the default branch.
 
 Each `branch_computations[b]` must take in a single argument of type `T_b` and
 will be invoked with `branch_operands[b]` which must be of the same type. The
