@@ -76,6 +76,24 @@ std::string Diagnostic::str() const {
   return os.str();
 }
 
+/// Attaches a note to this diagnostic. A new location may be optionally
+/// provided, if not, then the location defaults to the one specified for this
+/// diagnostic. Notes may not be attached to other notes.
+Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
+  // We don't allow attaching notes to notes.
+  assert(severity != DiagnosticSeverity::Note &&
+         "cannot attach a note to a note");
+
+  // If a location wasn't provided then reuse our location.
+  if (!noteLoc)
+    noteLoc = loc;
+
+  /// Append and return a new note.
+  notes.push_back(
+      llvm::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
+  return *notes.back();
+}
+
 //===----------------------------------------------------------------------===//
 // InFlightDiagnostic
 //===----------------------------------------------------------------------===//
@@ -119,9 +137,6 @@ struct DiagnosticEngineImpl {
 /// the default behavior if not.
 void DiagnosticEngineImpl::emit(Location loc, StringRef msg,
                                 DiagnosticSeverity severity) {
-  // Lock access to the handler.
-  llvm::sys::SmartScopedLock<true> lock(mutex);
-
   // If we had a handler registered, emit the diagnostic using it.
   if (handler) {
     // TODO(b/131756158) FusedLoc should be handled by the diagnostic handler
@@ -181,5 +196,12 @@ auto DiagnosticEngine::getHandler() -> HandlerTy {
 /// Emit a diagnostic using the registered issue handler if present, or with
 /// the default behavior if not.
 void DiagnosticEngine::emit(const Diagnostic &diag) {
+  assert(diag.getSeverity() != DiagnosticSeverity::Note &&
+         "notes should not be emitted directly");
+  llvm::sys::SmartScopedLock<true> lock(impl->mutex);
   impl->emit(diag.getLocation(), diag.str(), diag.getSeverity());
+
+  // Emit any notes that were attached to this diagnostic.
+  for (auto &note : diag.getNotes())
+    impl->emit(note.getLocation(), note.str(), note.getSeverity());
 }

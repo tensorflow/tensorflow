@@ -441,10 +441,6 @@ public:
   /// handlers that may be listening.
   InFlightDiagnostic emitWarning(const Twine &message);
 
-  /// Emit a note about this operation, reporting up to any diagnostic
-  /// handlers that may be listening.
-  InFlightDiagnostic emitNote(const Twine &message);
-
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
   InFlightDiagnostic emitRemark(const Twine &message);

@@ -115,10 +115,6 @@ public:
   /// handlers that may be listening.
   InFlightDiagnostic emitWarning(const Twine &message);
 
-  /// Emit a note about this operation, reporting up to any diagnostic
-  /// handlers that may be listening.
-  InFlightDiagnostic emitNote(const Twine &message);
-
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
   InFlightDiagnostic emitRemark(const Twine &message);
@@ -708,9 +704,8 @@ public:
                                 NthRegionIsIsolatedAbove<RegionIdx>::Impl> {
   public:
     static LogicalResult verifyTrait(Operation *op) {
-      auto noteEmitter = [op](const Twine &message) { op->emitNote(message); };
-      return op->getRegion(RegionIdx).isIsolatedAbove(noteEmitter) ? success()
-                                                                   : failure();
+      return op->getRegion(RegionIdx).isIsolatedAbove(op->getLoc()) ? success()
+                                                                    : failure();
     }
   };
 };

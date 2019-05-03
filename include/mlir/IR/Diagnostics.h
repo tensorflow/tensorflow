@@ -129,6 +129,22 @@ inline raw_ostream &operator<<(raw_ostream &os, const DiagnosticArgument &arg) {
 /// to the DiagnosticEngine. It should generally not be constructed directly,
 /// and instead used transitively via InFlightDiagnostic.
 class Diagnostic {
+  using NoteVector = std::vector<std::unique_ptr<Diagnostic>>;
+
+  /// This class implements a wrapper iterator around NoteVector::iterator to
+  /// implicitly dereference the unique_ptr.
+  template <typename IteratorTy, typename NotePtrTy = decltype(*IteratorTy()),
+            typename ResultTy = decltype(**IteratorTy())>
+  class NoteIteratorImpl
+      : public llvm::mapped_iterator<IteratorTy, ResultTy (*)(NotePtrTy)> {
+    static ResultTy &unwrap(NotePtrTy note) { return *note; }
+
+  public:
+    NoteIteratorImpl(IteratorTy it)
+        : llvm::mapped_iterator<IteratorTy, ResultTy (*)(NotePtrTy)>(it,
+                                                                     &unwrap) {}
+  };
+
 public:
   Diagnostic(Location loc, DiagnosticSeverity severity)
       : loc(loc), severity(severity) {}
@@ -170,6 +186,22 @@ public:
   /// Converts the diagnostic to a string.
   std::string str() const;
 
+  /// Attaches a note to this diagnostic. A new location may be optionally
+  /// provided, if not, then the location defaults to the one specified for this
+  /// diagnostic. Notes may not be attached to other notes.
+  Diagnostic &attachNote(llvm::Optional<Location> noteLoc = llvm::None);
+
+  using note_iterator = NoteIteratorImpl<NoteVector::iterator>;
+  using const_note_iterator = NoteIteratorImpl<NoteVector::const_iterator>;
+
+  /// Returns the notes held by this diagnostic.
+  llvm::iterator_range<note_iterator> getNotes() {
+    return {notes.begin(), notes.end()};
+  }
+  llvm::iterator_range<const_note_iterator> getNotes() const {
+    return {notes.begin(), notes.end()};
+  }
+
 private:
   Diagnostic(const Diagnostic &rhs) = delete;
   Diagnostic &operator=(const Diagnostic &rhs) = delete;
@@ -187,6 +219,9 @@ private:
   /// those arguments. This is used to guarantee the liveness of non-constant
   /// strings used in diagnostics.
   std::vector<std::pair<llvm::SmallString<0>, unsigned>> stringArguments;
+
+  /// A list of attached notes.
+  NoteVector notes;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Diagnostic &diag) {
@@ -222,6 +257,12 @@ public:
   template <typename Arg> InFlightDiagnostic &operator<<(Arg &&arg) & {
     appendArgument(std::forward<Arg>(arg));
     return *this;
+  }
+
+  /// Attaches a note to this diagnostic.
+  Diagnostic &attachNote(llvm::Optional<Location> noteLoc = llvm::None) {
+    assert(isInFlight() && "diagnostic not inflight");
+    return impl->attachNote(noteLoc);
   }
 
   /// Reports the diagnostic to the engine.
@@ -271,7 +312,7 @@ public:
   // Diagnostic handler registration and use.  MLIR supports the ability for the
   // IR to carry arbitrary metadata about operation location information.  If a
   // problem is detected by the compiler, it can invoke the emitError /
-  // emitWarning / emitNote method on an Operation and have it get reported
+  // emitWarning / emitRemark method on an Operation and have it get reported
   // through this interface.
   //
   // Tools using MLIR are encouraged to register error handlers and define a
@@ -292,6 +333,8 @@ public:
 
   /// Create a new inflight diagnostic with the given location and severity.
   InFlightDiagnostic emit(Location loc, DiagnosticSeverity severity) {
+    assert(severity != DiagnosticSeverity::Note &&
+           "notes should not be emitted directly");
     return InFlightDiagnostic(this, Diagnostic(loc, severity));
   }
 

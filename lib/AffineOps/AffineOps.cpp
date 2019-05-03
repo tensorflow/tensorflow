@@ -692,9 +692,10 @@ static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
     return success();
 
   op.emitOpError("expects regions to end with '" +
-                 AffineTerminatorOp::getOperationName() + "'");
-  op.emitNote("in custom textual format, the absence of terminator implies '" +
-              AffineTerminatorOp::getOperationName() + "'");
+                 AffineTerminatorOp::getOperationName() + "'")
+          .attachNote()
+      << "in custom textual format, the absence of terminator implies '"
+      << AffineTerminatorOp::getOperationName() << "'";
   return failure();
 }
 

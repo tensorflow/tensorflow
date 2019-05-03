@@ -311,13 +311,6 @@ InFlightDiagnostic Operation::emitRemark(const Twine &message) {
   return getContext()->emitRemark(getLoc(), message);
 }
 
-/// Emit a note about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-InFlightDiagnostic Operation::emitNote(const Twine &message) {
-  return getContext()->getDiagEngine().emit(getLoc(), DiagnosticSeverity::Note)
-         << message;
-}
-
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
@@ -666,12 +659,6 @@ InFlightDiagnostic OpState::emitOpError(const Twine &message) {
 /// handlers that may be listening.
 InFlightDiagnostic OpState::emitWarning(const Twine &message) {
   return getOperation()->emitWarning(message);
-}
-
-/// Emit a note about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-InFlightDiagnostic OpState::emitNote(const Twine &message) {
-  return getOperation()->emitNote(message);
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic

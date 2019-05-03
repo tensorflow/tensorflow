@@ -349,10 +349,10 @@ LogicalResult FuncVerifier::verifyOpDominance(Operation &op) {
     if (domInfo->properlyDominates(operand, &op))
       continue;
 
-    op.emitError("operand #" + Twine(operandNo) +
-                 " does not dominate this use");
+    auto diag = op.emitError("operand #" + Twine(operandNo) +
+                             " does not dominate this use");
     if (auto *useOp = operand->getDefiningOp())
-      useOp->emitNote("operand defined here");
+      diag.attachNote(useOp->getLoc()) << "operand defined here";
     return failure();
   }
 

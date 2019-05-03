@@ -396,11 +396,10 @@ public:
   }
 
   /// Check that this does not use any value defined outside it.
-  /// Emit errors if `noteEmitter` is provided; this callback is used to point
+  /// Emit errors if `noteLoc` is provided; this location is used to point
   /// to the operation containing the region, the actual error is reported at
   /// the operation with an offending use.
-  bool
-  isIsolatedAbove(llvm::function_ref<void(const Twine &)> noteEmitter = {});
+  bool isIsolatedAbove(llvm::Optional<Location> noteLoc = llvm::None);
 
 private:
   RegionType blocks;

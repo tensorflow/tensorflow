@@ -353,15 +353,14 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
     it->walk(remapOperands);
 }
 
-// Check that the given `region` does not use any value defined outside its
-// ancestor region `limit`.  That is, given `A{B{C{}}}` with limit `B`, `C` is
-// allowed to use values defined in `B` but not those defined in `A`.
-// Emit errors if `emitOpNote` is provided; this callback is used to point to
-// the operation containing the region, the actual error is reported at the
-// operation with an offending use.
-static bool
-isRegionIsolatedAbove(Region &region, Region &limit,
-                      llvm::function_ref<void(const Twine &)> emitOpNote = {}) {
+/// Check that the given `region` does not use any value defined outside its
+/// ancestor region `limit`.  That is, given `A{B{C{}}}` with limit `B`, `C` is
+/// allowed to use values defined in `B` but not those defined in `A`.
+/// Emit errors if `noteLoc` is provided; this location is used to point to
+/// the operation containing the region, the actual error is reported at the
+/// operation with an offending use.
+static bool isRegionIsolatedAbove(Region &region, Region &limit,
+                                  llvm::Optional<Location> noteLoc) {
   assert(limit.isAncestor(&region) &&
          "expected isolation limit to be an ancestor of the given region");
 
@@ -379,9 +378,10 @@ isRegionIsolatedAbove(Region &region, Region &limit,
           // Check that any value that is used by an operation is defined in the
           // same region as either an operation result or a block argument.
           if (operand->getContainingRegion()->isProperAncestor(&limit)) {
-            if (emitOpNote) {
-              op.emitOpError("using value defined outside the region");
-              emitOpNote("required by region isolation constraints");
+            if (noteLoc) {
+              op.emitOpError("using value defined outside the region")
+                      .attachNote(noteLoc)
+                  << "required by region isolation constraints";
             }
             return false;
           }
@@ -397,9 +397,8 @@ isRegionIsolatedAbove(Region &region, Region &limit,
   return true;
 }
 
-bool Region::isIsolatedAbove(
-    llvm::function_ref<void(const Twine &)> noteEmitter) {
-  return isRegionIsolatedAbove(*this, *this, noteEmitter);
+bool Region::isIsolatedAbove(llvm::Optional<Location> noteLoc) {
+  return isRegionIsolatedAbove(*this, *this, noteLoc);
 }
 
 Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {
