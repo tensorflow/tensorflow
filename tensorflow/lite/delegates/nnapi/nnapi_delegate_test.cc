@@ -156,6 +156,17 @@ TEST(NNAPIDelegate, AddWithNoActivation) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
+// Do a test with scalar input using no activation.
+TEST(NNAPIDelegate, AddScalarWithNoActivation) {
+  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
+                    ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.7});
+  m.PopulateTensor<float>(m.input2(), {0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.3, 0.8, 0.8}));
+}
+
 // Do a test with the NN API using no activation.
 // The test allows computing FP32 with FP16 precision. In this particular case,
 // calculating in FP32 or FP16 should produce the same results.
