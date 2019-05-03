@@ -104,7 +104,7 @@ def quant_StorageCastOp : quant_Op<"scast", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 
 def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
-                                    [NoSideEffect]> {
+                                    [SameValueType, NoSideEffect]> {
   let summary =
       "Simulates the effect of uniform quantization with const range.";
 
@@ -130,7 +130,7 @@ def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
   );
 }
 
-def quant_StatisticsRefOp : quant_Op<"stats_ref", []> {
+def quant_StatisticsRefOp : quant_Op<"stats_ref", [SameValueType]> {
   let summary =
       "Indicates that statistics are resolved by reference.";
 
@@ -149,7 +149,7 @@ def quant_StatisticsRefOp : quant_Op<"stats_ref", []> {
   let results = (outs quant_RealValueType);
 }
 
-def quant_StatisticsOp : quant_Op<"stats", []> {
+def quant_StatisticsOp : quant_Op<"stats", [SameValueType]> {
   let summary =
       "Identity op which associates statistics with the value.";
 
@@ -203,7 +203,7 @@ def quant_StatisticsOp : quant_Op<"stats", []> {
   }];
 }
 
-def quant_CoupledRefOp : quant_Op<"coupled_ref", []> {
+def quant_CoupledRefOp : quant_Op<"coupled_ref", [SameValueType]> {
   let summary =
       "Indicates that one point of the computation is coupled to another.";
 
