@@ -46,6 +46,15 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
     });
   }
 
+  explicit SingleOpModelWithNNAPI(
+      const StatefulNnApiDelegate::Options& options) {
+    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    auto* delegate = stateful_delegate_.get();
+    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(delegate);
+    });
+  }
+
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims) {
     return interpreter_->ResizeInputTensor(tensor_index, dims);
@@ -86,6 +95,11 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
         break;
     }
   }
+
+ private:
+  // Stateful NNAPI delegate. This is valid only if the state-ful constructor is
+  // used.
+  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
 };
 
 class FloatAddOpModel : public SingleOpModelWithNNAPI {
@@ -94,13 +108,16 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
                   const TensorData& output,
                   ActivationFunctionType activation_type,
                   bool allow_fp32_relax_to_fp16 = false) {
-    input1_ = AddInput(input1);
-    input2_ = AddInput(input2);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
-                 CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    Init(input1, input2, output, activation_type, allow_fp32_relax_to_fp16);
+  }
+
+  FloatAddOpModel(const StatefulNnApiDelegate::Options& options,
+                  const TensorData& input1, const TensorData& input2,
+                  const TensorData& output,
+                  ActivationFunctionType activation_type,
+                  bool allow_fp32_relax_to_fp16 = false)
+      : SingleOpModelWithNNAPI(options) {
+    Init(input1, input2, output, activation_type, allow_fp32_relax_to_fp16);
   }
 
   int input1() { return input1_; }
@@ -112,6 +129,20 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
   int input1_;
   int input2_;
   int output_;
+
+ private:
+  // Performs initialization logic shared across all constructors.
+  void Init(const TensorData& input1, const TensorData& input2,
+            const TensorData& output, ActivationFunctionType activation_type,
+            bool allow_fp32_relax_to_fp16 = false) {
+    input1_ = AddInput(input1);
+    input2_ = AddInput(input2);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                 CreateAddOptions(builder_, activation_type).Union());
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     allow_fp32_relax_to_fp16);
+  }
 };
 
 // Do a test with the NN API using no activation.
@@ -158,6 +189,21 @@ TEST(NNAPIDelegate, ResizeFails) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 3, 1}), kTfLiteError);
+}
+
+// Sanity check for the state-ful NNAPI delegate.
+TEST(NNAPIDelegate, StatefulDelegate) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
 class FloatMulOpModel : public SingleOpModelWithNNAPI {
