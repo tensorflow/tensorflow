@@ -211,6 +211,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TopK(row_size, num_rows, input->data.int8, k, output_indexes->data.i32,
            output_values->data.int8);
       break;
+    case kTfLiteInt16:
+      TopK(row_size, num_rows, input->data.i16, k, output_indexes->data.i32,
+           output_values->data.i16);
+      break;
     case kTfLiteInt32:
       TopK(row_size, num_rows, input->data.i32, k, output_indexes->data.i32,
            output_values->data.i32);
