@@ -141,8 +141,15 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
                        MutableGraphView* graph) {
   // TODO(rohanj): Fix up the output_shapes attribute as well. For this Dataset
   // as well as all the downstream datasets.
-  // For all the batching datasets the batch_size is input number 1.
-  NodeDef* batch_size_node = graph_utils::GetInputNode(node, *graph, 1);
+  // For all the batching datasets the batch_size is input number 1 except for
+  // MapAndBatchDataset.
+  int64 batch_size_arg_index = 1;
+  if (node.op() == "ExperimentalMapAndBatchDataset") {
+    // For MapAndBatch we take the 3rd last input.
+    batch_size_arg_index = node.input_size() - 3;
+  }
+  NodeDef* batch_size_node =
+      graph_utils::GetInputNode(node, *graph, batch_size_arg_index);
   // By the time this optimization is run, the batch_size is computed and
   // is a constant.
   if (batch_size_node->op() != kConstOp) {
@@ -168,7 +175,7 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
   // multiple nodes sharing the same batch size constant node. This is also
   // why we don't delete batch_size_node as well.
   TF_RETURN_IF_ERROR(graph->UpdateRegularFaninByPort(
-      node.name(), 1, {new_batch_size_node->name(), 0}));
+      node.name(), batch_size_arg_index, {new_batch_size_node->name(), 0}));
   return Status::OK();
 }
 
