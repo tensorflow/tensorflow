@@ -481,19 +481,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteTensor* input, TfLiteTensor* filter,
                              TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
-  KernelType effective_kernel_type;
-  effective_kernel_type = kernel_type;
-
-// If not running on NEON we force a fallback to the reference kernels, until
-// we have optimized support on other platforms.
-#ifdef GEMMLOWP_NEON
-#define TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
-#endif
-
-#ifndef TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
-  effective_kernel_type = kReference;
-#endif
-
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -504,7 +491,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
 
-  switch (effective_kernel_type) {
+  switch (kernel_type) {
     case kReference: {
       reference_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
@@ -518,7 +505,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     case kGenericOptimized:
     case kMultithreadOptimized:
     case kCblasOptimized: {
-#ifdef TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
       optimized_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -528,7 +514,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<int8>(output), GetTensorShape(im2col),
           GetTensorData<int8>(im2col),
           cpu_backend_support::GetFromContext(context));
-#endif
       break;
     }
   }
