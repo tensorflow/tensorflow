@@ -56,6 +56,12 @@ enum class TargetFunctionID {
   kFmod,
   kRound,
 };
+// AMDGCN target address spaces
+constexpr int kAMDGPUGlobalMemoryAddrSpace = 1;
+constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
+
+// NVPTX target address spaces
+constexpr int kNVPTXSharedMemoryAddrSpace = 3;
 
 // Emits a call to the specified target function  with the given operands.
 // Target function can either be an intrinsic or a device function.
@@ -68,6 +74,10 @@ llvm::Value* EmitCallToTargetFunction(
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::Span<const llvm::Attribute::AttrKind> attributes,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Obtain the target specific address space for global variables
+unsigned int GetGlobalMemoryAddressSpace(llvm::Module* module);
+unsigned int GetSharedMemoryAddressSpace(llvm::Module* module);
 
 }  // namespace gpu
 }  // namespace xla
