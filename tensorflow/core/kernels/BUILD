@@ -31,6 +31,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_cuda_or_rocm",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_shared_object",
@@ -4090,13 +4091,15 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS + [":redux_functor"] + if_cuda([
+    deps = NN_DEPS + [
+        ":redux_functor",
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
-    ]) + if_rocm_is_configured([
-        ":reduction_ops",
+    ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -4130,11 +4133,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS + if_cuda([
+    deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
-    ]) + if_rocm_is_configured([
-        ":reduction_ops",
+    ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -4799,11 +4802,11 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
-    ]) + if_rocm_is_configured([
-        ":reduction_ops",
+    ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -5316,11 +5319,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
-    ]) + if_rocm_is_configured([
-        ":reduction_ops",
+    ]) + if_rocm([
         "@rocprim_archive//:rocprim",
     ]),
 )
