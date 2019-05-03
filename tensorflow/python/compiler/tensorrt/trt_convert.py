@@ -178,6 +178,7 @@ class GraphConverter(object):
     self._calibration_graph = None
     self._calibration_sess = None
     self._calibration_data_collected = False
+    self._calibration_tables = []
 
   def get_rewriter_config(self):
     """Returns a RewriterConfig proto for TRT transformation.
@@ -326,6 +327,7 @@ class GraphConverter(object):
 
     Returns:
       The GraphDef after the calibration.
+      Calibration tables, one per TRTEngineOp in the graph.
     """
     assert self._converted
     assert not self._calibration_sess
@@ -353,7 +355,7 @@ class GraphConverter(object):
           fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
 
     self.finalize_calibration()
-    return self._converted_graph_def
+    return self._converted_graph_def, self._calibration_tables
 
   def finalize_calibration(self):
     """Clean up calibration resources and finalize the calibration.
@@ -496,7 +498,7 @@ TrtConversionParams = collections.namedtuple(
         # True, a calibration graph will be created to calibrate the missing
         # ranges. The calibration graph must be converted to an inference graph
         # by running calibration with calibrate(). If set to False, quantization
-        # nodes will be expected for every tensor in the graph (exlcuding those
+        # nodes will be expected for every tensor in the graph (excluding those
         # which will be fused). If a range is missing, an error will occur.
         # Please note that accuracy may be negatively affected if there is a
         # mismatch between which tensors TRT quantizes and which tensors were
@@ -720,7 +722,7 @@ class TrtGraphConverter(GraphConverter):
         missing ranges. The calibration graph must be converted to an inference
         graph by running calibration with calibrate(). If set to False,
         quantization nodes will be expected for every tensor in the graph
-        (exlcuding those which will be fused). If a range is missing, an error
+        (excluding those which will be fused). If a range is missing, an error
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
@@ -775,6 +777,15 @@ class TrtGraphConverter(GraphConverter):
     return get_tensorrt_rewriter_config(
         conversion_params=self._conversion_params)
 
+  def set_calib_tables(self, calib_tables):
+    """Set calibration tables into converted graph definition."""
+    assert self._converted, "Calibration tables can only be set on converted graph"
+    trt_nodes = [n for n in self._converted_graph_def.node if n.op == "TRTEngineOp"]
+    assert len(trt_nodes) == len(calib_tables), "Mismatch in number of TRT nodes and calibration tables"
+    for trt_node, calib_table in zip(trt_nodes, calib_tables):
+      trt_node.attr["calibration_data"].s = calib_table
+    return self._converted_graph_def
+
   def finalize_calibration(self):
     assert self._need_calibration
     assert self._converted
@@ -788,31 +799,37 @@ class TrtGraphConverter(GraphConverter):
     # Maps device name to the corresponding get_serialized_resource_op.
     device_to_get_resource_op_map = {}
 
+    # Reset calibration tables
+    self._calibration_tables = []
+
     with self._calibration_graph.as_default():
       container_input = array_ops.placeholder(dtypes.string)
       resource_name_input = array_ops.placeholder(dtypes.string)
 
       for node in self._converted_graph_def.node:
-        if node.op == _TRT_ENGINE_OP_NAME:
-          # Adds the get_serialized_resource_op for the device if not done
-          # before. We only add one such op for each device.
-          # TODO(laigd): What if the device is empty?????
-          if node.device not in device_to_get_resource_op_map:
-            with self._calibration_graph.device(node.device):
-              serialized_resources_output = (
-                  gen_trt_ops.get_serialized_resource_op(
-                      container_input, resource_name_input))
-            device_to_get_resource_op_map[node.device] = (
-                serialized_resources_output)
+        # Ignore nodes that are not TRT
+        if node.op != _TRT_ENGINE_OP_NAME:
+          continue
+        # Adds the get_serialized_resource_op for the device if not done
+        # before. We only add one such op for each device.
+        # TODO(laigd): What if the device is empty?????
+        if node.device not in device_to_get_resource_op_map:
+          with self._calibration_graph.device(node.device):
+            serialized_resources_output = (
+                gen_trt_ops.get_serialized_resource_op(
+                    container_input, resource_name_input))
+          device_to_get_resource_op_map[node.device] = (
+              serialized_resources_output)
 
-          # Get the calibration resource.
-          calibration_result = self._calibration_sess.run(
-              device_to_get_resource_op_map[node.device],
-              feed_dict={
-                  container_input: _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
-                  resource_name_input: node.name
-              })
-          node.attr["calibration_data"].s = calibration_result
+        # Get the calibration resource.
+        calibration_result = self._calibration_sess.run(
+            device_to_get_resource_op_map[node.device],
+            feed_dict={
+                container_input: _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
+                resource_name_input: node.name
+            })
+        node.attr["calibration_data"].s = calibration_result
+        self._calibration_tables.append(calibration_result)
 
     self._calibration_data_collected = True
     self._calibration_sess.close()
@@ -1066,6 +1083,7 @@ def create_inference_graph(
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
     output_saved_model_dir=None,
+    calib_tables=None,
     session_config=None):
   """Python wrapper for the TRT transformation.
 
@@ -1103,6 +1121,7 @@ def create_inference_graph(
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
       input_saved_model_dir is specified and input_graph_def is None.
+    calib_tables: List of calibration tables, one for each TRTEngineOp in INT8 mode.
     session_config: the ConfigProto used to create a Session. It's also used as
       a template to create a TRT-enabled ConfigProto for conversion. If not
       specified, a default ConfigProto will be used.
@@ -1145,6 +1164,8 @@ def create_inference_graph(
       cached_engine_batches=cached_engine_batches,
       use_calibration=False)
   converted_graph_def = trt_converter.convert()
+  if precision_mode == TrtPrecisionMode.INT8 and calib_tables:
+      converted_graph_def = trt_converter.set_calib_tables(calib_tables)
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)
   return converted_graph_def

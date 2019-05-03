@@ -503,7 +503,7 @@ Status CreateTRTNode(const ConversionParams& params,
       (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
     // Create static engine for fp32/fp16 mode, and test validity of the engine
     // for int8 calibration mode. We don't want engine to fail at the
     // calibration time. So we are constructing a FP32 engine here to check its
@@ -522,10 +522,6 @@ Status CreateTRTNode(const ConversionParams& params,
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
-    if (calibrate_int8) {
-      // See above comment about why not putting this inside the 'else' branch.
-      segment_string = info.segment_graph_def.SerializeAsString();
-    }
   } else {
     segment_string = info.segment_graph_def.SerializeAsString();
   }
