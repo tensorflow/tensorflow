@@ -40,7 +40,7 @@ TEST(ThreadPool, DoWork) {
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
     fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
-    bool work[kWorkItems];
+    std::atomic<bool> work[kWorkItems];
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
     }
@@ -50,8 +50,7 @@ TEST(ThreadPool, DoWork) {
         pool.Schedule([&outer_context, &work, i]() {
           Context inner_context(ContextKind::kThread);
           ASSERT_EQ(outer_context, inner_context);
-          ASSERT_FALSE(work[i]);
-          work[i] = true;
+          ASSERT_FALSE(work[i].exchange(true));
         });
       }
     }
@@ -65,7 +64,7 @@ void RunSharding(int64 block_size, int64 total, ThreadPool* threads) {
   mutex mu;
   int64 num_shards = 0;
   int64 num_done_work = 0;
-  std::vector<bool> work(total, false);
+  std::vector<std::atomic<bool>> work(total, false);
   threads->TransformRangeConcurrently(
       block_size, total,
       [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 end) {
@@ -75,14 +74,16 @@ void RunSharding(int64 block_size, int64 total, ThreadPool* threads) {
         mutex_lock l(mu);
         ++num_shards;
         for (; start < end; ++start) {
-          EXPECT_FALSE(work[start]);  // No duplicate
+          EXPECT_FALSE(work[start].exchange(true));  // No duplicate
           ++num_done_work;
-          work[start] = true;
         }
       });
   LOG(INFO) << block_size << " " << total;
-  const int64 num_workers = (total + block_size - 1) / block_size;
   EXPECT_EQ(num_done_work, total);
+  for (int i = 0; i < total; i++) {
+    ASSERT_TRUE(work[i]);
+  }
+  const int64 num_workers = (total + block_size - 1) / block_size;
   if (num_workers < threads->NumThreads()) {
     // If the intention is to limit the parallelism explicitly, we'd
     // better honor it. Ideally, even if per_thread_max_parallelism >
@@ -129,7 +130,7 @@ TEST(ThreadPool, ParallelFor) {
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
     fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
-    bool work[kWorkItems];
+    std::atomic<bool> work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
@@ -139,8 +140,7 @@ TEST(ThreadPool, ParallelFor) {
                        Context inner_context(ContextKind::kThread);
                        ASSERT_EQ(outer_context, inner_context);
                        for (int64 i = begin; i < end; ++i) {
-                         ASSERT_FALSE(work[i]);
-                         work[i] = true;
+                         ASSERT_FALSE(work[i].exchange(true));
                        }
                      });
     for (int i = 0; i < kWorkItems; i++) {
@@ -155,12 +155,12 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
   for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
     fprintf(stderr, "Testing with %d threads\n", num_threads);
     const int kWorkItems = 15;
-    volatile std::atomic<bool> work[kWorkItems];
+    std::atomic<bool> work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
     }
-    volatile std::atomic<bool> threads_running[kNumThreads + 1];
+    std::atomic<bool> threads_running[kNumThreads + 1];
     for (int i = 0; i < num_threads + 1; i++) {
       threads_running[i] = false;
     }
