@@ -81,7 +81,7 @@ FunctionDef IsZero() {
       // Args
       {"x: T"},
       // Return values
-      {"equal: T"},
+      {"equal: bool"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
       {
@@ -567,6 +567,23 @@ FunctionDef MakeTensorSliceDataset() {
         {"x"},
         {{"Toutput_types", "$Toutput_types"},
          {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef Unique() {
+  return FDH::Create(
+      // Name
+      "GetUnique",
+      // Args
+      {"x:T"},
+      // Return values
+      {"y:T", "idx: out_idx"},
+      // Attr def
+      {"T: type", "out_idx: {int32, int64} = DT_INT32"},
+      // Nodes
+      {
+          {{"result"}, "Unique", {"x"}, {{"T", "$T"}, {"out_idx", "$out_idx"}}},
+      },
+      {{"y", "result:y:0"}, {"idx", "result:idx:0"}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {
