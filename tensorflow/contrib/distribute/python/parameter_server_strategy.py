@@ -61,8 +61,8 @@ class ParameterServerStrategy(distribute_lib.StrategyV1):
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
 
-  1) Always use `tf.get_variable` instead of `tf.Variable` which is not able
-  to refer to the same variable on different replicas.
+  1) Always use `tf.compat.v1.get_variable` instead of `tf.Variable` which
+  is not able to refer to the same variable on different replicas.
 
   2) It is generally not recommended to open a device scope under the strategy's
   scope. A device scope (i.e. calling `tf.device`) will be merged with or
@@ -70,9 +70,9 @@ class ParameterServerStrategy(distribute_lib.StrategyV1):
   variables.
 
   3) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
-  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
-  possibly create conflicts of device assignment.
+  `tf.compat.v1.colocate_with`) under the strategy's scope. For colocating
+  variables, use `strategy.extended.colocate_vars_with` instead. Colocation of
+  ops will possibly create conflicts of device assignment.
   """
 
   def __init__(self, num_gpus_per_worker=0):

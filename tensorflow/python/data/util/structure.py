@@ -51,7 +51,7 @@ class Structure(object):
   TODO(b/110122868): In the future, a single `Structure` will replace the
   `tf.data.Dataset.output_types`, `tf.data.Dataset.output_shapes`,
   and `tf.data.Dataset.output_classes`, and similar properties and arguments in
-  the `tf.data.Iterator` and `Optional` classes.
+  the `tf.compat.v1.data.Iterator` and `Optional` classes.
   """
 
   @abc.abstractproperty
@@ -80,7 +80,7 @@ class Structure(object):
 
     * `s` and `t` are instances of the same `Structure` subclass.
     * The nested structures (if any) of `s` and `t` are the same, according to
-      `tf.contrib.framework.nest.assert_same_structure`, and each nested
+      `tf.nest.assert_same_structure`, and each nested
       structure of `t` is a "subtype" of the corresponding nested structure of
       `s`.
     * Any `tf.DType` components of `t` are the same as the corresponding
