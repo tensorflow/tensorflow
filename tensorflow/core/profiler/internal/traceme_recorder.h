@@ -67,10 +67,6 @@ class TraceMeRecorder {
   // Stops recording and returns events recorded since Start().
   static Events Stop();
 
-  // Returns events recorded till now without stopping the recording. Empty
-  // container is returned if the recorder was already stopped.
-  static Events Collect();
-
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
     return ABSL_PREDICT_FALSE(
