@@ -170,6 +170,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "combined_weights_test",
+    size = "large",
+    srcs = ["size_speed_tests/combined_weights_test.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
     name = "resnet18_nobn_test",
     size = "large",
     shard_count = 2,
@@ -403,6 +416,7 @@ test_suite(
 test_suite(
     name = "size_speed_tests",
     tests = [
+        "combined_weights_test",
         "resnet18_nobn_test",
         "lstm_size_test",
     ],
