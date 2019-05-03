@@ -78,7 +78,7 @@ struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, std::int8_t,
 
 template <>
 struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
-    : detail::GemmImplUsingEigen<float> {};
+    : detail::GemmImplUsingEigen {};
 
 #endif  // not TFLITE_WITH_RUY
 

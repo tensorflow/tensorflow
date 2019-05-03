@@ -150,6 +150,7 @@ cc_library(
         "//conditions:default": [
             "cpu_backend_gemm_gemmlowp.h",
             "cpu_backend_gemm_eigen.h",
+            "cpu_backend_gemm_eigen.cc",
         ],
     }),
     hdrs = [
