@@ -247,8 +247,8 @@ class Dimension(object):
     """
     try:
       other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    except (TypeError, ValueError) as e:
+      return (type(e), '::', e)
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -298,8 +298,8 @@ class Dimension(object):
     """
     try:
       other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    except (TypeError, ValueError) as e:
+      return (type(e), '::', e)
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)
