@@ -11,7 +11,6 @@ cc_library(
     srcs = ["nnapi_delegate.cc"],
     hdrs = ["nnapi_delegate.h"],
     deps = [
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",

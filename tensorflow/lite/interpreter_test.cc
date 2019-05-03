@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -731,6 +732,17 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.error_messages(),
             "Invoke called on model that is not ready.");
   ASSERT_EQ(reporter.num_calls(), 1);
+}
+
+TEST(BasicInterpreter, TestUseNNAPI) {
+  TestErrorReporter reporter;
+  Interpreter interpreter(&reporter);
+  interpreter.UseNNAPI(true);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  interpreter.UseNNAPI(false);
+  ASSERT_EQ(reporter.error_messages(),
+            "Attempting to disable NNAPI delegate after it's applied.");
 }
 
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {

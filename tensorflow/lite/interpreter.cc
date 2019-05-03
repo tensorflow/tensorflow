@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/nnapi_delegate.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
