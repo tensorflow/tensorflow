@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -23,8 +24,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/variant.h"
@@ -718,7 +719,8 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
       prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
-      iter_(nullptr) {
+      iter_(nullptr),
+      need_to_swap_bytes_(false) {
   const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
@@ -750,9 +752,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   if ((header.endianness() == BundleHeaderProto::BIG && port::kLittleEndian) ||
       (header.endianness() == BundleHeaderProto::LITTLE &&
        !port::kLittleEndian)) {
-    status_ = errors::Unimplemented(
-        "Reading a bundle with different endianness from the reader");
-    return;
+    need_to_swap_bytes_ = true;
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
@@ -851,8 +851,20 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
       TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
                                                    &unused_bytes_read));
     }
+    // Note that we compute the checksum *before* byte-swapping. The checksum
+    // should be on the bytes in the order they appear in the file.
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
+    if (need_to_swap_bytes_) {
+      TF_RETURN_IF_ERROR(ByteSwapTensor(ret));
+    }
   } else if (entry.dtype() == DT_VARIANT) {
+    if (need_to_swap_bytes_) {
+      return errors::Unimplemented(
+          "TensorBundle at ", prefix_,
+          "is of a different endianness than this machine's hardware, and "
+          "the bundle contains a variant (arbitrary C++ type) tensor. "
+          "Byte-swapping of variant tensors is not currently implemented.");
+    }
     // Relies on io::InputBuffer's buffering, because we issue many neighboring
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadVariantTensor(buffered_file, ret, entry.offset(),

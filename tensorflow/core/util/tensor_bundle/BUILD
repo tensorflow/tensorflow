@@ -11,14 +11,16 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_test",
+    "tf_copts",
 )
 
 # To be exported to tensorflow/core:mobile_srcs.
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "byte_swap.cc",
+        "byte_swap.h",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
@@ -33,8 +35,14 @@ alias(
 
 cc_library(
     name = "tensor_bundle",
-    srcs = ["tensor_bundle.cc"],
-    hdrs = ["tensor_bundle.h"],
+    srcs = [
+        "byte_swap.cc",
+        "tensor_bundle.cc",
+    ],
+    hdrs = [
+        "byte_swap.h",
+        "tensor_bundle.h",
+    ],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",
