@@ -224,12 +224,6 @@ def if_windows_cuda(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
-def if_not_windows_cuda(a):
-    return select({
-        clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
-        "//conditions:default": a,
-    })
-
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
