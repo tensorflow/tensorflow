@@ -50,6 +50,33 @@ TEST(ZerosLikeOpModel, ZerosLikeFloat) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 3}));
 }
 
+TEST(ZerosLikeOpModel, ZerosLikeInt8) {
+  ZerosLikeOpModel m({TensorType_INT8, {1, 2, 2, 1}});
+  m.PopulateTensor<int8_t>(m.input(), {2, -1, 0, 3});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({0, 0, 0, 0}));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));
+}
+
+TEST(ZerosLikeOpModel, ZerosLikeUInt8) {
+  ZerosLikeOpModel m({TensorType_UINT8, {1, 2, 2, 1}});
+  m.PopulateTensor<uint8_t>(m.input(), {7, 1, 0, 3});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({0, 0, 0, 0}));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));
+}
+
+TEST(ZerosLikeOpModel, ZerosLikeInt16) {
+  ZerosLikeOpModel m({TensorType_INT16, {1, 2, 2, 1}});
+  m.PopulateTensor<int16_t>(m.input(), {-2, -1, 0, 3});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
+              ElementsAreArray({0, 0, 0, 0}));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));
+}
+
 TEST(ZerosLikeOpModel, ZerosLikeInt32) {
   ZerosLikeOpModel m({TensorType_INT32, {1, 2, 2, 1}});
   m.PopulateTensor<int32_t>(m.input(), {-2, -1, 0, 3});
@@ -70,18 +97,10 @@ TEST(ZerosLikeOpModel, ZerosLikeInt64) {
 
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(ZerosLikeOpModel, InvalidTypeTest) {
-  ZerosLikeOpModel m_uint8({TensorType_UINT8, {1, 1}});
-  EXPECT_DEATH(m_uint8.Invoke(),
-               "ZerosLike only currently supports int64, int32, and float32");
-  ZerosLikeOpModel m_int16({TensorType_INT16, {1, 1}});
-  EXPECT_DEATH(m_int16.Invoke(),
-               "ZerosLike only currently supports int64, int32, and float32");
   ZerosLikeOpModel m_complex({TensorType_COMPLEX64, {1, 1}});
   EXPECT_DEATH(m_complex.Invoke(),
-               "ZerosLike only currently supports int64, int32, and float32");
-  ZerosLikeOpModel m_int8({TensorType_INT8, {1, 1}});
-  EXPECT_DEATH(m_int8.Invoke(),
-               "ZerosLike only currently supports int64, int32, and float32");
+               "ZerosLike only currently supports int64, int32, "
+               "int16, int8, unit8 and float32");
 }
 #endif
 }  // namespace
