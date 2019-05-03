@@ -12,10 +12,13 @@ load("@org_tensorflow//third_party:common.bzl", "template_rule")
 cc_library(
     name = "aws",
     srcs = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
-        "@org_tensorflow//tensorflow:darwin": glob([
+        "@org_tensorflow//tensorflow:macos": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "@org_tensorflow//tensorflow:linux_ppc64le": glob([
@@ -54,13 +57,18 @@ cc_library(
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
     ],
+    copts = [
+        "-DAWS_SDK_VERSION_MAJOR=1",
+        "-DAWS_SDK_VERSION_MINOR=5",
+        "-DAWS_SDK_VERSION_PATCH=8",
+    ],
     defines = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "PLATFORM_APPLE",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",

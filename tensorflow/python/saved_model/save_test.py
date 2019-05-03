@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for checkpointable object SavedModel save."""
+"""Tests for trackable object SavedModel save."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,34 +22,41 @@ import os
 import sys
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import function
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training import adam
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
+from tensorflow.python.util import compat
 
 
 class _ModelWithOptimizer(util.Checkpoint):
 
   def __init__(self):
     self.dense = core.Dense(1)
-    self.optimizer = adam.AdamOptimizer(0.01)
+    self.optimizer = adam.Adam(0.01)
 
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
@@ -86,7 +93,7 @@ def _import_and_infer(
 class SaveTest(test.TestCase):
 
   def test_method_save_signature(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -98,7 +105,7 @@ class SaveTest(test.TestCase):
         _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda z: {"out": 2. * z})
     root.f(constant_op.constant(1.))
@@ -113,17 +120,52 @@ class SaveTest(test.TestCase):
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
+  def test_unbuilt_model_does_not_prevent_saving(self):
+    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
+    save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
+  def test_version_information_included(self):
+    root = tracking.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+    saved_model_proto = loader_impl.parse_saved_model(save_dir)
+    self.assertEqual(
+        versions.__version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_version)
+    self.assertEqual(
+        versions.__git_version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_git_version)
+
   def test_non_concrete_error(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(
-        ValueError, "must be converted to concrete functions"):
+        ValueError, "Expected a TensorFlow function"):
       save.save(root, save_dir, root.f)
 
+  def test_captures_unreachable_variable(self):
+    root = tracking.AutoTrackable()
+    unreachable_variable = variables.Variable([5.0, 2.0])
+    root.reachable_variable = variables.Variable([1.0, 3.0])
+
+    @def_function.function
+    def increase_variable(x):
+      return 2 * unreachable_variable * x + root.reachable_variable
+
+    root.f = increase_variable
+
+    self.assertAllEqual([101.0, 83.0],
+                        root.f(constant_op.constant([10.0, 20.0])).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+
+    with self.assertRaisesRegexp(KeyError, "not reachable from root"):
+      save.save(root, save_dir)
+
   def test_nested_inputs(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x[0],
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
@@ -136,7 +178,7 @@ class SaveTest(test.TestCase):
       root.f.get_concrete_function()
 
   def test_nested_outputs(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: (2. * x, (3. * x, 4. * x)))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
@@ -157,7 +199,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -182,11 +224,6 @@ class SaveTest(test.TestCase):
         second_loss,
         _import_and_infer(save_dir, {"x": [[3., 4.]], "y": [2.]}))
 
-  def test_trivial_save_exception(self):
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(ValueError, "signature"):
-      save.save(tracking.Checkpointable(), save_dir)
-
   def test_single_method_default_signature(self):
     model = _ModelWithOptimizer()
     x = constant_op.constant([[3., 4.]])
@@ -199,7 +236,7 @@ class SaveTest(test.TestCase):
                                     {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
-    model = tracking.Checkpointable()
+    model = tracking.AutoTrackable()
     model.f = def_function.function(lambda: 3., input_signature=())
     model.f()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -207,28 +244,11 @@ class SaveTest(test.TestCase):
     self.assertAllClose({"output_0": 3.},
                         _import_and_infer(save_dir, {}))
 
-  def test_ambiguous_signatures(self):
-    model = _ModelWithOptimizer()
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    model.call(x, y)
-    model.second_function = def_function.function(lambda: 1.)
+  def test_single_function_no_signature(self):
+    model = tracking.AutoTrackable()
+    model.f = def_function.function(lambda: 3.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(ValueError, "call.*second_function"):
-      save.save(model, save_dir)
-
-  def test_no_signature(self):
-
-    class Model(util.Checkpoint):
-
-      def call(self, inputs):
-        return inputs * 2.
-
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    model = Model()
-    with self.assertRaisesRegexp(
-        ValueError, "no @tf.function-decorated methods"):
-      save.save(model, save_dir)
+    save.save(model, save_dir)
 
   def test_find_default_save_function(self):
 
@@ -306,6 +326,42 @@ class SaveTest(test.TestCase):
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
 
+  def test_signature_attribute_reserved(self):
+    root = util.Checkpoint(signatures=variables.Variable(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(ValueError, "del obj.signatures"):
+      save.save(root, save_dir)
+    del root.signatures
+    save.save(root, save_dir)
+
+  def test_function_with_captured_dataset(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Currently broken when a GPU is available.")
+
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, save_dir,
+        signatures=root.__call__.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.int64)))
+    self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
+                        _import_and_infer(save_dir, {"x": 3}))
+
 
 class AssetTests(test.TestCase):
 
@@ -314,6 +370,18 @@ class AssetTests(test.TestCase):
     self._vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
     with open(self._vocab_path, "w") as f:
       f.write("alpha\nbeta\ngamma\n")
+
+  def test_asset_path_returned(self):
+    root = tracking.AutoTrackable()
+    root.path = tracking.TrackableAsset(self._vocab_path)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    root.get_asset = def_function.function(lambda: root.path.asset_path)
+    save.save(root, save_dir, signatures=root.get_asset.get_concrete_function())
+    second_dir = os.path.join(self.get_temp_dir(), "second_dir")
+    file_io.rename(save_dir, second_dir)
+    imported_path = _import_and_infer(second_dir, {})["output_0"]
+    self.assertIn(compat.as_str_any(second_dir),
+                  compat.as_str_any(imported_path))
 
   def test_table(self):
     initializer = lookup_ops.TextFileInitializer(
@@ -344,7 +412,7 @@ class AssetTests(test.TestCase):
         _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
 
   def test_unused_asset(self):
-    root = tracking.Checkpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -356,7 +424,7 @@ class AssetTests(test.TestCase):
         {"output_0": [0.2]},
         _import_and_infer(export_dir, {"x": [0.1]}))
 
-  def test_sensible_graph_building_exception(self):
+  def test_sensible_function_building_exception(self):
     root = util.Checkpoint(v=variables.Variable(2.))
     root.f = def_function.function(
         lambda x: 2. * root.v,
@@ -367,16 +435,13 @@ class AssetTests(test.TestCase):
       save.save(root, export_dir)
     with self.assertRaisesRegexp(AssertionError, "tf.function"):
       _calls_save()
-    with ops.Graph().as_default():
-      with self.assertRaisesRegexp(AssertionError, "enable_eager_execution"):
-        save.save(root, export_dir)
 
 
 class _ModelWithOptimizerUsingDefun(util.Checkpoint):
 
   def __init__(self):
     self.dense = core.Dense(1)
-    self.optimizer = adam.AdamOptimizer(0.01)
+    self.optimizer = adam.Adam(0.01)
 
   # Using defun due to control flow v2 cycles, b/121159261. def_function uses
   # conds to gate variable initialization and so triggers cond reference cycles,

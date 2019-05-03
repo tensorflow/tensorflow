@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -30,16 +31,9 @@ class DatasetToGraphOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-    GraphDefBuilder b;
-    DatasetBase::DatasetGraphDefBuilder db(&b);
-    Node* input_node = nullptr;
-    SerializationContext::Params params;
-    params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-    SerializationContext serialization_ctx(params);
-    OP_REQUIRES_OK(
-        ctx, db.AddInputDataset(&serialization_ctx, dataset, &input_node));
     GraphDef graph_def;
-    OP_REQUIRES_OK(ctx, b.ToGraphDef(&graph_def));
+    OP_REQUIRES_OK(
+        ctx, AsGraphDef(ctx, dataset, SerializationContext({}), &graph_def));
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
     result->scalar<string>()() = graph_def.SerializeAsString();

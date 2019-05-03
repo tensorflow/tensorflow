@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 cc_library(
     name = "tfprof_stats",
@@ -364,4 +366,59 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
     ],
+)
+
+tf_cuda_library(
+    name = "traceme_recorder",
+    srcs = ["traceme_recorder.cc"],
+    hdrs = ["traceme_recorder.h"],
+    visibility = [
+        "//learning/brain/runtime:__pkg__",  # xprof_bridge
+        "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//tensorflow/core:__pkg__",  # executor.cc
+        "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
+        "//tensorflow/core/profiler/lib:__pkg__",  # traceme
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "traceme_recorder_test",
+    srcs = ["traceme_recorder_test.cc"],
+    deps = [
+        ":traceme_recorder",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cuda_library(
+    name = "profiler_interface",
+    srcs = [
+        "profiler_interface.cc",
+    ],
+    hdrs = [
+        "profiler_interface.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "profiler_interface.cc",
+        "profiler_interface.h",
+        "traceme_recorder.cc",
+        "traceme_recorder.h",
+    ],
+    visibility = ["//visibility:public"],
 )

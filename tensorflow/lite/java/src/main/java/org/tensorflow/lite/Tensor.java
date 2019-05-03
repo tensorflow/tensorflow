@@ -107,7 +107,7 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwExceptionIfTypeIsIncompatible(src);
+    throwIfDataIsIncompatible(src);
     if (isByteBuffer(src)) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
       // For direct ByteBuffer instances we support zero-copy. Note that this assumes the caller
@@ -138,7 +138,7 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwExceptionIfTypeIsIncompatible(dst);
+    throwIfDataIsIncompatible(dst);
     if (dst instanceof ByteBuffer) {
       ByteBuffer dstByteBuffer = (ByteBuffer) dst;
       dstByteBuffer.put(buffer());
@@ -159,6 +159,7 @@ public final class Tensor {
     if (isByteBuffer(input)) {
       return null;
     }
+    throwIfTypeIsIncompatible(input);
     int[] inputShape = computeShapeOf(input);
     if (Arrays.equals(shapeCopy, inputShape)) {
       return null;
@@ -243,7 +244,27 @@ public final class Tensor {
     }
   }
 
-  private void throwExceptionIfTypeIsIncompatible(Object o) {
+  private void throwIfDataIsIncompatible(Object o) {
+    throwIfTypeIsIncompatible(o);
+    throwIfShapeIsIncompatible(o);
+  }
+
+  private void throwIfTypeIsIncompatible(Object o) {
+    // ByteBuffer payloads can map to any type, so exempt it from the check.
+    if (isByteBuffer(o)) {
+      return;
+    }
+    DataType oType = dataTypeOf(o);
+    if (oType != dtype) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
+                  + "object of type %s (which is compatible with the TensorFlowLite type %s).",
+              dtype, o.getClass().getName(), oType));
+    }
+  }
+
+  private void throwIfShapeIsIncompatible(Object o) {
     if (isByteBuffer(o)) {
       ByteBuffer oBuffer = (ByteBuffer) o;
       if (oBuffer.capacity() != numBytes()) {
@@ -255,15 +276,6 @@ public final class Tensor {
       }
       return;
     }
-    DataType oType = dataTypeOf(o);
-    if (oType != dtype) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
-                  + "object of type %s (which is compatible with the TensorFlowLite type %s).",
-              dtype, o.getClass().getName(), oType));
-    }
-
     int[] oShape = computeShapeOf(o);
     if (!Arrays.equals(oShape, shapeCopy)) {
       throw new IllegalArgumentException(

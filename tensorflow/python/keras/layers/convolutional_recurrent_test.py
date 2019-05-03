@@ -18,16 +18,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class ConvLSTMTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class ConvLSTMTest(keras_parameterized.TestCase):
 
-  def test_conv_lstm(self):
+  @parameterized.named_parameters(
+      *test_util.generate_combinations_with_testcase_name(
+          data_format=['channels_first', 'channels_last'],
+          return_sequences=[True, False]))
+  def test_conv_lstm(self, data_format, return_sequences):
     num_row = 3
     num_col = 3
     filters = 2
@@ -36,47 +44,44 @@ class ConvLSTMTest(test.TestCase):
     input_num_row = 5
     input_num_col = 5
     sequence_len = 2
-    for data_format in ['channels_first', 'channels_last']:
-      if data_format == 'channels_first':
-        inputs = np.random.rand(num_samples, sequence_len,
-                                input_channel,
-                                input_num_row, input_num_col)
-      else:
-        inputs = np.random.rand(num_samples, sequence_len,
-                                input_num_row, input_num_col,
-                                input_channel)
+    if data_format == 'channels_first':
+      inputs = np.random.rand(num_samples, sequence_len,
+                              input_channel,
+                              input_num_row, input_num_col)
+    else:
+      inputs = np.random.rand(num_samples, sequence_len,
+                              input_num_row, input_num_col,
+                              input_channel)
 
-      for return_sequences in [True, False]:
-        with self.cached_session():
-          # test for return state:
-          x = keras.Input(batch_shape=inputs.shape)
-          kwargs = {'data_format': data_format,
-                    'return_sequences': return_sequences,
-                    'return_state': True,
-                    'stateful': True,
-                    'filters': filters,
-                    'kernel_size': (num_row, num_col),
-                    'padding': 'valid'}
-          layer = keras.layers.ConvLSTM2D(**kwargs)
-          layer.build(inputs.shape)
-          outputs = layer(x)
-          _, states = outputs[0], outputs[1:]
-          self.assertEqual(len(states), 2)
-          model = keras.models.Model(x, states[0])
-          state = model.predict(inputs)
+    # test for return state:
+    x = keras.Input(batch_shape=inputs.shape)
+    kwargs = {'data_format': data_format,
+              'return_sequences': return_sequences,
+              'return_state': True,
+              'stateful': True,
+              'filters': filters,
+              'kernel_size': (num_row, num_col),
+              'padding': 'valid'}
+    layer = keras.layers.ConvLSTM2D(**kwargs)
+    layer.build(inputs.shape)
+    outputs = layer(x)
+    _, states = outputs[0], outputs[1:]
+    self.assertEqual(len(states), 2)
+    model = keras.models.Model(x, states[0])
+    state = model.predict(inputs)
 
-          self.assertAllClose(
-              keras.backend.eval(layer.states[0]), state, atol=1e-4)
+    self.assertAllClose(
+        keras.backend.eval(layer.states[0]), state, atol=1e-4)
 
-          # test for output shape:
-          testing_utils.layer_test(
-              keras.layers.ConvLSTM2D,
-              kwargs={'data_format': data_format,
-                      'return_sequences': return_sequences,
-                      'filters': filters,
-                      'kernel_size': (num_row, num_col),
-                      'padding': 'valid'},
-              input_shape=inputs.shape)
+    # test for output shape:
+    testing_utils.layer_test(
+        keras.layers.ConvLSTM2D,
+        kwargs={'data_format': data_format,
+                'return_sequences': return_sequences,
+                'filters': filters,
+                'kernel_size': (num_row, num_col),
+                'padding': 'valid'},
+        input_shape=inputs.shape)
 
   def test_conv_lstm_statefulness(self):
     # Tests for statefulness

@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import structure
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -75,7 +76,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(expected.dense_shape,
                           self.evaluate(actual.dense_shape))
 
-  @test_util.run_deprecated_v1
   def testFromNone(self):
     value_structure = structure.TensorStructure(dtypes.float32, [])
     opt = optional_ops.Optional.none_from_structure(value_structure)
@@ -269,9 +269,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerOptionalStructure(self, tf_value_fn,
-                                     expected_value_structure):
+  def testOptionalStructure(self, tf_value_fn, expected_value_structure):
     tf_value = tf_value_fn()
     opt = optional_ops.Optional.from_value(tf_value)
 
@@ -325,42 +323,62 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
                     indices=[[0, 1], [1, 0]], values=[37.0, 42.0],
                     dense_shape=[2, 2])}, False),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerIteratorGetNextAsOptional(self, np_value, tf_value_fn,
-                                             works_on_gpu):
+  def testIteratorGetNextAsOptional(self, np_value, tf_value_fn,
+                                    works_on_gpu):
     if not works_on_gpu and test.is_gpu_available():
       self.skipTest("Test case not yet supported on GPU.")
     ds = dataset_ops.Dataset.from_tensors(np_value).repeat(3)
-    iterator = ds.make_initializable_iterator()
-    next_elem = iterator_ops.get_next_as_optional(iterator)
-    self.assertIsInstance(next_elem, optional_ops.Optional)
-    self.assertTrue(
-        next_elem.value_structure.is_compatible_with(
-            structure.Structure.from_value(tf_value_fn())))
-    elem_has_value_t = next_elem.has_value()
-    elem_value_t = next_elem.get_value()
-    with self.cached_session() as sess:
-      # Before initializing the iterator, evaluating the optional fails with
-      # a FailedPreconditionError.
-      with self.assertRaises(errors.FailedPreconditionError):
-        sess.run(elem_has_value_t)
-      with self.assertRaises(errors.FailedPreconditionError):
-        sess.run(elem_value_t)
 
+    if context.executing_eagerly():
+      iterator = dataset_ops.make_one_shot_iterator(ds)
       # For each element of the dataset, assert that the optional evaluates to
       # the expected value.
-      sess.run(iterator.initializer)
       for _ in range(3):
-        elem_has_value, elem_value = sess.run([elem_has_value_t, elem_value_t])
+        next_elem = iterator_ops.get_next_as_optional(iterator)
+        self.assertIsInstance(next_elem, optional_ops.Optional)
+        self.assertTrue(
+            next_elem.value_structure.is_compatible_with(
+                structure.Structure.from_value(tf_value_fn())))
+        self.assertTrue(next_elem.has_value())
+        self._assertElementValueEqual(np_value, next_elem.get_value())
+      # After exhausting the iterator, `next_elem.has_value()` will evaluate to
+      # false, and attempting to get the value will fail.
+      for _ in range(2):
+        next_elem = iterator_ops.get_next_as_optional(iterator)
+        self.assertFalse(self.evaluate(next_elem.has_value()))
+        with self.assertRaises(errors.InvalidArgumentError):
+          self.evaluate(next_elem.get_value())
+    else:
+      iterator = dataset_ops.make_initializable_iterator(ds)
+      next_elem = iterator_ops.get_next_as_optional(iterator)
+      self.assertIsInstance(next_elem, optional_ops.Optional)
+      self.assertTrue(
+          next_elem.value_structure.is_compatible_with(
+              structure.Structure.from_value(tf_value_fn())))
+      # Before initializing the iterator, evaluating the optional fails with
+      # a FailedPreconditionError. This is only relevant in graph mode.
+      elem_has_value_t = next_elem.has_value()
+      elem_value_t = next_elem.get_value()
+      with self.assertRaises(errors.FailedPreconditionError):
+        self.evaluate(elem_has_value_t)
+      with self.assertRaises(errors.FailedPreconditionError):
+        self.evaluate(elem_value_t)
+      # Now we initialize the iterator.
+      self.evaluate(iterator.initializer)
+      # For each element of the dataset, assert that the optional evaluates to
+      # the expected value.
+      for _ in range(3):
+        elem_has_value, elem_value = self.evaluate(
+            [elem_has_value_t, elem_value_t])
         self.assertTrue(elem_has_value)
         self._assertElementValueEqual(np_value, elem_value)
 
       # After exhausting the iterator, `next_elem.has_value()` will evaluate to
       # false, and attempting to get the value will fail.
       for _ in range(2):
-        self.assertFalse(sess.run(elem_has_value_t))
+        self.assertFalse(self.evaluate(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(elem_value_t)
+          self.evaluate(elem_value_t)
 
   def testFunctionBoundaries(self):
     @def_function.function

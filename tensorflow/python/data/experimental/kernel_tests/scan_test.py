@@ -30,7 +30,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
@@ -70,9 +73,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertEqual(5, self.evaluate(next_element()))
     self.assertEqual(8, self.evaluate(next_element()))
 
-  # TODO(b/117581999): Add coverage for eager.
-  @test_util.run_deprecated_v1
-  def testSkipEagerSparseCount(self):
+  def testSparseCount(self):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -97,6 +98,83 @@ class ScanTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element())
 
+  def testTensorArraySimple(self):
+
+    def scan_fn(ta, x):
+      return (ta.write(ta.size(), x), ta.stack())
+
+    start = tensor_array_ops.TensorArray(
+        size=0,
+        element_shape=[],
+        dtype=dtypes.int64,
+        dynamic_size=True)
+    start = start.write(0, -1)
+
+    ds = dataset_ops.Dataset.range(5).apply(scan_ops.scan(start, scan_fn))
+
+    self.assertDatasetProduces(
+        ds,
+        expected_output=[
+            [-1],
+            [-1, 0],
+            [-1, 0, 1],
+            [-1, 0, 1, 2],
+            [-1, 0, 1, 2, 3],
+        ],
+        requires_initialization=True,
+        num_test_iterations=2)
+
+  def testTensorArrayWithCondReset(self):
+
+    def empty():
+      return tensor_array_ops.TensorArray(
+          size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)
+
+    def scan_fn(ta, x):
+      updated = ta.write(ta.size(), x)
+      next_iter = control_flow_ops.cond(
+          math_ops.equal(x % 3, 0), empty, lambda: updated)
+      return (next_iter, updated.stack())
+
+    start = empty()
+    start = start.write(0, -1)
+
+    ds = dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
+
+    self.assertDatasetProduces(
+        ds,
+        expected_output=[
+            [-1, 0],
+            [1],
+            [1, 2],
+            [1, 2, 3],
+            [4],
+            [4, 5],
+        ],
+        requires_initialization=True,
+        num_test_iterations=2)
+
+  def testTensorArrayWithCondResetByExternalCaptureBreaks(self):
+
+    empty_ta = tensor_array_ops.TensorArray(
+        size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)
+
+    def scan_fn(ta, x):
+      updated = ta.write(ta.size(), x)
+      # Here, capture empty_ta from outside the function.  However, it may be
+      # either a TF1-style TensorArray or an Eager-style TensorArray.
+      next_iter = control_flow_ops.cond(
+          math_ops.equal(x % 3, 0), lambda: empty_ta, lambda: updated)
+      return (next_iter, updated.stack())
+
+    start = empty_ta
+    start = start.write(0, -1)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r"construct a new TensorArray inside the function"):
+      dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
+
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with
     # initial values with known shapes, and use a scan function that
@@ -110,9 +188,12 @@ class ScanTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(5).apply(
         scan_ops.scan(([0], 1), _scan_fn))
-    self.assertEqual([None], dataset.output_shapes[0][0].as_list())
-    self.assertIs(None, dataset.output_shapes[0][1].ndims)
-    self.assertEqual([], dataset.output_shapes[1].as_list())
+    self.assertEqual(
+        [None], dataset_ops.get_legacy_output_shapes(dataset)[0][0].as_list())
+    self.assertIs(
+        None, dataset_ops.get_legacy_output_shapes(dataset)[0][1].ndims)
+    self.assertEqual(
+        [], dataset_ops.get_legacy_output_shapes(dataset)[1].as_list())
 
     next_element = self.getNext(dataset)
 

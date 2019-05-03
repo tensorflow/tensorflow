@@ -97,6 +97,15 @@ void XlaTensor::ResetDefinitionEvent(std::shared_ptr<se::Event> event,
   streams_defined_on_ = {stream};
 }
 
+Status XlaTensor::RefreshStatusOfStreams() {
+  mutex_lock lock(mu_);
+  Status status;
+  for (se::Stream* stream : streams_defined_on_) {
+    status.Update(stream->RefreshStatus());
+  }
+  return status;
+}
+
 // The pointer tag, OR-ed into the XlaTensor's address to distinguish it from
 // device-side tensors, which are either CPU or GPU memory pointers. This works
 // because we're guaranteed that CPU and GPU pointers are aligned to > 1 bits.

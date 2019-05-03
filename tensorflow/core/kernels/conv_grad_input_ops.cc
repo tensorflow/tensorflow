@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -50,6 +51,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -106,8 +109,9 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* in_backprop,
-                  TensorFormat data_format) {
+                  int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
+                  Tensor* in_backprop, TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
     functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
         d, in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
@@ -183,120 +187,79 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
 };
 #endif
 
-template <typename Device, class T>
-class Conv2DFastBackpropInputOp : public OpKernel {
- public:
-  explicit Conv2DFastBackpropInputOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
-                    "Eigen Conv2DFastBackpropInputOp only supports NHWC."));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
-    OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
-                errors::InvalidArgument(
-                    "Row and column strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
-    OP_REQUIRES(context, dilations_.size() == 4,
-                errors::InvalidArgument("Sliding window dilations field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES(context, (dilations_[0] && dilations_[3]),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
-    // TODO(yangzihao): Add a CPU implementation for dilated convolution.
-    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
-                errors::InvalidArgument(
-                    "Current Eigen and libxsmm implementations do not "
-                    "yet support dilation rates larger than 1."));
+template <typename T>
+struct Conv2DCustomBackpropInputMatMulFunctor {
+  using MatrixMap = Eigen::Map<
+      Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+  using ConstMatrixMap = Eigen::Map<
+      const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+
+  void operator()(OpKernelContext* ctx, const T* out_data, const T* filter_data,
+                  const int filter_total_size, const int output_image_size,
+                  const int dims_out_depth, T* im2col_buf) {
+    // Compute gradient into 'im2col_buf'.
+    MatrixMap C(im2col_buf, output_image_size, filter_total_size);
+
+    ConstMatrixMap A(out_data, output_image_size, dims_out_depth);
+    ConstMatrixMap B(filter_data, filter_total_size, dims_out_depth);
+
+    C.noalias() = A * B.transpose();
   }
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input_sizes = context->input(0);
-    const Tensor& filter = context->input(1);
-    const Tensor& out_backprop = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
-            "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
-    TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_sizes.vec<int32>(), &input_shape));
-
-    ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensions(
-                       "Conv2DFastBackpropInput", /*num_spatial_dims=*/2,
-                       input_shape, filter.shape(), out_backprop.shape(),
-                       strides_, padding_, data_format_, &dims));
-
-    Tensor* in_backprop = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input_shape, &in_backprop));
-
-    // If there is nothing to compute, return.
-    if (input_shape.num_elements() == 0) {
-      return;
-    }
-
-#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
-    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
-    int64 pad_top, pad_bottom;
-    int64 pad_left, pad_right;
-    OP_REQUIRES_OK(
-        context,
-        GetWindowedOutputSizeVerbose(
-            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
-            dims.spatial_dims[0].stride, padding_,
-            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(
-        context,
-        GetWindowedOutputSizeVerbose(
-            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
-            dims.spatial_dims[1].stride, padding_,
-            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
-
-    if (pad_left == pad_right && pad_top == pad_bottom) {
-      if (LaunchXsmmBackwardInputConvolution<Device, T>()(
-              context, context->eigen_device<Device>(),
-              in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
-              out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-              dims.spatial_dims[1].input_size,
-              static_cast<int>(dims.spatial_dims[0].stride),
-              static_cast<int>(dims.spatial_dims[1].stride),
-              static_cast<int>(pad_top), static_cast<int>(pad_left),
-              data_format_)) {
-        return;
-      }
-    }
-#endif
-
-    LaunchConv2DBackpropInputOp<Device, T>()(
-        context, false, false, out_backprop, filter,
-        /*row_dilation=*/1, /*col_dilation=*/1, dims.spatial_dims[0].stride,
-        dims.spatial_dims[1].stride, padding_, in_backprop, data_format_);
-  }
-
- private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
-  Padding padding_;
-  TensorFormat data_format_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DFastBackpropInputOp);
 };
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+template <>
+struct Conv2DCustomBackpropInputMatMulFunctor<float> {
+  using T = float;
+
+  void operator()(OpKernelContext* ctx, const T* out_data, const T* filter_data,
+                  const int filter_total_size, const int output_image_size,
+                  const int dims_out_depth, T* im2col_buf) {
+    // Inputs are in RowMajor order, we "cheat" by swapping the LHS and RHS:
+    //   RowMajor: C   = A   * B
+    //   ColMajor: C^T = B^T * A^T
+    //
+    // Dimension names:
+    //   out_image_size    -> ois
+    //   filter_total_size -> fts
+    //   dims_out_depth    -> dod
+    //
+    // RowMajor:
+    //   im2col      = out_data    * filter_data^T
+    //   [ois x fts] = [ois x dod] * [fts x dod]^T
+    //
+    // ColMajor:
+    //   im2col^T    = filter_data *  out_data^T
+    //   [fts x ois] = [fts x dod] * [dod x ois]*
+
+    const int m = filter_total_size;
+    const int n = output_image_size;
+    const int k = dims_out_depth;  // contraction dim
+
+    const char transposeA = 'T';  // sgemm(A) == filter_data
+    const char transposeB = 'N';  // sgemm(B) == out_data
+
+    const int ldA = dims_out_depth;
+    const int ldB = dims_out_depth;
+    const int ldC = filter_total_size;
+
+    const float alpha = 1.0;
+    const float beta = 0.0;
+
+    // mkldnn_sgemm code can't be instrumented with msan.
+    ANNOTATE_MEMORY_IS_INITIALIZED(
+        im2col_buf, filter_total_size * output_image_size * sizeof(T));
+
+    mkldnn_status_t st =
+        mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, &alpha, filter_data,
+                     &ldA, out_data, &ldB, &beta, im2col_buf, &ldC);
+
+    OP_REQUIRES(
+        ctx, st == 0,
+        errors::Internal("Failed to call mkldnn_sgemm. Error code: ", st));
+  }
+};
+#endif
 
 // Based on implementation written by Yangqing Jia (jiayq).
 template <typename Device, class T>
@@ -336,6 +299,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                 errors::InvalidArgument(
                     "Current libxsmm and customized CPU implementations do "
                     "not yet support dilation rates larger than 1."));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              /*num_dims=*/4, data_format_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -353,10 +320,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensions(
+                   ConvBackpropComputeDimensionsV2(
                        "Conv2DCustomBackpropInput", /*num_spatial_dims=*/2,
                        input_shape, filter.shape(), out_backprop.shape(),
-                       strides_, padding_, data_format_, &dims));
+                       /*dilations=*/{1, 1, 1, 1}, strides_, padding_,
+                       explicit_paddings_, data_format_, &dims));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -403,6 +371,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
 #endif
+    if (padding_ == Padding::EXPLICIT) {
+      pad_top = explicit_paddings_[2];
+      pad_bottom = explicit_paddings_[3];
+      pad_left = explicit_paddings_[4];
+      pad_right = explicit_paddings_[5];
+    }
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
@@ -522,21 +496,14 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         input_backprop_data += input_offset;
       }
     } else {
-      typedef Eigen::Map<
-          Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-          MatrixMap;
-      typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
-                                             Eigen::RowMajor>>
-          ConstMatrixMap;
-
       for (int image_id = 0; image_id < dims.batch_size;
            image_id += shard_size) {
         const int shard_limit =
             std::min(static_cast<int>(shard_size),
                      static_cast<int>(dims.batch_size) - image_id);
 
-        auto shard = [&dims, &pad_top, &pad_left, &pad_bottom, &pad_right,
-                      &output_image_size, &filter_total_size,
+        auto shard = [&context, &dims, &pad_top, &pad_left, &pad_bottom,
+                      &pad_right, &output_image_size, &filter_total_size,
                       &input_backprop_data, &col_buffer_data,
                       &out_backprop_data, &filter_data, &input_offset,
                       &output_offset, &size_C](int64 start, int64 limit) {
@@ -545,13 +512,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
             T* input_data = input_backprop_data + shard_id * input_offset;
             const T* out_data = out_backprop_data + shard_id * output_offset;
 
-            // Compute gradient into 'im2col_buf'.
-            MatrixMap C(im2col_buf, output_image_size, filter_total_size);
-
-            ConstMatrixMap A(out_data, output_image_size, dims.out_depth);
-            ConstMatrixMap B(filter_data, filter_total_size, dims.out_depth);
-
-            C.noalias() = A * B.transpose();
+            Conv2DCustomBackpropInputMatMulFunctor<T>()(
+                context, out_data, filter_data, filter_total_size,
+                output_image_size, dims.out_depth, im2col_buf);
 
             Col2im<T>(im2col_buf, dims.in_depth,
                       dims.spatial_dims[0].input_size,
@@ -575,6 +538,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);
@@ -588,12 +552,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                               .Device(DEVICE_CPU)                            \
                               .Label("custom")                               \
                               .TypeConstraint<T>("T"),                       \
-                          Conv2DCustomBackpropInputOp<CPUDevice, T>);        \
-  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")                        \
-                              .Device(DEVICE_CPU)                            \
-                              .Label("eigen_tensor")                         \
-                              .TypeConstraint<T>("T"),                       \
-                          Conv2DFastBackpropInputOp<CPUDevice, T>);
+                          Conv2DCustomBackpropInputOp<CPUDevice, T>);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
@@ -661,6 +620,10 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              /*num_dims=*/4, data_format_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -694,13 +657,14 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
 
     launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, filter,
               dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
-              in_backprop, data_format_);
+              explicit_paddings_, in_backprop, data_format_);
   }
 
  private:
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   bool use_cudnn_;
   TensorFormat data_format_;
   LaunchConv2DBackpropInputOp<Device, T> launcher_;
@@ -714,7 +678,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& out_backprop, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    Tensor* in_backprop, TensorFormat data_format) {
+    const std::vector<int64>& explicit_paddings, Tensor* in_backprop,
+    TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
   using se::dnn::ProfileResult;
@@ -731,35 +696,33 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
   const TensorShape& filter_shape = filter.shape();
   ConvBackpropDimensions dims;
-  OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensionsV2(
-                          "Conv2DSlowBackpropInput", /*num_spatial_dims=*/2,
-                          input_shape, filter_shape, out_backprop.shape(),
-                          dilations, strides, padding, data_format, &dims));
+  OP_REQUIRES_OK(
+      ctx, ConvBackpropComputeDimensionsV2(
+               "Conv2DSlowBackpropInput", /*num_spatial_dims=*/2, input_shape,
+               filter_shape, out_backprop.shape(), dilations, strides, padding,
+               explicit_paddings, data_format, &dims));
 
-  // TODO(yangzihao): The padding computations should be done in
-  // GetWindowedOutputSize() functions.
-  const int padding_rows =
-      (padding == VALID)
-          ? 0
-          : std::max<int>(0, (dims.spatial_dims[0].output_size - 1) *
-                                     dims.spatial_dims[0].stride +
-                                 (dims.spatial_dims[0].filter_size - 1) *
-                                     dims.spatial_dims[0].dilation +
-                                 1 - dims.spatial_dims[0].input_size);
-  const int padding_cols =
-      (padding == VALID)
-          ? 0
-          : std::max<int>(0, (dims.spatial_dims[1].output_size - 1) *
-                                     dims.spatial_dims[1].stride +
-                                 (dims.spatial_dims[1].filter_size - 1) *
-                                     dims.spatial_dims[1].dilation +
-                                 1 - dims.spatial_dims[1].input_size);
-
-  // TODO(keveman): cuDNN only supports equal padding on both sides, so only
-  // calling it when that is true. Remove this check when (if?) cuDNN starts
-  // supporting different padding.
-  bool rows_odd = (padding_rows % 2 != 0);
-  bool cols_odd = (padding_cols % 2 != 0);
+  int64 padding_top = -1, padding_bottom = -1;
+  int64 padding_left = -1, padding_right = -1;
+  if (padding == EXPLICIT) {
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H', &padding_top,
+                             &padding_bottom);
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W', &padding_left,
+                             &padding_right);
+  }
+  int64 expected_out_rows, expected_out_cols;
+  // The function is guaranteed to succeed because we checked the output and
+  // padding was valid earlier.
+  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+      dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+      row_dilation, row_stride, padding, &expected_out_rows, &padding_top,
+      &padding_bottom));
+  DCHECK_EQ(dims.spatial_dims[0].output_size, expected_out_rows);
+  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+      dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+      col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
+      &padding_right));
+  DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
@@ -779,7 +742,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   if (dims.spatial_dims[0].filter_size == 1 &&
       dims.spatial_dims[1].filter_size == 1 && !is_grouped_convolution &&
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
-      data_format == FORMAT_NHWC) {
+      data_format == FORMAT_NHWC && (padding == VALID || padding == SAME)) {
     // 1x1 filter, so call cublas directly.
     const uint64 m = dims.batch_size * dims.spatial_dims[0].input_size *
                      dims.spatial_dims[1].input_size;
@@ -841,22 +804,28 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     return;
   }
 
+  const int64 common_padding_rows = std::min(padding_top, padding_bottom);
+  const int64 common_padding_cols = std::min(padding_left, padding_right);
   TensorShape compatible_input_shape;
-  if (rows_odd || cols_odd) {
-    // If a padding dimension is odd, we have one more element on the right
-    // side or the bottom side. This is unsupported in cudnn. Therefore,
-    // we pad that extra element and make it compatible.
+  if (padding_top != padding_bottom || padding_left != padding_right) {
+    // Pad the input in the same way we did during the forward pass, so that
+    // cuDNN receives the same input during the backward pass function as it did
+    // during the forward pass function.
+    const int64 padding_rows_diff = std::abs(padding_bottom - padding_top);
+    const int64 padding_cols_diff = std::abs(padding_right - padding_left);
+    const int64 new_in_rows =
+        dims.spatial_dims[0].input_size + padding_rows_diff;
+    const int64 new_in_cols =
+        dims.spatial_dims[1].input_size + padding_cols_diff;
     compatible_input_shape = ShapeFromFormat(
-        data_format, dims.batch_size,
-        dims.spatial_dims[0].input_size + rows_odd,
-        dims.spatial_dims[1].input_size + cols_odd, dims.in_depth);
+        data_format, dims.batch_size, new_in_rows, new_in_cols, dims.in_depth);
   } else {
     compatible_input_shape = input_shape;
   }
 
-  CHECK(padding_rows >= 0 && padding_cols >= 0)
-      << "Negative row or col paddings: (" << padding_rows << ", "
-      << padding_cols << ")";
+  CHECK(common_padding_rows >= 0 && common_padding_cols >= 0)  // Crash OK
+      << "Negative row or col paddings: (" << common_padding_rows << ", "
+      << common_padding_cols << ")";
   se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(dims.batch_size)
       .set_height(GetTensorDim(compatible_input_shape, data_format, 'H'))
@@ -879,30 +848,22 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
       .set_vertical_filter_stride(dims.spatial_dims[0].stride)
       .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
-      .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2)
+      .set_zero_padding_height(common_padding_rows)
+      .set_zero_padding_width(common_padding_cols)
       .set_group_count(dims.in_depth / filter_shape.dim_size(2));
 
   // NOTE(keveman):
-  // cuDNN only supports the following layouts :
-  // Input  : B x D x R x C
-  // Filter : OD x ID x R x C
-  // Whereas, we have
-  // Input  : B x R x C x D
-  // Filter : R x C x ID x OD
-  // TransformFilter performs (R x C x ID x OD) => (OD x ID x R x C)
-  // The first TransformDepth performs
-  // (B x R x C x D) => (B x D x R x C).
-  // Since the tensor returned from cuDNN is B x D x R x C also,
-  // the second TransformDepth performs
-  // (B x D x R x C) => (B x R x C x D).
+  // cuDNN only supports the filter layouts: OD x FD x R x C
+  // Whereas, we have: R x C x FD x OD
+  // TransformFilter performs (R x C x FD x OD) => (OD x FD x R x C)
   Tensor transformed_filter;
   OP_REQUIRES_OK(
-      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                              TensorShape({dims.out_depth, dims.in_depth,
-                                           dims.spatial_dims[0].filter_size,
-                                           dims.spatial_dims[1].filter_size}),
-                              &transformed_filter));
+      ctx,
+      ctx->allocate_temp(
+          DataTypeToEnum<T>::value,
+          TensorShape({filter_shape.dim_size(3), filter_shape.dim_size(2),
+                       filter_shape.dim_size(0), filter_shape.dim_size(1)}),
+          &transformed_filter));
 
   functor::TransformFilter<GPUDevice, T, int, 4>()(
       ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
@@ -971,8 +932,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         dims.spatial_dims[1].dilation}},   // dilation_cols
       {{dims.spatial_dims[0].stride,       // stride_rows
         dims.spatial_dims[1].stride}},     // stride_cols
-      {{padding_rows,                      // padding_rows
-        padding_cols}},                    // padding_cols
+      {{common_padding_rows,               // padding_rows
+        common_padding_cols}},             // padding_cols
       dtype,                               // tensor data type
       device_id,                           // device_id
   };
@@ -983,8 +944,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
+    std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
@@ -998,30 +958,22 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                   conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          if (profile_result.elapsed_time_in_ms() <
-              best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
-          }
-          if (scratch_allocator.TotalByteSize() == 0 &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result_no_scratch.elapsed_time_in_ms()) {
-            best_result_no_scratch = profile_result;
-          }
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    OP_REQUIRES(ctx,
-                best_result.is_valid() || best_result_no_scratch.is_valid(),
-                errors::NotFound("No algorithm worked!"));
-    if (best_result.is_valid()) {
-      algorithm_config.set_algorithm(best_result.algorithm());
-    }
-    if (best_result_no_scratch.is_valid()) {
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
-    }
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_DATA,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
+                           stream->parent(), results);
+    OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }
@@ -1041,7 +993,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     return;
   }
 
-  if (rows_odd || cols_odd) {
+  if (padding_top != padding_bottom || padding_left != padding_right) {
     Tensor in_backprop_remove_padding;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(
@@ -1053,12 +1005,18 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                  GetTensorDim(input_shape, data_format, 'C')),
                  &in_backprop_remove_padding));
 
-    // Remove the padding for odd rows or cols.
+    // Remove the padding that was added to the input shape above.
+    const int64 input_pad_top = padding_top - common_padding_rows;
+    const int64 input_pad_bottom = padding_bottom - common_padding_rows;
+    const int64 input_pad_left = padding_left - common_padding_cols;
+    const int64 input_pad_right = padding_right - common_padding_cols;
     functor::PadInput<GPUDevice, T, int, 4>()(
         ctx->template eigen_device<GPUDevice>(),
         To32Bit(const_cast<const Tensor&>(pre_transformed_in_backprop)
                     .tensor<T, 4>()),
-        {{0, 0}}, {{-rows_odd, -cols_odd}},
+        {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
+        {{static_cast<int>(-input_pad_bottom),
+          static_cast<int>(-input_pad_right)}},
         To32Bit(in_backprop_remove_padding.tensor<T, 4>()), FORMAT_NCHW);
 
     pre_transformed_in_backprop = in_backprop_remove_padding;
@@ -1136,6 +1094,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                         Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
 
 // To be used inside depthwise_conv_grad_op.cc.
+// TODO(reedwm): Move this and the definition to depthwise_conv_grad_op.cc.
 template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;

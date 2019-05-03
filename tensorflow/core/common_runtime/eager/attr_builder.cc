@@ -42,7 +42,7 @@ const uint32 kIsList = 1U << 31;
 AttrTypeMap* DefaultFunctionAttrTypeMap() {
   AttrTypeMap* map = new AttrTypeMap();
   (*map)["executor_type"] = TF_ATTR_STRING;
-  (*map)["config"] = TF_ATTR_STRING;
+  (*map)["config_proto"] = TF_ATTR_STRING;
   return map;
 }
 
@@ -124,7 +124,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 #define DEFINE_SET_ATTR(value_type, value_field)                             \
   template <>                                                                \
   AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
+    DCHECK(!node_def_finalized_) << "Calling Set() after BuildNodeDef.";     \
     value_field.push_back(std::make_pair(string(attr_name), value));         \
+    cached_cache_key_ = absl::nullopt;                                       \
     return *this;                                                            \
   }
 
@@ -134,6 +136,26 @@ DEFINE_SET_ATTR(bool, bool_attrs_);
 DEFINE_SET_ATTR(tensorflow::DataType, type_attrs_);
 
 #undef DEFINE_SET_ATTR
+
+#define DEFINE_GET_ATTR(value_type, value_field)                            \
+  template <>                                                               \
+  Status AttrBuilder::Get(StringPiece attr_name, value_type* value) const { \
+    for (const auto& name_value : value_field) {                            \
+      if (attr_name == name_value.first) {                                  \
+        *value = name_value.second;                                         \
+        return Status::OK();                                                \
+      }                                                                     \
+    }                                                                       \
+    return errors::NotFound("No attr named'", attr_name,                    \
+                            "' found in AttrBuilder for ", op_name_);       \
+  }
+
+DEFINE_GET_ATTR(float, float_attrs_);
+DEFINE_GET_ATTR(int, int_attrs_);
+DEFINE_GET_ATTR(bool, bool_attrs_);
+DEFINE_GET_ATTR(tensorflow::DataType, type_attrs_);
+
+#undef DEFINE_GET_ATTR
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {
   DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
@@ -231,7 +253,17 @@ inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) const {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) {
+  if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
+    cached_cache_key_ = BuildCacheKeyForDevice(device);
+    device_for_cached_cache_key_ = device;
+  }
+
+  return *cached_cache_key_;
+}
+
+tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
+    const string& device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   if (node_def_ != nullptr) {

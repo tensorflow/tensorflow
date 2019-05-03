@@ -75,16 +75,16 @@ class AdadeltaOptimizerTest(test.TestCase):
             slot = [None] * 2
             slot_update = [None] * 2
             slot[0] = adadelta_opt.get_slot(var0, "accum_grad")
-            self.assertEqual(slot[0].get_shape(), var0.get_shape())
+            self.assertEqual(slot[0].shape, var0.shape)
 
             slot_update[0] = adadelta_opt.get_slot(var0, "accum_var")
-            self.assertEqual(slot_update[0].get_shape(), var0.get_shape())
+            self.assertEqual(slot_update[0].shape, var0.shape)
 
             slot[1] = adadelta_opt.get_slot(var1, "accum_grad")
-            self.assertEqual(slot[1].get_shape(), var1.get_shape())
+            self.assertEqual(slot[1].shape, var1.shape)
 
             slot_update[1] = adadelta_opt.get_slot(var1, "accum_var")
-            self.assertEqual(slot_update[1].get_shape(), var1.get_shape())
+            self.assertEqual(slot_update[1].shape, var1.shape)
 
           # Fetch params to validate initial values
           self.assertAllClose(var0_init, self.evaluate(var0))
@@ -170,11 +170,25 @@ class AdadeltaOptimizerTest(test.TestCase):
 
   def testConstructAdadeltaWithLR(self):
     opt = adadelta.Adadelta(lr=1.0, rho=0.9, epsilon=1.)
-    self.assertEqual(opt.lr, 1.0)
     opt_2 = adadelta.Adadelta(learning_rate=0.1, rho=0.9, epsilon=1., lr=1.0)
-    self.assertEqual(opt_2.lr, 1.0)
     opt_3 = adadelta.Adadelta(learning_rate=0.1, rho=0.9, epsilon=1.)
-    self.assertEqual(opt_3.lr, 0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
+
+  def testConstructAdadeltaWithEpsilonValues(self):
+    opt = adadelta.Adadelta(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adadelta.Adadelta(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

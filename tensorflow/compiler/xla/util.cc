@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+
 #include <numeric>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -38,22 +41,40 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+                                       TimerStats* timer_stats)
+    : enabled(enabled), label(label), timer_stats(timer_stats) {
   if (enabled) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
+void ScopedLoggingTimer::StopAndLog() {
   if (enabled) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
+    TimerStats& stats = *timer_stats;
+    tensorflow::mutex_lock lock(stats.stats_mutex);
+    stats.cumulative_secs += secs;
+    if (secs > stats.max_secs) {
+      stats.max_secs = secs;
+    }
+    stats.times_called++;
+
     LOG(INFO) << label << " time: "
-              << tensorflow::strings::HumanReadableElapsedTime(secs);
+              << tensorflow::strings::HumanReadableElapsedTime(secs)
+              << " (cumulative: "
+              << tensorflow::strings::HumanReadableElapsedTime(
+                     stats.cumulative_secs)
+              << ", max: "
+              << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+              << ", #called: " << stats.times_called << ")";
+    enabled = false;
   }
 }
+
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
@@ -80,13 +101,9 @@ bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
   if (rank != permutation.size()) {
     return false;
   }
-  std::vector<int64> output(permutation.size(), -1);
-  for (auto index : permutation) {
-    CHECK_GE(index, 0);
-    CHECK_LT(index, rank);
-    output[index] = 0;
-  }
-  return std::find(output.begin(), output.end(), -1) == output.end();
+  absl::InlinedVector<int64, 8> trivial_permutation(rank);
+  absl::c_iota(trivial_permutation, 0);
+  return absl::c_is_permutation(permutation, trivial_permutation);
 }
 
 std::vector<int64> InversePermutation(

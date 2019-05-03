@@ -20,19 +20,48 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr(
+        "out_type: "
+        "{half,float,double,int32,uint16,uint8,int16,int8,int64,complex64,"
+        "complex128,bool}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(
           c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
+REGISTER_OP("DecodePaddedRaw")
+    .Input("input_bytes: string")
+    .Input("fixed_length: int32")
+    .Output("output: out_type")
+    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr("little_endian: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      DimensionHandle fixed_length;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &fixed_length));
+
+      DataType out_type;
+      TF_RETURN_IF_ERROR(c->GetAttr("out_type", &out_type));
+
+      int32 data_type_size = DataTypeSize(out_type);
+
+      DimensionHandle width;
+      TF_RETURN_IF_ERROR(c->Divide(fixed_length, data_type_size, true, &width));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->Concatenate(c->input(0), c->Vector(width), &out));
+
       c->set_output(0, out);
       return Status::OK();
     });

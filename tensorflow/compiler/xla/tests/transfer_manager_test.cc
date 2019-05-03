@@ -117,6 +117,26 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
   LiteralTestUtil::ExpectR1Equal<float>(test_vector, result);
 }
 
+XLA_TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
+  std::vector<float> test_vector(1025);
+  std::iota(test_vector.begin(), test_vector.end(), 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  BorrowingLiteral literal(reinterpret_cast<const char*>(&test_vector[1]),
+                           shape);
+  auto device_buffer = AllocateDeviceBuffer(shape);
+
+  // Round trip literal through device.
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+  std::vector<float> expected_output(1024);
+  std::iota(expected_output.begin(), expected_output.end(), 1);
+  LiteralTestUtil::ExpectR1Equal<float>(expected_output, result);
+}
+
 XLA_TEST_F(TransferManagerTest, TransferR1U8) {
   const char* test_string = "0123456789abcdef";
   Literal literal = LiteralUtil::CreateR1U8(test_string);

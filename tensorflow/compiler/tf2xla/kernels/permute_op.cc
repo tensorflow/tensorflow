@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -77,7 +78,10 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
     if (input_rank == 2) {
       keys = xla::BroadcastInDim(keys, {4, 2}, {0});
     }
-    auto sorted = xla::Sort(keys, {ctx->Input(0)}, 0);
+    auto sorted = xla::Sort({keys, ctx->Input(0)},
+                            xla::CreateScalarLtComputation(
+                                {xla::S32, ctx->input_xla_type(0)}, builder),
+                            0);
     auto output = xla::GetTupleElement(sorted, 1);
     ctx->SetOutput(0, output);
   }

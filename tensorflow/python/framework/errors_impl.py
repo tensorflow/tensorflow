@@ -36,10 +36,7 @@ def _compact_stack_trace(op):
   """Returns a traceback for `op` with common file prefixes stripped."""
   compact_traces = []
   common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
-  # pylint: disable=protected-access
-  tf_traceback = tf_stack.convert_stack(op._traceback)
-  # pylint: enable=protected-access
-  for frame in tf_traceback:
+  for frame in op.traceback:
     frame = list(frame)
     filename = frame[tf_stack.TB_FILENAME]
     if filename.startswith(common_prefix):
@@ -423,7 +420,7 @@ class UnimplementedError(OpError):
 
   Some operations may raise this error when passed otherwise-valid
   arguments that it does not currently support. For example, running
-  the `tf.nn.max_pool` operation
+  the `tf.nn.max_pool2d` operation
   would raise this error if pooling was requested on the batch dimension,
   because this is not yet supported.
 
@@ -507,14 +504,18 @@ _EXCEPTION_CLASS_TO_CODE = {
     class_: code for code, class_ in _CODE_TO_EXCEPTION_CLASS.items()}
 
 
-@tf_export("errors.exception_type_from_error_code")
+@tf_export(v1=["errors.exception_type_from_error_code"])
 def exception_type_from_error_code(error_code):
   return _CODE_TO_EXCEPTION_CLASS[error_code]
 
 
-@tf_export("errors.error_code_from_exception_type")
+@tf_export(v1=["errors.error_code_from_exception_type"])
 def error_code_from_exception_type(cls):
-  return _EXCEPTION_CLASS_TO_CODE[cls]
+  try:
+    return _EXCEPTION_CLASS_TO_CODE[cls]
+  except KeyError:
+    warnings.warn("Unknown class exception")
+    return UnknownError(None, None, "Unknown class exception", None)
 
 
 def _make_specific_exception(node_def, op, message, error_code):
@@ -530,7 +531,7 @@ def _make_specific_exception(node_def, op, message, error_code):
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
 # TODO(b/77295559): expand use of TF_Status* SWIG typemap and deprecate this.
-@tf_export("errors.raise_exception_on_not_ok_status")  # pylint: disable=invalid-name
+@tf_export(v1=["errors.raise_exception_on_not_ok_status"])  # pylint: disable=invalid-name
 class raise_exception_on_not_ok_status(object):
   """Context manager to check for C API status."""
 

@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 common_copts = ["-Wall"]
 
@@ -70,7 +71,9 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -86,10 +89,30 @@ cc_test(
         "//tensorflow/core:framework_lite",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "command_line_flags",
+    srcs = ["command_line_flags.cc"],
+    hdrs = ["command_line_flags.h"],
+    copts = tflite_copts(),
+)
+
+cc_test(
+    name = "command_line_flags_test",
+    srcs = ["command_line_flags_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":command_line_flags",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

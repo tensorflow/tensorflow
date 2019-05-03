@@ -25,11 +25,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class AssertElementShapeTest(test_base.DatasetTestBase):
 
   def test_assert_element_shape(self):
@@ -41,10 +43,12 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(5).map(create_dataset)
     expected_shapes = (tensor_shape.TensorShape(2),
                        tensor_shape.TensorShape((3, 4)))
-    self.assertEqual(expected_shapes, dataset.output_shapes)
+    self.assertEqual(expected_shapes,
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
-    self.assertEqual(expected_shapes, result.output_shapes)
+    self.assertEqual(expected_shapes,
+                     dataset_ops.get_legacy_output_shapes(result))
 
     iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
@@ -81,12 +85,14 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
                       tensor_shape.TensorShape(None))
-    self.assertEqual(unknown_shapes, dataset.output_shapes)
+    self.assertEqual(unknown_shapes,
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     expected_shapes = (tensor_shape.TensorShape(2),
                        tensor_shape.TensorShape((3, 4)))
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
-    self.assertEqual(expected_shapes, result.output_shapes)
+    self.assertEqual(expected_shapes,
+                     dataset_ops.get_legacy_output_shapes(result))
 
     iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
@@ -111,7 +117,8 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(3).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
                       tensor_shape.TensorShape(None))
-    self.assertEqual(unknown_shapes, dataset.output_shapes)
+    self.assertEqual(unknown_shapes,
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((3, 10)))
@@ -139,7 +146,8 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     # Partial shapes are merged with actual shapes:
     actual_shapes = (tensor_shape.TensorShape(2),
                      tensor_shape.TensorShape((3, 4)))
-    self.assertEqual(actual_shapes, result.output_shapes)
+    self.assertEqual(actual_shapes,
+                     dataset_ops.get_legacy_output_shapes(result))
 
     iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
@@ -176,12 +184,14 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
                       tensor_shape.TensorShape(None))
-    self.assertEqual(unknown_shapes, dataset.output_shapes)
+    self.assertEqual(unknown_shapes,
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     expected_shapes = (tensor_shape.TensorShape(2),
                        tensor_shape.TensorShape((None, 4)))
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
-    self.assertEqual(expected_shapes, result.output_shapes)
+    self.assertEqual(expected_shapes,
+                     dataset_ops.get_legacy_output_shapes(result))
 
     iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
@@ -206,7 +216,8 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(3).map(create_unknown_shape_dataset)
     unknown_shapes = (tensor_shape.TensorShape(None),
                       tensor_shape.TensorShape(None))
-    self.assertEqual(unknown_shapes, dataset.output_shapes)
+    self.assertEqual(unknown_shapes,
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((None, 10)))

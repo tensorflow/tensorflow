@@ -152,7 +152,11 @@ toolchain {
     # Removal of unused code and data at link time (can this increase binary size in some cases?).
     compiler_flag: "-ffunction-sections"
     compiler_flag: "-fdata-sections"
-    linker_flag: "-Wl,--gc-sections"
+
+    # With hipcc -fno-gpu-rdc, objects and libraries would contain a .kernel
+    # section which would be removed by ld. Therefore --gc-sections shall be
+    # abolished here.
+    #linker_flag: "-Wl,--gc-sections"
   }
   linking_mode_flags { mode: DYNAMIC }
 }

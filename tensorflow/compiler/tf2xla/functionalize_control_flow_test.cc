@@ -1010,13 +1010,14 @@ TEST(FunctionalizeControlFlow, Complex) {
           ops::_Retval(scope.WithOpName("_retval0_RetVal"), add_i, 0);
       auto retval1 = ops::_Retval(scope.WithOpName("_retval1_RetVal"), arg1, 1);
       auto retval2 = ops::_Retval(scope.WithOpName("_retval2_RetVal"), arg2, 2);
+      auto retval3 = ops::_Retval(scope.WithOpName("_retval3_RetVal"), arg3, 3);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
 
       EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE}),
                 result.arg_types);
-      EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32}),
+      EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE}),
                 result.ret_types);
       TF_EXPECT_GRAPH_EQ(expected, result.gdef);
     }
@@ -1083,6 +1084,7 @@ TEST(FunctionalizeControlFlow, Complex) {
       auto retval1 =
           ops::_Retval(scope.WithOpName("_retval1_RetVal"), identity_k, 1);
       auto retval2 = ops::_Retval(scope.WithOpName("_retval2_RetVal"), arg2, 2);
+      auto retval3 = ops::_Retval(scope.WithOpName("_retval3_RetVal"), arg3, 3);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -1093,7 +1095,7 @@ TEST(FunctionalizeControlFlow, Complex) {
 
       EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE}),
                 result.arg_types);
-      EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32}),
+      EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE}),
                 result.ret_types);
       TF_EXPECT_GRAPH_EQ(expected, result.gdef);
     }

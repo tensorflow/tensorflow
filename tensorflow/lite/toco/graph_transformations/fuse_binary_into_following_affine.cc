@@ -218,6 +218,12 @@ void FuseMulOrDivParamsIntoFollowingAffine(Model* model, Operator* following_op,
     return ::tensorflow::Status::OK();
   }
 
+  if (CountOpsWithInput(*model, binary_op->outputs[0]) != 1) {
+    AddMessageF("Not fusing %s because it's consumed by multiple ops",
+                LogName(*binary_op));
+    return ::tensorflow::Status::OK();
+  }
+
   Operator* following_op = GetOpWithInput(*model, binary_op->outputs[0]);
 
   if (!following_op) {
@@ -287,9 +293,7 @@ void FuseMulOrDivParamsIntoFollowingAffine(Model* model, Operator* following_op,
   AddMessageF("Fusing %s into the following %s", LogName(*binary_op),
               LogName(*following_op));
 
-  if (CountOpsWithInput(*model, binary_op->outputs[0]) == 1) {
-    model->EraseArray(binary_op->outputs[0]);
-  }
+  model->EraseArray(binary_op->outputs[0]);
 
   following_op->inputs[0] = binary_op->inputs[index_of_variable_input];
   const auto& old_constant_param_name =

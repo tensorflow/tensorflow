@@ -80,11 +80,14 @@ def load_op_library(library_filename):
   module.LIB_HANDLE = lib_handle
   # OpDefs of the list of ops defined in the library.
   module.OP_LIST = op_list
+  # Allow this to be recognized by AutoGraph.
+  setattr(module, '_IS_TENSORFLOW_PLUGIN', True)
   sys.modules[module_name] = module
   return module
 
 
-@deprecation.deprecated(date=None, instructions='Use tf.load_library instead.')
+@deprecation.deprecated(date=None,
+                        instructions='Use `tf.load_library` instead.')
 @tf_export(v1=['load_file_system_library'])
 def load_file_system_library(library_filename):
   """Loads a TensorFlow plugin, containing file system implementation.

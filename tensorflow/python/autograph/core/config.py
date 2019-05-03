@@ -28,21 +28,33 @@ PYTHON_LITERALS = {
     'float': float,
 }
 
+
+def _internal_name(name):
+  """This function correctly resolves internal and external names."""
+  reference_name = utils.__name__
+
+  reference_root = 'tensorflow.'
+  # If the TF module is foo.tensorflow, then all other modules
+  # are then assumed to be prefixed by 'foo'.
+
+  if reference_name.startswith(reference_root):
+    return name
+
+  reference_begin = reference_name.find('.' + reference_root)
+  assert reference_begin > 0
+
+  root_prefix = reference_name[:reference_begin]
+  return root_prefix + '.' + name
+
+
 DEFAULT_UNCOMPILED_MODULES = set((
     ('tensorflow',),
-    (utils.__name__,),
-
-    # All of tensorflow's subpackages. Unlike the root tf module, they don't
-    # have well-known names. Not referring to the module directly to avoid
-    # circular imports.
-    (
-        utils.__name__[:-len('.python.autograph.utils')],),
+    (_internal_name('tensorflow'),),
+    # TODO(mdan): Remove once the conversion process is optimized.
+    ('tensorflow_probability',),
+    (_internal_name('tensorflow_probability'),),
+    # TODO(b/130313089): Remove.
+    ('numpy',),
+    # TODO(mdan): Might need to add "thread" as well?
+    ('threading',),
 ))
-
-NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
-
-# TODO(mdan): Also allow controlling the generated names.
-# TODO(mdan); Consolidate all internal imports into a single __ag module.
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
-)

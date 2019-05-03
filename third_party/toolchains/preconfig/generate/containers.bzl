@@ -1,4 +1,8 @@
+"""SHA 256 values for each image."""
 container_digests = {
-    "cuda9.0-cudnn7-ubuntu14.04": "sha256:c43ed5341dd765042e0bbd1bf50fadeedd649d1e0c34d81999cb6ce30916cb95",
-    "cuda10.0-cudnn7-ubuntu14.04": "sha256:919e75247743ae1244d5d72ee9f18090379d4a9035e5853010f6d59d87cd2e8b",
+    "ubuntu16.04": "sha256:d0d98c53111c3ec071aa81632a2b0d6f210e5c2411c5172e31f99002125ec4de",
+    "centos6": "sha256:8402dc2bc0e9baa31a32caf182bf6a4f5f91852d1d5e3079175dfb4d2237cde8",
+    "cuda10.0-cudnn7-ubuntu14.04": "sha256:d433e1221f802dac393bc8652fabcc63aa46896cd920bb888ae0e2002fe6b756",
+    "cuda10.0-cudnn7-centos7": "sha256:a453b7147a60928a8345689eae48916a746b3578b5e831bfa151f0529d469c88",
+    "cuda10.0-cudnn7-centos6": "sha256:a874e7a102abb7da5861dd468b68a25f360bb976a39a26c1e123b770e7900322",
 }

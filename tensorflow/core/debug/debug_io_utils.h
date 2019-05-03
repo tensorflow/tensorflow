@@ -253,6 +253,7 @@ struct hash<::tensorflow::DebugNodeKey> {
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
 #ifndef PLATFORM_WINDOWS
+#include "grpcpp/channel.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 
 namespace tensorflow {

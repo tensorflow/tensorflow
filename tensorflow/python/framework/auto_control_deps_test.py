@@ -19,12 +19,15 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -103,24 +106,24 @@ class AutomaticControlDependenciesTest(test.TestCase):
       with acd.AutomaticControlDependencies() as c:
 
         def true_fn():
-          v.assign(v + 1, name='true')
+          v.assign(v + 1, name="true")
           return 1.0
 
         def false_fn():
 
           def inner_true_fn():
-            v.assign(v * 2, name='false_true')
+            v.assign(v * 2, name="false_true")
             return 2.0
 
           def inner_false_fn():
-            v.assign(v * 3, name='false_false')
+            v.assign(v * 3, name="false_false")
             return 3.0
 
           control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
           return 1.0
 
         control_flow_ops.cond(p, true_fn, false_fn)
-        with ops.name_scope('final'):
+        with ops.name_scope("final"):
           val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
@@ -280,6 +283,44 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     train()
     self.assertEqual(v.numpy(), -1.0)
+
+  def testRepeatedResourceInput(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def inner(var1, var2):
+      return (resource_variable_ops.read_variable_op(var1, dtypes.float32) +
+              resource_variable_ops.read_variable_op(var2, dtypes.float32))
+
+    @def_function.function
+    def outer():
+      return inner(var.handle, var.handle)
+
+    self.assertEqual(self.evaluate(outer()), 2.0)
+
+  def testVariableInitializersCanBeLifted(self):
+    # The initializer is a stateful op, but using it inside a function should
+    # *not* create additional dependencies.  That's what we're testing.
+    layer = keras_core.Dense(1, kernel_initializer="glorot_uniform")
+
+    @def_function.function
+    def fn(x):
+      # Stateful operation
+      control_flow_ops.Assert(x, ["Error"])
+      # Variable initialization should be lifted.  Prior to the change that
+      # added this test, the lifting would crash because of an auto control dep
+      # added on `x`.  Note, the error did not happen if we
+      # manually created a tf.Variable outside of function and used it
+      # here.  Alternatively, creating a tf.Variable inside fn() causes
+      # a different sort of error that is out of scope for this test.
+      return layer(ops.convert_to_tensor([[1.0, 1.0]]))
+
+    true = ops.convert_to_tensor(True)
+
+    concrete = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+    self.evaluate(concrete(true))
+    self.evaluate(fn(True))
 
 
 if __name__ == '__main__':

@@ -306,8 +306,9 @@ class RingReducerTest : public ::testing::Test {
     if (fail_after > 0) {
       // Confirm that every device terminated with the expected error status.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
-        EXPECT_EQ("Deliberate failure",
-                  instances_[di]->status_.error_message());
+        EXPECT_NE(
+            instances_[di]->status_.error_message().find("Deliberate failure"),
+            string::npos);
       }
     } else {
       // Confirm that every device computed the same correct reduction value.
@@ -335,19 +336,20 @@ class RingReducerTest : public ::testing::Test {
           note.WaitForNotification();
         }
 
+        auto alias = actual.template unaligned_flat<T>();
         for (int i = 0; i < tensor_len; ++i) {
           switch (dtype) {
             case DT_FLOAT:
-              EXPECT_FLOAT_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_FLOAT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             case DT_DOUBLE:
-              EXPECT_DOUBLE_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_DOUBLE_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             case DT_INT32:
             case DT_INT64:
-              EXPECT_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             default:

@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -29,9 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -192,9 +196,9 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
 }
 
 void XlaBuilder::IsConstantVisitor(const int64 op_handle,
-                                   std::set<int64>* visited,
+                                   absl::flat_hash_set<int64>* visited,
                                    bool* is_constant) const {
-  if (visited->count(op_handle) != 0 || !*is_constant) {
+  if (visited->contains(op_handle) || !*is_constant) {
     return;
   }
 
@@ -208,11 +212,21 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension_number = instr.dimensions(0);
+      const HloInstructionProto& operand =
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+      Shape operand_shape(operand.shape());
+      if (operand_shape.is_dynamic_dimension(dimension_number)) {
+        *is_constant = false;
+      }
+      break;
+    }
 
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
-      // TODO(b/33009255): Implmement constant folding for cross replica sum.
+      // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCall:
@@ -244,6 +258,29 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
                                      int64 target_param_num,
                                      ShapeIndex target_param_index,
                                      int64 target_dim_num) {
+  bool param_exists = false;
+  for (HloInstructionProto& instr : instructions_) {
+    if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
+        instr.parameter_number() == target_param_num) {
+      param_exists = true;
+      Shape param_shape(instr.shape());
+      Shape* param_shape_ptr = &param_shape;
+      for (int64 index : target_param_index) {
+        param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
+      }
+      // TODO(b/121223198): Set `is_dynamic` to the parameter shape when XLA
+      // backend can handle dynamic dimensions.
+      *instr.mutable_shape() = param_shape.ToProto();
+    }
+  }
+
+  if (!param_exists) {
+    return InvalidArgument(
+        "Asked to mark parameter %lld as dynamic sized parameter, but the "
+        "doesn't exists",
+        target_param_num);
+  }
+
   TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
       DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
                                                 dynamic_size_param_index},
@@ -263,27 +300,51 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return build_status.ConsumeValueOrDie();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build() {
+Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return Build(instructions_.back().id());
+  return Status::OK();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root) {
+StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
+  return Build(instructions_.back().id(), remove_dynamic_dimensions);
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root,
+                                           bool remove_dynamic_dimensions) {
   if (root.builder_ != this) {
     return InvalidArgument("Given root operation is not in this computation.");
   }
-  return Build(root.handle());
+  return Build(root.handle(), remove_dynamic_dimensions);
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
-  if (!first_error_.ok()) {
-    string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
-    return AppendStatus(first_error_, backtrace);
+StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
+                                           bool remove_dynamic_dimensions) {
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
+
+  // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
+  // all dynamic dimensions before building xla program until we have support in
+  // the backend.
+  if (remove_dynamic_dimensions) {
+    std::function<void(ShapeProto*)> remove_dynamic_dimension =
+        [&](ShapeProto* shape) {
+          if (shape->tuple_shapes_size() != 0) {
+            for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
+              remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+            }
+          }
+          for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+            shape->set_is_dynamic_dimension(i, false);
+          }
+        };
+
+    for (auto& instruction : instructions_) {
+      remove_dynamic_dimension(instruction.mutable_shape());
+    }
   }
 
   HloComputationProto entry;
@@ -310,7 +371,10 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
-
+  if (!input_output_aliases_.empty()) {
+    TF_RETURN_IF_ERROR(
+        PopulateInputOutputAlias(module, program_shape, input_output_aliases_));
+  }
   *(module->mutable_dynamic_parameter_binding()) =
       dynamic_parameter_binding_.ToProto();
 
@@ -321,6 +385,35 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   this->parameter_numbers_.clear();
 
   return std::move(computation);
+}
+
+/* static */ Status XlaBuilder::PopulateInputOutputAlias(
+    HloModuleProto* module, const ProgramShape& program_shape,
+    const std::vector<InputOutputAlias>& input_output_aliases) {
+  HloInputOutputAliasConfig config(program_shape.result());
+  for (auto& alias : input_output_aliases) {
+    // The HloInputOutputAliasConfig does not do parameter validation as it only
+    // carries the result shape. Maybe it should be constructed with a
+    // ProgramShape to allow full validation. We will still get an error when
+    // trying to compile the HLO module, but would be better to have validation
+    // at this stage.
+    if (alias.param_number >= program_shape.parameters_size()) {
+      return InvalidArgument("Invalid parameter number %ld (total %ld)",
+                             alias.param_number,
+                             program_shape.parameters_size());
+    }
+    const Shape& parameter_shape = program_shape.parameters(alias.param_number);
+    if (!ShapeUtil::IndexIsValid(parameter_shape, alias.param_index)) {
+      return InvalidArgument("Invalid parameter %ld index: %s",
+                             alias.param_number,
+                             alias.param_index.ToString().c_str());
+    }
+    TF_RETURN_IF_ERROR(config.SetUpAlias(
+        alias.output_index, alias.param_number, alias.param_index,
+        HloInputOutputAliasConfig::AliasKind::kUserAlias));
+  }
+  *module->mutable_input_output_alias() = config.ToProto();
+  return Status::OK();
 }
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
@@ -388,7 +481,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                           absl::Span<const int64> broadcast_dimensions) {
+                           absl::Span<const int64> broadcast_dimensions,
+                           absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -397,6 +491,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferBinaryOpShape(
                             binop, lhs_shape, rhs_shape, broadcast_dimensions));
     *instr.mutable_shape() = shape.ToProto();
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
+    } else if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
 
     const int64 lhs_rank = lhs_shape.rank();
     const int64 rhs_rank = rhs_shape.rank();
@@ -410,16 +515,19 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
       const Shape& from_shape = should_broadcast_lhs ? lhs_shape : rhs_shape;
 
       std::vector<int64> to_size;
-      for (int64 size : shape.dimensions()) {
-        to_size.push_back(size);
+      std::vector<bool> to_size_is_dynamic;
+      for (int i = 0; i < shape.rank(); i++) {
+        to_size.push_back(shape.dimensions(i));
+        to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
       }
       for (int64 from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
         int64 to_dim = broadcast_dimensions[from_dim];
         to_size[to_dim] = from_shape.dimensions(from_dim);
+        to_size_is_dynamic[to_dim] = from_shape.is_dynamic_dimension(from_dim);
       }
 
-      const Shape& broadcasted_shape =
-          ShapeUtil::MakeShape(from_shape.element_type(), to_size);
+      const Shape& broadcasted_shape = ShapeUtil::MakeShape(
+          from_shape.element_type(), to_size, to_size_is_dynamic);
       TF_ASSIGN_OR_RETURN(
           XlaOp broadcasted_operand,
           InDimBroadcast(broadcasted_shape, from, broadcast_dimensions));
@@ -447,46 +555,53 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
                             const XlaOp& ehs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
-    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
-    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(ehs));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferTernaryOpShape(triop, lhs_shape,
-                                                         rhs_shape, ehs_shape));
-    *instr.mutable_shape() = shape.ToProto();
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
-    if (!shape.IsTuple()) {
-      if (!lhs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, lhs_shape)) {
-        // lhs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_lhs, AddBroadcastSequence(shape, lhs));
+    // The client API supports implicit broadcast for kSelect and kClamp, but
+    // XLA does not support implicit broadcast. Make implicit broadcast explicit
+    // and update the operands.
+    if (triop == HloOpcode::kSelect || triop == HloOpcode::kClamp) {
+      TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+      TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
+      TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(ehs));
+
+      absl::optional<Shape> non_scalar_shape;
+      for (const Shape& shape : {lhs_shape, rhs_shape, ehs_shape}) {
+        if (shape.IsArray() && shape.rank() != 0) {
+          non_scalar_shape = shape;
+        }
       }
-      if (!rhs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, rhs_shape)) {
-        // rhs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_rhs, AddBroadcastSequence(shape, rhs));
-      }
-      if (!ehs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, ehs_shape)) {
-        // ehs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_ehs, AddBroadcastSequence(shape, ehs));
+      if (non_scalar_shape.has_value()) {
+        if (ShapeUtil::IsScalar(lhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_lhs,
+                              AddBroadcastSequence(*non_scalar_shape, lhs));
+        }
+        if (ShapeUtil::IsScalar(rhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_rhs,
+                              AddBroadcastSequence(*non_scalar_shape, rhs));
+        }
+        if (ShapeUtil::IsScalar(ehs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_ehs,
+                              AddBroadcastSequence(*non_scalar_shape, ehs));
+        }
       }
     }
+
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(updated_lhs));
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(updated_rhs));
+    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(updated_ehs));
+    StatusOr<const Shape> status_or_shape = ShapeInference::InferTernaryOpShape(
+        triop, lhs_shape, rhs_shape, ehs_shape);
+    if (!status_or_shape.status().ok()) {
+      return InvalidArgument(
+          "%s Input scalar shapes may have been changed to non-scalar shapes.",
+          status_or_shape.status().error_message());
+    }
+    *instr.mutable_shape() = status_or_shape.ConsumeValueOrDie().ToProto();
     return AddInstruction(std::move(instr), triop,
                           {updated_lhs, updated_rhs, updated_ehs});
   });
-}
-
-XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kAdd, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Mul(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kMultiply, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
@@ -532,8 +647,9 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
   });
 }
 
-XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
-                            const string& name) {
+XlaOp XlaBuilder::Parameter(
+    int64 parameter_number, const Shape& shape, const string& name,
+    const std::vector<bool>& replicated_at_leaf_buffers) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (!parameter_numbers_.insert(parameter_number).second) {
@@ -543,6 +659,12 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
     instr.set_parameter_number(parameter_number);
     instr.set_name(name);
     *instr.mutable_shape() = shape.ToProto();
+    if (!replicated_at_leaf_buffers.empty()) {
+      auto replication = instr.mutable_parameter_replication();
+      for (bool replicated : replicated_at_leaf_buffers) {
+        replication->add_replicated_at_leaf_buffers(replicated);
+      }
+    }
     return AddInstruction(std::move(instr), HloOpcode::kParameter);
   });
 }
@@ -578,8 +700,17 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    const auto& output_shape =
+    auto output_shape =
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+    for (int i = 0; i < broadcast_dimensions.size(); i++) {
+      if (broadcast_dimensions[i] < 0 ||
+          broadcast_dimensions[i] > out_dim_size.size()) {
+        return InvalidArgument("Broadcast dimension %lld is out of bound",
+                               broadcast_dimensions[i]);
+      }
+      output_shape.set_dynamic_dimension(broadcast_dimensions[i],
+                                         operand_shape.is_dynamic_dimension(i));
+    }
 
     TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
                            operand_shape, output_shape, broadcast_dimensions)
@@ -659,7 +790,7 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                         GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDynamicSliceShape(
-                            operand_shape, start_indices_shape, slice_sizes));
+                            operand_shape, {start_indices_shape}, slice_sizes));
     *instr.mutable_shape() = shape.ToProto();
 
     for (int64 size : slice_sizes) {
@@ -668,6 +799,34 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
 
     return AddInstruction(std::move(instr), HloOpcode::kDynamicSlice,
                           {operand, start_indices});
+  });
+}
+
+XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand,
+                               absl::Span<const XlaOp> start_indices,
+                               absl::Span<const int64> slice_sizes) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    std::vector<const Shape*> start_indices_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& start_indices_shapes,
+                        GetOperandShapes(start_indices));
+    absl::c_transform(start_indices_shapes,
+                      std::back_inserter(start_indices_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferDynamicSliceShape(
+                            operand_shape, start_indices_shapes, slice_sizes));
+    *instr.mutable_shape() = shape.ToProto();
+
+    for (int64 size : slice_sizes) {
+      instr.add_dynamic_slice_sizes(size);
+    }
+
+    std::vector<XlaOp> operands = {operand};
+    operands.insert(operands.end(), start_indices.begin(), start_indices.end());
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicSlice, operands);
   });
 }
 
@@ -680,13 +839,38 @@ XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
     TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
     TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
                         GetShape(start_indices));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferDynamicUpdateSliceShape(
-                            operand_shape, update_shape, start_indices_shape));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape, ShapeInference::InferDynamicUpdateSliceShape(
+                         operand_shape, update_shape, {start_indices_shape}));
     *instr.mutable_shape() = shape.ToProto();
 
     return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,
                           {operand, update, start_indices});
+  });
+}
+
+XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                                     absl::Span<const XlaOp> start_indices) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
+    std::vector<const Shape*> start_indices_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& start_indices_shapes,
+                        GetOperandShapes(start_indices));
+    absl::c_transform(start_indices_shapes,
+                      std::back_inserter(start_indices_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferDynamicUpdateSliceShape(
+                            operand_shape, update_shape, start_indices_shapes));
+    *instr.mutable_shape() = shape.ToProto();
+
+    std::vector<XlaOp> operands = {operand, update};
+    operands.insert(operands.end(), start_indices.begin(), start_indices.end());
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,
+                          operands);
   });
 }
 
@@ -846,36 +1030,6 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
     return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
                           {tuple_data});
   });
-}
-
-XlaOp XlaBuilder::Eq(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kEq, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Ne(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kNe, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Ge(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kGe, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Gt(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kGt, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Le(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kLe, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kLt, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs,
@@ -1393,147 +1547,6 @@ XlaOp XlaBuilder::CustomCall(
   });
 }
 
-XlaOp XlaBuilder::Complex(const XlaOp& real, const XlaOp& imag,
-                          absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kComplex, real, imag, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Conj(const XlaOp& operand) {
-  return Complex(Real(operand), Neg(Imag(operand)));
-}
-
-XlaOp XlaBuilder::Sub(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kSubtract, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Div(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kDivide, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Rem(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kRemainder, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Max(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kMaximum, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Min(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kMinimum, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::And(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kAnd, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Or(const XlaOp& lhs, const XlaOp& rhs,
-                     absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kOr, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Xor(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kXor, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Not(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kNot, operand);
-}
-
-XlaOp XlaBuilder::ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                            absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kShiftLeft, lhs, rhs, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::ShiftRightArithmetic(
-    const XlaOp& lhs, const XlaOp& rhs,
-    absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kShiftRightArithmetic, lhs, rhs,
-                  broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::ShiftRightLogical(
-    const XlaOp& lhs, const XlaOp& rhs,
-    absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kShiftRightLogical, lhs, rhs,
-                  broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Abs(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kAbs, operand);
-}
-
-XlaOp XlaBuilder::Atan2(const XlaOp& y, const XlaOp& x,
-                        absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
-}
-
-XlaOp XlaBuilder::Exp(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kExp, operand);
-}
-
-XlaOp XlaBuilder::Expm1(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kExpm1, operand);
-}
-
-XlaOp XlaBuilder::Floor(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kFloor, operand);
-}
-
-XlaOp XlaBuilder::Ceil(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kCeil, operand);
-}
-
-XlaOp XlaBuilder::Round(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kRoundNearestAfz, operand);
-}
-
-XlaOp XlaBuilder::Log(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kLog, operand);
-}
-
-XlaOp XlaBuilder::Log1p(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kLog1p, operand);
-}
-
-XlaOp XlaBuilder::Sign(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kSign, operand);
-}
-
-XlaOp XlaBuilder::Clz(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kClz, operand);
-}
-
-XlaOp XlaBuilder::Cos(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kCos, operand);
-}
-
-XlaOp XlaBuilder::Sin(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kSin, operand);
-}
-
-XlaOp XlaBuilder::Tanh(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kTanh, operand);
-}
-
-XlaOp XlaBuilder::Real(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kReal, operand);
-}
-
-XlaOp XlaBuilder::Imag(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kImag, operand);
-}
-
-XlaOp XlaBuilder::IsFinite(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kIsFinite, operand);
-}
-
 XlaOp XlaBuilder::Transpose(const XlaOp& operand,
                             absl::Span<const int64> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -1564,34 +1577,28 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-XlaOp XlaBuilder::Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
-                       int64 dimension) {
+XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
+                       const XlaComputation& comparator, int64 dimension,
+                       bool is_stable) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_is_stable(is_stable);
     std::vector<const Shape*> operand_shape_ptrs;
-    TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
-    operand_shape_ptrs.push_back(&keys_shape);
-    TF_ASSIGN_OR_RETURN(std::vector<Shape> values_shapes,
-                        GetOperandShapes(values));
-    absl::c_transform(values_shapes, std::back_inserter(operand_shape_ptrs),
+    TF_ASSIGN_OR_RETURN(std::vector<Shape> operand_shapes,
+                        GetOperandShapes(operands));
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferVariadicOpShape(
                                          HloOpcode::kSort, operand_shape_ptrs));
     *instr.mutable_shape() = shape.ToProto();
     if (dimension == -1) {
-      TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
+      TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(operands[0]));
       dimension = keys_shape.rank() - 1;
     }
     instr.add_dimensions(dimension);
-    std::vector<XlaOp> operands{keys};
-    operands.insert(operands.end(), values.begin(), values.end());
+    AddCalledComputation(comparator, &instr);
     return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
   });
-}
-
-XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
-                      absl::Span<const int64> broadcast_dimensions) {
-  return BinaryOp(HloOpcode::kPower, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ConvertElementType(const XlaOp& operand,
@@ -1617,10 +1624,6 @@ XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
     return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
                           {operand});
   });
-}
-
-XlaOp XlaBuilder::Neg(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kNegate, operand);
 }
 
 XlaOp XlaBuilder::Clamp(const XlaOp& min, const XlaOp& operand,
@@ -1787,31 +1790,71 @@ XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaOp& false_operand,
                               const XlaComputation& false_computation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, GetShape(predicate));
 
-    TF_ASSIGN_OR_RETURN(const Shape& predicate_shape, GetShape(predicate));
-    TF_ASSIGN_OR_RETURN(const Shape& true_operand_shape,
-                        GetShape(true_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& true_computation_shape,
-                        true_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(const Shape& false_operand_shape,
-                        GetShape(false_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& false_computation_shape,
-                        false_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferConditionalShape(
-            predicate_shape, true_operand_shape, false_operand_shape,
-            true_computation_shape, false_computation_shape));
-    *instr.mutable_shape() = shape.ToProto();
-
+    if (!ShapeUtil::IsScalar(shape) || shape.element_type() != PRED) {
+      return InvalidArgument(
+          "Argument to predicated-Conditional is not a scalar of PRED type "
+          "(%s).",
+          ShapeUtil::HumanString(shape));
+    }
     // The index of true_computation must be 0 and that of false computation
     // must be 1.
-    AddCalledComputation(true_computation, &instr);
-    AddCalledComputation(false_computation, &instr);
+    return ConditionalImpl(predicate, {&true_computation, &false_computation},
+                           {true_operand, false_operand});
+  });
+}
 
+XlaOp XlaBuilder::Conditional(
+    const XlaOp& branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, GetShape(branch_index));
+
+    if (!ShapeUtil::IsScalar(shape) || shape.element_type() != S32) {
+      return InvalidArgument(
+          "Argument to indexed-Conditional is not a scalar of S32 type (%s).",
+          ShapeUtil::HumanString(shape));
+    }
+    return ConditionalImpl(branch_index, branch_computations, branch_operands);
+  });
+}
+
+XlaOp XlaBuilder::ConditionalImpl(
+    const XlaOp& branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& branch_index_shape,
+                        GetShape(branch_index));
+    std::vector<Shape> branch_operand_shapes(branch_operands.size());
+    std::vector<ProgramShape> branch_computation_shapes(
+        branch_computations.size());
+    for (int j = 0; j < branch_operands.size(); ++j) {
+      TF_ASSIGN_OR_RETURN(branch_operand_shapes[j],
+                          GetShape(branch_operands[j]));
+      TF_ASSIGN_OR_RETURN(branch_computation_shapes[j],
+                          branch_computations[j]->GetProgramShape());
+    }
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferConditionalShape(
+                            branch_index_shape, branch_computation_shapes,
+                            branch_operand_shapes));
+    *instr.mutable_shape() = shape.ToProto();
+
+    for (const XlaComputation* branch_computation : branch_computations) {
+      AddCalledComputation(*branch_computation, &instr);
+    }
+
+    std::vector<XlaOp> operands(1, branch_index);
+    for (const XlaOp branch_operand : branch_operands) {
+      operands.emplace_back(branch_operand);
+    }
     return AddInstruction(std::move(instr), HloOpcode::kConditional,
-                          {predicate, true_operand, false_operand});
+                          absl::MakeSpan(operands));
   });
 }
 
@@ -2003,8 +2046,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
     const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
     auto b = CreateSubBuilder("sum");
-    b->Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
-           b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
+    Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
+        b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
     return CrossReplicaSum(operand, computation, replica_groups,
                            /*channel_id=*/absl::nullopt);
@@ -2110,6 +2153,14 @@ XlaOp XlaBuilder::CollectivePermute(
 
     return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
                           {operand});
+  });
+}
+
+XlaOp XlaBuilder::ReplicaId() {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeShape(U32, {}).ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kReplicaId, {});
   });
 }
 
@@ -2383,7 +2434,7 @@ StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(LookUpInstruction(operand).status());
 
   bool is_constant = true;
-  std::set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   IsConstantVisitor(operand.handle(), &visited, &is_constant);
   return is_constant;
 }
@@ -2430,21 +2481,58 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     worklist.pop();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
                         LookUpInstructionByHandle(handle));
-    for (int64 id : instr_proto->operand_ids()) {
-      if (related_ops.insert(id).second) {
-        worklist.push(id);
+
+    if (instr_proto->opcode() ==
+        HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      // At this point, BuildConstantSubGraph should never encounter a
+      // GetDimensionSize with a dynamic dimension. IsConstant check would have
+      // failed at the beginning of this function.
+      //
+      // Replace GetDimensionSize with a Constant representing the static bound
+      // of the shape.
+      int64 dimension = instr_proto->dimensions(0);
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+
+      TF_RET_CHECK(!operand_proto->shape().is_dynamic_dimension(dimension));
+      auto constant_dimension_size =
+          static_cast<uint32>(operand_proto->shape().dimensions(dimension));
+
+      Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
+
+      HloInstructionProto const_instr;
+      *const_instr.mutable_shape() = literal.shape().ToProto();
+      *const_instr.mutable_literal() = literal.ToProto();
+      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+
+      const_instr.set_id(handle);
+      *const_instr.mutable_name() =
+          GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
+      *entry.add_instructions() =
+          const_instr;  // Add to the result constant graph.
+    } else {
+      for (int64 id : instr_proto->operand_ids()) {
+        if (related_ops.insert(id).second) {
+          worklist.push(id);
+        }
       }
-    }
-    for (int64 called_id : instr_proto->called_computation_ids()) {
-      related_calls.insert(called_id);
+      for (int64 called_id : instr_proto->called_computation_ids()) {
+        related_calls.insert(called_id);
+      }
     }
   }
 
   // Add related ops to the computation.
   for (int64 id : related_ops) {
-    auto* instr = entry.add_instructions();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
                         LookUpInstructionByHandle(id));
+
+    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      continue;
+    }
+    auto* instr = entry.add_instructions();
+
     *instr = *instr_src;
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
@@ -2662,7 +2750,15 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
                 const string& name) {
-  return builder->Parameter(parameter_number, shape, name);
+  std::vector<bool> empty_bools;
+  return Parameter(builder, parameter_number, shape, name, empty_bools);
+}
+
+XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
+                const string& name,
+                const std::vector<bool>& replicated_at_leaf_buffers) {
+  return builder->Parameter(parameter_number, shape, name,
+                            replicated_at_leaf_buffers);
 }
 
 // Enqueues a constant with the value of the given literal onto the
@@ -2671,55 +2767,64 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal) {
   return builder->ConstantLiteral(literal);
 }
 
-XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes) {
+XlaOp Broadcast(const XlaOp operand, absl::Span<const int64> broadcast_sizes) {
   return operand.builder()->Broadcast(operand, broadcast_sizes);
 }
 
-XlaOp BroadcastInDim(const XlaOp& operand,
+XlaOp BroadcastInDim(const XlaOp operand,
                      const absl::Span<const int64> out_dim_size,
                      const absl::Span<const int64> broadcast_dimensions) {
   return operand.builder()->BroadcastInDim(operand, out_dim_size,
                                            broadcast_dimensions);
 }
 
-XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
+XlaOp Pad(const XlaOp operand, const XlaOp padding_value,
           const PaddingConfig& padding_config) {
   return operand.builder()->Pad(operand, padding_value, padding_config);
 }
 
-XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
+XlaOp Reshape(const XlaOp operand, absl::Span<const int64> dimensions,
               absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, dimensions, new_sizes);
 }
 
-XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes) {
+XlaOp Reshape(const XlaOp operand, absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, new_sizes);
 }
 
-XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions) {
+XlaOp Collapse(const XlaOp operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Collapse(operand, dimensions);
 }
 
-XlaOp Slice(const XlaOp& operand, absl::Span<const int64> start_indices,
+XlaOp Slice(const XlaOp operand, absl::Span<const int64> start_indices,
             absl::Span<const int64> limit_indices,
             absl::Span<const int64> strides) {
   return operand.builder()->Slice(operand, start_indices, limit_indices,
                                   strides);
 }
 
-XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
+XlaOp SliceInDim(const XlaOp operand, int64 start_index, int64 limit_index,
                  int64 stride, int64 dimno) {
   return operand.builder()->SliceInDim(operand, start_index, limit_index,
                                        stride, dimno);
 }
 
-XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
+XlaOp DynamicSlice(const XlaOp operand, const XlaOp start_indices,
+                   absl::Span<const int64> slice_sizes) {
+  return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
+}
+XlaOp DynamicSlice(const XlaOp operand, absl::Span<const XlaOp> start_indices,
                    absl::Span<const int64> slice_sizes) {
   return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
 }
 
-XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
-                         const XlaOp& start_indices) {
+XlaOp DynamicUpdateSlice(const XlaOp operand, const XlaOp update,
+                         const XlaOp start_indices) {
+  return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
+}
+
+XlaOp DynamicUpdateSlice(const XlaOp operand, const XlaOp update,
+                         absl::Span<const XlaOp> start_indices) {
   return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
 }
 
@@ -2728,11 +2833,11 @@ XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   return builder->ConcatInDim(operands, dimension);
 }
 
-void Trace(const string& tag, const XlaOp& operand) {
+void Trace(const string& tag, const XlaOp operand) {
   return operand.builder()->Trace(tag, operand);
 }
 
-XlaOp Select(const XlaOp& pred, const XlaOp& on_true, const XlaOp& on_false) {
+XlaOp Select(const XlaOp pred, const XlaOp on_true, const XlaOp on_false) {
   return pred.builder()->Select(pred, on_true, on_false);
 }
 
@@ -2740,53 +2845,60 @@ XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements) {
   return builder->Tuple(elements);
 }
 
-XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index) {
+XlaOp GetTupleElement(const XlaOp tuple_data, int64 index) {
   return tuple_data.builder()->GetTupleElement(tuple_data, index);
 }
 
-XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Eq(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Eq(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
-XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Ne(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe);
 }
 
-XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Ge(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe);
 }
 
-XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Gt(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt);
 }
 
-XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Le(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Lt(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe);
 }
 
-XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Le(lhs, rhs, broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
 }
 
-XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction) {
+  return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
+                                 broadcast_dimensions, direction);
+}
+
+XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
           const PrecisionConfig* precision_config) {
   return lhs.builder()->Dot(lhs, rhs, precision_config);
 }
 
-XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  const DotDimensionNumbers& dimension_numbers,
                  const PrecisionConfig* precision_config) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
                                    precision_config);
 }
 
-XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Conv(const XlaOp lhs, const XlaOp rhs,
            absl::Span<const int64> window_strides, Padding padding,
            int64 feature_group_count, int64 batch_group_count,
            const PrecisionConfig* precision_config) {
@@ -2795,7 +2907,7 @@ XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
                              precision_config);
 }
 
-XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp ConvWithGeneralPadding(const XlaOp lhs, const XlaOp rhs,
                              absl::Span<const int64> window_strides,
                              absl::Span<const std::pair<int64, int64>> padding,
                              int64 feature_group_count, int64 batch_group_count,
@@ -2806,7 +2918,7 @@ XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp ConvWithGeneralDimensions(
-    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    const XlaOp lhs, const XlaOp rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
     const PrecisionConfig* precision_config) {
@@ -2815,7 +2927,7 @@ XlaOp ConvWithGeneralDimensions(
       batch_group_count, precision_config);
 }
 
-XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp ConvGeneral(const XlaOp lhs, const XlaOp rhs,
                   absl::Span<const int64> window_strides,
                   absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
@@ -2826,7 +2938,7 @@ XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                                     batch_group_count, precision_config);
 }
 
-XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
                          absl::Span<const int64> window_strides,
                          absl::Span<const std::pair<int64, int64>> padding,
                          absl::Span<const int64> lhs_dilation,
@@ -2840,16 +2952,54 @@ XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
       precision_config);
 }
 
-XlaOp Fft(const XlaOp& operand, FftType fft_type,
+XlaOp Fft(const XlaOp operand, FftType fft_type,
           absl::Span<const int64> fft_length) {
   return operand.builder()->Fft(operand, fft_type, fft_length);
+}
+
+XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                      bool unit_diagonal,
+                      TriangularSolveOptions::Transpose transpose_a) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& a_shape, builder->GetShape(a));
+    TF_ASSIGN_OR_RETURN(const Shape& b_shape, builder->GetShape(b));
+    xla::TriangularSolveOptions& options =
+        *instr.mutable_triangular_solve_options();
+    options.set_left_side(left_side);
+    options.set_lower(lower);
+    options.set_unit_diagonal(unit_diagonal);
+    options.set_transpose_a(transpose_a);
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferTriangularSolveShape(
+                                         a_shape, b_shape, options));
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr),
+                                   HloOpcode::kTriangularSolve, {a, b});
+  });
+}
+
+XlaOp Cholesky(XlaOp a, bool lower) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& a_shape, builder->GetShape(a));
+    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+    options.set_lower(lower);
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferCholeskyShape(a_shape));
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+  });
 }
 
 XlaOp Infeed(XlaBuilder* builder, const Shape& shape, const string& config) {
   return builder->Infeed(shape, config);
 }
 
-void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
+void Outfeed(const XlaOp operand, const Shape& shape_with_layout,
              const string& outfeed_config) {
   return operand.builder()->Outfeed(operand, shape_with_layout, outfeed_config);
 }
@@ -2874,81 +3024,103 @@ XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
                              operand_shapes_with_layout);
 }
 
-XlaOp Complex(const XlaOp& real, const XlaOp& imag,
+XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
               absl::Span<const int64> broadcast_dimensions) {
-  return real.builder()->Complex(real, imag, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kComplex, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Conj(const XlaOp& operand) { return operand.builder()->Conj(operand); }
+XlaOp Conj(const XlaOp operand) {
+  return Complex(Real(operand), Neg(Imag(operand)));
+}
 
-XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Add(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Add(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kAdd, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Sub(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Sub(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kSubtract, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Mul(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Mul(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kMultiply, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Div(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Div(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kDivide, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Rem(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Rem(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kRemainder, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Max(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Max(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kMaximum, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Min(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Min(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kMinimum, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp And(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->And(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kAnd, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Or(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Or(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kOr, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Xor(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Xor(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kXor, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Not(const XlaOp& operand) { return operand.builder()->Not(operand); }
+XlaOp Not(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kNot, operand);
+}
 
-XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp PopulationCount(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kPopulationCount, operand);
+}
+
+XlaOp ShiftLeft(const XlaOp lhs, const XlaOp rhs,
                 absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->ShiftLeft(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kShiftLeft, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp ShiftRightArithmetic(const XlaOp lhs, const XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->ShiftRightArithmetic(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kShiftRightArithmetic, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp ShiftRightLogical(const XlaOp lhs, const XlaOp rhs,
                         absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->ShiftRightLogical(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kShiftRightLogical, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
+XlaOp Reduce(const XlaOp operand, const XlaOp init_value,
              const XlaComputation& computation,
              absl::Span<const int64> dimensions_to_reduce) {
   return operand.builder()->Reduce(operand, init_value, computation,
@@ -2965,12 +3137,12 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                          dimensions_to_reduce);
 }
 
-XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
+XlaOp ReduceAll(const XlaOp operand, const XlaOp init_value,
                 const XlaComputation& computation) {
   return operand.builder()->ReduceAll(operand, init_value, computation);
 }
 
-XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
+XlaOp ReduceWindow(const XlaOp operand, const XlaOp init_value,
                    const XlaComputation& computation,
                    absl::Span<const int64> window_dimensions,
                    absl::Span<const int64> window_strides, Padding padding) {
@@ -2980,7 +3152,7 @@ XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
 }
 
 XlaOp ReduceWindowWithGeneralPadding(
-    const XlaOp& operand, const XlaOp& init_value,
+    const XlaOp operand, const XlaOp init_value,
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
@@ -2992,19 +3164,19 @@ XlaOp ReduceWindowWithGeneralPadding(
       base_dilations, window_dilations, padding);
 }
 
-XlaOp CrossReplicaSum(const XlaOp& operand,
+XlaOp CrossReplicaSum(const XlaOp operand,
                       absl::Span<const ReplicaGroup> replica_groups) {
   return operand.builder()->CrossReplicaSum(operand, replica_groups);
 }
 
-XlaOp CrossReplicaSum(const XlaOp& operand, const XlaComputation& computation,
+XlaOp CrossReplicaSum(const XlaOp operand, const XlaComputation& computation,
                       absl::Span<const ReplicaGroup> replica_groups,
                       const absl::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CrossReplicaSum(operand, computation,
                                             replica_groups, channel_id);
 }
 
-XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
                const std::vector<ReplicaGroup>& replica_groups) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
@@ -3012,15 +3184,17 @@ XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
 }
 
 XlaOp CollectivePermute(
-    const XlaOp& operand,
+    const XlaOp operand,
     const std::vector<std::pair<int64, int64>>& source_target_pairs) {
   return operand.builder()->CollectivePermute(operand, source_target_pairs);
 }
 
-XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
+XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
+
+XlaOp SelectAndScatter(const XlaOp operand, const XlaComputation& select,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides, Padding padding,
-                       const XlaOp& source, const XlaOp& init_value,
+                       const XlaOp source, const XlaOp init_value,
                        const XlaComputation& scatter) {
   return operand.builder()->SelectAndScatter(operand, select, window_dimensions,
                                              window_strides, padding, source,
@@ -3028,83 +3202,112 @@ XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
 }
 
 XlaOp SelectAndScatterWithGeneralPadding(
-    const XlaOp& operand, const XlaComputation& select,
+    const XlaOp operand, const XlaComputation& select,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
-    absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
-    const XlaOp& init_value, const XlaComputation& scatter) {
+    absl::Span<const std::pair<int64, int64>> padding, const XlaOp source,
+    const XlaOp init_value, const XlaComputation& scatter) {
   return operand.builder()->SelectAndScatterWithGeneralPadding(
       operand, select, window_dimensions, window_strides, padding, source,
       init_value, scatter);
 }
 
-XlaOp Abs(const XlaOp& operand) { return operand.builder()->Abs(operand); }
+XlaOp Abs(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kAbs, operand);
+}
 
-XlaOp Atan2(const XlaOp& y, const XlaOp& x,
+XlaOp Atan2(const XlaOp lhs, const XlaOp rhs,
             absl::Span<const int64> broadcast_dimensions) {
-  return y.builder()->Atan2(y, x, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kAtan2, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp Exp(const XlaOp& operand) { return operand.builder()->Exp(operand); }
+XlaOp Exp(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kExp, operand);
+}
+XlaOp Expm1(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand);
+}
+XlaOp Floor(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kFloor, operand);
+}
+XlaOp Ceil(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCeil, operand);
+}
+XlaOp Round(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRoundNearestAfz, operand);
+}
+XlaOp Log(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kLog, operand);
+}
+XlaOp Log1p(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand);
+}
+XlaOp Sign(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSign, operand);
+}
+XlaOp Clz(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kClz, operand);
+}
+XlaOp Cos(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCos, operand);
+}
+XlaOp Sin(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSin, operand);
+}
+XlaOp Tanh(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kTanh, operand);
+}
+XlaOp Real(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kReal, operand);
+}
+XlaOp Imag(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
+}
+XlaOp Sqrt(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Rsqrt(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
+}
 
-XlaOp Expm1(const XlaOp& operand) { return operand.builder()->Expm1(operand); }
-
-XlaOp Floor(const XlaOp& operand) { return operand.builder()->Floor(operand); }
-
-XlaOp Ceil(const XlaOp& operand) { return operand.builder()->Ceil(operand); }
-
-XlaOp Round(const XlaOp& operand) { return operand.builder()->Round(operand); }
-
-XlaOp Log(const XlaOp& operand) { return operand.builder()->Log(operand); }
-
-XlaOp Log1p(const XlaOp& operand) { return operand.builder()->Log1p(operand); }
-
-XlaOp Sign(const XlaOp& operand) { return operand.builder()->Sign(operand); }
-
-XlaOp Clz(const XlaOp& operand) { return operand.builder()->Clz(operand); }
-
-XlaOp Cos(const XlaOp& operand) { return operand.builder()->Cos(operand); }
-
-XlaOp Sin(const XlaOp& operand) { return operand.builder()->Sin(operand); }
-
-XlaOp Tanh(const XlaOp& operand) { return operand.builder()->Tanh(operand); }
-
-XlaOp Real(const XlaOp& operand) { return operand.builder()->Real(operand); }
-
-XlaOp Imag(const XlaOp& operand) { return operand.builder()->Imag(operand); }
-
-XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
+XlaOp Pow(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->Pow(lhs, rhs, broadcast_dimensions);
+  return lhs.builder()->BinaryOp(HloOpcode::kPower, lhs, rhs,
+                                 broadcast_dimensions);
 }
 
-XlaOp IsFinite(const XlaOp& operand) {
-  return operand.builder()->IsFinite(operand);
+XlaOp IsFinite(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kIsFinite, operand);
 }
 
-XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type) {
+XlaOp ConvertElementType(const XlaOp operand, PrimitiveType new_element_type) {
   return operand.builder()->ConvertElementType(operand, new_element_type);
 }
 
-XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type) {
+XlaOp BitcastConvertType(const XlaOp operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
 }
 
-XlaOp Neg(const XlaOp& operand) { return operand.builder()->Neg(operand); }
+XlaOp Neg(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kNegate, operand);
+}
 
-XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation) {
+XlaOp Transpose(const XlaOp operand, absl::Span<const int64> permutation) {
   return operand.builder()->Transpose(operand, permutation);
 }
 
-XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions) {
+XlaOp Rev(const XlaOp operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
 }
 
-XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values, int64 dimension) {
-  return keys.builder()->Sort(keys, values, dimension);
+XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
+           int64 dimension, bool is_stable) {
+  return operands[0].builder()->Sort(operands, comparator, dimension,
+                                     is_stable);
 }
 
-XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {
+XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {
   return min.builder()->Clamp(min, operand, max);
 }
 
@@ -3114,49 +3317,56 @@ XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   return builder->Map(operands, computation, dimensions, static_operands);
 }
 
-XlaOp RngNormal(const XlaOp& mu, const XlaOp& sigma, const Shape& shape) {
+XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
   return mu.builder()->RngNormal(mu, sigma, shape);
 }
 
-XlaOp RngUniform(const XlaOp& a, const XlaOp& b, const Shape& shape) {
+XlaOp RngUniform(const XlaOp a, const XlaOp b, const Shape& shape) {
   return a.builder()->RngUniform(a, b, shape);
 }
 
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,
-            const XlaOp& init) {
+            const XlaOp init) {
   return init.builder()->While(condition, body, init);
 }
 
-XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
+XlaOp Conditional(const XlaOp predicate, const XlaOp true_operand,
                   const XlaComputation& true_computation,
-                  const XlaOp& false_operand,
+                  const XlaOp false_operand,
                   const XlaComputation& false_computation) {
   return predicate.builder()->Conditional(predicate, true_operand,
                                           true_computation, false_operand,
                                           false_computation);
 }
 
-XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
+XlaOp Conditional(const XlaOp branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands) {
+  return branch_index.builder()->Conditional(branch_index, branch_computations,
+                                             branch_operands);
+}
+
+XlaOp ReducePrecision(const XlaOp operand, const int exponent_bits,
                       const int mantissa_bits) {
   return operand.builder()->ReducePrecision(operand, exponent_bits,
                                             mantissa_bits);
 }
 
-XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
+XlaOp Gather(const XlaOp input, const XlaOp start_indices,
              const GatherDimensionNumbers& dimension_numbers,
              absl::Span<const int64> slice_sizes) {
   return input.builder()->Gather(input, start_indices, dimension_numbers,
                                  slice_sizes);
 }
 
-XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
-              const XlaOp& updates, const XlaComputation& update_computation,
+XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
+              const XlaOp updates, const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers) {
   return input.builder()->Scatter(input, scatter_indices, updates,
                                   update_computation, dimension_numbers);
 }
 
-void Send(const XlaOp& operand, const ChannelHandle& handle) {
+void Send(const XlaOp operand, const ChannelHandle& handle) {
   return operand.builder()->Send(operand, handle);
 }
 
@@ -3165,33 +3375,33 @@ XlaOp Recv(XlaBuilder* builder, const Shape& shape,
   return builder->Recv(shape, handle);
 }
 
-XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
+XlaOp SendWithToken(const XlaOp operand, const XlaOp token,
                     const ChannelHandle& handle) {
   return operand.builder()->SendWithToken(operand, token, handle);
 }
 
-XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
+XlaOp RecvWithToken(const XlaOp token, const Shape& shape,
                     const ChannelHandle& handle) {
   return token.builder()->RecvWithToken(token, shape, handle);
 }
 
-XlaOp SendToHost(const XlaOp& operand, const XlaOp& token,
+XlaOp SendToHost(const XlaOp operand, const XlaOp token,
                  const Shape& shape_with_layout, const ChannelHandle& handle) {
   return operand.builder()->SendToHost(operand, token, shape_with_layout,
                                        handle);
 }
 
-XlaOp RecvFromHost(const XlaOp& token, const Shape& shape,
+XlaOp RecvFromHost(const XlaOp token, const Shape& shape,
                    const ChannelHandle& handle) {
   return token.builder()->RecvFromHost(token, shape, handle);
 }
 
-XlaOp InfeedWithToken(const XlaOp& token, const Shape& shape,
+XlaOp InfeedWithToken(const XlaOp token, const Shape& shape,
                       const string& config) {
   return token.builder()->InfeedWithToken(token, shape, config);
 }
 
-XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+XlaOp OutfeedWithToken(const XlaOp operand, const XlaOp token,
                        const Shape& shape_with_layout,
                        const string& outfeed_config) {
   return operand.builder()->OutfeedWithToken(operand, token, shape_with_layout,
@@ -3204,24 +3414,24 @@ XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens) {
   return builder->AfterAll(tokens);
 }
 
-XlaOp BatchNormTraining(const XlaOp& operand, const XlaOp& scale,
-                        const XlaOp& offset, float epsilon,
+XlaOp BatchNormTraining(const XlaOp operand, const XlaOp scale,
+                        const XlaOp offset, float epsilon,
                         int64 feature_index) {
   return operand.builder()->BatchNormTraining(operand, scale, offset, epsilon,
                                               feature_index);
 }
 
-XlaOp BatchNormInference(const XlaOp& operand, const XlaOp& scale,
-                         const XlaOp& offset, const XlaOp& mean,
-                         const XlaOp& variance, float epsilon,
+XlaOp BatchNormInference(const XlaOp operand, const XlaOp scale,
+                         const XlaOp offset, const XlaOp mean,
+                         const XlaOp variance, float epsilon,
                          int64 feature_index) {
   return operand.builder()->BatchNormInference(
       operand, scale, offset, mean, variance, epsilon, feature_index);
 }
 
-XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
-                    const XlaOp& batch_mean, const XlaOp& batch_var,
-                    const XlaOp& grad_output, float epsilon,
+XlaOp BatchNormGrad(const XlaOp operand, const XlaOp scale,
+                    const XlaOp batch_mean, const XlaOp batch_var,
+                    const XlaOp grad_output, float epsilon,
                     int64 feature_index) {
   return operand.builder()->BatchNormGrad(operand, scale, batch_mean, batch_var,
                                           grad_output, epsilon, feature_index);
@@ -3235,7 +3445,7 @@ XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
   return builder->Iota(shape, iota_dimension);
 }
 
-XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension) {
+XlaOp GetDimensionSize(const XlaOp operand, int64 dimension) {
   return operand.builder()->GetDimensionSize(operand, dimension);
 }
 

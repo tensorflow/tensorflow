@@ -1,9 +1,5 @@
 path: "tensorflow.keras.backend"
 tf_module {
-  member {
-    name: "name_scope"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
@@ -123,6 +119,14 @@ tf_module {
   member_method {
     name: "ctc_label_dense_to_sparse"
     argspec: "args=[\'labels\', \'label_lengths\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cumprod"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "cumsum"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "dot"
@@ -245,12 +249,24 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "learning_phase_scope"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "less"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "less_equal"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "log"
@@ -287,6 +303,10 @@ tf_module {
   member_method {
     name: "moving_average_update"
     argspec: "args=[\'x\', \'value\', \'momentum\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "name_scope"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ndim"

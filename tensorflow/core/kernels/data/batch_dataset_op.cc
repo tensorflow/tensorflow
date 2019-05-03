@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -28,7 +32,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit BatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
-        op_version_(ctx->def().op() == "BatchDataset" ? 1 : 2) {}
+        op_version_(ctx->def().op() == "BatchDataset" ? 1 : 2) {
+    if (ctx->HasAttr("parallel_copy")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("parallel_copy", &parallel_copy_));
+    }
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
@@ -45,17 +53,19 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                                                     &drop_remainder));
     }
 
-    *output = new Dataset(ctx, batch_size, drop_remainder, input);
+    *output =
+        new Dataset(ctx, batch_size, drop_remainder, parallel_copy_, input);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
-            const DatasetBase* input)
+            bool parallel_copy, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
           drop_remainder_(drop_remainder),
+          parallel_copy_(parallel_copy),
           input_(input) {
       input_->Ref();
 
@@ -79,8 +89,8 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          Iterator::Params{this, strings::StrCat(prefix, "::Batch")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Batch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -114,8 +124,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
       Node* drop_remainder = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this, {input_graph_node, batch_size, drop_remainder}, output));
+      AttrValue parallel_copy;
+      b->BuildAttrValue(parallel_copy_, &parallel_copy);
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, batch_size, drop_remainder},
+                        {{"parallel_copy", parallel_copy}}, output));
       return Status::OK();
     }
 
@@ -167,13 +180,14 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        // Copy the retrieved batch elements into one output tensor
-        // per tuple component.
-        // NOTE(mrry): If the input or output sizes are statically
-        // known, we could potentially read the input values in-place
-        // into their respective slice locations. This would require a
-        // different GetNext() overload that supports zero-copy, and might
-        // make sense in an optimization pass.
+        // Copy the retrieved batch elements into one output tensor per tuple
+        // component.
+        //
+        // NOTE(mrry): If the input or output sizes are statically known, we
+        // could potentially read the input values in-place into their
+        // respective slice locations. This would require a different GetNext()
+        // overload that supports zero-copy, and might make sense in an
+        // optimization pass.
         const size_t num_tuple_components = batch_elements[0].size();
         const int64 num_batch_elements = batch_elements.size();
         for (size_t component_index = 0; component_index < num_tuple_components;
@@ -191,21 +205,45 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           Tensor& batch_component = out_tensors->back();
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
+          auto copy_element_fn = [component_index, &batch_elements,
+                                  &batch_component](int index) {
+            TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
+                std::move(batch_elements[index][component_index]),
+                &batch_component, index));
+            return Status::OK();
+          };
+          BlockingCounter counter(num_batch_elements);
+          Status status;
+          mutex status_mu;
           for (size_t i = 0; i < num_batch_elements; ++i) {
             if (batch_elements[i][component_index].shape() !=
                 first_element.shape()) {
               return errors::InvalidArgument(
-                  "Cannot batch tensors with different shapes in component ",
+                  "Cannot batch tensors with different shapes in "
+                  "component ",
                   component_index, ". First element had shape ",
                   first_element.shape().DebugString(), " and element ", i,
                   " had shape ",
                   batch_elements[i][component_index].shape().DebugString(),
                   ".");
             }
-            TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-                std::move(batch_elements[i][component_index]), &batch_component,
-                i));
+            if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
+              (*ctx->runner())(
+                  [i, &status, &status_mu, &counter, &copy_element_fn]() {
+                    Status s = copy_element_fn(i);
+                    {
+                      mutex_lock l(status_mu);
+                      status.Update(s);
+                    }
+                    counter.DecrementCount();
+                  });
+            } else {
+              status.Update(copy_element_fn(i));
+              counter.DecrementCount();
+            }
           }
+          counter.Wait();
+          TF_RETURN_IF_ERROR(status);
         }
         *end_of_sequence = false;
         return Status::OK();
@@ -247,11 +285,13 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     const int64 batch_size_;
     const bool drop_remainder_;
+    const bool parallel_copy_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };
 
   const int op_version_;
+  bool parallel_copy_ = false;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchDataset").Device(DEVICE_CPU),

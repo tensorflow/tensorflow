@@ -35,7 +35,7 @@ limitations under the License.
 //   buf.AddString("AB", 2);
 //   # Write content of DynamicBuffer to tensor in format of string tensor
 //   # described above.
-//   buf.WriteToTensor(tensor)
+//   buf.WriteToTensor(tensor, nullptr)
 
 #ifndef TENSORFLOW_LITE_STRING_UTIL_H_
 #define TENSORFLOW_LITE_STRING_UTIL_H_
@@ -82,10 +82,6 @@ class DynamicBuffer {
 
   // Fill content into a string tensor. Set shape to {num_strings}.
   void WriteToTensorAsVector(TfLiteTensor* tensor);
-
-  // Deprecated. Use WriteToTensorAsVector() or pass in the new shpe.
-  // TODO(b/120230709): remove when people migrate away.
-  void WriteToTensor(TfLiteTensor* tensor) { WriteToTensorAsVector(tensor); }
 
  private:
   // Data buffer to store contents of strings, not including headers.

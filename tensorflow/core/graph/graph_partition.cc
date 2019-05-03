@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -58,22 +60,15 @@ struct DupRecvKey {
   int src_output_slot;       // Edge's src node output slot
   GraphDef* dst_graph;       // Edge's dst node is in this subgraph
   bool recv_output_on_host;  // The output of recv is on host
-};
 
-struct DupRecvKeyHash {
-  size_t operator()(const DupRecvKey& k) const {
-    size_t h = Hash64(reinterpret_cast<const char*>(&k.src_node_id),
-                      sizeof(k.src_node_id), k.src_output_slot);
-    h = Hash64(reinterpret_cast<const char*>(&k.dst_graph), sizeof(k.dst_graph),
-               h);
-    h = Hash64(reinterpret_cast<const char*>(&k.recv_output_on_host),
-               sizeof(k.recv_output_on_host), h);
-    return h;
+  template <typename H>
+  friend H AbslHashValue(H h, const DupRecvKey& c) {
+    return H::combine(std::move(h), c.src_node_id, c.src_output_slot,
+                      reinterpret_cast<std::uintptr_t>(c.dst_graph),
+                      c.recv_output_on_host);
   }
-};
 
-struct DupRecvKeyEq {
-  bool operator()(const DupRecvKey& x, const DupRecvKey& y) const {
+  friend bool operator==(const DupRecvKey& x, const DupRecvKey& y) {
     return (x.src_node_id == y.src_node_id) &&
            (x.src_output_slot == y.src_output_slot) &&
            (x.dst_graph == y.dst_graph) &&
@@ -88,19 +83,26 @@ struct RecvInfo {
   int64 start_time;
 };
 
-typedef std::unordered_map<DupRecvKey, RecvInfo, DupRecvKeyHash, DupRecvKeyEq>
-    DupRecvTable;
+typedef absl::flat_hash_map<DupRecvKey, RecvInfo> DupRecvTable;
 
-struct PairIntHash {
- public:
-  std::size_t operator()(const std::pair<int, int>& x) const {
-    return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
-  }
-};
 // A map used to store memory types for the inputs/outputs of every node.
 // The key is a pair of ints consisting of a node id and input/output index.
-typedef std::unordered_map<std::pair<int, int>, MemoryType, PairIntHash>
-    MemoryTypeMap;
+// TODO(power): migrate back to std::pair when absl::Hash is fixed for MSVC.
+struct NodePort {
+  int node_id;
+  int index;
+
+  friend bool operator==(const NodePort& x, const NodePort& y) {
+    return x.node_id == y.node_id && x.index == y.index;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NodePort& c) {
+    return H::combine(std::move(h), c.node_id, c.index);
+  }
+};
+
+typedef absl::flat_hash_map<NodePort, MemoryType> MemoryTypeMap;
 
 // We collect the following information about the graph before performing
 // graph partitioning.
@@ -261,11 +263,34 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   }
 
   // host_memory = true iff we need to use HostRecv/HostCast.
+  // Also log the introduction of the send-recv pair, for performance debugging.
   bool host_memory = false;
   if (!edge->IsControlEdge()) {
     auto dst_it = g_info.input_types.find({dst->id(), dst_port});
     DCHECK(dst_it != g_info.input_types.end());
     host_memory = (dst_it->second == HOST_MEMORY);
+    bool src_host_memory = false;
+    if (VLOG_IS_ON(1)) {
+      const int src_port = edge->src_output();
+      auto src_it = g_info.output_types.find({src->id(), src_port});
+      DCHECK(src_it != g_info.output_types.end());
+      src_host_memory = (src_it->second == HOST_MEMORY);
+    }
+    VLOG(1) << "Receiving data"
+            << " from " << src->name() << " (" << src->type_string() << ")"
+            << " on " << src->assigned_device_name() << " in "
+            << (src_host_memory ? "host memory" : "device memory") << " for "
+            << dst->name() << " (" << dst->type_string() << ")"
+            << " on " << dst->assigned_device_name() << " in "
+            << (host_memory ? "host memory" : "device memory");
+  } else {
+    // Log control-edge transfers too, but don't mention memory space since it's
+    // irrelevant.
+    VLOG(1) << "Receiving control"
+            << " from " << src->name() << " (" << src->type_string() << ")"
+            << " on " << src->assigned_device_name() << " for " << dst->name()
+            << " (" << dst->type_string() << ")"
+            << " on " << dst->assigned_device_name();
   }
 
   // Add the recv node.
@@ -564,10 +589,10 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
 
     int node_id = node->id();
     info->device_types[node_id] = DeviceType(parsed.type);
-    for (size_t i = 0; i < input_memory_types.size(); ++i) {
+    for (int i = 0; i < input_memory_types.size(); ++i) {
       info->input_types[{node_id, i}] = input_memory_types[i];
     }
-    for (size_t i = 0; i < output_memory_types.size(); ++i) {
+    for (int i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }
@@ -1213,6 +1238,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   VLOG(1) << "Added send/recv: controls=" << num_control
           << ", data=" << num_data;
+  if (VLOG_IS_ON(2)) {
+    for (auto& it : *partitions) {
+      GraphDef* gdef = &it.second;
+      DumpGraphDefToFile(strings::StrCat("partition_", it.first, "_",
+                                         reinterpret_cast<uintptr_t>(gdef)),
+                         *gdef);
+    }
+  }
   return Status::OK();
 }
 

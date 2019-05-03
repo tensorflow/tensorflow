@@ -31,6 +31,7 @@ limitations under the License.
 #include "unicode/unistr.h"  // TF:icu
 #include "unicode/uset.h"  // TF:icu
 #include "unicode/utypes.h"  // TF:icu
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/string_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -350,6 +350,7 @@ class UnicodeTranscodeOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("UnicodeTranscode").Device(DEVICE_CPU),
                         UnicodeTranscodeOp);
 
+template <typename SPLITS_TYPE>
 class UnicodeDecodeBaseOp : public OpKernel {
  public:
   explicit UnicodeDecodeBaseOp(OpKernelConstruction* ctx, bool generate_offsets)
@@ -369,8 +370,8 @@ class UnicodeDecodeBaseOp : public OpKernel {
   }
 
   void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
-              std::vector<int64>* offset_values, int* current_offset,
-              int64* next_row_split, UChar32 char_value, int char_length,
+              std::vector<SPLITS_TYPE>* offset_values, int* current_offset,
+              SPLITS_TYPE* next_row_split, UChar32 char_value, int char_length,
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
       ctx->CtxFailure(
@@ -414,16 +415,16 @@ class UnicodeDecodeBaseOp : public OpKernel {
                     input_encoding_));
 
     std::vector<UChar32> char_values;
-    std::vector<int64> offset_values;
+    std::vector<SPLITS_TYPE> offset_values;
 
     Tensor* output_row_splits;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("row_splits",
                                              {input_tensor->NumElements() + 1},
                                              &output_row_splits));
-    auto out_row_splits = output_row_splits->vec<int64>();
+    auto out_row_splits = output_row_splits->vec<SPLITS_TYPE>();
 
     int row_split_index = 0;
-    int64 next_row_split = 0;
+    SPLITS_TYPE next_row_split = 0;
     for (int i = 0; i < input_vec.size(); ++i) {
       const string& input = input_vec(i);
       // Convert input strings into unicode values. Output to a list of
@@ -443,18 +444,18 @@ class UnicodeDecodeBaseOp : public OpKernel {
 
     Tensor* output_char_values;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("char_values",
-                                  {static_cast<int64>(char_values.size())},
-                                  &output_char_values));
+        ctx, ctx->allocate_output(
+                 "char_values", {static_cast<SPLITS_TYPE>(char_values.size())},
+                 &output_char_values));
     auto out_char_values = output_char_values->vec<int32>();
     if (generate_offsets_) {
       DCHECK(offset_values.size() == char_values.size());
       Tensor* output_offset_values;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_output("char_to_byte_starts",
-                                    {static_cast<int64>(offset_values.size())},
-                                    &output_offset_values));
-      auto out_offset_values = output_offset_values->vec<int64>();
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                              "char_to_byte_starts",
+                              {static_cast<SPLITS_TYPE>(offset_values.size())},
+                              &output_offset_values));
+      auto out_offset_values = output_offset_values->vec<SPLITS_TYPE>();
 
       // Load output tensors from intermediate value arrays.
       for (int i = 0; i < char_values.size(); ++i) {
@@ -474,23 +475,36 @@ class UnicodeDecodeBaseOp : public OpKernel {
   bool generate_offsets_ = false;
 };
 
-class UnicodeDecodeOp : public UnicodeDecodeBaseOp {
+template <typename SPLITS_TYPE>
+class UnicodeDecodeOp : public UnicodeDecodeBaseOp<SPLITS_TYPE> {
  public:
   explicit UnicodeDecodeOp(OpKernelConstruction* ctx)
-      : UnicodeDecodeBaseOp(ctx, false) {}
+      : UnicodeDecodeBaseOp<SPLITS_TYPE>(ctx, false) {}
 };
 
-class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp {
+template <typename SPLITS_TYPE>
+class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp<SPLITS_TYPE> {
  public:
   explicit UnicodeDecodeWithOffsetsOp(OpKernelConstruction* ctx)
-      : UnicodeDecodeBaseOp(ctx, true) {}
+      : UnicodeDecodeBaseOp<SPLITS_TYPE>(ctx, true) {}
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnicodeDecode").Device(DEVICE_CPU),
-                        UnicodeDecodeOp);
-REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets").Device(DEVICE_CPU),
-                        UnicodeDecodeWithOffsetsOp);
+REGISTER_KERNEL_BUILDER(
+    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
+    UnicodeDecodeOp<int64>);
+REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("Tsplits"),
+                        UnicodeDecodeWithOffsetsOp<int64>);
+REGISTER_KERNEL_BUILDER(
+    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
+    UnicodeDecodeOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32>("Tsplits"),
+                        UnicodeDecodeWithOffsetsOp<int32>);
 
+template <typename SPLITS_TYPE>
 class UnicodeEncodeOp : public OpKernel {
  public:
   explicit UnicodeEncodeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -515,7 +529,7 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_tensor = context->input(0);
     const auto input_tensor_flat = input_tensor.flat<int32>();
     const Tensor& input_splits = context->input(1);
-    const auto input_splits_flat = input_splits.flat<int64>();
+    const auto input_splits_flat = input_splits.flat<SPLITS_TYPE>();
 
     // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
     // tensor), our output dimension will be 1 with it's size equal to the
@@ -558,7 +572,11 @@ class UnicodeEncodeOp : public OpKernel {
   ErrorOptions error_options_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnicodeEncode").Device(DEVICE_CPU),
-                        UnicodeEncodeOp);
+REGISTER_KERNEL_BUILDER(
+    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
+    UnicodeEncodeOp<int64>);
+REGISTER_KERNEL_BUILDER(
+    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
+    UnicodeEncodeOp<int32>);
 
 }  // namespace tensorflow

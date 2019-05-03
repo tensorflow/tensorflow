@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -92,19 +92,15 @@ struct GatherFunctor<GPUDevice, T, Index> {
 
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     if (is_axis_zero) {
-      // clang-format off
-      GatherOpKernel<T, Index, true>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              params.data(), indices.data(), out.data(), gather_dim_size,
-              indices_size, slice_size, out_size);
-      // clang-format on
+      TF_CHECK_OK(CudaLaunchKernel(
+          GatherOpKernel<T, Index, true>, config.block_count,
+          config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
+          out.data(), gather_dim_size, indices_size, slice_size, out_size));
     } else {
-      // clang-format off
-      GatherOpKernel<T, Index, false>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              params.data(), indices.data(), out.data(), gather_dim_size,
-              indices_size, slice_size, out_size);
-      // clang-format on
+      TF_CHECK_OK(CudaLaunchKernel(
+          GatherOpKernel<T, Index, false>, config.block_count,
+          config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
+          out.data(), gather_dim_size, indices_size, slice_size, out_size));
     }
     // TODO(fpmc): enable indices validation on GPU.
     // Right now checking for indicies out of bound in the kernel would

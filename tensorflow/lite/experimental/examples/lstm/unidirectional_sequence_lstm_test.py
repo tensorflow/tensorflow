@@ -20,11 +20,9 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
-from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.tools import optimize_for_inference_lib
+
 
 # Number of steps to train model.
 TRAIN_STEPS = 1
@@ -54,20 +52,35 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     self.num_units = 16
 
   def buildLstmLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
-        TFLiteLSTMCell(
-            self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        TFLiteLSTMCell(self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
-        TFLiteLSTMCell(
+    return tf.keras.layers.StackedRNNCells([
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, use_peepholes=True, forget_bias=1.0, name="rnn1"),
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, num_proj=8, forget_bias=1.0, name="rnn2"),
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
             num_proj=8,
             forget_bias=0,
             name="rnn3"),
-        TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, forget_bias=1.0, name="rnn4")
     ])
 
-  def buildModel(self, lstm_layer, is_dynamic_rnn, is_train):
+  def buildModel(self, lstm_layer, is_dynamic_rnn):
+    """Build Mnist recognition model.
+
+    Args:
+      lstm_layer: The lstm layer either a single lstm cell or a multi lstm cell.
+      is_dynamic_rnn: Use dynamic_rnn or not.
+
+    Returns:
+     A tuple containing:
+
+     - Input tensor of the model.
+     - Prediction tensor of the model.
+     - Output class tensor of the model.
+    """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units, self.n_classes]))
@@ -77,16 +90,12 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     x = tf.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
-    # For dynamic_rnn, train with dynamic_rnn and inference with static_rnn.
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
-      if is_train:
-        lstm_input = x
-        outputs, _ = tf.nn.dynamic_rnn(lstm_layer, lstm_input, dtype="float32")
-        outputs = tf.unstack(outputs, axis=1)
-      else:
-        lstm_input = tf.unstack(x, self.time_steps, 1)
-        outputs, _ = tf.nn.static_rnn(lstm_layer, lstm_input, dtype="float32")
+      lstm_input = tf.transpose(x, perm=[1, 0, 2])
+      outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
+          lstm_layer, lstm_input, dtype="float32")
+      outputs = tf.unstack(outputs, axis=0)
     else:
       lstm_input = tf.unstack(x, self.time_steps, 1)
       outputs, _ = tf.nn.static_rnn(lstm_layer, lstm_input, dtype="float32")
@@ -100,6 +109,14 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class
 
   def trainModel(self, x, prediction, output_class, sess):
+    """Train the model.
+
+    Args:
+      x: The input tensor.
+      prediction: The prediction class tensor.
+      output_class: The output tensor.
+      sess: The graph session.
+    """
     # input label placeholder
     y = tf.placeholder("float", [None, self.n_classes])
     # Loss function
@@ -121,13 +138,29 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
 
   def saveAndRestoreModel(self, lstm_layer, sess, saver, is_dynamic_rnn):
+    """Saves and restores the model to mimic the most common use case.
+
+    Args:
+      lstm_layer: The lstm layer either a single lstm cell or a multi lstm cell.
+      sess: Old session.
+      saver: Saver created by tf.compat.v1.train.Saver()
+      is_dynamic_rnn: Use dynamic_rnn or not.
+
+    Returns:
+      A tuple containing:
+
+      - Input tensor of the restored model.
+      - Prediction tensor of the restored model.
+      - Output tensor, which is the softwmax result of the prediction tensor.
+      - new session of the restored model.
+
+    """
     model_dir = tempfile.mkdtemp()
     saver.save(sess, model_dir)
 
     # Reset the graph.
     tf.reset_default_graph()
-    x, prediction, output_class = self.buildModel(
-        lstm_layer, is_dynamic_rnn, is_train=False)
+    x, prediction, output_class = self.buildModel(lstm_layer, is_dynamic_rnn)
 
     new_sess = tf.Session(config=CONFIG)
     saver = tf.train.Saver()
@@ -135,30 +168,45 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class, new_sess
 
   def getInferenceResult(self, x, output_class, sess):
+    """Get inference result given input tensor and output tensor.
+
+    Args:
+      x: The input tensor.
+      output_class: The output tensor.
+      sess: Current session.
+
+    Returns:
+     A tuple containing:
+
+      - Input of the next batch, batch size is 1.
+      - Expected output.
+
+    """
     b1, _ = self.mnist.train.next_batch(batch_size=1)
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
-    frozen_graph = tf.graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, [output_class.op.name])
-    return sample_input, expected_output, frozen_graph
+    return sample_input, expected_output
 
-  def tfliteInvoke(self, graph, test_inputs, outputs):
-    tf.reset_default_graph()
-    # Turn the input into placeholder of shape 1
-    tflite_input = tf.placeholder(
-        "float", [1, self.time_steps, self.n_input], name="INPUT_IMAGE_LITE")
-    tf.import_graph_def(graph, name="", input_map={"INPUT_IMAGE": tflite_input})
-    with tf.Session() as sess:
-      curr = sess.graph_def
-      curr = convert_op_hints_to_stubs(graph_def=curr)
+  def tfliteInvoke(self, sess, test_inputs, input_tensor, output_tensor):
+    """Get tflite inference result.
 
-    curr = optimize_for_inference_lib.optimize_for_inference(
-        curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
-        [tf.float32.as_datatype_enum])
+    This method will convert tensorflow from session to tflite model then based
+    on the inputs, run tflite inference and return the results.
 
-    tflite = tf.lite.toco_convert(
-        curr, [tflite_input], [outputs], allow_custom_ops=False)
+    Args:
+      sess: Current tensorflow session.
+      test_inputs: The test inputs for tflite.
+      input_tensor: The input tensor of tensorflow graph.
+      output_tensor: The output tensor of tensorflow graph.
+
+    Returns:
+      The tflite inference result.
+    """
+    converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
+                                                     [output_tensor])
+    tflite = converter.convert()
+
     interpreter = tf.lite.Interpreter(model_content=tflite)
 
     try:
@@ -179,47 +227,36 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
-        self.buildLstmLayer(), is_dynamic_rnn=False, is_train=True)
+        self.buildLstmLayer(), is_dynamic_rnn=False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildLstmLayer(), sess, saver, is_dynamic_rnn=False)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+  @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
-        self.buildLstmLayer(), is_dynamic_rnn=True, is_train=True)
+        self.buildLstmLayer(), is_dynamic_rnn=True)
     self.trainModel(x, prediction, output_class, sess)
 
-    # Since we don't yet support OpHints for dynamic, we will load the model
-    # back in as a static model. This requires the variables to have the same
-    # names as if they were trained as a static. Thus, we get rid of while/rnn
-    # names.
-    variables_to_save = {}
-    for i in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
-      op_name = i.name
-      if op_name.startswith("while/rnn/"):
-        op_name = op_name.split("while/rnn/")[1]
-      if op_name.endswith(":0"):
-        op_name = op_name.split(":0")[0]
-      variables_to_save[op_name] = i
-    saver = tf.train.Saver(variables_to_save)
+    saver = tf.train.Saver()
 
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildLstmLayer(), sess, saver, is_dynamic_rnn=True)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 

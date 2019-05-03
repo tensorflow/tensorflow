@@ -96,7 +96,7 @@ class StatsAccumulatorResource : public boosted_trees::StampedResource {
              TensorShapeUtils::IsScalar(hessian_shape));
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("StatsAccumulatorResource[size=", values_.size(),
                            "]");
   }

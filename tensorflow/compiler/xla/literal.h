@@ -134,6 +134,10 @@ class LiteralBase {
   // int64.  This literal must be an array.
   StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
 
+  // As Get(), but determines the correct type, and converts the value into
+  // double. This literal must be an array.
+  StatusOr<double> GetAsDouble(absl::Span<const int64> multi_index) const;
+
   // Returns the multi-index of the element in a sparse literal at the given
   // sparse element number.  The sparse element number is the position with in
   // the sparse array's list of (index, value) pairs, and is checked against the
@@ -637,6 +641,10 @@ class MutableLiteralBase : public LiteralBase {
   // This literal must be an array.
   Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
 
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetFromDouble(absl::Span<const int64> multi_index, double value);
+
   // Populate this literal with the given values. Examples:
   //
   //   // Populate with floats.
@@ -963,6 +971,10 @@ void MutableLiteralBase::AppendSparseElement(
   CHECK(LayoutUtil::IsSparseArray(subshape));
   int64 rank = subshape.rank();
   CHECK_EQ(multi_index.size(), rank);
+  for (int64 i = 0; i < rank; ++i) {
+    CHECK_GE(multi_index[i], 0);
+    CHECK_LT(multi_index[i], subshape.dimensions(i));
+  }
   int64 last_element = p.sparse_indices()->index_count();
   CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
   p.sparse_indices()->Append(multi_index);

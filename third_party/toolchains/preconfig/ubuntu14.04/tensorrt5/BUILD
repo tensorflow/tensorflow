@@ -17,10 +17,16 @@ cc_library(
 )
 
 cc_library(
-    name = "nv_infer",
-    srcs = ["tensorrt/lib/libnvinfer.so.5"],
+    name = "tensorrt",
+    srcs = [
+        "tensorrt/lib/libnvinfer.so.5",
+        "tensorrt/lib/libnvinfer_plugin.so.5",
+    ],
     copts = cuda_default_copts(),
-    data = ["tensorrt/lib/libnvinfer.so.5"],
+    data = [
+        "tensorrt/lib/libnvinfer.so.5",
+        "tensorrt/lib/libnvinfer_plugin.so.5",
+    ],
     include_prefix = "",
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -34,10 +40,9 @@ genrule(
     name = "tensorrt_lib",
     outs = [
         "tensorrt/lib/libnvinfer.so.5",
+        "tensorrt/lib/libnvinfer_plugin.so.5",
     ],
-    cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5.0.2" "$(@D)/libnvinfer.so.5"
-   """,
+    cmd = """cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5" $(location tensorrt/lib/libnvinfer.so.5) && cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.5" $(location tensorrt/lib/libnvinfer_plugin.so.5) """,
 )
 
 genrule(
@@ -45,8 +50,7 @@ genrule(
     outs = [
         "tensorrt/include/NvInfer.h",
         "tensorrt/include/NvUtils.h",
+        "tensorrt/include/NvInferPlugin.h",
     ],
-    cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" "$(@D)/tensorrt/include/NvInfer.h" && cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" "$(@D)/tensorrt/include/NvUtils.h"
-   """,
+    cmd = """cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" $(location tensorrt/include/NvInfer.h) && cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" $(location tensorrt/include/NvUtils.h) && cp -f "/usr/include/x86_64-linux-gnu/NvInferPlugin.h" $(location tensorrt/include/NvInferPlugin.h) """,
 )

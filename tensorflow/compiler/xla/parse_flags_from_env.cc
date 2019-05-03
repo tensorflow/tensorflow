@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -37,7 +38,7 @@ limitations under the License.
 
 namespace xla {
 
-static const char kWS[] = " \t\r\n";           // whitespace
+static const char kWS[] = " \t\r\n";  // whitespace
 
 // The following struct represents an argv[]-style array, parsed
 // from data gleaned from the environment.
@@ -104,7 +105,8 @@ static void ParseArgvFromString(const string& flag_str, EnvArgv* a) {
     // Set e to the index just past the end of the flag.
     size_t e = b;
     while (e != flag_str.size() && isascii(flag_str[e]) &&
-           (strchr("-_", flag_str[e]) != nullptr || isalnum(flag_str[e]))) {
+           (strchr("-_", flag_str[e]) != nullptr ||
+            absl::ascii_isalnum(flag_str[e]))) {
       e++;
     }
     if (e != flag_str.size() && flag_str[e] == '=' &&
@@ -184,6 +186,14 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
   tensorflow::mutex_lock lock(env_argv_mu);
   auto* env_argv = &EnvArgvs()[string(envvar)];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "For env var " << envvar << " found arguments:";
+    for (int i = 0; i < env_argv->argc; i++) {
+      VLOG(1) << "  argv[" << i << "] = " << env_argv->argv[i];
+    }
+  }
+
   bool result =
       tensorflow::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
 

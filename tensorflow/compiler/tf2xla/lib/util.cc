@@ -54,6 +54,9 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::C64:
       return xla::ConstantR0<xla::complex64>(builder, value);
       break;
+    case xla::C128:
+      return xla::ConstantR0<xla::complex128>(builder, value);
+      break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
@@ -90,6 +93,9 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::C64:
       literal = xla::LiteralUtil::CreateR0<complex64>(value);
       break;
+    case xla::C128:
+      literal = xla::LiteralUtil::CreateR0<complex128>(value);
+      break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
     case xla::S16:
@@ -105,7 +111,7 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
+    case xla::OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type is not integral";
     default:
       LOG(FATAL) << "unhandled element type " << type;

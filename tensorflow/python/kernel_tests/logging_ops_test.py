@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import string
 import sys
 import tempfile
 
@@ -36,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+
 
 class LoggingOpsTest(test.TestCase):
 
@@ -79,6 +81,17 @@ class PrintV2Test(test.TestCase):
 
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPrintOneStringTensor(self):
+    with self.cached_session():
+      tensor = ops.convert_to_tensor([char for char in string.ascii_lowercase])
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor)
+        self.evaluate(print_op)
+
+      expected = "[\"a\" \"b\" \"c\" ... \"x\" \"y\" \"z\"]"
+      self.assertIn((expected + "\n"), printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorVarySummarize(self):
@@ -156,6 +169,16 @@ class PrintV2Test(test.TestCase):
       self.assertTrue((expected + "\n") in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
+  def testPrintTwoTensorsDifferentSep(self):
+    with self.cached_session():
+      tensor = math_ops.range(10)
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor, tensor * 10, sep="<separator>")
+        self.evaluate(print_op)
+      expected = "[0 1 2 ... 7 8 9]<separator>[0 10 20 ... 70 80 90]"
+      self.assertIn(expected + "\n", printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
   def testPrintPlaceholderGeneration(self):
     with self.cached_session():
       tensor = math_ops.range(10)
@@ -193,6 +216,16 @@ class PrintV2Test(test.TestCase):
         self.evaluate(print_op)
       expected = "scalar"
       self.assertTrue((expected + "\n") in printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPrintStringScalarDifferentEnd(self):
+    with self.cached_session():
+      tensor = ops.convert_to_tensor("scalar")
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor, end="<customend>")
+        self.evaluate(print_op)
+      expected = "scalar<customend>"
+      self.assertIn(expected, printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintComplexTensorStruct(self):

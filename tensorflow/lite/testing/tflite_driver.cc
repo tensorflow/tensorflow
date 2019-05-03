@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tflite_driver.h"
 
-#include <iostream>
-
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
 
 namespace tflite {
@@ -47,6 +46,10 @@ int64_t Value(const TfLitePtrUnion& data, int index) {
 template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
+}
+template <>
+int8_t Value(const TfLitePtrUnion& data, int index) {
+  return data.int8[index];
 }
 template <>
 bool Value(const TfLitePtrUnion& data, int index) {
@@ -79,31 +82,34 @@ class TfLiteDriver::Expectation {
     SetTensorData(values, &data_);
   }
 
-  template <>
-  void SetData<string>(const string& csv_values) {
-    string s = absl::HexStringToBytes(csv_values);
-    data_.raw = new char[s.size()];
-    memcpy(data_.raw, s.data(), s.size());
-  }
+  bool Check(bool verbose, const TfLiteTensor& tensor);
 
-  bool Check(bool verbose, const TfLiteTensor& tensor) {
-    switch (tensor.type) {
-      case kTfLiteFloat32:
-        return TypedCheck<float>(verbose, tensor);
-      case kTfLiteInt32:
-        return TypedCheck<int32_t>(verbose, tensor);
-      case kTfLiteInt64:
-        return TypedCheck<int64_t>(verbose, tensor);
-      case kTfLiteUInt8:
-        return TypedCheck<uint8_t>(verbose, tensor);
-      case kTfLiteBool:
-        return TypedCheck<bool>(verbose, tensor);
-      case kTfLiteString:
-        return TypedCheck<string>(verbose, tensor);
-      default:
-        fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
-        return false;
+  bool CheckShape(bool verbose, const TfLiteTensor& tensor) {
+    bool valid = true;
+    if (tensor.dims->size == num_elements_) {
+      for (int i = 0; i < num_elements_; ++i) {
+        if (data_.i32[i] != tensor.dims->data[i]) {
+          valid = false;
+        }
+      }
+    } else {
+      valid = false;
     }
+    if (!valid && verbose) {
+      std::cerr << "Incorrect output shape while checking tensor "
+                << tensor.name << std::endl;
+      std::cerr << "TFLite output shape: ";
+      for (int i = 0; i < tensor.dims->size; ++i) {
+        std::cerr << tensor.dims->data[i] << ", ";
+      }
+      std::cerr << std::endl;
+      std::cerr << "Expected output shape: ";
+      for (int i = 0; i < num_elements_; ++i) {
+        std::cerr << data_.i32[i] << ", ";
+      }
+      std::cerr << std::endl;
+    }
+    return valid;
   }
 
  private:
@@ -146,49 +152,79 @@ class TfLiteDriver::Expectation {
     return good_output;
   }
 
-  template <>
-  bool TypedCheck<string>(bool verbose, const TfLiteTensor& tensor) {
-    if (tensor.data.raw == nullptr) {
-      if (verbose) {
-        std::cerr << "  got empty string" << std::endl;
-      }
-      return false;
-    }
-    int expected_num_strings = GetStringCount(data_.raw);
-    int returned_num_strings = GetStringCount(tensor.data.raw);
-    if (expected_num_strings != returned_num_strings) {
-      if (verbose) {
-        std::cerr << "  string count differ: got " << returned_num_strings
-                  << ", but expected " << expected_num_strings << std::endl;
-      }
-      return false;
-    }
-    for (int i = 0; i < returned_num_strings; ++i) {
-      auto expected_ref = GetString(data_.raw, i);
-      auto returned_ref = GetString(tensor.data.raw, i);
-      if (expected_ref.len != returned_ref.len) {
-        if (verbose) {
-          std::cerr << "  index " << i << ": got string of size "
-                    << returned_ref.len << ", but expected size "
-                    << expected_ref.len << std::endl;
-        }
-        return false;
-      }
-      if (strncmp(expected_ref.str, returned_ref.str, returned_ref.len) != 0) {
-        if (verbose) {
-          std::cerr << "  index " << i << ": strings are different"
-                    << std::endl;
-        }
-        return false;
-      }
-    }
-
-    return true;
-  }
-
   TfLitePtrUnion data_;
   size_t num_elements_;
 };
+
+template <>
+void TfLiteDriver::Expectation::SetData<string>(const string& csv_values) {
+  string s = absl::HexStringToBytes(csv_values);
+  data_.raw = new char[s.size()];
+  memcpy(data_.raw, s.data(), s.size());
+}
+
+template <>
+bool TfLiteDriver::Expectation::TypedCheck<string>(bool verbose,
+                                                   const TfLiteTensor& tensor) {
+  if (tensor.data.raw == nullptr) {
+    if (verbose) {
+      std::cerr << "  got empty string" << std::endl;
+    }
+    return false;
+  }
+  int expected_num_strings = GetStringCount(data_.raw);
+  int returned_num_strings = GetStringCount(tensor.data.raw);
+  if (expected_num_strings != returned_num_strings) {
+    if (verbose) {
+      std::cerr << "  string count differ: got " << returned_num_strings
+                << ", but expected " << expected_num_strings << std::endl;
+    }
+    return false;
+  }
+  for (int i = 0; i < returned_num_strings; ++i) {
+    auto expected_ref = GetString(data_.raw, i);
+    auto returned_ref = GetString(tensor.data.raw, i);
+    if (expected_ref.len != returned_ref.len) {
+      if (verbose) {
+        std::cerr << "  index " << i << ": got string of size "
+                  << returned_ref.len << ", but expected size "
+                  << expected_ref.len << std::endl;
+      }
+      return false;
+    }
+    if (strncmp(expected_ref.str, returned_ref.str, returned_ref.len) != 0) {
+      if (verbose) {
+        std::cerr << "  index " << i << ": strings are different" << std::endl;
+      }
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool TfLiteDriver::Expectation::Check(bool verbose,
+                                      const TfLiteTensor& tensor) {
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      return TypedCheck<float>(verbose, tensor);
+    case kTfLiteInt32:
+      return TypedCheck<int32_t>(verbose, tensor);
+    case kTfLiteInt64:
+      return TypedCheck<int64_t>(verbose, tensor);
+    case kTfLiteUInt8:
+      return TypedCheck<uint8_t>(verbose, tensor);
+    case kTfLiteInt8:
+      return TypedCheck<int8_t>(verbose, tensor);
+    case kTfLiteBool:
+      return TypedCheck<bool>(verbose, tensor);
+    case kTfLiteString:
+      return TypedCheck<string>(verbose, tensor);
+    default:
+      fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
+      return false;
+  }
+}
 
 TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
                            bool reference_kernel)
@@ -291,6 +327,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteInt8: {
+      const auto& values = testing::Split<int8_t>(csv_values, ",");
+      if (!CheckSizes<int8_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     case kTfLiteBool: {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
@@ -334,6 +376,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
       break;
+    case kTfLiteInt8:
+      expected_output_[id]->SetData<int8_t>(csv_values);
+      break;
     case kTfLiteBool:
       expected_output_[id]->SetData<bool>(csv_values);
       break;
@@ -346,6 +391,16 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
                               " in TfLiteDriver::SetExpectation"));
       return;
   }
+}
+
+void TfLiteDriver::SetShapeExpectation(int id, const string& csv_values) {
+  if (!IsValid()) return;
+  if (expected_output_shape_.count(id) != 0) {
+    Invalidate(
+        absl::StrCat("Overridden shape expectation for tensor '", id, "'"));
+  }
+  expected_output_shape_[id].reset(new Expectation);
+  expected_output_shape_[id]->SetData<int32_t>(csv_values);
 }
 
 void TfLiteDriver::Invoke() {
@@ -372,12 +427,55 @@ bool TfLiteDriver::CheckResults() {
       SetOverallSuccess(false);
     }
   }
+  for (const auto& p : expected_output_shape_) {
+    int id = p.first;
+    auto* tensor = interpreter_->tensor(id);
+    if (!p.second->CheckShape(/*verbose=*/false, *tensor)) {
+      // Do not invalidate anything here. Instead, simply output the
+      // differences and return false. Invalidating would prevent all
+      // subsequent invocations from running..
+      std::cerr << "There were errors in invocation '" << GetInvocationId()
+                << "', output tensor '" << id << "':" << std::endl;
+      p.second->CheckShape(/*verbose=*/true, *tensor);
+      success = false;
+      SetOverallSuccess(false);
+    }
+  }
   expected_output_.clear();
   return success;
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {
   interpreter_->ResetVariableTensors();
+}
+
+string TfLiteDriver::ReadOutput(int id) {
+  auto* tensor = interpreter_->tensor(id);
+  int num_elements = 1;
+
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    num_elements *= tensor->dims->data[i];
+  }
+
+  switch (tensor->type) {
+    case kTfLiteFloat32:
+      return JoinDefault(tensor->data.f, num_elements, ",");
+    case kTfLiteInt32:
+      return JoinDefault(tensor->data.i32, num_elements, ",");
+    case kTfLiteInt64:
+      return JoinDefault(tensor->data.i64, num_elements, ",");
+    case kTfLiteUInt8:
+      return Join(tensor->data.uint8, num_elements, ",");
+    case kTfLiteInt8:
+      return Join(tensor->data.int8, num_elements, ",");
+    case kTfLiteBool:
+      return JoinDefault(tensor->data.b, num_elements, ",");
+    default:
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              TfLiteTypeGetName(tensor->type),
+                              " in TfLiteDriver::ReadOutput"));
+      return "";
+  }
 }
 
 }  // namespace testing

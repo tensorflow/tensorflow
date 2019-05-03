@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/shape_fn/trt_shfn.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <string>
 #include <vector>
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorrt/include/NvInfer.h"
 

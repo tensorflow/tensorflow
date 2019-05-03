@@ -27,10 +27,11 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+template <typename T>
 struct AdjustHueGPU {
   void operator()(GPUDevice* device, const int64 number_of_elements,
-                  const float* const input, const float* const delta,
-                  float* const output);
+                  const T* const input, const float* const delta,
+                  T* const output);
 };
 
 }  // namespace functor

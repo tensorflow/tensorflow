@@ -26,8 +26,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.tracking import base as trackable
 
 
 # Op names which identify variable reads which should be saved.
@@ -50,8 +50,7 @@ def set_cpu0(device_string):
     A device string.
   """
   parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
+  parsed_device = parsed_device.replace(device_type="CPU", device_index=0)
   return parsed_device.to_string()
 
 
@@ -82,7 +81,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if isinstance(var, ops.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
-    elif isinstance(var, resource_variable_ops.ResourceVariable):
+    elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
         def f():
@@ -101,7 +100,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
           "Saveable is neither a resource variable nor a read operation."
           " Got: %s" % repr(var))
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
-                                    dtype=var.dtype)
+                                    dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -137,7 +136,7 @@ def saveable_objects_for_op(op, name):
   if not isinstance(name, six.string_types):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
-        "checkpointable operations. Name is not a string: %s" % name)
+        "trackable operations. Name is not a string: %s" % name)
   if isinstance(op, saveable_object.SaveableObject):
     yield op
   elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
@@ -165,11 +164,11 @@ def saveable_objects_for_op(op, name):
         yield ResourceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
     # pylint: enable=protected-access
-  elif isinstance(op, checkpointable.CheckpointableBase) and not isinstance(
+  elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
     for attr, factory in op._gather_saveables_for_checkpoint().items():
-      if attr == checkpointable.VARIABLE_VALUE_KEY:
+      if attr == trackable.VARIABLE_VALUE_KEY:
         # Keep original name for classes masquerading as variables.
         full_name = name
       else:
@@ -189,10 +188,9 @@ def saveable_objects_for_op(op, name):
       # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
-      with ops.init_scope():
-        if context.executing_eagerly():
-          raise ValueError("Can only save/restore ResourceVariables when "
-                           "executing eagerly, got type: %s." % type(op))
+      if context.executing_eagerly():
+        raise ValueError("Can only save/restore ResourceVariables when "
+                         "executing eagerly, got type: %s." % type(op))
 
       variable = ops.internal_convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
@@ -234,6 +232,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   names_to_saveables = {}
   # pylint: disable=protected-access
   for var in op_list:
+    resource_or_ref_variable = (
+        isinstance(var, resource_variable_ops.ResourceVariable) or
+        isinstance(var, variables.RefVariable))
+
     if isinstance(var, saveable_object.SaveableObject):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
@@ -250,15 +252,17 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, checkpointable.CheckpointableBase)
-          and not isinstance(var, variables.Variable)):
-      checkpointable_saveables = [
+    elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
+      trackable_saveables = [
           (factory() if callable(factory) else factory)
           for factory in var._gather_saveables_for_checkpoint().values()]
       names_to_saveables.update(
-          op_list_to_dict(checkpointable_saveables))
+          op_list_to_dict(trackable_saveables))
     else:
-      if context.executing_eagerly():
+      # Variables (reference and resource) have an _in_graph_mode property
+      # indicating whether they were created in a graph building context. We
+      # also get Tensors when graph building, which do not have this property.
+      if not getattr(var, "_in_graph_mode", True):
         if not isinstance(var, resource_variable_ops.ResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
@@ -323,7 +327,7 @@ def validate_and_slice_inputs(names_to_saveables):
 
   Raises:
     TypeError: If any of the keys are not strings or any of the
-      values are not one of Tensor or Variable or a checkpointable operation.
+      values are not one of Tensor or Variable or a trackable operation.
     ValueError: If the same operation is given in more than one value
       (this also applies to slices of SlicedVariables).
   """

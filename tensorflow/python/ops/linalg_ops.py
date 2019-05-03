@@ -24,9 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
@@ -89,8 +89,8 @@ def cholesky_solve(chol, rhs, name=None):
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2
   RHS = ... # shape 10 x 2 x 1
-  chol = tf.cholesky(A)  # shape 10 x 2 x 2
-  X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+  chol = tf.linalg.cholesky(A)  # shape 10 x 2 x 2
+  X = tf.linalg.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
   # tf.matmul(A, X) ~ RHS
   X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -103,7 +103,7 @@ def cholesky_solve(chol, rhs, name=None):
 
   Args:
     chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-      Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
+      Cholesky factorization of `A`, e.g. `chol = tf.linalg.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.
@@ -335,7 +335,7 @@ def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Note: If your program backpropagates through this function, you should replace
-  it with a call to tf.linalg.eigvalsh (possibly ignoring the second output) to
+  it with a call to tf.linalg.eigh (possibly ignoring the second output) to
   avoid computing the eigen decomposition twice. This is because the
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
@@ -437,13 +437,13 @@ def norm_v2(tensor,
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean',
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
-      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
       `tensor` is a matrix and equivalent to 2-norm for vectors.
       Some restrictions apply:
-        a) The Frobenius norm `fro` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
+        a) The Frobenius norm `'fro'` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
            `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
@@ -595,14 +595,14 @@ def norm(tensor,
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
-        positive_axis = functional_ops.map_fn(
+        positive_axis = map_fn.map_fn(
             lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat(
             [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis],
             axis=0)
-        perm_after = functional_ops.map_fn(
+        perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
                     array_ops.where(math_ops.equal(perm_before, i))),
@@ -619,6 +619,8 @@ def norm(tensor,
         result = math_ops.sqrt(
             math_ops.reduce_sum(
                 tensor * math_ops.conj(tensor), axis, keepdims=True))
+        # TODO(rmlarsen): Replace with the following, once gradients are defined
+        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

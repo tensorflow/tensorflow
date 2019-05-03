@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
@@ -72,7 +73,7 @@ def _get_global_id(cluster_spec, task_type, task_id, chief_task_type):
   if PS in cluster_spec.jobs:
     task_type_ordered_list.append(PS)
 
-  # Find the right gloabl_id for current task.
+  # Find the right global_id for current task.
   next_global_id = 0
   for t in task_type_ordered_list:
     if t == task_type:
@@ -158,7 +159,7 @@ def init_run_config(config, tf_config):
 
   # Don't use distribute coordinator if it is local training or cluster has a
   # MASTER job or `train_distribute` is not specifed.
-  if (not tf_config or 'master' in cluster_spec.jobs or
+  if (not cluster_spec or 'master' in cluster_spec.jobs or
       not config._train_distribute):
     config._distribute_coordinator_mode = None
     config._init_distributed_setting_from_environment_var(tf_config)
@@ -296,10 +297,11 @@ def estimator_train(estimator, train_distributed_fn, hooks):
   assert estimator._config._distribute_coordinator_mode
   run_config = estimator._config
   assert estimator._config.cluster_spec
-  cluster_spec = estimator._config.cluster_spec
+  cluster_spec = multi_worker_util.normalize_cluster_spec(
+      estimator._config.cluster_spec)
   assert estimator._config._train_distribute
 
-  if 'evaluator' in cluster_spec:
+  if 'evaluator' in cluster_spec.jobs:
     raise ValueError("'evaluator' job is not supported if you don't use "
                      '`train_and_evaluate`')
 
@@ -344,10 +346,11 @@ def estimator_evaluate(estimator, evaluate_distributed_fn, hooks):
   assert estimator._config._distribute_coordinator_mode
   run_config = estimator._config
   assert estimator._config.cluster_spec
-  cluster_spec = estimator._config.cluster_spec
+  cluster_spec = multi_worker_util.normalize_cluster_spec(
+      estimator._config.cluster_spec)
   assert estimator._config._eval_distribute
 
-  if 'evaluator' in cluster_spec:
+  if 'evaluator' in cluster_spec.jobs:
     raise ValueError("'evaluator' job is not supported if you don't use "
                      '`train_and_evaluate`')
 

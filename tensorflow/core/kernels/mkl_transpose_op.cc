@@ -184,6 +184,9 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
         break;
+      case DT_BFLOAT16:
+        return MKLTransposeND<bfloat16>(ctx, in, out, perm);
+        break;
       // TODO(nhasabni): support other types such as INT8.
       default:
         break;
@@ -227,6 +230,9 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
     switch (in.dtype()) {
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
+        break;
+      case DT_BFLOAT16:
+        return MKLTransposeND<bfloat16>(ctx, in, out, perm);
         break;
       // TODO(nhasabni): support other types such as INT8.
       default:

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
-#include <unordered_map>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
@@ -26,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/common_runtime/lower_if_op.h"
+#include "tensorflow/core/common_runtime/lower_while_op.h"
 #include "tensorflow/core/common_runtime/placer.h"
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -36,10 +39,12 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -49,33 +54,11 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-// WARNING: Code in this file implicitly assumes that function input and output
-// arguments are plain tensors (tensor lists are not supported). Function inputs
-// and outputs are always expanded to a single placeholder or output tensor.
-// With this assumption, the calling node's input/output ports always match
-// function input/output arguments.
-//
-// This is guaranteed by the implementation of MakeGrapplerFunctionItem.
+constexpr const char* const kFuncAttr = FunctionLibraryDefinition::kFuncAttr;
 
 // Mark functions that were created as a result of function specialization.
-constexpr char kGrapplerSpecializedFuncAttr[] = "_GrapplerSpecializedFunc";
-
-// Name of the attribute that defines the function for indirect function calls.
-constexpr char kFuncAttrName[] = "f";
-
-constexpr char kNoInlineAttr[] = "_noinline";
-
-bool AttrIsTrue(const FunctionDef& func, const string& attr) {
-  return func.attr().count(attr) != 0 && func.attr().at(attr).b();
-}
-
-bool MarkedSpecialized(const FunctionDef& func) {
-  return AttrIsTrue(func, kGrapplerSpecializedFuncAttr);
-}
-
-bool MarkedNoInline(const FunctionDef& func) {
-  return AttrIsTrue(func, kNoInlineAttr);
-}
+constexpr const char* const kGrapplerSpecializedFuncAttr =
+    "_GrapplerSpecializedFunc";
 
 // There are two ways of calling a Tensorflow function:
 //
@@ -93,7 +76,11 @@ bool IsDirectFunctionCall(const FunctionDef& func, const NodeDef& func_node) {
 // Check if func_node has function attribute with a function name matching
 // FunctionDef signature.
 bool IsIndirectFunctionCall(const FunctionDef& func, const NodeDef& func_node) {
-  auto* func_attr = AttrSlice(func_node).Find(kFuncAttrName);
+  if (!IsPartitionedCall(func_node) && !IsStatefulPartitionedCall(func_node)) {
+    return false;
+  }
+
+  auto* func_attr = AttrSlice(func_node).Find(kFuncAttr);
   return func_attr != nullptr && func_attr->has_func() &&
          func_attr->func().name() == func.signature().name();
 }
@@ -104,7 +91,7 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
     return AttrSlice(func_node);
 
   } else if (IsIndirectFunctionCall(func, func_node)) {
-    auto* func_attr = AttrSlice(func_node).Find(kFuncAttrName);
+    auto* func_attr = AttrSlice(func_node).Find(kFuncAttr);
     return AttrSlice(&func_attr->func().attr());
 
   } else {
@@ -163,10 +150,10 @@ struct FunctionSpecializationSignature {
 
   string func_name;
   bool is_in_fetch_set;
-  gtl::FlatSet<OutputPort> active_outputs;
-  std::unordered_map<string, DataType> type_parameters;
-  std::unordered_map<string, AttrValue> body_parameters;
-  std::unordered_map<InputPort, string> const_inputs;
+  absl::flat_hash_set<OutputPort> active_outputs;
+  absl::flat_hash_map<string, DataType> type_parameters;
+  absl::flat_hash_map<string, AttrValue> body_parameters;
+  absl::flat_hash_map<InputPort, string> const_inputs;
 
   bool operator==(const FunctionSpecializationSignature& other) const {
     bool equals = func_name == other.func_name &&
@@ -189,48 +176,45 @@ struct FunctionSpecializationSignature {
     return true;
   }
 
-  // TODO(ezhulenev): Migrate to AbslHashValue.
-  // TODO(ezhulenev): Optimize performance by computing hashes of unordered
-  // values first, and then compute a hash of sorted hashes.
-  struct Hash {
-    uint64 operator()(FunctionSpecializationSignature const& s) const {
-      uint64 h = Hash64(s.func_name);
-      h = Hash64Combine(std::hash<bool>()(s.is_in_fetch_set), h);
+  template <typename H>
+  friend H AbslHashValue(H h, const FunctionSpecializationSignature& s) {
+    H base = H::combine(std::move(h), s.func_name, s.is_in_fetch_set);
 
-      // Use std::set/std::map for deterministic iteration order.
+    // First pre-compute hashes for all values in collections with
+    // non-deterministic iteration order.
+    std::vector<uint64> hashes;
+    hashes.reserve(s.active_outputs.size()         //
+                   + s.type_parameters.size() * 2  //
+                   + s.body_parameters.size() * 2  //
+                   + s.const_inputs.size() * 2);
 
-      std::set<OutputPort> active_outputs(s.active_outputs.begin(),
-                                          s.active_outputs.end());
-      for (const auto& active_output : active_outputs) {
-        h = Hash64Combine(std::hash<int>()(active_output), h);
-      }
+    absl::c_transform(s.active_outputs, std::back_inserter(hashes),
+                      hash<OutputPort>());
 
-      std::map<string, DataType> types(s.type_parameters.begin(),
-                                       s.type_parameters.end());
-      for (const auto& pair : types) {
-        AttrValue attr_value;
-        attr_value.set_type(pair.second);
-        h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(AttrValueHash(attr_value), h);
-      }
+    using TypeParam = std::pair<const string, DataType>;
+    absl::c_for_each(s.type_parameters, [&hashes](const TypeParam& type_param) {
+      AttrValue attr_value;
+      attr_value.set_type(type_param.second);
+      hashes.push_back(Hash64(type_param.first));
+      hashes.push_back(AttrValueHash(attr_value));
+    });
 
-      std::map<string, AttrValue> body(s.body_parameters.begin(),
-                                       s.body_parameters.end());
-      for (const auto& pair : body) {
-        h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(FastAttrValueHash(pair.second), h);
-      }
+    using BodyParam = std::pair<const string, AttrValue>;
+    absl::c_for_each(s.body_parameters, [&hashes](const BodyParam& body_param) {
+      hashes.push_back(Hash64(body_param.first));
+      hashes.push_back(FastAttrValueHash(body_param.second));
+    });
 
-      std::map<InputPort, string> inputs(s.const_inputs.begin(),
-                                         s.const_inputs.end());
-      for (const auto& pair : inputs) {
-        h = Hash64Combine(std::hash<int>()(pair.first), h);
-        h = Hash64Combine(Hash64(pair.second), h);
-      }
+    using ConstInput = std::pair<const InputPort, string>;
+    absl::c_for_each(s.const_inputs, [&hashes](const ConstInput& const_input) {
+      hashes.push_back(hash<InputPort>()(const_input.first));
+      hashes.push_back(Hash64(const_input.second));
+    });
 
-      return h;
-    }
-  };
+    // Combine all pre-computed hashes in a deterministic order.
+    absl::c_sort(hashes);
+    return H::combine_contiguous(std::move(base), hashes.data(), hashes.size());
+  }
 };
 
 struct FunctionSpecialization {
@@ -238,82 +222,56 @@ struct FunctionSpecialization {
   // True if the function caller node is in GrapplerItem fetch set.
   bool is_in_fetch_set;
   // Names of the tensors that were pushed down into the function body.
-  gtl::FlatSet<string> const_inputs;
+  absl::flat_hash_set<string> const_inputs;
   // Control dependencies of pushed down const inputs have to be attached to
   // function caller node.
-  gtl::FlatSet<string> control_deps;
+  absl::flat_hash_set<string> control_deps;
   // Output tensors (ports) that consumed by other nodes in the graph or in a
   // GrapplerItem fetch set.
-  gtl::FlatSet<int> active_outputs;
+  absl::flat_hash_set<int> active_outputs;
   // Mapping from original function output port to the output port of
   // specialized function. If function specialization changes the number of
   // function outputs it's required to update all node consumers.
   std::vector<std::pair<int, int>> output_mapping;
 };
 
+// Function optimizer context initialized once for each optimization pass, and
+// it uses the latest available graph (for the first iteration it will be the
+// GrapplerItem.graph, for next iterations it will be the output of previous
+// function optimizer pass).
 class FunctionOptimizerContext {
  public:
-  explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
-                                    const GrapplerItem& item)
-      : grappler_item_id_(item.id),
-        graph_version_(item.graph.versions().producer()),
+  explicit FunctionOptimizerContext(const GrapplerItem& item,
+                                    RewriterConfig::Toggle opt_level,
+                                    const GraphDef& graph)
+      : item_(&item),
         opt_level_(opt_level),
-        allowed_optimizations_(item.allowed_optimizations()),
-        function_library_(OpRegistry::Global(), item.graph.library()),
-        available_device_names_(item.devices().begin(), item.devices().end()),
-        graph_view_(&item.graph) {
-    InitializeTrulyConstNodes(item);
-    InitializeFetchNodes(item);
-  }
+        function_library_(OpRegistry::Global(), graph.library()),
+        truly_const_nodes_(InferTrulyConstNodes(item, graph)),
+        graph_view_(&graph) {}
 
-  const RewriterConfig::Toggle opt_level() const { return opt_level_; }
+  const GrapplerItem& item() const { return *item_; }
 
-  const GrapplerItem::AllowedOptimizations& allowed_optimizations() const {
-    return allowed_optimizations_;
-  }
+  const int graph_version() const { return item_->graph.versions().producer(); }
+
+  RewriterConfig::Toggle opt_level() const { return opt_level_; }
 
   const FunctionLibraryDefinition& function_library() const {
     return function_library_;
   }
+  FunctionLibraryDefinition& function_library() { return function_library_; }
 
-  FunctionLibraryDefinition* mutable_function_library() {
-    return &function_library_;
-  }
-
-  FunctionLibraryRuntime* mutable_function_library_runtime() {
-    InitializeFunctionLibraryRuntime();
-    return flr_;
-  }
-
-  const gtl::FlatMap<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>&
+  const absl::flat_hash_map<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>&
   tensor_mapping() const {
     return tensor_mapping_;
   }
 
-  const gtl::FlatMap<string, std::vector<string>>& control_overrides() const {
-    return control_overrides_;
-  }
-
   const GraphView& graph_view() const { return graph_view_; }
 
-  const string& grappler_item_id() const { return grappler_item_id_; }
-
-  const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
-
-  const DeviceSet* devices() const {
-    // Create fake devices lazily only if we need a DeviceSet.
-    if (available_devices_.empty() && !available_device_names_.empty()) {
-      for (const string& name : available_device_names_) {
-        auto device = absl::make_unique<FakeDevice>(name);
-        available_device_set_.AddDevice(device.get());
-        available_devices_.push_back(std::move(device));
-      }
-    }
-    return &available_device_set_;
-  }
-
   bool IsFetchNode(const string& node_name) const {
-    return fetch_nodes_.find(node_name) != fetch_nodes_.end();
+    return absl::c_any_of(item_->fetch, [&](const string& fetch) {
+      return ParseTensorName(fetch).node() == node_name;
+    });
   }
 
   bool IsTrulyConst(const string& name) const {
@@ -335,6 +293,11 @@ class FunctionOptimizerContext {
   }
 
   void AddTensorMapping(const SafeTensorId& from, const SafeTensorId& to) {
+    DCHECK(from.index() != Graph::kControlSlot)
+        << "Tensor mapping must be from regular tensor";
+    DCHECK(to.index() != Graph::kControlSlot)
+        << "Tensor mapping must be to regular tensor";
+
     auto inserted = tensor_mapping_.insert({from, to});
     DCHECK(inserted.second)
         << "Failed to insert duplicated tensor mapping: "
@@ -349,106 +312,50 @@ class FunctionOptimizerContext {
       if (from_idx != to_idx) {
         SafeTensorId from_tensor(func_node, from_idx);
         SafeTensorId to_tensor(func_node, to_idx);
-        auto inserted = tensor_mapping_.insert({from_tensor, to_tensor});
-        DCHECK(inserted.second);
+        AddTensorMapping(from_tensor, to_tensor);
       }
-    }
-  }
-
-  void AddControlOverrides(const NodeDef& func_node,
-                           const std::vector<string>& control_overrides) {
-    control_overrides_[func_node.name()].reserve(control_overrides.size());
-    for (const string& control_override : control_overrides) {
-      control_overrides_[func_node.name()].push_back(control_override);
     }
   }
 
  private:
-  void InitializeTrulyConstNodes(const GrapplerItem& item) {
-    gtl::FlatSet<string> feed_nodes;
+  static absl::flat_hash_map<string, const NodeDef*> InferTrulyConstNodes(
+      const GrapplerItem& item, const GraphDef& graph) {
+    absl::flat_hash_set<absl::string_view> feed_nodes;
     for (const auto& feed : item.feed) {
-      feed_nodes.insert(NodeName(feed.first));
+      feed_nodes.insert(feed.first);
     }
 
-    for (const NodeDef& node : item.graph.node()) {
-      if (IsConstant(node) && feed_nodes.count(node.name()) == 0) {
-        truly_const_nodes_[node.name()] = &node;
+    absl::flat_hash_map<string, const NodeDef*> const_nodes;
+    for (const NodeDef& node : graph.node()) {
+      if (IsConstant(node) && !feed_nodes.contains(node.name())) {
+        const_nodes[node.name()] = &node;
       }
     }
+
+    return const_nodes;
   }
 
-  void InitializeFetchNodes(const GrapplerItem& item) {
-    for (const string& fetch : item.fetch) {
-      fetch_tensors_.insert(fetch);
-      fetch_nodes_.insert(NodeName(fetch));
-    }
-  }
+  const GrapplerItem* item_;  // must outlive this object
+  RewriterConfig::Toggle opt_level_;
 
-  void InitializeFunctionLibraryRuntime() {
-    if (!flr_) {
-      Env* env = Env::Default();
-      std::vector<std::unique_ptr<Device>> devices;
-      devices.push_back(absl::make_unique<FakeDevice>(env, "/device:CPU:0"));
-      device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
-      OptimizerOptions optimizer_opts;
-      optimizer_opts.set_do_function_inlining(true);
-      process_flr_.reset(new ProcessFunctionLibraryRuntime(
-          device_mgr_.get(), env, graph_version_, &function_library_,
-          optimizer_opts));
-      flr_ = process_flr_->GetFLR(device_mgr_->ListDevices()[0]->name());
-    }
-  }
-
-  const string grappler_item_id_;
-  const int graph_version_;
-  const RewriterConfig::Toggle opt_level_;
-  const GrapplerItem::AllowedOptimizations allowed_optimizations_;
+  // Function library constructed from current graph.
   FunctionLibraryDefinition function_library_;
 
-  // These fields initialized lazily only if needed.
-  std::unique_ptr<DeviceMgr> device_mgr_;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> process_flr_;
-  FunctionLibraryRuntime* flr_ = nullptr;
-
-  // Fully defined names of the devices available to the GrapplerItem.
-  const gtl::FlatSet<string> available_device_names_;
-
-  // List of available `FakedDevices` (lazily initialized, see devices()).
-  mutable std::vector<std::unique_ptr<Device>> available_devices_;
-
-  // DeviceSet of fake devices (`FakeDevice`) constructed from
-  // available_devices_ (lazily initialized).
-  mutable DeviceSet available_device_set_;
-
   // Nodes that are Const and not in feed.
-  std::unordered_map<string, const NodeDef*> truly_const_nodes_;
+  absl::flat_hash_map<string, const NodeDef*> truly_const_nodes_;
   // Specialized functions.
-  std::unordered_map<FunctionSpecializationSignature,
-                     const FunctionSpecialization,
-                     FunctionSpecializationSignature::Hash>
+  absl::flat_hash_map<FunctionSpecializationSignature,
+                      const FunctionSpecialization>
       specialized_functions_;
 
-  // GrapplerItem.fetch is a vector of tensors.
-  gtl::FlatSet<string> fetch_tensors_;  // format: node_name:port
-  gtl::FlatSet<string> fetch_nodes_;    // format: node_name
-
-  // After function inlining and specialization, the optimized graph might be in
-  // invalid state, nodes can read from non-existing function call nodes that
-  // were inlined, or they can read from output index that is no longer valid
-  // after unused outputs pruning.
+  // After function specialization, the optimized graph might be in invalid
+  // state, nodes can read from output index that is no longer valid after
+  // unused outputs pruning.
   //
   // Tensor mapping that has to be applied to the graph after all functions
   // optimizations (invalidated tensor id -> optimized graph tensor id).
-  gtl::FlatMap<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>
+  absl::flat_hash_map<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>
       tensor_mapping_;
-
-  // When we inline a function into the optimized graph, we no longer have the
-  // function call node to anchor control dependencies. Instead we must expand
-  // each function call control output edge into multiple control dependencies
-  // to all side-effectful ops inside the function body.
-  //
-  // Invalidated function call node name -> Inlined side-effectful nodes
-  gtl::FlatMap<string, std::vector<string>> control_overrides_;
 
   // Use graph view to find active outputs of the function caller nodes.
   GraphView graph_view_;
@@ -472,10 +379,10 @@ const FunctionDef* FindFunctionCall(const FunctionOptimizerContext& ctx,
   return ctx.function_library().Find(node.op());
 }
 
-gtl::FlatSet<int> GetActiveOutputs(const NodeDef& node,
-                                   const FunctionOptimizerContext& ctx,
-                                   int size_hint = 0) {
-  gtl::FlatSet<int> active_outputs;
+absl::flat_hash_set<int> GetActiveOutputs(const NodeDef& node,
+                                          const FunctionOptimizerContext& ctx,
+                                          int size_hint = 0) {
+  absl::flat_hash_set<int> active_outputs;
   active_outputs.reserve(static_cast<size_t>(size_hint));
 
   // 1. Output can be consumed by the other graph node.
@@ -486,9 +393,11 @@ gtl::FlatSet<int> GetActiveOutputs(const NodeDef& node,
   }
 
   // 2. Or it can be in a fetch set.
-  for (const string& fetch_tensor : ctx.fetch_tensors()) {
-    int port = NodePositionIfSameNode(fetch_tensor, node.name());
-    if (port >= 0) active_outputs.insert(port);
+  for (const string& fetch : ctx.item().fetch) {
+    TensorId fetch_tensor = ParseTensorName(fetch);
+    if (fetch_tensor.node() == node.name()) {
+      active_outputs.insert(fetch_tensor.index());
+    }
   }
 
   return active_outputs;
@@ -508,7 +417,7 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   // number of output args is the same as number of possible function caller
   // node outputs.
   int num_outputs = func.signature().output_arg_size();
-  const gtl::FlatSet<int> active_outputs =
+  const absl::flat_hash_set<int> active_outputs =
       GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
 
   return active_outputs.size() != num_outputs;
@@ -519,7 +428,7 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
 FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
                                         const GraphDef& optimized_graph) {
   FunctionLibraryDefinition pruned_flib =
-      ReachableFunctionLibraryDefinition(flib, optimized_graph);
+      flib.ReachableDefinitions(optimized_graph);
 
   int pruned_functions = static_cast<int>(pruned_flib.num_functions()) -
                          static_cast<int>(flib.num_functions());
@@ -534,8 +443,8 @@ FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
 Status PushDownConstInputs(const NodeDef& func_node,
                            const FunctionOptimizerContext& ctx,
                            GrapplerFunctionItem* item,
-                           gtl::FlatSet<string>* const_inputs,
-                           gtl::FlatSet<string>* control_deps) {
+                           absl::flat_hash_set<string>* const_inputs,
+                           absl::flat_hash_set<string>* control_deps) {
   // Record node control dependencies in the control_deps set.
   const auto record_control_deps = [&](const NodeDef* const_input) {
     for (int i = const_input->input_size() - 1; i >= 0; --i) {
@@ -574,25 +483,24 @@ void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
   // Keep only non-const inputs.
   std::vector<string> keep_inputs;
   const auto& inputs = specialized_func_node->input();
-  std::copy_if(inputs.begin(), inputs.end(), std::back_inserter(keep_inputs),
-               [&](const string& input) {
-                 return specialization.const_inputs.find(input) ==
-                        specialization.const_inputs.end();
-               });
+  absl::c_copy_if(inputs, std::back_inserter(keep_inputs),
+                  [&](const string& input) {
+                    return !specialization.const_inputs.contains(input);
+                  });
 
   specialized_func_node->clear_input();
   for (const auto& keep : keep_inputs) specialized_func_node->add_input(keep);
 
   // Attach control dependencies of pushed down const input to the caller node.
   if (!specialization.control_deps.empty()) {
-    gtl::FlatSet<string> existing_control_deps;
+    absl::flat_hash_set<string> existing_control_deps;
 
     for (const string& input : keep_inputs) {
       existing_control_deps.insert(AsControlDependency(NodeName(input)));
     }
 
     for (const string& ctrl : specialization.control_deps) {
-      if (existing_control_deps.find(ctrl) == existing_control_deps.end()) {
+      if (!existing_control_deps.contains(ctrl)) {
         VLOG(3) << "Forward control dependency: input=" << ctrl;
         specialized_func_node->add_input(ctrl);
       }
@@ -620,8 +528,7 @@ void RemovePushedDownConstInputTypes(
     const string& input = func_node.input(i);
     if (IsControlInput(input)) break;
 
-    if (specialization.const_inputs.find(input) ==
-        specialization.const_inputs.end()) {
+    if (!specialization.const_inputs.contains(input)) {
       DataType dt = tin->list().type(i);
       (*attr)["Tin"].mutable_list()->add_type(dt);
     }
@@ -645,8 +552,7 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
 
   // Keep output types of active outputs only.
   for (int i = 0; i < tout->list().type_size(); ++i) {
-    if (specialization.active_outputs.find(i) !=
-        specialization.active_outputs.end()) {
+    if (specialization.active_outputs.contains(i)) {
       DataType dt = tout->list().type(i);
       (*attr)["Tout"].mutable_list()->add_type(dt);
     }
@@ -662,7 +568,7 @@ Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
 
   } else if (IsIndirectFunctionCall(func, func_node)) {
     auto* attr = specialized_func_node->mutable_attr();
-    (*attr)[kFuncAttrName].mutable_func()->set_name(specialized_func_name);
+    (*attr)[kFuncAttr].mutable_func()->set_name(specialized_func_name);
 
   } else {
     return errors::InvalidArgument("Unknown function call site");
@@ -746,14 +652,12 @@ Status InitializeFunctionSpecializationSignature(
 string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
                                const FunctionDef& func,
                                const NodeDef& func_node) {
-  return absl::Substitute("$0_specialized_for_$1_at_$2",
-                          func.signature().name(),
-                          absl::StrReplaceAll(func_node.name(), {{"/", "_"}}),
-                          ctx.grappler_item_id());
+  return absl::Substitute(
+      "$0_specialized_for_$1_at_$2", func.signature().name(),
+      absl::StrReplaceAll(func_node.name(), {{"/", "_"}}), ctx.item().id);
 }
 
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
-                          const int graph_def_version,
                           FunctionOptimizerContext* ctx,
                           GraphDef* optimized_graph) {
   VLOG(2) << "Specialize function call: " << SummarizeNodeDef(func_node);
@@ -792,13 +696,13 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // Make a GrapplerFunctionItem and convert it back to FunctionDef after
   // pushing all constant inputs into the function body.
   GrapplerFunctionItem item;
-  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_instantiation_attr,
-                                              flib, graph_def_version, &item));
+  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+      func, func_instantiation_attr, flib, ctx->graph_version(), &item));
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
-  gtl::FlatSet<string> const_inputs;
-  gtl::FlatSet<string> control_deps;
+  absl::flat_hash_set<string> const_inputs;
+  absl::flat_hash_set<string> control_deps;
   TF_RETURN_IF_ERROR(PushDownConstInputs(func_node, *ctx, &item, &const_inputs,
                                          &control_deps));
 
@@ -806,8 +710,14 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // update outputs for the fetch nodes, so we just skip them.
   std::vector<std::pair<int, int>> output_mapping;
   if (!signature.is_in_fetch_set) {
-    TF_RETURN_IF_ERROR(
-        RemoveUnusedOutputs(signature.active_outputs, &item, &output_mapping));
+    int num_func_outputs = item.output_size();
+
+    absl::flat_hash_set<int> remove;
+    for (int i = 0; i < num_func_outputs; ++i) {
+      if (!signature.active_outputs.count(i)) remove.insert(i);
+    }
+
+    TF_RETURN_IF_ERROR(RemoveFunctionOutputs(remove, &item, &output_mapping));
   }
 
   // TODO(ezhulenev): Push down known input shapes.
@@ -828,8 +738,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   (*specialized_attr)[kGrapplerSpecializedFuncAttr].set_b(true);
 
   // Add specialized function to the library.
-  TF_RETURN_IF_ERROR(
-      ctx->mutable_function_library()->AddFunctionDef(specialized_func));
+  TF_RETURN_IF_ERROR(ctx->function_library().AddFunctionDef(specialized_func));
 
   // Add a function call node for the specialized function.
   NodeDef* specialized_func_node = optimized_graph->add_node();
@@ -849,701 +758,645 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 }
 
 // -------------------------------------------------------------------------- //
-// Inline direct functions calls.
+// Inline function calls into a graph using function inlining implementation
+// from common_runtime:
 //
-// When we inline direct function calls, we instantiate the function body from
-// its FunctionDef and caller node attributes, and embed the instantiated graph
-// into the "main graph". When we do that, we must preserve the function call
-// semantics:
-//
-// 1) All input nodes must be executed before any of function body nodes will
-//    start executing.
-// 2) All function body nodes must be executed before any of the nodes, reading
-//    outputs of the function will start executing.
-// 3) All nodes with side effects inside a function must be executed, this is
-//    different from the nodes with side effects in the main graph, that can be
-//    pruned if they are not in transitive dependency set of any of the fetch
-//    nodes.
-// 4) All nodes of the function body must be execute on the device specified by
-//    the function caller node.
-//
-// To guarantee that function call semantics are preserved after inlining, we
-// insert an IdentityN node before the inlined function body, and hook all
-// inputs into that, and we insert another IdentityN node to hook all function
-// outputs to it.
+// 1) Convert GraphDef to Graph.
+// 2) Inline function calls.
+// 3) Convert Graph back to the GraphDef.
 
-// Returns `Status::OK()` iff `node` is a direct function call of `func`, and we
-// know how to inline it into the main graph, otherwise returns and error
-// indicating why the function call is not inlinable.
-Status IsInlinableDirectFunctionCall(const FunctionOptimizerContext& ctx,
-                                     const FunctionDef& func,
-                                     const NodeDef& func_node) {
-  // Indirect function calls (PartitionedCallOp) have automatic control
-  // dependencies and inlined separately from direct function calls.
-  if (!IsDirectFunctionCall(func, func_node)) {
-    return errors::InvalidArgument("Unsupported function call type: ",
-                                   SummarizeNodeDef(func_node));
-  }
+constexpr const char* const kLowerUsingSwitchMergeAttr =
+    LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
+constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
+    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
 
-  // For direct function  calls we insert IdentityN nodes before/after inlined
-  // function body to preserve function call semantics (all inputs evaluated
-  // before function evaluation starts, and all function body nodes finished
-  // before output consumed by other nodes).
-  if (func.signature().input_arg_size() == 0) {
-    return errors::FailedPrecondition(
-        "Can't inline direct function call with empty inputs: ",
-        SummarizeNodeDef(func_node));
-  }
+using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
+using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 
-  // TODO(ezhulenev): Relax constraint on output args?
-  if (func.signature().output_arg_size() == 0) {
-    return errors::FailedPrecondition(
-        "Can't inline direct function call with empty outputs: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // Function must execute all the nodes in a function body that might have side
-  // effects. After inlining these nodes into the main graph, we can no longer
-  // guarantee that. For now we disable inlining functions with side effects.
-  //
-  // Attaching control dependency to the output IdentityN node is not safe,
-  // because it might be split or pruned in a later optimization pass.
-  //
-  // Indirect function calls (via PartitionedCallOp) have automatic dependency
-  // tracking, and allow us to safely inline functions with side effects.
-  bool has_side_effects =
-      absl::c_any_of(func.node_def(), [&ctx](const NodeDef& node) {
-        return !IsFreeOfSideEffect(node, &ctx.function_library());
-      });
-  if (has_side_effects) {
-    return errors::FailedPrecondition(
-        "Can't inline function with side-effects in the function body: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // We ignore `_noinline` marker in aggressive mode.
-  bool aggressive = ctx.opt_level() == RewriterConfig::AGGRESSIVE;
-  if (MarkedNoInline(func) && !aggressive) {
-    return errors::FailedPrecondition(
-        "Can't inline function marked with '_noinline': ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // Function specialization and inlining must be mutually exclusive.
-  if (MarkedSpecialized(func)) {
-    return errors::FailedPrecondition(
-        "Can't inline function created in Grappler function specialization: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  return Status::OK();
+// Checks if boolean attribute is defined and it's value is 'true'.
+bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
+  bool match;
+  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
+  return s.ok() && match;
 }
 
-// Create an IdentityN node to hook the function inputs to: this ensures that
-// they're all evaluated before the evaluation of the function body starts.
-NodeDef InlinedFunctionInputsNode(const NodeDef& func_node,
-                                  const GrapplerFunctionItem& item) {
-  NodeDef inputs;
-  inputs.set_name(strings::StrCat(func_node.name(), "/", "inlined_inputs"));
-  inputs.set_op("IdentityN");
-  inputs.set_device(func_node.device());
-  *inputs.mutable_input() = func_node.input();
-  AttrValue::ListValue* type_list =
-      (*inputs.mutable_attr())["T"].mutable_list();
-
-  for (const InputArgExpansion& input_arg : item.inputs()) {
-    for (int i = 0; i < input_arg.placeholders.size(); ++i) {
-      type_list->add_type(input_arg.data_type);
-    }
-  }
-
-  return inputs;
+// Checks if string attribute is defined and it's not empty.
+bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
+  string match;
+  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
+  return s.ok() && !match.empty();
 }
 
-// Create an IdentityN node to hook the function outputs to: this ensures that
-// the function body is fully evaluated before its fanout gets scheduled.
-NodeDef InlinedFunctionOutputsNode(const NodeDef& func_node,
-                                   const GrapplerFunctionItem& item) {
-  NodeDef outputs;
-  outputs.set_name(func_node.name());
-  outputs.set_op("IdentityN");
-  outputs.set_device(func_node.device());
-  AttrValue::ListValue* type_list =
-      (*outputs.mutable_attr())["T"].mutable_list();
-
-  for (const OutputArgExpansion& output_arg : item.outputs()) {
-    for (const string& output_tensor : output_arg.output_tensors) {
-      type_list->add_type(output_arg.data_type);
-      outputs.add_input(strings::StrCat(func_node.name(), "/", output_tensor));
-    }
-  }
-
-  return outputs;
+bool LowerUsingSwitchMergeIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerUsingSwitchMergeAttr);
 }
 
-Status InlineDirectFunctionCall(const NodeDef& func_node,
-                                const FunctionDef& func,
-                                const int graph_def_version,
-                                const FunctionOptimizerContext& ctx,
-                                GraphDef* optimized_graph) {
-  VLOG(2) << "Inline direct function call: " << SummarizeNodeDef(func_node);
-  TF_RETURN_IF_ERROR(IsInlinableDirectFunctionCall(ctx, func, func_node));
+bool LowerAsMultiDeviceFunctionIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerAsMultiDeviceFunctionAttr);
+}
 
-  const AttrSlice func_instantiation_attr =
-      FunctionInstantiationAttributes(func, func_node);
+bool MarkedForTpuCompilation(const Node* n) {
+  static constexpr const char* const kTpuReplicateAttr = "_tpu_replicate";
+  return CheckStringAttr(n, kTpuReplicateAttr);
+}
 
-  GrapplerFunctionItem item;
-  Status item_status = MakeGrapplerFunctionItem(func, func_instantiation_attr,
-                                                ctx.function_library(),
-                                                graph_def_version, &item);
+bool MarkedForXlaCompilation(const Node* n) {
+  static constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
+  return CheckStringAttr(n, kXlaClusterAttr);
+}
 
-  if (!item_status.ok()) {
-    return errors::InvalidArgument("Failed to inline function ", func_node.op(),
-                                   " instantiated by ", func_node.name(),
-                                   ". Error: ", item_status.error_message());
-  }
+// Validates that all side effects inside function body will be executed after
+// function inlining. We do it by looking for a path from stateful ops, to one
+// of the output control sources.
+//
+// When function executed via FunctionLibraryRuntime we do not have to check
+// this, because `PruneFunctionBody` has special pruning rules for stateful ops.
+Status ValidateSideEffectsExecution(
+    const FunctionBody& fbody, OutputControlSource output_control_source,
+    bool has_outgoing_control_edges,
+    bool validate_outgoing_control_edge = true) {
+  // ReadVariableOp marked as stateful because it consumes DT_RESOURCE, but it
+  // can't generate any observable side-effect.
+  static constexpr const char* const kReadVariableOp = "ReadVariableOp";
 
-  // Mapping from input placeholder name to function input position.
-  int idx = 0;
-  std::unordered_map<string, int> input_placeholders_idx;
-  for (const InputArgExpansion& input_arg : item.inputs()) {
-    for (const string& placeholder : input_arg.placeholders) {
-      input_placeholders_idx[placeholder] = idx++;
-    }
-  }
+  // Find all nodes that can produce side effects in the function body graph. We
+  // use 'is_stateful()' bit as an approximation of "has side effects" property.
+  std::vector<const Node*> fbody_side_effects;
+  absl::c_copy_if(fbody.graph->nodes(), std::back_inserter(fbody_side_effects),
+                  [](const Node* n) {
+                    return n->op_def().is_stateful() && !n->IsArg() &&
+                           !n->IsRetval() &&
+                           n->type_string() != kReadVariableOp;
+                  });
 
-  // Hook inlined function inputs to IdentityN node.
-  NodeDef* func_inputs = optimized_graph->add_node();
-  *func_inputs = InlinedFunctionInputsNode(func_node, item);
-
-  for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      // Turn input placeholders into identity nodes.
-      CHECK_EQ(0, func_body_node.input_size());
-      func_body_node.set_op("Identity");
-      (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
-      func_body_node.mutable_attr()->erase("dtype");
-      func_body_node.mutable_attr()->erase("shape");
-      int input_idx = input_placeholders_idx[func_body_node.name()];
-      func_body_node.add_input(
-          strings::StrCat(func_inputs->name(), ":", input_idx));
+  // When graph executed in TF-2.0 context with automatic control dependencies
+  // tracking, absence of outgoing control edge indicates that no one is
+  // interested in observing side effects, so it is safe to inline the function
+  // body, even if some side-effects will not be executed.
+  if (!fbody_side_effects.empty() && !has_outgoing_control_edges) {
+    const string error_message =
+        "Can't guarantee execution of function side-effects after inlining. "
+        "Function call node has no outgoing control edges.";
+    if (validate_outgoing_control_edge) {
+      return errors::Internal(error_message);
     } else {
-      // Update the input names if any.
-      for (string& input : *func_body_node.mutable_input()) {
-        input = AddPrefixToNodeName(input, /*prefix=*/func_node.name());
-      }
-      // If the node has no input, make hook it up to the func_inputs node to
-      // ensure it runs in the same frame as the other nodes of the function
-      // body.
-      if (func_body_node.input_size() == 0) {
-        *func_body_node.add_input() = AsControlDependency(func_inputs->name());
-      }
+      VLOG(3) << error_message;
     }
+  }
 
-    // Add the function node name as a prefix 1) to node name to avoid
-    // collisions; 2) to frame name to avoid multiple LoopCond nodes in one
-    // frame after inlining.
-    const string prefix = strings::StrCat(func_node.name(), "/");
-    TF_RETURN_IF_ERROR(
-        AddPrefixAndSuffixToNode(prefix, "" /* suffix */, &func_body_node));
+  // Find all nodes in the function body that will be used as control sources.
+  absl::flat_hash_set<const Node*> control_sources;
+  if (output_control_source == OutputControlSource::kDataOutputs) {
+    control_sources = {fbody.ret_nodes.begin(), fbody.ret_nodes.end()};
+  } else if (output_control_source == OutputControlSource::kControlOutputs) {
+    control_sources = {fbody.control_ret_nodes.begin(),
+                       fbody.control_ret_nodes.end()};
+  }
 
-    // Make sure the node is placed.
-    func_body_node.set_device(func_node.device());
+  for (const Node* side_effect : fbody_side_effects) {
+    VLOG(4) << "Check that node " << side_effect->name()
+            << " will execute after inlining.";
+    bool will_execute = false;
 
-    // Move the function body node to the optimized graph.
-    const auto move_node_to_optimized_graph = [&]() {
-      // Annotate the node with the function attributes.
-      for (const auto& attr : func.attr()) {
-        func_body_node.mutable_attr()->insert(attr);
+    const auto is_control_source = [&](const Node* n) -> void {
+      const auto it = control_sources.find(n);
+      if (it != control_sources.end()) {
+        VLOG(4) << "Found a path to control source: " << side_effect->name()
+                << " ---> " << (*it)->name();
+        will_execute = true;
       }
-      // Move the node to the main graph.
-      optimized_graph->add_node()->Swap(&func_body_node);
     };
 
-    // Check if a body node is itself a function call and can be inlined.
-    const FunctionDef* func_body_node_func =
-        FindFunctionCall(ctx, func_body_node);
+    DFSFrom(*fbody.graph, {side_effect}, /*enter=*/is_control_source,
+            /*leave=*/{}, NodeComparatorName{});
 
-    if (func_body_node_func != nullptr) {
-      Status inlinable = IsInlinableDirectFunctionCall(
-          ctx, *func_body_node_func, func_body_node);
-      if (inlinable.ok()) {
-        TF_RETURN_IF_ERROR(
-            InlineDirectFunctionCall(func_body_node, *func_body_node_func,
-                                     graph_def_version, ctx, optimized_graph));
-      } else {
-        VLOG(2) << "Can't inline nested direct function call: "
-                << inlinable.error_message();
-        move_node_to_optimized_graph();
-      }
-
-    } else {
-      move_node_to_optimized_graph();
+    if (!will_execute) {
+      return errors::Internal(
+          "Can't guarantee execution of a side-effectful node, that is not "
+          "reachable from function control source. Function body node: ",
+          SummarizeNode(*side_effect));
     }
-  }
-
-  // Hook inlined function outputs to IdentityN node.
-  NodeDef* func_outputs = optimized_graph->add_node();
-  *func_outputs = InlinedFunctionOutputsNode(func_node, item);
-
-  return Status::OK();
-}
-
-Status InlineSymbolicGradient(const NodeDef& node,
-                              FunctionOptimizerContext* ctx,
-                              GraphDef* optimized_graph) {
-  VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
-
-  GraphDef graph_def;
-
-  // Create a node to anchor the gradient inputs
-  NodeDef* inlined_input = graph_def.add_node();
-  inlined_input->set_name("FunctionInputs");
-  inlined_input->set_op("IdentityN");
-  AttrValue::ListValue* type_list =
-      (*inlined_input->mutable_attr())["T"].mutable_list();
-  for (const auto& type : node.attr().at("Tin").list().type()) {
-    type_list->add_type(static_cast<DataType>(type));
-  }
-
-  // Add the gradient node
-  NodeDef* inlined = graph_def.add_node();
-  *inlined = node;
-  inlined->clear_input();
-  for (int i = 0; i < node.attr().at("Tin").list().type_size(); ++i) {
-    inlined->add_input(strings::StrCat(inlined_input->name(), ":", i));
-  }
-
-  // Create a node to anchor the gradient outputs
-  NodeDef* inlined_output = graph_def.add_node();
-  inlined_output->set_name("FunctionOutputs");
-  inlined_output->set_op("IdentityN");
-  type_list = (*inlined_output->mutable_attr())["T"].mutable_list();
-  for (const auto& type : node.attr().at("Tout").list().type()) {
-    type_list->add_type(static_cast<DataType>(type));
-  }
-  for (int i = 0; i < node.attr().at("Tout").list().type_size(); ++i) {
-    inlined_output->add_input(strings::StrCat(inlined->name(), ":", i));
-  }
-
-  // Convert the graphdef to a graph
-  GraphConstructorOptions graph_ctor_opts;
-  graph_ctor_opts.allow_internal_ops = true;
-  graph_ctor_opts.expect_device_spec = false;
-  Graph graph(ctx->function_library());
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
-
-  // Recursively inline the functions until there is nothing more to inline. We
-  // should at least expand one function.
-  int counter = 0;
-  while (counter < 50 && ExpandInlineFunctions(
-                             ctx->mutable_function_library_runtime(), &graph)) {
-    ++counter;
-  }
-
-  GraphDef inlined_graph_def;
-  graph.ToGraphDef(&inlined_graph_def);
-
-  // Add the default values of attributes to the nodes that have been inlined.
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
-                                               *graph.op_registry(), 0, true));
-
-  // Add the inlined nodes to the graph
-  for (NodeDef& inlined_node : *inlined_graph_def.mutable_node()) {
-    if (inlined_node.name() == "FunctionOutputs") {
-      inlined_node.set_name(node.name());
-      for (int i = 0; i < inlined_node.input_size(); ++i) {
-        inlined_node.set_input(
-            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
-      }
-    } else if (inlined_node.name() == "FunctionInputs") {
-      inlined_node.set_name(
-          AddPrefixToNodeName(inlined_node.name(), node.name()));
-      inlined_node.clear_input();
-      for (int i = 0; i < node.input_size(); ++i) {
-        inlined_node.add_input(node.input(i));
-      }
-    } else {
-      inlined_node.set_name(
-          AddPrefixToNodeName(inlined_node.name(), node.name()));
-      for (int i = 0; i < inlined_node.input_size(); ++i) {
-        inlined_node.set_input(
-            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
-      }
-      // If the node has no input, hook it up to the function input node to make
-      // sure it runs in the same frame as the other nodes of the function body.
-      if (inlined_node.input_size() == 0) {
-        *inlined_node.add_input() = AsControlDependency(
-            AddPrefixToNodeName("FunctionInputs", node.name()));
-      }
-    }
-    inlined_node.set_device(node.device());
-    optimized_graph->add_node()->Swap(&inlined_node);
   }
 
   return Status::OK();
 }
 
-// -------------------------------------------------------------------------- //
-// Inline indirect functions calls (aka PartitionedCallOp).
-//
-// When we inline indirect function calls, we instantiate the function body from
-// its FunctionDef and caller node attributes, and embed the instantiated graph
-// into the "main graph".
-//
-// In contrast to direct function calls, `PartitionedCallOp` has automatic
-// dependency tracking via input/output control edges, and we relax some of the
-// constraints that we have for direct function call inlining.
-//
-// "When a `PartitionedCallOp` function has a resource (DT_RESOURCE data type)
-// input argument it "captures" the mutable resource.  This is implemented by
-// automatically adding a incoming control edge from the previous side-effectful
-// op touching that resource, and an outgoing control edge to the next
-// side-effectful op using the same resource. This serializes the mutations of
-// the resource to make graph execution deterministic.
-//
-// Function call inlining must preserve side effect visibility:
-//
-// 1) All side effects to the captured resources, that happened before function
-//    call must be visible to the function body nodes using that resources.
-// 2) All side effects to the captured resources, that happened inside function
-//    body, must be visible to every op/function using that resource after the
-//    function call completed.
+// Validates that no dead tensor can reach function output.
+Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
+                             const FunctionBody& fbody) {
+  absl::flat_hash_set<const Node*> output_nodes = {fbody.ret_nodes.begin(),
+                                                   fbody.ret_nodes.end()};
 
-// To guarantee that these properties are preserved after inlining we do:
-//
-// 1) Forward all input control dependencies from the function call node to the
-//    inlined function inputs (Identity nodes).
-// 2) Each side-effectful op inside function body adds itself as a control
-//    dependency to all the nodes in output control set of function call node.
-//
-// We do not add any other control dependencies to/from function body nodes,
-// because they are pure functions of input tensors, and can be freely
-// reordered.
+  // Find all nodes that can produce dead tensors.
+  std::vector<const Node*> dead_tensor_sources;
+  for (const Node* n : fbody.graph->nodes()) {
+    if (n->IsSwitch()) {
+      VLOG(4) << "Add dead tensors source. Switch node: " << n->name();
+      dead_tensor_sources.push_back(n);
+      continue;
+    }
 
-// Returns `Status::OK()` iff `node` is an indirect function call of `func`, and
-// we know how to inline it into the main graph, otherwise returns and error
-// indicating why the function call is not inlinable.
-Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
-                                       const FunctionDef& func,
-                                       const NodeDef& func_node) {
-  // We inline direct function calls above, using different rules.
-  if (!IsIndirectFunctionCall(func, func_node)) {
-    return errors::InvalidArgument("Unsupported function call type: ",
-                                   SummarizeNodeDef(func_node));
+    // Native function call can also produce dead tensors if the function body
+    // has mergeless switches.
+    const FunctionDef* fdef = flib_def.Find(n->type_string());
+    if (fdef != nullptr) {
+      std::unique_ptr<FunctionBody> nested_fbody;
+
+      NameAttrList func;
+      TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(n->def(), &func));
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
+                                                 &flib_def, &nested_fbody));
+
+      if (!ValidateNoDeadOutputs(flib_def, *nested_fbody).ok()) {
+        VLOG(4) << "Add dead tensors source. Function call: " << func.name()
+                << " node=" << n->name();
+        dead_tensor_sources.push_back(n);
+      }
+    }
   }
 
-  if (MarkedNoInline(func)) {
-    return errors::FailedPrecondition(
-        "Can't inline function marked with '_noinline': ",
-        SummarizeNodeDef(func_node));
+  for (const Node* dead_tensor_source : dead_tensor_sources) {
+    bool has_dead_output = false;
+
+    const auto is_output_node = [&](const Node* n) -> void {
+      const auto it = output_nodes.find(n);
+      if (it != output_nodes.end()) {
+        VLOG(4) << "Found a path to output node from dead tensor source: "
+                << dead_tensor_source->name() << " ---> " << (*it)->name();
+        has_dead_output = true;
+      }
+    };
+
+    // Stop DFS traversal at a Merge node or if already found a dead output.
+    const auto stop_traversal = [&has_dead_output](const Edge& edge) -> bool {
+      return !edge.src()->IsMerge() || has_dead_output;
+    };
+
+    DFSFrom(*fbody.graph, {dead_tensor_source}, /*enter=*/is_output_node,
+            /*leave=*/{}, NodeComparatorName{},
+            /*edge_filter=*/stop_traversal);
+
+    if (has_dead_output) {
+      return errors::Internal(
+          "Can't inline a function with dead outputs. Dead tensor source: ",
+          SummarizeNode(*dead_tensor_source));
+    }
   }
 
-  // Function specialization and inlining must be mutually exclusive.
-  if (MarkedSpecialized(func)) {
-    return errors::FailedPrecondition(
-        "Can't inline function created in Grappler function specialization: ",
-        SummarizeNodeDef(func_node));
-  }
+  return Status::OK();
+}
 
-  // We can't inline functions that are in a fetch set, because it would
-  // invalidate fetch tensors (function call node fully inlined and doesn't
-  // exist in the optimized graph).
-  if (ctx.IsFetchNode(func_node.name())) {
-    return errors::FailedPrecondition(
-        "Can't inline function in a Grappler item fetch set: ",
-        SummarizeNodeDef(func_node));
-  }
+// Makes an instance of FunctionBody for inlining from a Node.
+Status MakeFunctionBodyForInlining(const Node& node,
+                                   const FunctionLibraryDefinition& flib_def,
+                                   std::unique_ptr<FunctionBody>* fbody) {
+  VLOG(3) << "Make function body for inlining: " << SummarizeNode(node);
 
-  // We can't inline functions with `Switch` nodes in the function body, because
-  // they might have dead tensors as a function output argument (we need all
-  // intermediate tensors to compute the function gradient). `PartitionedCallOp`
-  // invokes functions with `allow_dead_tensors = true` to reset dead flag,
-  // and return default initialized tensors instead of a dead tensors.
-  // TODO(ezhulenev): Do the liveness analysis and add
-  // `IdentitytWithResurrection` nodes after all potentially dead output
-  // tensors?
-  if (absl::c_any_of(func.node_def(), IsSwitch)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `Switch` nodes in the function body: ",
-        SummarizeNodeDef(func_node));
-  }
-
-  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
-  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
-  // because of the reason described above we are not sure that it's safe, for
-  // now just disable inlining functions with functional control flow.
-  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
-    return IsIf(node) || IsWhile(node);
+  // Finds a FunctionDef in a library and verifies that it exists.
+  const auto find_fdef = [&flib_def, &node](
+                             const string& name,
+                             const FunctionDef** fdef) -> Status {
+    if ((*fdef = flib_def.Find(name)) == nullptr) {
+      return errors::Internal(
+          "Was not able to find a function definition (name=", name,
+          ") for a function call: ", SummarizeNode(node));
+    }
+    return Status::OK();
   };
-  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
-    return errors::FailedPrecondition(
-        "Can't inline function with `If` or `While` nodes in the function "
-        "body: ",
-        SummarizeNodeDef(func_node));
+
+  // SymbolicGradient is a special "function call" op, which has been
+  // deprecated for a while, but we still support for compatibility reasons.
+  if (node.type_string() == FunctionLibraryDefinition::kGradientOp) {
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), kFuncAttr, &func));
+
+    const string grad = flib_def.FindGradient(func.name());
+
+    if (!grad.empty()) {
+      // Function has a custom gradient registered in a library.
+      const FunctionDef* grad_fdef;
+      TF_RETURN_IF_ERROR(find_fdef(grad, &grad_fdef));
+
+      VLOG(4) << "Instantiate a custom SymbolicGradient: gradient=" << grad
+              << " (function=" << func.name() << ")";
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          *grad_fdef, AttrSlice(&func.attr()), &flib_def, fbody));
+
+    } else if (flib_def.Find(func.name()) == nullptr) {
+      // Function is not really a function, but a primitive op.
+      gradient::Creator creator;
+      TF_RETURN_IF_ERROR(gradient::GetOpGradientCreator(func.name(), &creator));
+      if (creator == nullptr) {
+        return errors::InvalidArgument("No gradient is defined for ",
+                                       func.name());
+      }
+      FunctionDef grad_fdef;
+      TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
+
+      VLOG(4) << "Instantiate a SymbolicGradient for a primitive op: "
+              << func.name();
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+          grad_fdef, AttrSlice(&func.attr()), &flib_def, fbody));
+
+    } else {
+      // Build a gradient graph from the function body.
+      const FunctionDef* fdef;
+      TF_RETURN_IF_ERROR(find_fdef(func.name(), &fdef));
+
+      VLOG(4) << "Instantiate a SymbolicGradient for a function: "
+              << func.name();
+      TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
+                                                 &flib_def, fbody));
+      *fbody = SymbolicGradient(**fbody);
+    }
+
+  } else {
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node.def(), &func));
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(find_fdef(func.name(), &fdef));
+
+    VLOG(4) << "Instantiate a function call: function=" << func.name();
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
+                                               &flib_def, fbody));
   }
 
   return Status::OK();
 }
 
-Status InlineIndirectFunctionCall(const NodeDef& func_node,
-                                  const FunctionDef& func,
-                                  const int graph_def_version,
-                                  FunctionOptimizerContext* ctx,
-                                  GraphDef* optimized_graph) {
-  VLOG(2) << "Inline indirect function call: " << SummarizeNodeDef(func_node);
-  TF_RETURN_IF_ERROR(IsInlinableIndirectFunctionCall(*ctx, func, func_node));
+// Adds a control edges from each data input to the 'caller' to enforce strict
+// inputs semantics (all inputs are ready and alive). This is required when:
+//
+//  1) The function takes resources as inputs, and it doesn't have incoming
+//     control edges. In Tensorflow v2 context (eager mode) this should never
+//     happen, because automatic control dependencies tracking will add a
+//     control edge from the last op touching the resource. However such graphs
+//     might be produced by legacy v1 code without automatic dependency
+//     tracking. In this case strict function call semantics is required for
+//     enforcing side effects execution order.
+//
+//  2) One of the inputs is consuming Enter[is_constant=true] node, in which
+//     case it will be always alive, and potentially can lead to partial
+//     function execution after the last loop execution.
+//
+// Both of these cases would be considered illegal by construction in Tensorflow
+// V2, however we have to guarantee that graphs constructed with Tensorflow V1
+// will produce correct results.
+void AddStrictInputSemantics(Node* caller, Graph* g) {
+  const bool has_incoming_control_edges =
+      absl::c_any_of(caller->in_edges(),
+                     [](const Edge* edge) { return edge->IsControlEdge(); });
 
-  const AttrSlice func_instantiation_attr =
-      FunctionInstantiationAttributes(func, func_node);
+  const bool has_resource_input =
+      absl::c_any_of(caller->input_types(),
+                     [](const DataType dtype) { return dtype == DT_RESOURCE; });
 
-  GrapplerFunctionItem item;
-  Status item_status = MakeGrapplerFunctionItem(func, func_instantiation_attr,
-                                                ctx->function_library(),
-                                                graph_def_version, &item);
+  const bool has_constant_enter_input =
+      absl::c_any_of(caller->in_edges(), [](const Edge* edge) {
+        Node* src = edge->src();
+        return src->IsEnter() && CheckBoolAttr(src, "is_constant");
+      });
 
-  if (!item_status.ok()) {
-    return errors::InvalidArgument("Failed to inline function ", func_node.op(),
-                                   " instantiated by ", func_node.name(),
-                                   ". Error: ", item_status.error_message());
+  const bool requires_strict_semantics =
+      (!has_incoming_control_edges && has_resource_input) ||  // Case #1
+      (has_constant_enter_input);                             // Case #2
+  if (!requires_strict_semantics) return;
+
+  std::vector<const Node*> data_inputs;
+  data_inputs.reserve(caller->in_edges().size());
+
+  for (const Edge* edge : caller->in_edges()) {
+    if (edge->IsControlEdge()) continue;
+    data_inputs.push_back(edge->src());
   }
 
-  GraphView::InputPort control_input_port =
-      ctx->graph_view().GetInputPort(func_node.name(), Graph::kControlSlot);
-  GraphView::OutputPort control_output_port =
-      ctx->graph_view().GetOutputPort(func_node.name(), Graph::kControlSlot);
-
-  // Nodes that have side effects to the captured resources.
-  std::vector<string> happens_before;
-  absl::c_transform(
-      ctx->graph_view().GetFanin(control_input_port),
-      std::back_inserter(happens_before),
-      [](const GraphView::OutputPort port) { return port.node->name(); });
-
-  VLOG(3) << "Happens before set (size = " << happens_before.size()
-          << "): " << absl::StrJoin(happens_before, ", ");
-
-  // Nodes that must observe side effects to the captured resources.
-  std::vector<string> happens_after;
-  absl::c_transform(
-      ctx->graph_view().GetFanout(control_output_port),
-      std::back_inserter(happens_after),
-      [](const GraphView::InputPort port) { return port.node->name(); });
-
-  VLOG(3) << "Happens after set (size = " << happens_after.size()
-          << "): " << absl::StrJoin(happens_after, ", ");
-
-  // Regular (positional) inputs to the function call.
-  std::vector<SafeTensorId> inputs;
-  for (const string& input : func_node.input()) {
-    SafeTensorId tensor_id = ParseTensorName(input);
-    if (tensor_id.index() == Graph::kControlSlot) break;
-    inputs.push_back(tensor_id);
+  VLOG(3) << "Add control edges from all data inputs to enforce strict "
+             "semantics with regard to function inputs";
+  for (const Node* node : data_inputs) {
+    g->AddControlEdge(g->FindNodeId(node->id()), caller);
   }
+}
 
-  // If we have a node inside the function body without inputs (e.g. Const), we
-  // must attach a control dependency to it, to make sure that if a function
-  // call happens inside a loop, the node will be evaluated in correct frame.
-  //
-  // If the function call node has no inputs and no control dependencies, it
-  // means that it can't be a function call inside a loop, and we can safely
-  // insert that node without inputs into the main graph.
-  //
-  // TODO(ezhulenev): Use FrameMap (see grappler/utils/frame.h) to find out if
-  // the function is called inside a loop.
-  std::vector<string> empty_inputs_hook;
-  if (!item.inputs().empty()) {
-    const InputArgExpansion& arg0 = item.inputs()[0];
-    DCHECK(!arg0.placeholders.empty());
-    empty_inputs_hook.push_back(AsControlDependency(AddPrefixToNodeName(
-        arg0.placeholders[0], /*prefix=*/func_node.name())));
-  } else if (!happens_before.empty()) {
-    empty_inputs_hook.push_back(AsControlDependency(happens_before[0]));
+// Adds a control edge from a frame node if the 'caller' is executing inside a
+// While loop (see control_flow.h for the 'frame' node explanation).
+void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
+                                   Node* caller, Graph* g) {
+  // All nodes added to the graph by v2 control flow lowering and function
+  // inlining are guaranteed to have control edges to nested function calls.
+  if (caller->id() >= info.size()) return;
+
+  // Check if a lowered node is executing inside a while loop.
+  const Node* frame = info[caller->id()].frame;
+  const bool is_in_while_loop = frame->id() != Graph::kSourceId;
+  if (!is_in_while_loop) return;
+
+  // Check if a node already has an incoming control edge. All incoming edges
+  // must be from the same execution frame (executor.cc invariant), so if we
+  // already have an incoming control edge, it's guaranteed that it will "carry"
+  // the same frame as all regular inputs.
+  const bool has_incoming_control_edges =
+      absl::c_any_of(caller->in_edges(),
+                     [](const Edge* edge) { return edge->IsControlEdge(); });
+  if (has_incoming_control_edges) return;
+
+  VLOG(3) << "Add a frame forwarding control edge: from=" << frame->name()
+          << " to=" << caller->name();
+  g->AddControlEdge(g->FindNodeId(frame->id()), caller);
+}
+
+// Inlines all function calls that are safe for inlining into the main graph.
+// Also lowers control flow V2 ops (functional If/While) into the V1 low level
+// ops (Switch/Merge/...).
+//
+// Runs a placer after inlining, to keep all nodes in a graph placed.
+Status InlineFunctionCalls(const GrapplerItem& item,
+                           const RewriterConfig::Toggle opt_level,
+                           GraphDef* output_graph) {
+  bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
+  VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
+          << " (aggessive_mode=" << is_aggressive << ")";
+
+  FunctionLibraryDefinition flib_def =
+      FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library());
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(flib_def);
+
+  GraphConstructorOptions graph_constructor_options;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_constructor_options,
+                                            item.graph, graph.get()));
+
+  using NodeNames = absl::flat_hash_set<absl::string_view>;
+  NodeNames fetch_nodes;
+  fetch_nodes.reserve(item.fetch.size());
+  for (const string& fetch : item.fetch) {
+    fetch_nodes.insert(ParseTensorName(fetch).node());
   }
+  NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
 
-  // Mapping from input placeholder name to function input position.
-  int idx = 0;
-  absl::flat_hash_map<absl::string_view, int> input_placeholders_idx;
-  for (const InputArgExpansion& input_arg : item.inputs()) {
-    for (const string& placeholder : input_arg.placeholders) {
-      input_placeholders_idx[placeholder] = idx++;
+  std::vector<string> inlined_function_names;
+
+  // If a function call is inside a While loop, it must have an incoming control
+  // edge, because it will be used to pass execution frame into the function
+  // body. All nodes without inputs in the function body (e.g. Const and NoOp)
+  // will be added an extra control edge from the 'input_control_node'.
+  std::vector<ControlFlowInfo> control_flow_info;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &control_flow_info));
+
+  // Function inlining always adds new nodes to the end of the list, so we keep
+  // iterating until we are out of nodes.
+  for (int i = 2; i < graph->num_node_ids(); ++i) {
+    Node* n = graph->FindNodeId(i);
+    if (n == nullptr) continue;  // deleted node
+
+    // Special case for lowering functional control flow ops. We do not rely on
+    // LowerFunctionOpsPass because in Grappler we have to be more restrictive
+    // about what type of function calls we are allowed to inline.
+    if (LowerUsingSwitchMergeIsOn(n)) {
+      VLOG(2) << "Lower functional control flow op: " << SummarizeNode(*n);
+      AddStrictInputSemantics(n, graph.get());
+      AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
+
+      if (n->type_string() == "If") {
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+      } else if (n->type_string() == "While") {
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), flib_def, false));
+      }
+      continue;
+    }
+
+    // Skip nodes that are not function calls.
+    if (!IsFunctionCall(flib_def, *n)) continue;
+    // Skip function calls that we plan to compile later.
+    if (MarkedForTpuCompilation(n)) continue;
+    if (MarkedForXlaCompilation(n)) continue;
+
+    // Function body that we will inline into the main graph. It can be a
+    // function instantiation, or a gradient function instantiated from
+    // SymbolicGradient op.
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(MakeFunctionBodyForInlining(*n, flib_def, &fbody));
+
+    InlineFunctionBodyOptions inline_options;
+    // Ignore '_noinline' flag in aggressive mode.
+    inline_options.ignore_noinline = is_aggressive;
+
+    // Function calls created after inlining If/While ops are always inlined as
+    // multi-device functions and are not required to pass additional Grappler
+    // validations (side effects execution validation below).
+    bool force_inline_as_multi_device = LowerAsMultiDeviceFunctionIsOn(n);
+
+    // `PartitionedCall` is a TF-2.0 function call mechanism for multi-device
+    // functions:
+    // a) Function can be multi-device, and we can't override device placements.
+    // b) Automatic control dependencies tracking guarantees that all function
+    //    side-effectful nodes will have a path to one of the control outputs.
+    //    Control outputs and control edges between side-effectful (stateful)
+    //    nodes are used to explicitly mark the nodes that must execute, and to
+    //    define their execution order.
+    if (n->IsPartitionedCall() || force_inline_as_multi_device) {
+      inline_options.override_device = false;
+      inline_options.initialize_empty_device = true;
+      inline_options.output_control_src = OutputControlSource::kControlOutputs;
+    } else {
+      inline_options.override_device = true;
+      inline_options.output_control_src = OutputControlSource::kDataOutputs;
+    }
+
+    if (fetch_nodes.contains(n->name())) {
+      inline_options.keep_caller_node = KeepCallerNode::kFetchable;
+    } else if (keep_nodes.contains(n->name())) {
+      inline_options.keep_caller_node = KeepCallerNode::kTargetable;
+    } else {
+      inline_options.keep_caller_node = KeepCallerNode::kDoNotKeep;
+    }
+
+    // Basic validation rules defined in common_runtime shared by all functions.
+    Status can_inline_function_call =
+        ValidateInlining(n, fbody.get(), inline_options);
+
+    // Additional validation rules defined only in Grappler.
+    // TODO(ezhulenev): Move it to common_runtime InlineFunctionBodyOptions?
+    if (can_inline_function_call.ok()) {
+      bool has_outgoing_control_edges = absl::c_any_of(
+          n->out_edges(),
+          [](const Edge* edge) { return edge->IsControlEdge(); });
+
+      can_inline_function_call = ValidateSideEffectsExecution(
+          *fbody, inline_options.output_control_src,
+          has_outgoing_control_edges);
+
+      if (!can_inline_function_call.ok() &&
+          (is_aggressive || force_inline_as_multi_device)) {
+        VLOG(2) << "Ignore error: " << can_inline_function_call.error_message();
+        can_inline_function_call = Status::OK();
+      }
+    }
+    if (can_inline_function_call.ok()) {
+      can_inline_function_call = ValidateNoDeadOutputs(flib_def, *fbody);
+    }
+
+    if (can_inline_function_call.ok()) {
+      VLOG(2) << "Inline function call node: " << n->name();
+      AddStrictInputSemantics(n, graph.get());
+      AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
+
+      TF_RETURN_IF_ERROR(InlineFunctionBody(flib_def, graph.get(), n,
+                                            fbody.get(), inline_options));
+      inlined_function_names.push_back(fbody->fdef.signature().name());
+
+    } else {
+      VLOG(2) << "Failed to inline function call node: "
+              << can_inline_function_call.error_message();
     }
   }
 
-  const string prefix = strings::StrCat(func_node.name(), "/");
+  VLOG(4) << "Inlined " << inlined_function_names.size()
+          << " function calls: " << absl::StrJoin(inlined_function_names, ", ");
 
   // ------------------------------------------------------------------------ //
-  // Before placing the function body nodes we pin input placeholders to the
-  // same device as their corresponding input nodes.
+  // Grappler receives the graph after PRE_PLACEMENT, Placer, and POST_PLACEMENT
+  // passes, so each node has a valid device assignment. After function inlining
+  // and control flow V2 lowering we have to keep graph placed.
 
-  for (NodeDef& func_body_node : *item.graph.mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      const int input_idx = input_placeholders_idx[func_body_node.name()];
-      const GraphView::OutputPort output_port =
-          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
+  if (inlined_function_names.empty()) {
+    VLOG(3) << "Not placing graph after function inlining"
+            << " (did not inline any of the function calls).";
 
-      VLOG(3) << "Pin inlined function input node '" << func_body_node.name()
-              << "' to the '" << output_port.node->device() << "' device.";
-      func_body_node.set_device(output_port.node->device());
-    }
-  }
+  } else if (item.devices().empty()) {
+    // If there are no devices available for placer, we do not place graph after
+    // function inlining. This happens when Grappler is optimizing the function
+    // library, or when a graph optimized "offline", without an active runtime
+    // session, for example as a part of batch job for graph
+    // analysis/optimization. GrapplerItem instantiated from a function library
+    // doesn't have to be fully placed after all optimizations; it will be
+    // placed by the function library runtime before execution.
+    VLOG(3) << "Not placing graph after function inlining"
+            << " (device set is empty)";
 
-  // ------------------------------------------------------------------------ //
-  // After placing nodes corresponding to the function inputs, we need to assign
-  // device placements to all other function body nodes.
-
-  GraphDef placed_graph_def;
-
-  const DeviceSet* devices = ctx->devices();
-
-  if (devices->devices().empty()) {
-    // If there are no devices available for placer, we just put all nodes to
-    // the same device as a function caller node. This can happen if Grappler is
-    // running "offline", without active runtime session, for example as a part
-    // of a batch job for graph analysis/optimization.
-    VLOG(3) << "Assign function call node device to all function body nodes. "
-            << "Device: " << func_node.device();
-    placed_graph_def = item.mutable_function_body();
-    for (NodeDef& node : *placed_graph_def.mutable_node()) {
-      node.set_device(func_node.device());
-    }
   } else {
     // If we are running in an active runtime session, Grappler will get the
     // graph after initial placing is done, and we should have devices for the
     // placer.
-    VLOG(3) << "Run placer for instantiated function body. Devices: ["
-            << absl::StrJoin(
-                   devices->devices(), ", ",
-                   [](string* out, const Device* d) { out->append(d->name()); })
-            << "]";
+    VLOG(3) << "Run placer for the graph after function inlining. "
+            << "Devices: [" << absl::StrJoin(item.devices(), ", ") << "]";
 
-    // Construct a Graph object from the instantiated function body.
-    GraphConstructorOptions opts;
-    Graph graph(ctx->function_library());
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(opts, item.function_body(), &graph));
+    DeviceSet device_set;                               // does not own devices
+    std::vector<std::unique_ptr<Device>> fake_devices;  // owns fake devices
 
-    // Use function caller node device as a default for placer.
-    const Device* default_device =
-        devices->FindDeviceByName(func_node.device());
+    for (const string& name : item.devices()) {
+      auto device = absl::make_unique<FakeDevice>(name);
+      device_set.AddDevice(device.get());
+      fake_devices.push_back(std::move(device));
+    }
 
-    Placer placer(&graph, devices, nullptr, /* No session options */
-                  default_device);
+    Placer placer(graph.get(), item.id, &device_set);
     TF_RETURN_IF_ERROR(placer.Run());
-
-    // Convert Graph back to the GraphDef.
-    graph.ToGraphDef(&placed_graph_def);
   }
 
-  // ------------------------------------------------------------------------ //
-  // After all nodes placed we need to prepare them for inlining into the
-  // optimized graph: turn placeholders into identities, update nodes
-  // connectivity, etc...
-
-  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    if (item.IsInputPlaceholder(func_body_node.name())) {
-      // Turn input placeholders into identity node.
-      DCHECK_EQ(0, func_body_node.input_size());
-      func_body_node.set_op("Identity");
-      (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
-      func_body_node.mutable_attr()->erase("dtype");
-      func_body_node.mutable_attr()->erase("shape");
-      const int input_idx = input_placeholders_idx[func_body_node.name()];
-      func_body_node.add_input(strings::StrCat(inputs[input_idx].ToString()));
-
-      // All side effects must happen before inputs can start executing.
-      for (const string& hb_node : happens_before) {
-        func_body_node.add_input(AsControlDependency(hb_node));
-      }
-
-    } else {
-      // Update inputs of the regular function body nodes.
-      for (string& input : *func_body_node.mutable_input()) {
-        input = AddPrefixToNodeName(input, /*prefix=*/func_node.name());
-      }
-      if (func_body_node.input_size() == 0 && !empty_inputs_hook.empty()) {
-        *func_body_node.add_input() = empty_inputs_hook[0];
-      }
-    }
-
-    // Add the function node name as a prefix 1) to node name to avoid
-    // collisions; 2) to frame name to avoid multiple LoopCond nodes in one
-    // frame after inlining.
-    TF_RETURN_IF_ERROR(
-        AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &func_body_node));
-
-    // After inlining into the optimized graph, NodeDef must have all attributes
-    // defined, which is not required for a node in a FunctionDef.
-    const OpDef* op_def;
-    TF_RETURN_IF_ERROR(
-        ctx->function_library().LookUpOpDef(func_body_node.op(), &op_def));
-    AddDefaultsToNodeDef(*op_def, &func_body_node);
-  }
-
-  // Construct a graph view for the preprocessed function body graph.
-  GraphView placed_graph_view(&placed_graph_def);
-
-  // Keep track of side-effectful ops inside function body. Each outgoing
-  // control edge from the function call node, must be replaced with control
-  // edges from inlined side-effectful ops.
-  std::vector<string> side_effectful_nodes;
-
-  // We have to make sure that all side-effectful nodes inside a function body
-  // will be executed after function inlining.
-  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    if (!IsFreeOfSideEffect(func_body_node, &ctx->function_library())) {
-      int num_fanouts = placed_graph_view.NumFanouts(
-          func_body_node, /*include_controlling_nodes=*/true);
-
-      // If the node doesn't have any outgoing edges and we do not have any
-      // nodes in the `happens_after` set, we can't inline a function and
-      // guarantee that side-effects will be executed. The only exception if we
-      // do function library optimization, and the GrapplerItem was constructed
-      // for the function body, because functions have strict semantics.
-
-      if (num_fanouts == 0 && happens_after.empty() &&
-          ctx->allowed_optimizations().prune_ops_with_side_effects) {
-        return errors::Internal(
-            "Can't inline a function with a side-effectful op with empty "
-            "fanouts and empty output control edge set. Function body node: ",
-            SummarizeNodeDef(func_body_node));
-      }
-
-      side_effectful_nodes.push_back(func_body_node.name());
-    }
-  }
-
-  // Move all the nodes to the optimized graph after successful preprocessing.
-  for (NodeDef& func_body_node : *placed_graph_def.mutable_node()) {
-    optimized_graph->add_node()->Swap(&func_body_node);
-  }
-
-  // TODO(ezhulenev): Inline nested indirect function calls.
-
-  // Indirect function call is fully inlined into the optimized graph, and we do
-  // not copy the original function call node, so we have to setup tensor
-  // mapping from old output tensors, to the outputs of inlined nodes.
-  int output_idx = 0;
-  for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& output_tensor : output.output_tensors) {
-      const SafeTensorId from_tensor(func_node.name(), output_idx++);
-      const SafeTensorId to_tensor = ParseTensorName(
-          AddPrefixToNodeName(output_tensor, /*prefix=*/func_node.name()));
-      ctx->AddTensorMapping(from_tensor, to_tensor);
-    }
-  }
-
-  // After inlining we'll have to forward all control dependencies from function
-  // call node to all side-effectful ops inside function body.
-  ctx->AddControlOverrides(func_node, side_effectful_nodes);
-
-  VLOG(3) << "Successfully inlined indirect function call: "
-          << SummarizeNodeDef(func_node);
+  graph->ToGraphDef(output_graph);
   return Status::OK();
 }
 
+// Restores tensor mapping after function specialization: all inputs must be
+// connected to valid nodes.
+void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
+                          GraphDef* optimized_graph) {
+  if (ctx.tensor_mapping().empty()) return;
+
+  // During function specialization, we might prune unused function outputs. We
+  // need to "close the holes" that might appear in the function outputs.
+  //
+  // Example: prune unused output "f:1"
+  //
+  //   f = my_func[T=float](...)          f = my_func_specialized[T=float](...)
+  //   a = Identity(f:0)             ->   a = Identity(f:0)
+  //   b = Identity(f:2)                  b = Identity(f:1)
+  //
+  // Tensor mapping (size=1): [f:2 -> f:1]
+  for (NodeDef& node : *optimized_graph->mutable_node()) {
+    for (int idx = 0; idx < node.input_size(); ++idx) {
+      TensorId input_tensor = ParseTensorName(node.input(idx));
+      if (input_tensor.index() == Graph::kControlSlot) break;
+
+      auto mapping = ctx.tensor_mapping().find(input_tensor);
+      if (mapping != ctx.tensor_mapping().end()) {
+        node.set_input(idx, mapping->second.ToString());
+      }
+    }
+  }
+}
+
 }  // namespace
+
+Status FunctionOptimizer::RunFunctionOptimizerPass(
+    const GrapplerItem& item, GraphDef* optimized_graph) const {
+  VLOG(3) << "Run function optimizer pass: grappler_item_id=" << item.id;
+
+  // Inline all function calls into a graph using common_runtime/function
+  // implementation (see `InlineFunctionBody` function documentation).
+  GraphDef graph_after_inlining;
+  TF_RETURN_IF_ERROR(
+      InlineFunctionCalls(item, opt_level_, &graph_after_inlining));
+
+  // Specialize function calls that we could not inline.
+  FunctionOptimizerContext ctx(item, opt_level_, graph_after_inlining);
+
+  for (const NodeDef& node : graph_after_inlining.node()) {
+    // Function specialization can modify optimized graph only by adding new
+    // nodes, we can check node size to make sure that graph was not modified.
+    const int num_nodes_before = optimized_graph->node_size();
+    const auto is_graph_modified = [&]() {
+      int num_nodes = optimized_graph->node_size();
+      DCHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
+      return num_nodes > num_nodes_before;
+    };
+
+    // Copy node from the `graph_after_inlining` to the `optimized_graph`.
+    const auto copy_node = [&]() { *optimized_graph->add_node() = node; };
+
+    // Find if a node is a function call (direct or indirect).
+    const FunctionDef* func = FindFunctionCall(ctx, node);
+    if (func == nullptr) {
+      copy_node();
+      continue;
+    }
+
+    const string& func_name = func->signature().name();
+
+    // Specialize it to its instantiation context if it has something worth
+    // specializing.
+    bool specialization_worthy = IsParametrized(*func) ||
+                                 HasTrulyConstInputs(node, ctx) ||
+                                 HasUnusedOutputs(node, *func, ctx);
+    // Do not specialize if function has custom gradient.
+    const string grad_func = ctx.function_library().FindGradient(func_name);
+
+    if (grad_func.empty() && specialization_worthy) {
+      // TODO(ezhulenev): Specialize function call if input has a known shape.
+      // Specialize function body for its instantiation attributes and inputs.
+      Status status = SpecializeFunction(node, *func, &ctx, optimized_graph);
+      if (!status.ok() && is_graph_modified()) {
+        return status;
+      } else if (!status.ok() && !is_graph_modified()) {
+        VLOG(3) << "Skip specialization error: " << status.error_message();
+        copy_node();
+      }
+      continue;
+    } else {
+      VLOG(2) << "Skip function specialization: " << func->signature().name();
+      copy_node();
+    }
+  }
+
+  RestoreTensorMapping(ctx, optimized_graph);
+
+  // Preserve the graph version.
+  *optimized_graph->mutable_versions() = item.graph.versions();
+  // Prune unreachable function from the library.
+  *optimized_graph->mutable_library() =
+      PruneFunctionLibrary(ctx.function_library(), *optimized_graph);
+
+  return Status::OK();
+}
 
 Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
@@ -1553,194 +1406,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
     return Status::OK();
   }
 
-  FunctionOptimizerContext ctx(opt_level_, item);
-
-  bool inline_gradients = options_.enable_symbolic_gradient_inlining;
-  bool inline_func = options_.enable_function_inlining;
-  bool specialize_func = options_.enable_function_specialization;
-
-  for (const NodeDef& node : item.graph.node()) {
-    // Each node optimization can modify optimized graph only by adding new
-    // nodes, we can check node size to make sure that graph was not modified.
-    const int num_nodes_before = optimized_graph->node_size();
-    const auto is_graph_modified = [&]() {
-      int num_nodes = optimized_graph->node_size();
-      CHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
-      return num_nodes > num_nodes_before;
-    };
-
-    // Add a copy of an input graph node to the optimized graph.
-    const auto add_node_copy = [&]() { *optimized_graph->add_node() = node; };
-
-// Skip errors if optimized graph was not modified before error happened.
-#define TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(...)                     \
-  do {                                                             \
-    const Status _status = (__VA_ARGS__);                          \
-    if (TF_PREDICT_FALSE(!_status.ok() && is_graph_modified()))    \
-      return _status;                                              \
-    if (TF_PREDICT_FALSE(!_status.ok() && !is_graph_modified())) { \
-      VLOG(3) << "Skip error: " << _status.error_message();        \
-      add_node_copy();                                             \
-    }                                                              \
-  } while (0)
-
-    // ---------------------------------------------------------------------- //
-    // 1. Inline symbolic gradients into the optimized graph.                 //
-    // ---------------------------------------------------------------------- //
-
-    if (IsSymbolicGradient(node) && inline_gradients) {
-      // Inline symbolic gradients only if the corresponding function is not
-      // marked as `_noinline`.
-      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
-      const string f_name = f_attr != nullptr ? f_attr->func().name() : "";
-      const FunctionDef* func = ctx.function_library().Find(f_name);
-      if (func && !MarkedNoInline(*func)) {
-        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
-            InlineSymbolicGradient(node, &ctx, optimized_graph));
-        continue;
-      }
-    }
-
-    // ---------------------------------------------------------------------- //
-    // 2. Inline or specialize function calls.                                //
-    // ---------------------------------------------------------------------- //
-
-    // Find if a node is a function call (direct or indirect).
-    const FunctionDef* func = FindFunctionCall(ctx, node);
-
-    if (func != nullptr) {
-      const string& func_name = func->signature().name();
-      const int graph_def_version = item.graph.versions().producer();
-
-      const bool is_direct_func = IsDirectFunctionCall(*func, node);
-      const bool is_indirect_func = IsIndirectFunctionCall(*func, node);
-
-      // 2a. Inline direct function call if it's inlinable.
-      if (inline_func && is_direct_func) {
-        Status inlinable = IsInlinableDirectFunctionCall(ctx, *func, node);
-        if (inlinable.ok()) {
-          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(InlineDirectFunctionCall(
-              node, *func, graph_def_version, ctx, optimized_graph));
-          continue;
-        } else {
-          VLOG(2) << inlinable.error_message();
-        }
-      }
-
-      // 2b. Inline indirect function call if it's inlinable.
-      if (inline_func && is_indirect_func) {
-        Status inlinable = IsInlinableIndirectFunctionCall(ctx, *func, node);
-        if (inlinable.ok()) {
-          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(InlineIndirectFunctionCall(
-              node, *func, graph_def_version, &ctx, optimized_graph));
-          continue;
-        } else {
-          VLOG(2) << inlinable.error_message();
-        }
-      }
-
-      // 2c. Specialize it to its instantiation context if can't be inlined,
-      // and it has something worth specializing.
-      bool specialization_worthy = IsParametrized(*func) ||
-                                   HasTrulyConstInputs(node, ctx) ||
-                                   HasUnusedOutputs(node, *func, ctx);
-
-      // Do not specialize if function has custom gradient.
-      const string grad_func = ctx.function_library().FindGradient(func_name);
-
-      if (specialize_func && grad_func.empty() && specialization_worthy) {
-        // TODO(ezhulenev): Specialize function call if input has a known shape.
-        // Specialize function body for its instantiation attributes and inputs.
-        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
-            SpecializeFunction(node, *func, item.graph.versions().producer(),
-                               &ctx, optimized_graph));
-        continue;
-      }
-    }
-
-    // ---------------------------------------------------------------------- //
-    // If we reached this point, node was not handled by any of the stages
-    // (inline, specialize), simply add a copy to the graph.
-    add_node_copy();
-
-#undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
-  }
-
-  // After function specialization and inlining graph might be in invalid
-  // state, and some nodes can read tensors that do not exists anymore in the
-  // optimized graph: function call node was fully inlined into the graph, or
-  // output index was invalidated by the output pruning.
-
-  if (!ctx.tensor_mapping().empty()) {
-    for (NodeDef& node : *optimized_graph->mutable_node()) {
-      for (int idx = 0; idx < node.input_size(); ++idx) {
-        TensorId input_tensor = ParseTensorName(node.input(idx));
-        if (input_tensor.index() == Graph::kControlSlot) break;
-
-        auto mapping = ctx.tensor_mapping().find(input_tensor);
-        if (mapping != ctx.tensor_mapping().end()) {
-          node.set_input(idx, mapping->second.ToString());
-        }
-      }
-    }
-  }
-
-  // Function inlining instantiates function body directly into the optimized
-  // graph, and we might end up with control dependencies to the nodes that no
-  // longer exist in a graph. We need to apply control overrides to all
-  // invalidated nodes, and rewire control dependencies to the inlined
-  // side-effectful function body nodes.
-
-  // TODO(ezhulenev): With nested function call inlining, single pass over
-  // `control_overrides` might not bring the graph into a valid state,
-  // continue until it converges and all invalidated control dependencies
-  // removed.
-
-  if (!ctx.control_overrides().empty()) {
-    for (NodeDef& node : *optimized_graph->mutable_node()) {
-      // Keep track of new control inputs to the node.
-      gtl::FlatSet<string> add_ctrl_inputs;
-
-      // Remove all invalidated control inputs.
-      for (int idx = 0; idx < node.input_size(); /* see below */) {
-        // TODO(ezhulenev): Use non-allocating TensorId after migrating
-        // `control_overrides()` to absl::flat_hash_set.
-        SafeTensorId input_tensor = ParseTensorName(node.input(idx));
-
-        auto overrides = ctx.control_overrides().find(input_tensor.node());
-        if (overrides != ctx.control_overrides().end()) {
-          // If this happens it's a bug in the function inlining.
-          if (input_tensor.index() != Graph::kControlSlot) {
-            return errors::Internal(
-                "Illegal input edge from inlined function call node");
-          }
-          // Remove control dependency to the inlined function call node.
-          node.mutable_input()->SwapElements(idx, node.input_size() - 1);
-          node.mutable_input()->RemoveLast();
-
-          // Keep track of all overrides.
-          for (const string& override : overrides->second) {
-            add_ctrl_inputs.insert(AsControlDependency(override));
-          }
-        } else {
-          // Go to the next input only if the current one was not invalidated,
-          // otherwise we need to check the swapped input as well.
-          ++idx;
-        }
-      }
-
-      // Add overrides to the node inputs.
-      for (const string& ctrl_input : add_ctrl_inputs) {
-        node.add_input(ctrl_input);
-      }
-    }
-  }
-
-  *optimized_graph->mutable_versions() = item.graph.versions();
-  *optimized_graph->mutable_library() =
-      options_.enable_trim_function_library
-          ? PruneFunctionLibrary(ctx.function_library(), *optimized_graph)
-          : ctx.function_library().ToProto();
+  TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
   return Status::OK();
 }

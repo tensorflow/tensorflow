@@ -21,19 +21,27 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_ops
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_squeeze_op
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.ops.ragged import ragged_where_op
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
@@ -120,6 +128,7 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         elif not _is_convertible_to_tensor(elt):
           return self.NOT_SUPPORTED
       if found_ragged:
+        x = ragged_tensor.match_row_splits_dtypes(*x)
         nested_splits_lists = [
             elt.nested_row_splits for elt in x if ragged_tensor.is_ragged(elt)
         ]
@@ -131,7 +140,7 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
             ragged_util.assert_splits_match(nested_splits_lists)):
           return ragged_tensor.RaggedTensor.from_nested_row_splits(
               self._original_op(flat_values, *args, **kwargs),
-              nested_splits_lists[0])
+              nested_splits_lists[0], validate=False)
       else:
         return self.NOT_SUPPORTED
     else:
@@ -190,6 +199,9 @@ class BinaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         y = ops.convert_to_tensor(y, name=self._y, preferred_dtype=x.dtype)
     except (TypeError, ValueError):
       return self.NOT_SUPPORTED
+
+    if x_is_ragged and y_is_ragged:
+      x, y = ragged_tensor.match_row_splits_dtypes(x, y)
 
     if ((x_is_ragged and y_is_ragged) or
         (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
@@ -264,16 +276,6 @@ class RaggedDispatcher(dispatch.OpDispatcher):
     return found_ragged
 
 
-def ragged_dispatch(original_op, tensor_args):
-
-  def decorator(ragged_op):
-    dispatch.RaggedDispatcher(original_op, ragged_op,
-                              tensor_args).register(original_op)
-    return ragged_op
-
-  return decorator
-
-
 _UNARY_ELEMENTWISE_OPS = [
     array_ops.check_numerics,
     array_ops.identity,
@@ -282,6 +284,7 @@ _UNARY_ELEMENTWISE_OPS = [
     array_ops.zeros_like,
     array_ops.zeros_like_v2,
     clip_ops.clip_by_value,
+    gen_bitwise_ops.invert,
     math_ops.abs,
     math_ops.acos,
     math_ops.acosh,
@@ -348,6 +351,11 @@ _UNARY_LIST_ELEMENTWISE_OPS = [
 ]
 
 _BINARY_ELEMENTWISE_OPS = [
+    gen_bitwise_ops.bitwise_and,
+    gen_bitwise_ops.bitwise_or,
+    gen_bitwise_ops.bitwise_xor,
+    gen_bitwise_ops.left_shift,
+    gen_bitwise_ops.right_shift,
     math_ops.add,
     math_ops.atan2,
     math_ops.complex,
@@ -393,11 +401,19 @@ _V1_OPS_THAT_DELEGATE_TO_V2_OPS = [
 
 def _ragged_gather_v1(params, indices, validate_indices=None, name=None,
                       axis=0, batch_dims=0):
-  return ragged_array_ops.gather(
+  return ragged_gather_ops.gather(
       params=params,
       indices=indices,
       validate_indices=validate_indices,
       axis=axis,
+      batch_dims=batch_dims,
+      name=name)
+
+
+def _ragged_gather_nd_v1(params, indices, name=None, batch_dims=0):
+  return ragged_gather_ops.gather_nd(
+      params=params,
+      indices=indices,
       batch_dims=batch_dims,
       name=name)
 
@@ -408,19 +424,35 @@ def _ragged_expand_dims_v1(input, axis=None, name=None, dim=None):  # pylint: di
   return ragged_array_ops.expand_dims(input=input, axis=axis, name=name)
 
 
+def _ragged_size_v1(input, name=None, out_type=dtypes.int32):  # pylint: disable=redefined-builtin
+  return ragged_array_ops.size(input=input, out_type=out_type, name=name)
+
+
+def _ragged_squeeze_v1(input, axis=None, name=None, squeeze_dims=None):  # pylint: disable=redefined-builtin
+  axis = deprecation.deprecated_argument_lookup('axis', axis, 'squeeze_dims',
+                                                squeeze_dims)
+  return ragged_squeeze_op.squeeze(input, axis, name)
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
-    (array_ops.batch_gather, ragged_array_ops.batch_gather,
+    (array_ops.batch_gather, ragged_batch_gather_ops.batch_gather,
      ['params', 'indices']),
-    (array_ops.concat, ragged_array_ops.concat, ['[values]']),
+    (array_ops.concat, ragged_concat_ops.concat, ['[values]']),
     (array_ops.expand_dims, _ragged_expand_dims_v1, ['input']),
     (array_ops.expand_dims_v2, ragged_array_ops.expand_dims, ['input']),
     (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
-    (array_ops.gather_v2, ragged_array_ops.gather, ['params', 'indices']),
-    (array_ops.gather_nd, ragged_array_ops.gather_nd, ['params', 'indices']),
-    (array_ops.stack, ragged_array_ops.stack, ['[values]']),
+    (array_ops.gather_v2, ragged_gather_ops.gather, ['params', 'indices']),
+    (array_ops.gather_nd, _ragged_gather_nd_v1, ['params', 'indices']),
+    (array_ops.gather_nd_v2, ragged_gather_ops.gather_nd, ['params',
+                                                           'indices']),
+    (array_ops.rank, ragged_array_ops.rank, ['input']),
+    (array_ops.size, _ragged_size_v1, ['input']),
+    (array_ops.size_v2, ragged_array_ops.size, ['input']),
+    (array_ops.squeeze, _ragged_squeeze_v1, ['input']),
+    (array_ops.squeeze_v2, ragged_squeeze_op.squeeze, ['input']),
+    (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
-    (array_ops.where, ragged_array_ops.where, ['condition', 'x', 'y']),
+    (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_prod, ragged_math_ops.segment_prod,
@@ -451,7 +483,8 @@ def register_dispatchers():
       _BINARY_ELEMENTWISE_OPS + [x[0] for x in _RAGGED_DISPATCH_OPS])
   for op in op_list:
     _, undecorated_op = tf_decorator.unwrap(op)
-    if not hasattr(undecorated_op, tf_export.API_ATTRS['tensorflow'].names):
+    if not hasattr(undecorated_op,
+                   tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names):
       raise AssertionError('Expected %s to be an exported symbol '
                            '(while adding a RaggedTensor dispatcher)')
 

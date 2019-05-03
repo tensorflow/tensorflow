@@ -15,6 +15,8 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
+#include "tensorflow/core/nccl/nccl_manager.h"
+
 #include <algorithm>
 #include <random>
 #include <vector>
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -65,6 +66,7 @@ class NcclManagerTest : public ::testing::Test {
   static void SetUpTestCase() {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
+    setenv("TF_CPP_VMODULE", "nccl_manager=2", 1 /* replace */);
     devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
     LOG(INFO) << "Running test with " << devices_->size() << " gpus";
   }
@@ -73,9 +75,9 @@ class NcclManagerTest : public ::testing::Test {
 
   static void TearDownTestCase() { delete devices_; }
 
-  TestCase* MakeTestCase(int num_nodes, int num_ranks_per_node,
-                         ncclRedOp_t reduction_op, TensorShape shape,
-                         float value_offset) {
+  TestCase* MakeReductionTestCase(int num_nodes, int num_ranks_per_node,
+                                  ncclRedOp_t reduction_op, TensorShape shape,
+                                  float value_offset) {
     TestCase* test_case = new TestCase();
     test_case->expected = Tensor(data_type_, shape);
     if (reduction_op == ncclProd) {
@@ -134,6 +136,47 @@ class NcclManagerTest : public ::testing::Test {
     return test_case;
   }
 
+  TestCase* MakeGatherTestCase(int num_nodes, int num_ranks_per_node,
+                               TensorShape in_shape, TensorShape out_shape) {
+    TestCase* test_case = new TestCase();
+    test_case->expected = Tensor(data_type_, out_shape);
+    test::FillFn<Scalar>(&test_case->expected,
+                         [](int) { return static_cast<Scalar>(0); });
+
+    float value_scale = 0.01;  // Small scale to avoid fp16 overflow.
+    for (int node = 0; node < num_nodes; ++node) {
+      for (int i = 0; i < num_ranks_per_node; ++i) {
+        auto* device = GetDevice(i);
+        auto* stream = device->tensorflow_gpu_device_info()->stream;
+
+        Tensor in_cpu(data_type_, in_shape);
+        test::FillFn<Scalar>(&in_cpu, [&](int index) {
+          return static_cast<Scalar>((index + 1) * value_scale);
+        });
+        // Starting index for this rank's tensor in the all-gathered output.
+        int32 gather_idx =
+            (node * num_ranks_per_node + i) * in_shape.num_elements();
+        for (int j = 0; j < in_shape.num_elements(); ++j) {
+          auto in_val = in_cpu.flat<Scalar>()(j);
+          auto out_expr = test_case->expected.template flat<Scalar>();
+          out_expr(gather_idx + j) = in_val;
+        }
+
+        value_scale *= 10;
+        test_case->ins.emplace_back(GpuAllocator(device), data_type_, in_shape);
+        test_case->outs.emplace_back(GpuAllocator(device), data_type_,
+                                     out_shape);
+
+        const Tensor& in_gpu = test_case->ins.back();
+        auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
+        stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                           in_cpu.TotalBytes());
+      }
+    }
+
+    return test_case;
+  }
+
   // Waits for the done callback to be called for each participant.
   void WaitForTestCompletion(TestCase* test_case) {
     test_case->mu.lock();
@@ -158,6 +201,9 @@ class NcclManagerTest : public ::testing::Test {
       stream->ThenMemcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
                          out_cpu.TotalBytes());
       SE_ASSERT_OK(stream->BlockHostUntilDone());
+      VLOG(1) << "Verifying rank " << rank << " expected shape "
+              << test_case->expected.shape() << " out shape "
+              << out_cpu.shape();
       test::ExpectClose(test_case->expected, out_cpu);
     }
   }
@@ -174,6 +220,58 @@ class NcclManagerTest : public ::testing::Test {
       ++test_case->num_completed;
       test_case->final_status.Update(s);
     };
+  }
+
+  void RunMultiNodeTest(const int num_nodes, const int num_ranks_per_node) {
+    const int num_global_ranks = num_nodes * num_ranks_per_node;
+    std::vector<NcclManager> nccl_managers(num_nodes);
+    const string collective_key = "allreduce";
+    // The NcclManagers in this test synchronize in real-time, so we need to run
+    // each node's code in a separate thread.
+    // Specifically, the call to ncclGroupEnd() after calling ncclCommInitRank
+    // waits for all communicators before returning.
+    thread::ThreadPool pool(Env::Default(), "test_multi_node_nccl", num_nodes);
+
+    // First, initialize the communicator_key used for this collective.
+    const string communicator_key = nccl_managers[0].GenerateCommunicatorKey();
+
+    for (int op = 0; op < 4; ++op) {
+      ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
+      std::unique_ptr<TestCase> test_case(
+          this->MakeReductionTestCase(num_nodes, num_ranks_per_node,
+                                      reduction_op, TensorShape({2, 3}), 0.0f));
+      for (int node = 0; node < num_nodes; ++node) {
+        auto node_fn = [this, node, num_ranks_per_node, num_global_ranks,
+                        &nccl_managers, &communicator_key, &collective_key,
+                        reduction_op, &test_case] {
+          for (int local_rank = 0; local_rank < num_ranks_per_node;
+               ++local_rank) {
+            auto* device = this->GetDevice(local_rank);
+            auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+            auto* stream = device->tensorflow_gpu_device_info()->stream;
+            const int global_rank = node * num_ranks_per_node + local_rank;
+            auto participant = absl::make_unique<NcclManager::Participant>(
+                device->executor(), stream, event_mgr, device->gpu_id(),
+                &test_case->ins[global_rank], &test_case->outs[global_rank],
+                global_rank, this->CreateDoneCallback(test_case.get()));
+            nccl_managers[node].AddToAllReduce(
+                std::move(participant),
+                {collective_key, num_ranks_per_node, num_global_ranks,
+                 communicator_key},
+                reduction_op);
+            VLOG(1) << "AddToAllReduce node " << node << " global_rank "
+                    << global_rank;
+          }
+
+          // Signal collective ready to launch at this node.
+          nccl_managers[node].SignalMultiNodeReady(collective_key);
+        };
+        pool.Schedule(node_fn);
+      }
+
+      VLOG(2) << "Verifying results";
+      this->VerifyResults(test_case.get());
+    }
   }
 
   static BaseGPUDevice* GetDevice(size_t rank) {
@@ -209,7 +307,7 @@ const Scalar NcclManagerTest<Scalar>::max_ =
 
 // Instantiate tests for float and double.
 using TypeList = ::testing::Types<float, double>;
-TYPED_TEST_CASE(NcclManagerTest, TypeList);
+TYPED_TEST_SUITE(NcclManagerTest, TypeList);
 
 // Test basic sum reduction.
 TYPED_TEST(NcclManagerTest, BasicSumReduction) {
@@ -218,8 +316,8 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
   for (int op = 0; op < 4; ++op) {
     ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
     std::unique_ptr<typename TestFixture::TestCase> test_case(
-        this->MakeTestCase(/*num_nodes=*/1, num_ranks, reduction_op,
-                           TensorShape({2, 3}), 0.0f));
+        this->MakeReductionTestCase(/*num_nodes=*/1, num_ranks, reduction_op,
+                                    TensorShape({2, 3}), 0.0f));
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(rank);
       VLOG(2) << "rank " << rank << " device " << device->name();
@@ -259,7 +357,7 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
     std::vector<std::pair<int, int>> case_and_rank;
     std::vector<std::unique_ptr<typename TestFixture::TestCase>> test_cases;
     for (int i = 0; i < num_collectives_per_iteration; ++i) {
-      test_cases.emplace_back(this->MakeTestCase(
+      test_cases.emplace_back(this->MakeReductionTestCase(
           /*num_nodes=*/1, num_ranks, ncclSum,
           TensorShape({100, i % 5 + 1, i % 3 + 1}), 1.1f * i));
       for (int j = 0; j < num_ranks; ++j) {
@@ -324,6 +422,34 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
   }
 }
 
+// Test basic all-gather.
+TYPED_TEST(NcclManagerTest, BasicAllGather) {
+  const int num_ranks = 4;
+  for (int i = 0; i < num_ranks; ++i) {
+    std::unique_ptr<typename TestFixture::TestCase> test_case(
+        this->MakeGatherTestCase(/*num_nodes=*/1, num_ranks,
+                                 TensorShape({2, 3}),
+                                 TensorShape({2 * num_ranks, 3})));
+    for (int rank = 0; rank < num_ranks; ++rank) {
+      auto* device = this->GetDevice(rank);
+      VLOG(2) << "rank " << rank << " device " << device->name();
+      auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto participant = absl::make_unique<NcclManager::Participant>(
+          device->executor(), stream, event_mgr, device->gpu_id(),
+          &test_case->ins[rank], &test_case->outs[rank], rank,
+          this->CreateDoneCallback(test_case.get()));
+      NcclManager::instance()->AddToAllGather(
+          std::move(participant),
+          {"allgather", /*num_local_devices=*/num_ranks,
+           /*num_global_devices=*/num_ranks, /*communicator_key=*/""});
+    }
+
+    LOG(INFO) << "Verifying results";
+    this->VerifyResults(test_case.get());
+  }
+}
+
 // Multi-node NCCL tests.
 
 TEST(NcclManagerTest, CommunicatorKey) {
@@ -333,59 +459,16 @@ TEST(NcclManagerTest, CommunicatorKey) {
 }
 
 // This test creates `num_nodes` NcclManagers to simulate a multi-node
-// environment.  It works on a single node and reuse GPUs.  It enqueues NCCL ops
-// on separate stream per rank.
+// environment.  It works on a single node and reuses GPUs.  It enqueues NCCL
+// kernels on separate stream per rank.
 TYPED_TEST(NcclManagerTest, MultiNode) {
-  const int num_nodes = 2;
-  const int num_ranks_per_node = 4;
-  const int num_global_ranks = num_nodes * num_ranks_per_node;
-  std::vector<NcclManager> nccl_managers(num_nodes);
-  const string collective_key = "allreduce";
-  // The NcclManagers in this test synchronize in real-time, so we need to run
-  // each node's code in a separate thread.
-  // Specifically, the call to ncclGroupEnd() after calling ncclCommInitRank
-  // waits for all communicators before returning.
-  thread::ThreadPool pool(Env::Default(), "test_multi_node_nccl", num_nodes);
+  this->RunMultiNodeTest(/*num_nodes=*/2, /*num_ranks_per_node=*/4);
+}
 
-  // First, initialize the communicator_key used for this collective.
-  const string communicator_key = nccl_managers[0].GenerateCommunicatorKey();
-
-  for (int op = 0; op < 4; ++op) {
-    ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
-    std::unique_ptr<typename TestFixture::TestCase> test_case(
-        this->MakeTestCase(num_nodes, num_ranks_per_node, reduction_op,
-                           TensorShape({2, 3}), 0.0f));
-    for (int node = 0; node < num_nodes; ++node) {
-      auto node_fn = [this, node, &nccl_managers, &communicator_key,
-                      &collective_key, reduction_op, &test_case] {
-        for (int local_rank = 0; local_rank < num_ranks_per_node;
-             ++local_rank) {
-          auto* device = this->GetDevice(local_rank);
-          auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
-          auto* stream = device->tensorflow_gpu_device_info()->stream;
-          const int global_rank = node * num_ranks_per_node + local_rank;
-          auto participant = absl::make_unique<NcclManager::Participant>(
-              device->executor(), stream, event_mgr, device->gpu_id(),
-              &test_case->ins[global_rank], &test_case->outs[global_rank],
-              global_rank, this->CreateDoneCallback(test_case.get()));
-          nccl_managers[node].AddToAllReduce(
-              std::move(participant),
-              {collective_key, num_ranks_per_node, num_global_ranks,
-               communicator_key},
-              reduction_op);
-          VLOG(1) << "AddToAllReduce node " << node << " global_rank "
-                  << global_rank;
-        }
-
-        // Signal collective ready to launch at this node.
-        nccl_managers[node].SignalMultiNodeReady(collective_key);
-      };
-      pool.Schedule(node_fn);
-    }
-
-    VLOG(2) << "Verifying results";
-    this->VerifyResults(test_case.get());
-  }
+// Tests that specifying `communicator_key` with a single node NCCL collective
+// works well.
+TYPED_TEST(NcclManagerTest, MultiNodeSingle) {
+  this->RunMultiNodeTest(/*num_nodes=*/1, /*num_ranks_per_node=*/4);
 }
 
 // Checks that we return error status if a collective_key is used for different
@@ -393,8 +476,9 @@ TYPED_TEST(NcclManagerTest, MultiNode) {
 TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
@@ -427,8 +511,9 @@ TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
 TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
@@ -454,8 +539,9 @@ TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
 TYPED_TEST(NcclManagerTest, ConsistentNumberOfDevices) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;

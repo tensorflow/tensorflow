@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tensor_coding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -61,7 +62,11 @@ class ConstantFoldingTest : public GrapplerTest {
         add1 = ops::LogicalOr(s.WithOpName("add1"), x, zeros);
         add2 = ops::LogicalOr(s.WithOpName("add2"), x, ones);
       } else {
-        mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+        if (DTYPE == DT_FLOAT) {
+          mul1 = ops::MulNoNan(s.WithOpName("mul1"), x, zeros);
+        } else {
+          mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+        }
         mul2 = ops::Mul(s.WithOpName("mul2"), x, ones);
         add1 = ops::Add(s.WithOpName("add1"), x, zeros);
         add1 = ops::Add(s.WithOpName("add2"), x, ones);
@@ -118,6 +123,100 @@ class ConstantFoldingTest : public GrapplerTest {
         test::ExpectTensorEqual<T>(tensors_expected[i], tensors[i]);
       }
     }
+  }
+
+  void MulConvPushDownTest(const TensorShape& input_shape,
+                           const TensorShape& filter_shape,
+                           const TensorShape& mul_const_input_shape,
+                           const bool use_3d_conv, const char* padding,
+                           const char* data_format, const bool expect_folded) {
+    // Tests if the following rewrite is performed:
+    //
+    //         *                       Conv2D
+    //        / \                       / \
+    //       c  Conv2D        -->      x  (c * filter)
+    //           / \
+    //          x  filter
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    Tensor filter_values(DT_FLOAT, filter_shape);
+    for (int i = 0; i < filter_values.NumElements(); ++i) {
+      filter_values.flat<float>()(i) = std::sqrt(static_cast<float>(i));
+    }
+    Output filter =
+        ops::Const(s.WithOpName("filter"), Input::Initializer(filter_values));
+
+    Output input = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                    ops::Placeholder::Shape(input_shape));
+
+    Output conv;
+    if (use_3d_conv) {
+      conv = ops::Conv3D(s.WithOpName("conv"), input, filter, {1, 1, 1, 1, 1},
+                         padding, ops::Conv3D::DataFormat(data_format));
+    } else {
+      conv = ops::Conv2D(s.WithOpName("conv"), input, filter, {1, 1, 1, 1},
+                         padding, ops::Conv2D::DataFormat(data_format));
+    }
+    Tensor mul_const_input(DT_FLOAT, mul_const_input_shape);
+    for (int i = 0; i < mul_const_input.NumElements(); ++i) {
+      mul_const_input.flat<float>()(i) = static_cast<float>(i + 3);
+    }
+    Output c =
+        ops::Const(s.WithOpName("c"), Input::Initializer(mul_const_input));
+    Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef output;
+    Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+    TF_EXPECT_OK(status);
+
+    EXPECT_EQ(5, output.node_size());
+    int found = 0;
+    if (expect_folded) {
+      for (const auto& node : output.node()) {
+        if (node.name() == "mul") {
+          found++;
+          EXPECT_EQ(use_3d_conv ? "Conv3D" : "Conv2D", node.op());
+          EXPECT_EQ(2, node.input_size());
+          EXPECT_EQ("x", node.input(0));
+          EXPECT_EQ("conv/merged_input", node.input(1));
+        } else if (node.name() == "conv/merged_input") {
+          found++;
+          EXPECT_EQ("Const", node.op());
+          EXPECT_EQ(0, node.input_size());
+        }
+      }
+    } else {
+      for (const auto& node : output.node()) {
+        if (node.name() == "mul") {
+          found++;
+          EXPECT_EQ("Mul", node.op());
+          EXPECT_EQ(2, node.input_size());
+          EXPECT_EQ("c", node.input(0));
+          EXPECT_EQ("conv", node.input(1));
+        } else if (node.name() == "conv") {
+          found++;
+          EXPECT_EQ(use_3d_conv ? "Conv3D" : "Conv2D", node.op());
+          EXPECT_EQ(2, node.input_size());
+          EXPECT_EQ("x", node.input(0));
+          EXPECT_EQ("filter", node.input(1));
+        }
+      }
+    }
+    EXPECT_EQ(2, found);
+
+    // Check that const folded multiplication node has the expected value.
+    std::vector<string> fetch = {"mul"};
+    Tensor value(DT_FLOAT, input_shape);
+    for (int i = 0; i < value.NumElements(); ++i) {
+      value.flat<float>()(i) = i;
+    }
+    auto actual = EvaluateNodes(output, fetch, {{"x", value}});
+    auto expected = EvaluateNodes(item.graph, fetch, {{"x", value}});
+    test::ExpectTensorEqual<float>(expected[0], actual[0]);
   }
 };
 
@@ -242,73 +341,147 @@ TEST_F(ConstantFoldingTest, AddTree) {
   }
 }
 
-TEST_F(ConstantFoldingTest, ConvPushDownTest) {
-  // Tests if the following rewrite is performed:
-  //
-  //         *                       Conv2D
-  //        / \                       / \
-  //       c  Conv2D        -->      x  (c * filter)
-  //           / \
-  //          x  filter
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  int input_depth = 3;
-  int filter_count = 5;
-  int filter_size = 2;
-  TensorShape filter_shape(
-      {filter_size, filter_size, input_depth, filter_count});
-  Tensor filter_values(DT_FLOAT, filter_shape);
-  for (int i = 0; i < filter_values.NumElements(); ++i) {
-    filter_values.flat<float>()(i) = std::sqrt(static_cast<float>(i));
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_ScalarConst) {
+  for (string data_format : {
+         "NHWC",
+#if GOOGLE_CUDA
+             "NCHW"
+#endif  // GOOGLE_CUDA
+       }) {
+    MulConvPushDownTest(
+        /*input_shape=*/data_format == "NHWC" ? TensorShape{4, 10, 10, 3}
+                                              : TensorShape{4, 3, 10, 10},
+        /*filter_shape=*/{2, 2, 3, 5},
+        /*mul_const_input_shape=*/{},
+        /*use_3d_conv=*/false,
+        /*padding=*/"VALID", data_format.c_str(),
+        /*expect_folded=*/true);
   }
-  Output filter =
-      ops::Const(s.WithOpName("filter"), Input::Initializer(filter_values));
+}
 
-  int batch_size = 4;
-  int input_dim = 10;
-  TensorShape input_shape({batch_size, input_dim, input_dim, input_depth});
-  Output input = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
-                                  ops::Placeholder::Shape(input_shape));
-
-  Output conv =
-      ops::Conv2D(s.WithOpName("conv"), input, filter, {1, 1, 1, 1}, "VALID");
-  Output c = ops::Const(s.WithOpName("c"), 3.0f, {1});
-  Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  ConstantFolding optimizer(/*cpu_device=*/nullptr);
-  GraphDef output;
-  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  EXPECT_EQ(5, output.node_size());
-  int found = 0;
-  for (const auto& node : output.node()) {
-    if (node.name() == "mul") {
-      found++;
-      EXPECT_EQ("Conv2D", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-      EXPECT_EQ("conv/merged_input", node.input(1));
-    } else if (node.name() == "conv/merged_input") {
-      found++;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(0, node.input_size());
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_SingletonConst) {
+  for (string data_format : {
+         "NHWC",
+#if GOOGLE_CUDA
+             "NCHW"
+#endif  // GOOGLE_CUDA
+       }) {
+    for (auto mul_const_input_shape :
+         {TensorShape{1}, TensorShape{1, 1, 1, 1}}) {
+      MulConvPushDownTest(
+          /*input_shape=*/data_format == "NHWC" ? TensorShape{4, 10, 10, 3}
+                                                : TensorShape{4, 3, 10, 10},
+          /*filter_shape=*/{2, 2, 3, 5}, mul_const_input_shape,
+          /*use_3d_conv=*/false,
+          /*padding=*/"VALID", data_format.c_str(),
+          /*expect_folded=*/true);
     }
   }
-  EXPECT_EQ(2, found);
+}
 
-  // Check that const folded multiplication node has the expected value.
-  std::vector<string> fetch = {"mul"};
-  Tensor value(DT_FLOAT, input_shape);
-  for (int i = 0; i < value.NumElements(); ++i) {
-    value.flat<float>()(i) = i;
+TEST_F(ConstantFoldingTest,
+       MulConvPushDownTest_Conv2D_SingletonConst_ShapeMismatch) {
+  for (string data_format : {
+         "NHWC",
+#if GOOGLE_CUDA
+             "NCHW"
+#endif  // GOOGLE_CUDA
+       }) {
+    MulConvPushDownTest(
+        /*input_shape=*/data_format == "NHWC" ? TensorShape{4, 10, 10, 3}
+                                              : TensorShape{4, 3, 10, 10},
+        /*filter_shape=*/{2, 2, 3, 5},
+        /*mul_const_input_shape=*/{1, 1, 1, 1, 1},
+        /*use_3d_conv=*/false,
+        /*padding=*/"VALID", data_format.c_str(),
+        /*expect_folded=*/false);
   }
-  auto actual = EvaluateNodes(output, fetch, {{"x", value}});
-  auto expected = EvaluateNodes(item.graph, fetch, {{"x", value}});
-  test::ExpectTensorEqual<float>(expected[0], actual[0]);
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_3x1x3Const) {
+  for (auto data_format : {
+         "NHWC",
+#if GOOGLE_CUDA
+             "NCHW"
+#endif  // GOOGLE_CUDA
+       }) {
+    MulConvPushDownTest(
+        /*input_shape=*/{3, 3, 3, 3},
+        /*filter_shape=*/{3, 3, 3, 3},
+        /*mul_const_input_shape=*/{3, 1, 3},
+        /*use_3d_conv=*/false,
+        /*padding=*/"SAME", data_format,
+        /*expect_folded=*/false);
+  }
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_NHWC_VectorLikeConst) {
+  for (auto mul_const_input_shape :
+       {TensorShape{3}, TensorShape{1, 3}, TensorShape{1, 1, 1, 3}}) {
+    MulConvPushDownTest(
+        /*input_shape=*/{3, 3, 3, 3},
+        /*filter_shape=*/{3, 3, 3, 3}, mul_const_input_shape,
+        /*use_3d_conv=*/false,
+        /*padding=*/"SAME",
+        /*data_format=*/"NHWC",
+        /*expect_folded=*/true);
+  }
+}
+
+#if GOOGLE_CUDA
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_NCHW_VectorLikeConst) {
+  for (auto mul_const_input_shape :
+       {TensorShape{3}, TensorShape{3, 1, 1}, TensorShape{1, 3, 1, 1}}) {
+    MulConvPushDownTest(
+        /*input_shape=*/{3, 3, 3, 3},
+        /*filter_shape=*/{3, 3, 3, 3}, mul_const_input_shape,
+        /*use_3d_conv=*/false,
+        /*padding=*/"SAME",
+        /*data_format=*/"NCHW",
+        // TODO(laigd): optimization should happen in this case.
+        /*expect_folded=*/false);
+  }
+}
+#endif  // GOOGLE_CUDA
+
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv2D_3x1Const) {
+  for (auto data_format : {
+         "NHWC",
+#if GOOGLE_CUDA
+             "NCHW"
+#endif  // GOOGLE_CUDA
+       }) {
+    MulConvPushDownTest(
+        /*input_shape=*/{3, 3, 3, 3},
+        /*filter_shape=*/{3, 3, 3, 3},
+        /*mul_const_input_shape=*/{3, 1},
+        /*use_3d_conv=*/false,
+        /*padding=*/"SAME", data_format,
+        /*expect_folded=*/false);
+  }
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NDHWC_1x1x3Const) {
+  MulConvPushDownTest(
+      /*input_shape=*/{3, 3, 3, 3, 3},
+      /*filter_shape=*/{3, 3, 3, 3, 3},
+      /*mul_const_input_shape=*/{1, 1, 3},
+      /*use_3d_conv=*/true,
+      /*padding=*/"SAME",
+      /*data_format=*/"NDHWC",
+      /*expect_folded=*/true);
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NCDHW_3x1x1x1Const) {
+  MulConvPushDownTest(
+      /*input_shape=*/{3, 3, 3, 3, 3},
+      /*filter_shape=*/{3, 3, 3, 3, 3},
+      /*mul_const_input_shape=*/{3, 1, 1, 1},
+      /*use_3d_conv=*/true,
+      /*padding=*/"SAME",
+      /*data_format=*/"NDHWC",
+      // TODO(laigd): optimization should happen in this case.
+      /*expect_folded=*/false);
 }
 
 TEST_F(ConstantFoldingTest, NeutralElement) {
@@ -329,12 +502,16 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
                                    ops::Placeholder::Shape(TensorShape({2})));
     Output zeros_1d = ops::Const(s.WithOpName("zeros_1d"), 0.0f, {2});
     Output zeros_const = ops::Const(s.WithOpName("zeros_const"), 0.0f, {2, 2});
+    Output zeros_const_bcast =
+        ops::Const(s.WithOpName("zeros_const_bcast"), 0.0f, {2, 2, 2});
     Output zeros_like = ops::ZerosLike(s.WithOpName("zeros_like"), x);
     Output zeros_fill = ops::Fill(s.WithOpName("zeros_fill"), {2, 2}, 0.0f);
     Output zeros = const_type == kConst
                        ? zeros_const
                        : (const_type == kLike ? zeros_like : zeros_fill);
     Output ones_const = ops::Const(s.WithOpName("ones_const"), 1.0f, {2, 2});
+    Output ones_const_bcast =
+        ops::Const(s.WithOpName("ones_const_bcast"), 1.0f, {2, 2, 2});
     Output ones_like = ops::OnesLike(s.WithOpName("ones_like"), x);
     Output ones_fill = ops::Fill(s.WithOpName("ones_fill"), {2, 2}, 1.0f);
     Output ones = const_type == kConst
@@ -342,10 +519,14 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
                       : (const_type == kLike ? ones_like : ones_fill);
     Output mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
     Output mul2 = ops::Mul(s.WithOpName("mul2"), zeros, y);
+    Output mul1_bcast =
+        ops::Mul(s.WithOpName("mul1_bcast"), x, ones_const_bcast);
+    Output mul2_bcast =
+        ops::Mul(s.WithOpName("mul2_bcast"), ones_const_bcast, y);
     Output mul3 = ops::Mul(s.WithOpName("mul3"), x, ones);
     Output mul4 = ops::Mul(s.WithOpName("mul4"), ones, y);
-    Output mul5 = ops::Mul(s.WithOpName("mul5"), x, zeros_1d);
-    Output mul6 = ops::Mul(s.WithOpName("mul6"), zeros_1d, y);
+    Output mul5 = ops::MulNoNan(s.WithOpName("mul5"), x, zeros_1d);
+    Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
     Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
@@ -354,6 +535,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output matmul4 = ops::MatMul(s.WithOpName("matmul4"), zeros, b);
     Output add1 = ops::Add(s.WithOpName("add1"), x, zeros);
     Output add2 = ops::Add(s.WithOpName("add2"), zeros, y);
+    Output add1_bcast =
+        ops::Add(s.WithOpName("add1_bcast"), x, zeros_const_bcast);
+    Output add2_bcast =
+        ops::Add(s.WithOpName("add2_bcast"), zeros_const_bcast, y);
     Output bias_add1 = ops::BiasAdd(s.WithOpName("bias_add1"), x, zeros_1d);
     Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
@@ -364,7 +549,8 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
                     matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    item.fetch = {"stack", "matmul3", "matmul4"};
+    item.fetch = {"stack",      "matmul3",    "matmul4",   "mul1_bcast",
+                  "mul2_bcast", "add1_bcast", "add2_bcast"};
 
     ConstantFolding optimizer(/*cpu_device=*/nullptr);
     GraphDef output;
@@ -378,7 +564,8 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ones_name = strings::StrCat("ones", suffix);
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
-    EXPECT_EQ(27, output.node_size());
+
+    EXPECT_EQ(const_type == kFill ? 42 : 38, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -390,6 +577,14 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ(ctrl_zeros_name, node.input(0));
         EXPECT_EQ("^y", node.input(1));
+      } else if (name == "mul1_bcast") {
+        EXPECT_EQ("BroadcastTo", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^ones_const_bcast", node.input(2));
+      } else if (name == "mul2_bcast") {
+        EXPECT_EQ("BroadcastTo", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^ones_const_bcast", node.input(2));
       } else if (name == "mul3") {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("x", node.input(0));
@@ -450,15 +645,32 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ(ctrl_zeros_name, node.input(1));
+      } else if (name == "add1_bcast") {
+        EXPECT_EQ("BroadcastTo", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^zeros_const_bcast", node.input(2));
+      } else if (name == "add2_bcast") {
+        EXPECT_EQ("BroadcastTo", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^zeros_const_bcast", node.input(2));
       } else if (name == "bias_add1") {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ("^zeros_1d", node.input(1));
       } else if (name == "bias_add2") {
-        // We don't eliminate this one, because it requires broadcasting.
-        EXPECT_EQ("BiasAdd", node.op());
-        EXPECT_EQ(zeros_name, node.input(0));
-        EXPECT_EQ("bias", node.input(1));
+        EXPECT_EQ("BroadcastTo", node.op());
+        EXPECT_EQ("bias", node.input(0));
+        EXPECT_EQ("ConstantFolding/bias_add2-broadcastto_shape-1",
+                  node.input(1));
+        EXPECT_EQ(ctrl_zeros_name, node.input(2));
+      } else if (name == "ConstantFolding/bias_add2-broadcastto_shape-1") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ(ctrl_zeros_name, node.input(0));
+        EXPECT_EQ(node.attr().at("dtype").type(), DT_INT32);
+        TensorProto t = node.attr().at("value").tensor();
+        EXPECT_EQ(DT_INT32, t.dtype());
+        EXPECT_EQ(1, t.tensor_shape().dim_size());
+        EXPECT_EQ(2, t.tensor_shape().dim(0).size());
       } else if (name == "sub1") {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("x", node.input(0));
@@ -1601,7 +1813,7 @@ TEST_F(ConstantFoldingTest, SplitRemoval) {
   AddNode("split_dim", "Const", {}, {}, &want);
   AddNode("s1", "Identity", {"in1", AsControlDependency("split_dim")}, {},
           &want);
-  AddNode("s2", "Split", {"in2", "split_dim"}, {}, &want);
+  AddNode("s2", "Split", {"split_dim", "in2"}, {}, &want);
   AddNode("out", "Add", {"s1", "s2"}, {}, &want);
 
   CompareGraphs(want, got);
@@ -2150,6 +2362,40 @@ TEST_F(ConstantFoldingTest, MergeConcat_AxisMismatch) {
   AddNode("axis2", "Const", {}, {}, &want);
   AddNode("c1", "ConcatV2", {"in1", "in2", "axis2"}, {}, &want);
   AddNode("c2", "ConcatV2", {"c1", "in3", "axis1"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
+  Scope scope = Scope::NewRootScope();
+  Output c1 = ops::Const(scope.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(scope.WithOpName("c2"), 2.0f, {2, 2});
+  Output c3 = ops::Const(scope.WithOpName("c3"), 3.0f, {2, 2});
+  Output c4 = ops::Const(scope.WithOpName("c4"), 4.0f, {2, 2});
+  Output ph = ops::Placeholder(scope.WithOpName("ph"), DT_FLOAT,
+                               ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat concat1(scope.WithOpName("concat1"), {c1, c2, ph}, axis);
+  ops::Concat concat2(scope.WithOpName("concat2"), {c3, c4, Output(concat1)},
+                      axis);
+
+  GrapplerItem item;
+  item.fetch = {"concat2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("ph", "Placeholder", {}, {}, &want);
+  AddNode("concat2", "ConcatV2",
+          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
+          &want);
 
   CompareGraphs(want, got);
 }
@@ -3463,6 +3709,170 @@ TEST_F(ConstantFoldingCastConstTest, CastConstFolding) {
         }
       }
     }
+  }
+}
+
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output x =
+      ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({1, 2, 3, 4})));
+  Output ones_like = ops::OnesLike(scope.WithOpName("ones_like"), x);
+  Output zeros_like = ops::ZerosLike(scope.WithOpName("zeros_like"), x);
+  Output fill = ops::Fill(scope.WithOpName("fill"), {4, 3, 2, 1}, 42);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"ones_like", "zeros_like", "fill"};
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 6);
+  for (const auto& node : output.node()) {
+    if (node.name() != "x") {
+      EXPECT_EQ(node.op(), "Const");
+    }
+    if (node.name() == "ones_like" || node.name() == "zeros_like") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "^x");
+    }
+    if (node.name() == "fill") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0)[0], '^');
+      EXPECT_EQ(node.input(1)[0], '^');
+    }
+  }
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(item.fetch.size(), tensors.size());
+  ASSERT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); i++) {
+    if (item.fetch[i] == "fill") {
+      test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
+    } else {
+      test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output value = ops::Const(scope.WithOpName("value"), 42, {});
+  Output fill_huge = ops::Fill(scope.WithOpName("fill_huge"),
+                               {1024, 1024, 1024, 1024, 1024}, value);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  // Manually convert the input value format to tensor_content to test this
+  // case.
+  NodeDef* node = item.graph.mutable_node(0);
+  ASSERT_EQ(node->name(), "value");
+  TensorProto* t = (*node->mutable_attr())["value"].mutable_tensor();
+  t->clear_int_val();
+  int val = 42;
+  port::CopyFromArray(t->mutable_tensor_content(),
+                      reinterpret_cast<const char*>(&val), sizeof(int));
+  item.fetch = {"fill_huge"};
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 3);
+  for (const auto& node : output.node()) {
+    EXPECT_EQ(node.op(), "Const");
+    if (node.name() == "fill_huge") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0)[0], '^');
+      EXPECT_EQ(node.input(1)[0], '^');
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Tensor x_t(DT_INT64, TensorShape({2, 2}));
+  x_t.flat<int64>()(0) = 9223372036854775807L;
+  x_t.flat<int64>()(1) = 1L;
+  x_t.flat<int64>()(2) = 9223372036854775807L;
+  x_t.flat<int64>()(3) = 1L;
+  Output x = ops::Const(scope.WithOpName("x"), x_t);
+  Output y = ops::Bitcast(scope.WithOpName("y"), x, DT_FLOAT);
+  Output z = ops::Bitcast(scope.WithOpName("z"), y, DT_INT64);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"z"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  ASSERT_EQ(output.node_size(), 1);
+  const NodeDef& node = output.node(0);
+  EXPECT_EQ(node.name(), "z");
+  EXPECT_EQ(node.op(), "Const");
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 1);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ConstantFoldingTest, CompressConstants) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Tensor zeros_t(DT_FLOAT, TensorShape({64}));
+  Tensor ones_t(DT_FLOAT, TensorShape({64}));
+  for (int i = 0; i < 64; ++i) {
+    zeros_t.flat<float>()(i) = 0.0f;
+    ones_t.flat<float>()(i) = 1.0f;
+  }
+  Output zeros = ops::Const(scope.WithOpName("zeros"), zeros_t);
+  Output host_ones = ops::Const(scope.WithOpName("host_ones"), ones_t);
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  ASSERT_EQ(item.graph.node(1).name(), "host_ones");
+  // There is not C++ api for HostConst, so we manually change the node type
+  // here.
+  item.graph.mutable_node(1)->set_op("HostConst");
+  item.fetch = {"zeros", "host_ones"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  {
+    ASSERT_EQ(output.node_size(), 2);
+    const NodeDef& node = output.node(0);
+    EXPECT_EQ(node.name(), "zeros");
+    EXPECT_EQ(node.op(), "Const");
+    const TensorProto& zeroes_t = node.attr().at("value").tensor();
+    EXPECT_EQ(zeroes_t.float_val_size(), 1);
+    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+  }
+  {
+    const NodeDef& node = output.node(1);
+    EXPECT_EQ(node.name(), "host_ones");
+    EXPECT_EQ(node.op(), "HostConst");
+    const TensorProto& ones_t = node.attr().at("value").tensor();
+    EXPECT_EQ(ones_t.float_val_size(), 1);
+    EXPECT_EQ(ones_t.float_val(0), 1.0f);
+  }
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
   }
 }
 

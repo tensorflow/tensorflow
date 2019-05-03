@@ -19,8 +19,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -129,6 +129,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
 template class MklPoolingFwdPrimitive<float>;
 template class MklPoolingFwdPrimitive<quint8>;
 template class MklPoolingFwdPrimitive<qint8>;
+template class MklPoolingFwdPrimitive<bfloat16>;
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
@@ -217,8 +218,9 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 }
 
 template class MklPoolingBwdPrimitive<float>;
+template class MklPoolingBwdPrimitive<bfloat16>;
 
-#endif
+#endif  // !INTEL_MKL_ML_ONLY
 
 // Initialization for TensorFlow format
 void MklPoolParameters::Init(OpKernelContext* context,

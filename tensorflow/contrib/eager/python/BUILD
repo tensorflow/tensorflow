@@ -144,13 +144,14 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
 py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
@@ -188,6 +189,7 @@ py_library(
 py_test(
     name = "evaluator_test",
     srcs = ["evaluator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":evaluator",
@@ -220,6 +222,7 @@ py_library(
 py_test(
     name = "network_test",
     srcs = ["network_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":network",

@@ -24,6 +24,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
@@ -234,7 +235,7 @@ def make_tf_record_dataset(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of TFRecord file paths.
-      See `tf.gfile.Glob` for pattern rules.
+      See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     parser_fn: (Optional.) A function accepting string input to parse
@@ -328,6 +329,7 @@ def make_csv_dataset_v2(
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
+    ignore_errors=False,
 ):
   """Reads CSV files into a dataset.
 
@@ -338,7 +340,7 @@ def make_csv_dataset_v2(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See `tf.gfile.Glob` for pattern rules.
+      records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
@@ -402,6 +404,10 @@ def make_csv_dataset_v2(
       the files. Defaults to 100.
     compression_type: (Optional.) A `tf.string` scalar evaluating to one of
       `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no compression.
+    ignore_errors: (Optional.) If `True`, ignores errors with CSV file parsing,
+      such as malformed data or empty lines, and moves on to the next valid
+      CSV record. Otherwise, the dataset raises an error and stops processing
+      when encountering any invalid records. Defaults to `False`.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -457,7 +463,7 @@ def make_csv_dataset_v2(
     raise ValueError("`label_name` provided must be one of the columns.")
 
   def filename_to_dataset(filename):
-    return CsvDataset(
+    dataset = CsvDataset(
         filename,
         record_defaults=column_defaults,
         field_delim=field_delim,
@@ -465,8 +471,11 @@ def make_csv_dataset_v2(
         na_value=na_value,
         select_cols=select_columns,
         header=header,
-        compression_type=compression_type,
+        compression_type=compression_type
     )
+    if ignore_errors:
+      dataset = dataset.apply(error_ops.ignore_errors())
+    return dataset
 
   def map_fn(*columns):
     """Organizes columns into a features dictionary.
@@ -528,13 +537,14 @@ def make_csv_dataset_v1(
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
+    ignore_errors=False,
 ):  # pylint: disable=missing-docstring
   return dataset_ops.DatasetV1Adapter(make_csv_dataset_v2(
       file_pattern, batch_size, column_names, column_defaults, label_name,
       select_columns, field_delim, use_quote_delim, na_value, header,
       num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
       prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
-      compression_type))
+      compression_type, ignore_errors))
 make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
 
 
@@ -571,8 +581,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     ```
 
     We can construct a CsvDataset from it as follows:
+
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
      dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
@@ -585,6 +596,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     ```
 
     The expected output of its iterations is:
+
     ```python
     for element in dataset:
       print(element)
@@ -756,11 +768,11 @@ def make_batched_features_dataset_v2(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -796,7 +808,7 @@ def make_batched_features_dataset_v2(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
-    TypeError: If `reader` is a `tf.ReaderBase` subclass.
+    TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
@@ -823,7 +835,8 @@ def make_batched_features_dataset_v2(file_pattern,
           sloppy=sloppy_ordering))
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
-  if dataset.output_types == (dtypes.string, dtypes.string):
+  if dataset_ops.get_legacy_output_types(dataset) == (
+      dtypes.string, dtypes.string):
     dataset = dataset_ops.MapDataset(
         dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
@@ -921,7 +934,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
@@ -951,7 +964,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
             lambda dtype: structure.TensorStructure(dtype, []), output_types))
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
-        nest.flatten(self.output_types), nest.flatten(self.output_shapes))
+        **dataset_ops.flat_structure(self))
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property

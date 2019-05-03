@@ -116,7 +116,7 @@ def confusion_matrix(labels,
   For example:
 
   ```python
-    tf.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
         [[0 0 0 0 0]
          [0 0 1 0 0]
          [0 0 1 0 0]
@@ -182,6 +182,7 @@ def confusion_matrix(labels,
           predictions)
 
     if weights is not None:
+      weights = ops.convert_to_tensor(weights, name='weights')
       predictions.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.cast(weights, dtype)
 
@@ -190,8 +191,10 @@ def confusion_matrix(labels,
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     cm_sparse = sparse_tensor.SparseTensor(
-        indices=indices, values=values, dense_shape=math_ops.to_int64(shape))
-    zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
+        indices=indices,
+        values=values,
+        dense_shape=math_ops.cast(shape, dtypes.int64))
+    zero_matrix = array_ops.zeros(math_ops.cast(shape, dtypes.int32), dtype)
 
     return sparse_ops.sparse_add(zero_matrix, cm_sparse)
 
@@ -223,7 +226,7 @@ def confusion_matrix_v1(labels,
   For example:
 
   ```python
-    tf.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
         [[0 0 0 0 0]
          [0 0 1 0 0]
          [0 0 1 0 0]

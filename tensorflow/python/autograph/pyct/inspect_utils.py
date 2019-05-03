@@ -21,17 +21,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import itertools
+import linecache
+import sys
+import threading
 import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
 
+# This lock seems to help avoid linecache concurrency errors.
+_linecache_lock = threading.Lock()
+
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
 # and inspect.isbuiltin, and are generally not visible in globals().
-# TODO(mdan): Find a more generic way to test this - just enumerate __builtin__?
+# TODO(mdan): Remove this.
 SPECIAL_BUILTINS = {
     'dict': dict,
     'enumerate': enumerate,
@@ -42,6 +49,7 @@ SPECIAL_BUILTINS = {
     'print': print,
     'range': range,
     'tuple': tuple,
+    'type': type,
     'zip': zip
 }
 
@@ -73,13 +81,48 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in SPECIAL_BUILTINS.values():
+  if f in six.moves.builtins.__dict__.values():
     return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):
     return True
   return False
+
+
+def _fix_linecache_record(obj):
+  """Fixes potential corruption of linecache in the presence of functools.wraps.
+
+  functools.wraps modifies the target object's __module__ field, which seems
+  to confuse linecache in special instances, for example when the source is
+  loaded from a .par file (see https://google.github.io/subpar/subpar.html).
+
+  This function simply triggers a call to linecache.updatecache when a mismatch
+  was detected between the object's __module__ property and the object's source
+  file.
+
+  Args:
+    obj: Any
+  """
+  if hasattr(obj, '__module__'):
+    obj_file = inspect.getfile(obj)
+    obj_module = obj.__module__
+
+    # A snapshot of the loaded modules helps avoid "dict changed size during
+    # iteration" errors.
+    loaded_modules = tuple(sys.modules.values())
+    for m in loaded_modules:
+      if hasattr(m, '__file__') and m.__file__ == obj_file:
+        if obj_module is not m:
+          linecache.updatecache(obj_file, m.__dict__)
+
+
+def getimmediatesource(obj):
+  """A variant of inspect.getsource that ignores the __wrapped__ property."""
+  with _linecache_lock:
+    _fix_linecache_record(obj)
+    lines, lnum = inspect.findsource(obj)
+    return ''.join(inspect.getblock(lines[lnum:]))
 
 
 def getnamespace(f):
@@ -124,6 +167,10 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   """
   if visited is None:
     visited = set()
+
+  # Copy the dict to avoid "changed size error" during concurrent invocations.
+  # TODO(mdan): This is on the hot path. Can we avoid the copy?
+  namespace = dict(namespace)
 
   for name in namespace:
     # The value may be referenced by more than one symbol, case in which
@@ -186,9 +233,12 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def isweakrefself(m):
-  """Tests whether an object is a "weakref self" wrapper, see getmethodself."""
-  return hasattr(m, '__self__') and hasattr(m.__self__, 'ag_self_weakref__')
+def istfmethodtarget(m):
+  """Tests whether an object is a `function.TfMethodTarget`."""
+  # See eager.function.TfMethodTarget for more details.
+  return (hasattr(m, '__self__') and
+          hasattr(m.__self__, 'weakrefself_target__') and
+          hasattr(m.__self__, 'weakrefself_func__'))
 
 
 def getmethodself(m):
@@ -201,8 +251,8 @@ def getmethodself(m):
   # A fallback allowing methods to be actually bound to a type different
   # than __self__. This is useful when a strong reference from the method
   # to the object is not desired, for example when caching is involved.
-  if isweakrefself(m):
-    return m.__self__.ag_self_weakref__()
+  if istfmethodtarget(m):
+    return m.__self__.target
 
   return m.__self__
 
@@ -279,6 +329,21 @@ def getmethodclass(m):
     raise ValueError('Found too many owners of %s: %s' % (m, owners))
 
   return None
+
+
+def getfutureimports(entity):
+  """Detects what future imports are necessary to safely execute entity source.
+
+  Args:
+    entity: Any object
+
+  Returns:
+    A tuple of future strings
+  """
+  if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
+    return tuple()
+  return tuple(sorted(name for name, value in entity.__globals__.items()
+                      if getattr(value, '__module__', None) == '__future__'))
 
 
 class SuperWrapperForDynamicAttrs(object):

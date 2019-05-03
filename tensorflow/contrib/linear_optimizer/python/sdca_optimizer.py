@@ -135,7 +135,7 @@ class SDCAOptimizer(object):
           array_ops.reshape(
               array_ops.split(
                   value=sparse_indices, num_or_size_splits=2, axis=1)[1], [-1]),
-          array_ops.reshape(math_ops.to_float(sparse_values), [-1]))
+          array_ops.reshape(math_ops.cast(sparse_values, dtypes.float32), [-1]))
 
     def _training_examples_and_variables():
       """Returns dictionaries for training examples and variables."""
@@ -254,8 +254,8 @@ class SDCAOptimizer(object):
       examples = dict(
           sparse_features=sparse_feature_with_values,
           dense_features=dense_features,
-          example_labels=math_ops.to_float(
-              array_ops.reshape(targets, shape=[-1])),
+          example_labels=math_ops.cast(
+              array_ops.reshape(targets, shape=[-1]), dtypes.float32),
           example_weights=example_weights,
           example_ids=example_ids)
       sdca_variables = dict(

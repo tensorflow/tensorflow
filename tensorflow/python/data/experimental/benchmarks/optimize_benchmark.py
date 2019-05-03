@@ -47,6 +47,7 @@ class OptimizationBenchmark(test.Benchmark):
         dataset = dataset.map(lambda x: x)
       if optimize_dataset:
         options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
         options.experimental_optimization.map_fusion = True
         dataset = dataset.with_options(options)
 
@@ -66,8 +67,6 @@ class OptimizationBenchmark(test.Benchmark):
 
         median_wall_time = np.median(deltas) / 100
         opt_mark = "opt" if optimize_dataset else "noopt"
-        print("Map dataset {} chain length: {} Median wall time: {}".format(
-            opt_mark, chain_length, median_wall_time))
         self.report_benchmark(
             iters=100,
             wall_time=median_wall_time,
@@ -90,6 +89,7 @@ class OptimizationBenchmark(test.Benchmark):
             lambda x: math_ops.greater_equal(x - 5, 0))
       if optimize_dataset:
         options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
         options.experimental_optimization.map_and_filter_fusion = True
         dataset = dataset.with_options(options)
       iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -108,8 +108,6 @@ class OptimizationBenchmark(test.Benchmark):
 
         median_wall_time = np.median(deltas) / 100
         opt_mark = "opt" if optimize_dataset else "noopt"
-        print("Map and filter dataset {} chain length: {} Median wall time: {}"
-              .format(opt_mark, chain_length, median_wall_time))
         self.report_benchmark(
             iters=100,
             wall_time=median_wall_time,
@@ -131,6 +129,7 @@ class OptimizationBenchmark(test.Benchmark):
         dataset = dataset.filter(lambda x: math_ops.greater_equal(x - 5, 0))
       if optimize_dataset:
         options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
         options.experimental_optimization.filter_fusion = True
         dataset = dataset.with_options(options)
 
@@ -150,8 +149,6 @@ class OptimizationBenchmark(test.Benchmark):
 
         median_wall_time = np.median(deltas) / 100
         opt_mark = "opt" if optimize_dataset else "no-opt"
-        print("Filter dataset {} chain length: {} Median wall time: {}".format(
-            opt_mark, chain_length, median_wall_time))
         self.report_benchmark(
             iters=1000,
             wall_time=median_wall_time,

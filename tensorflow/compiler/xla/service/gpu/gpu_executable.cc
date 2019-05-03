@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -98,14 +99,12 @@ Status GpuExecutable::ExecuteThunks(
                                 sub_streams, hlo_module_->entry_computation());
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  // This top-level trace serves two purposes:
-  //  1) It marks the scope of the whole XLA module.
-  //  2) It tells us whether tracing is enabled.  We use this to avoid the
-  //     expensive HloInstruction::ToString() calls inside the loop below if
-  //     tracing is disabled.
-  ScopedAnnotation top_level_annotation(hlo_module_->name(), "XLA GPU module");
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(hlo_module_->name(), ":XLA GPU module"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
@@ -114,12 +113,13 @@ Status GpuExecutable::ExecuteThunks(
     // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
     // since we expect it to be an expensive call?
     absl::optional<ScopedAnnotation> op_annotation;
-    if (top_level_annotation.IsEnabled()) {
+    CHECK(thunk->hlo_instruction());
+    if (scoped_annotation_enabled) {
+      auto hlo = thunk->hlo_instruction();
       op_annotation.emplace(
-          thunk->hlo_instruction() != nullptr
-              ? thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical())
-              : "<unknown>",
-          "XLA op");
+          thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
+          absl::StrCat("#tf_op=", hlo->metadata().op_name(),
+                       ",hlo_op=", hlo->name(), "#"));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
@@ -130,13 +130,6 @@ Status GpuExecutable::ExecuteThunks(
 
     for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
-
-    // If this thunk is about to autotune then wait for all currently executing
-    // thunks to finish.  This reduces noise and thus the probability of
-    // choosing a suboptimal algorithm.
-    if (thunk->WillAutotuneKernel(stream)) {
-      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
     VLOG(2) << "Executing the thunk for "
@@ -310,12 +303,34 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
         TF_ASSIGN_OR_RETURN(
             const BufferAllocation::Slice slice,
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
-        CHECK(!slice.allocation()->is_entry_computation_parameter());
 
         se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
-        *device_memory = src_base;
+        if (!slice.allocation()->is_entry_computation_parameter()) {
+          // If the buffer coming out of the result is from a parameter, it
+          // means the caller aliased some parameter buffer to an output one
+          // (via the HloInputOutputAliasConfig API). If that is the case, the
+          // caller will receive a partially complete scoped shaped buffer,
+          // which they will have to fill up on return.
+          // Unfortunately the interface to the execute APIs are ShapedBuffer
+          // pointer based, which assumes caller ownership, and hence a buffer
+          // coming from there cannot be part of the new ScopedShapedBuffer we
+          // create for the result (which assumes ownership).
+          *device_memory = src_base;
+        } else {
+          const HloInputOutputAliasConfig& input_output_alias =
+              module().input_output_alias_config();
+          auto output_alias = input_output_alias.GetAliasedOutput(
+              slice.allocation()->parameter_number(),
+              slice.allocation()->param_shape_index());
+          CHECK(output_alias)
+              << "Ouput buffer is coming from parameter "
+              << slice.allocation()->parameter_number() << " at index "
+              << slice.allocation()->param_shape_index()
+              << ", but no alias exists";
+          CHECK_EQ(*output_alias, index);
+        }
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));

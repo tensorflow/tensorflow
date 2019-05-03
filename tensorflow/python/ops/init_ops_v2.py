@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -155,11 +156,11 @@ class Constant(Initializer):
     >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
     >>> # value = np.array(value)
     >>> # value = value.reshape([2, 4])
-    >>> init = tf.constant_initializer(value)
+    >>> init = tf.compat.v1.constant_initializer(value)
 
     >>> print('fitting shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
     >>>   x.initializer.run()
     >>>   print(x.eval())
 
@@ -168,8 +169,8 @@ class Constant(Initializer):
      [ 4.  5.  6.  7.]]
 
     >>> print('larger shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
     >>>   x.initializer.run()
     >>>   print(x.eval())
 
@@ -179,8 +180,8 @@ class Constant(Initializer):
      [ 7.  7.  7.  7.]]
 
     >>> print('smaller shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
   ```
@@ -224,7 +225,7 @@ class RandomUniform(Initializer):
     maxval: A python scalar or a scalar tensor. Upper bound of the range
       of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -232,6 +233,7 @@ class RandomUniform(Initializer):
     self.minval = minval
     self.maxval = maxval
     self.seed = seed
+    self._random_generator = _RandomGenerator(seed)
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -247,8 +249,8 @@ class RandomUniform(Initializer):
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_floating and not dtype.is_integer:
       raise ValueError("Expected float or integer dtype, got %s." % dtype)
-    return random_ops.random_uniform(
-        shape, self.minval, self.maxval, dtype, seed=self.seed)
+    return self._random_generator.random_uniform(shape, self.minval,
+                                                 self.maxval, dtype)
 
   def get_config(self):
     return {
@@ -268,7 +270,7 @@ class RandomNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -276,6 +278,7 @@ class RandomNormal(Initializer):
     self.mean = mean
     self.stddev = stddev
     self.seed = seed
+    self._random_generator = _RandomGenerator(seed)
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -289,8 +292,8 @@ class RandomNormal(Initializer):
       ValueError: If the dtype is not floating point
     """
     dtype = _assert_float_dtype(dtype)
-    return random_ops.random_normal(
-        shape, self.mean, self.stddev, dtype, seed=self.seed)
+    return self._random_generator.random_normal(shape, self.mean, self.stddev,
+                                                dtype)
 
   def get_config(self):
     return {
@@ -314,7 +317,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -322,6 +325,7 @@ class TruncatedNormal(Initializer):
     self.mean = mean
     self.stddev = stddev
     self.seed = seed
+    self._random_generator = _RandomGenerator(seed)
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -335,8 +339,8 @@ class TruncatedNormal(Initializer):
       ValueError: If the dtype is not floating point
     """
     dtype = _assert_float_dtype(dtype)
-    return random_ops.truncated_normal(
-        shape, self.mean, self.stddev, dtype, seed=self.seed)
+    return self._random_generator.truncated_normal(shape, self.mean,
+                                                   self.stddev, dtype)
 
   def get_config(self):
     return {
@@ -367,7 +371,7 @@ class VarianceScaling(Initializer):
     distribution: Random distribution to use. One of "truncated_normal",
       "untruncated_normal" and  "uniform".
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
 
   Raises:
@@ -385,6 +389,9 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
+    # Compatibility with keras-team/keras.
+    if distribution == "normal":
+      distribution = "truncated_normal"
     if distribution not in {"uniform", "truncated_normal",
                             "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)
@@ -392,6 +399,7 @@ class VarianceScaling(Initializer):
     self.mode = mode
     self.distribution = distribution
     self.seed = seed
+    self._random_generator = _RandomGenerator(seed)
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -420,16 +428,13 @@ class VarianceScaling(Initializer):
     if self.distribution == "truncated_normal":
       # constant from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
-      return random_ops.truncated_normal(
-          shape, 0.0, stddev, dtype, seed=self.seed)
+      return self._random_generator.truncated_normal(shape, 0.0, stddev, dtype)
     elif self.distribution == "untruncated_normal":
       stddev = math.sqrt(scale)
-      return random_ops.random_normal(
-          shape, 0.0, stddev, dtype, seed=self.seed)
+      return self._random_generator.random_normal(shape, 0.0, stddev, dtype)
     else:
       limit = math.sqrt(3.0 * scale)
-      return random_ops.random_uniform(
-          shape, -limit, limit, dtype, seed=self.seed)
+      return self._random_generator.random_uniform(shape, -limit, limit, dtype)
 
   def get_config(self):
     return {
@@ -457,7 +462,7 @@ class Orthogonal(Initializer):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
     for behavior.
 
   References:
@@ -468,6 +473,7 @@ class Orthogonal(Initializer):
   def __init__(self, gain=1.0, seed=None):
     self.gain = gain
     self.seed = seed
+    self._random_generator = _RandomGenerator(seed)
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -475,7 +481,7 @@ class Orthogonal(Initializer):
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported.
+        supported.
 
     Raises:
       ValueError: If the dtype is not floating point or the input shape is not
@@ -495,7 +501,7 @@ class Orthogonal(Initializer):
     flat_shape = (max(num_cols, num_rows), min(num_cols, num_rows))
 
     # Generate a random matrix
-    a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
+    a = self._random_generator.random_normal(flat_shape, dtype=dtype)
     # Compute the qr factorization
     q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
@@ -558,7 +564,7 @@ class GlorotUniform(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
 
   References:
@@ -587,7 +593,7 @@ class GlorotNormal(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
@@ -602,7 +608,7 @@ class GlorotNormal(VarianceScaling):
         seed=seed)
 
   def get_config(self):
-    return {"seed": self.seed, "dtype": self.dtype.name}
+    return {"seed": self.seed}
 
 
 # Aliases.
@@ -630,10 +636,10 @@ def lecun_normal(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -656,10 +662,10 @@ def lecun_uniform(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -680,10 +686,10 @@ def he_normal(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
@@ -701,10 +707,10 @@ def he_uniform(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
@@ -762,3 +768,56 @@ def _assert_float_dtype(dtype):
   if not dtype.is_floating:
     raise ValueError("Expected floating point type, got %s." % dtype)
   return dtype
+
+
+class _RandomGenerator(object):
+  """Random generator that selects appropriate random ops."""
+
+  def __init__(self, seed=None):
+    super(_RandomGenerator, self).__init__()
+    if seed is not None:
+      # Stateless random ops requires 2-int seed.
+      self.seed = [seed, 0]
+    else:
+      self.seed = None
+
+  def random_normal(self, shape, mean=0.0, stddev=1, dtype=dtypes.float32):
+    """A deterministic random normal if seed is passed."""
+    if self.seed:
+      op = stateless_random_ops.stateless_random_normal
+    else:
+      op = random_ops.random_normal
+    return op(
+        shape=shape, mean=mean, stddev=stddev, dtype=dtype, seed=self.seed)
+
+  def random_uniform(self, shape, minval, maxval, dtype):
+    """A deterministic random uniform if seed is passed."""
+    if self.seed:
+      op = stateless_random_ops.stateless_random_uniform
+    else:
+      op = random_ops.random_uniform
+    return op(
+        shape=shape, minval=minval, maxval=maxval, dtype=dtype, seed=self.seed)
+
+  def truncated_normal(self, shape, mean, stddev, dtype):
+    """A deterministic truncated normal if seed is passed."""
+    if self.seed:
+      op = stateless_random_ops.stateless_truncated_normal
+    else:
+      op = random_ops.truncated_normal
+    return op(
+        shape=shape, mean=mean, stddev=stddev, dtype=dtype, seed=self.seed)
+
+# Compatibility aliases
+
+# pylint: disable=invalid-name
+zero = zeros = Zeros
+one = ones = Ones
+constant = Constant
+uniform = random_uniform = RandomUniform
+normal = random_normal = RandomNormal
+truncated_normal = TruncatedNormal
+identity = Identity
+orthogonal = Orthogonal
+glorot_normal = GlorotNormal
+glorot_uniform = GlorotUniform

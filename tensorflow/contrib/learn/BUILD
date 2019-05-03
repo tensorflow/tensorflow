@@ -261,6 +261,9 @@ py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/130760310
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
@@ -357,9 +360,9 @@ py_test(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["no_oss"],  # flaky b/70524820
     deps = [
@@ -387,6 +390,13 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
+    deps = [":head_test_lib"],
+)
+
+py_library(
+    name = "head_test_lib",
+    srcs = ["python/learn/estimators/head_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/core:protos_all_py",

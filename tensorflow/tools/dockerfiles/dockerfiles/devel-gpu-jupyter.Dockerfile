@@ -21,23 +21,33 @@
 
 ARG UBUNTU_VERSION=16.04
 
-FROM nvidia/cuda:10.0-base-ubuntu${UBUNTU_VERSION} as base
+ARG ARCH=
+ARG CUDA=10.0
+FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
+# ARCH and CUDA are specified again because the FROM directive resets ARGs
+# (but their default value is retained if set previously)
+ARG ARCH
+ARG CUDA
+ARG CUDNN=7.4.1.5-1
+ARG CUDNN_MAJOR_VERSION=7
+ARG LIB_DIR_PREFIX=x86_64
 
+# Needed for string substitution 
+SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-10-0 \
-        cuda-cublas-dev-10-0 \
-        cuda-cudart-dev-10-0 \
-        cuda-cufft-dev-10-0 \
-        cuda-curand-dev-10-0 \
-        cuda-cusolver-dev-10-0 \
-        cuda-cusparse-dev-10-0 \
-        libcudnn7=7.4.1.5-1+cuda10.0 \
-        libcudnn7-dev=7.4.1.5-1+cuda10.0 \
+        cuda-command-line-tools-${CUDA/./-} \
+        cuda-cublas-dev-${CUDA/./-} \
+        cuda-cudart-dev-${CUDA/./-} \
+        cuda-cufft-dev-${CUDA/./-} \
+        cuda-curand-dev-${CUDA/./-} \
+        cuda-cusolver-dev-${CUDA/./-} \
+        cuda-cusparse-dev-${CUDA/./-} \
+        libcudnn7=${CUDNN}+cuda${CUDA} \
+        libcudnn7-dev=${CUDNN}+cuda${CUDA} \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
         libzmq3-dev \
         pkg-config \
         rsync \
@@ -48,14 +58,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         git \
         && \
-    find /usr/local/cuda-10.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
-    rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
+    find /usr/local/cuda-${CUDA}/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+    rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v7.a
 
-RUN apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0 \
+RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
         && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer-dev=5.0.2-1+cuda10.0 \
-        && rm -rf /var/lib/apt/lists/*
+        && apt-get install -y --no-install-recommends \
+            libnvinfer5=5.0.2-1+cuda${CUDA} \
+            libnvinfer-dev=5.0.2-1+cuda${CUDA} \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.
 ENV CI_BUILD_PYTHON python
@@ -63,12 +76,13 @@ ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
 ENV TF_NEED_TENSORRT 1
 ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.0,6.1,7.0
-ENV TF_CUDA_VERSION=10.0
-ENV TF_CUDNN_VERSION=7
-
-# Check out TensorFlow source code if --build_arg CHECKOUT_TENSORFLOW=1
+ENV TF_CUDA_VERSION=${CUDA}
+ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
+# CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
+ARG CACHE_STOP=1
+# Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -96,6 +110,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     openjdk-8-jdk \
     ${PYTHON}-dev \
+    virtualenv \
     swig
 
 RUN ${PIP} --no-cache-dir install \
@@ -109,11 +124,12 @@ RUN ${PIP} --no-cache-dir install \
     scipy \
     sklearn \
     pandas \
+    portpicker \
     && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=0.19.2
+ARG BAZEL_VERSION=0.24.1
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
@@ -125,6 +141,8 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+RUN ${PIP} install jupyter_http_over_ws
+RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local

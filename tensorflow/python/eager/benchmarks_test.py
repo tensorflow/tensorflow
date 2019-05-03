@@ -37,7 +37,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -140,12 +142,12 @@ class MicroBenchmarks(test.Benchmark):
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
     self._m_100_by_784 = random_ops.random_uniform((100, 784))
     self._num_iters_2_by_2 = 30000
-    self._num_iters_100_by_784 = 1000
+    self._num_iters_100_by_784 = 30000
 
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     ctx = context.context()
-    with ctx.execution_mode(execution_mode):
+    with context.execution_mode(execution_mode):
       func()
       if execution_mode == context.ASYNC:
         ctx.async_wait()
@@ -370,6 +372,19 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
+    inner = function.defun(math_ops.matmul)
+
+    @function.defun
+    def outer(a, b, c, transpose_b):
+      return math_ops.matmul(inner(a, b, transpose_b=transpose_b), c)
+
+    func = lambda: outer(m, m, m, transpose_b=transpose_b)
+    # Warmup before benchmark
+    for _ in range(1000):
+      func()
+    self._run(func, num_iters)
+
   def _benchmark_defun_matmul_forward_backward(self,
                                                m,
                                                transpose_b,
@@ -525,6 +540,11 @@ class MicroBenchmarks(test.Benchmark):
           num_iters=self._num_iters_2_by_2,
           execution_mode=context.ASYNC)
 
+  def benchmark_nested_defun_matmul_2_by_2(self):
+    m = self._m_2_by_2.cpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
   # Benchmarks for AA.T, A of dimension 100 by 784.
   def benchmark_np_matmul_100_by_784(self):
     self._benchmark_np_matmul(
@@ -613,6 +633,11 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_nested_defun_matmul_100_by_784(self):
+    m = self._m_100_by_784.gpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
   def benchmark_defun_without_signature(self):
 
@@ -792,9 +817,25 @@ class MicroBenchmarks(test.Benchmark):
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
 
+  def benchmark_keras_model_functional_fit_graph_mode_with_profiler(self):
+    profiler.start()
+    with context.graph_mode():
+      model = make_keras_model(initializer="glorot_uniform")
+      self._benchmark_keras_model_fit(model)
+    result = profiler.stop()
+    assert result is not None
+
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
+
+  def benchmark_keras_model_functional_fit_run_model_eagerly_with_profiler(
+      self):
+    profiler.start()
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
+    result = profiler.stop()
+    assert result is not None
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")
@@ -875,6 +916,31 @@ class MicroBenchmarks(test.Benchmark):
           lambda a, x: a + x, elems, parallel_iterations=1)
 
     self._run(scan, 100)
+
+  def benchmark_fastpath_conversion_type_inference(self):
+    c = constant_op.constant(1., dtype=dtypes.float32)
+
+    def fn():
+      return gen_math_ops.add(c, 1)
+
+    self._run(fn, 10000)
+
+  def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
+    @def_function.function
+    def add_all(*args):
+      return math_ops.add_n(*args)
+
+    with context.device(CPU):
+      resources = []
+      for _ in range(num_resources):
+        resources.append(resource_variable_ops.ResourceVariable(self._m_2))
+      self._run(lambda: add_all(resources), num_iters)
+
+  def benchmarkFunctionWithFiveResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(5, 1000)
+
+  def benchmarkFunctionWithFiveHundredResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(500, 100)
 
 
 if __name__ == "__main__":

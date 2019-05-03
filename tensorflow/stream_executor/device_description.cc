@@ -50,6 +50,7 @@ DeviceDescription::DeviceDescription()
       clock_rate_ghz_(-1.0),
       cuda_compute_capability_major_(-1),
       cuda_compute_capability_minor_(-1),
+      rocm_amdgpu_isa_version_(-1),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -112,6 +113,15 @@ bool DeviceDescription::cuda_compute_capability(int *major, int *minor) const {
   return cuda_compute_capability_major_ != 0;
 }
 
+bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
+  bool status = false;
+  if (rocm_amdgpu_isa_version_ > 0) {
+    *version = rocm_amdgpu_isa_version_;
+    status = true;
+  }
+  return status;
+}
+
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
   auto total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
@@ -137,8 +147,8 @@ uint64 DivideCeil(uint64 x, uint64 y) {
 }
 
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             uint64 element_count, uint64 *threads_per_block,
-                             uint64 *block_count) {
+                             int64 element_count, int64 *threads_per_block,
+                             int64 *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {

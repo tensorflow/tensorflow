@@ -198,6 +198,9 @@ class SymbolicGradientBuilder {
   void BackpropAlongEdge(const NodeOut& dst_grad, const NodeOut& src);
   void BackpropZerosAlongEdge(const NodeOut& src);
 
+  // Returns a node representing the sum of any backpropped gradients for 'src'.
+  // This will be an AddN node if there is more than one accumulated gradient.
+  // Returns zeros if there are no gradients, or the dtype is DT_BOOL.
   NodeOut SumGradients(const NodeOut& src);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
@@ -296,7 +299,7 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   auto iter = backprops_.find(src);
   CHECK(iter != backprops_.end());
   const auto& grads = iter->second;
-  if (grads.empty()) {
+  if (grads.empty() || dtype == DT_BOOL) {
     // Nothing propagated back. The best we can come up is zeros.
     Node* zero_like = AddZerosLike(graph_, src);
     return {zero_like, 0};

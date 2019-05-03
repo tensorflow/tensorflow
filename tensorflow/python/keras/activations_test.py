@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.platform import test
 
 
@@ -45,6 +46,14 @@ class KerasActivationsTest(test.TestCase):
       config = keras.activations.serialize(fn)
       fn = keras.activations.deserialize(config)
       assert fn == ref_fn
+
+  def test_serialization_v2(self):
+    activation_map = {nn.softmax_v2: 'softmax'}
+    for fn_v2_key in activation_map:
+      fn_v2 = keras.activations.get(fn_v2_key)
+      config = keras.activations.serialize(fn_v2)
+      fn = keras.activations.deserialize(config)
+      assert fn.__name__ == activation_map[fn_v2_key]
 
   def test_softmax(self):
     x = keras.backend.placeholder(ndim=2)
@@ -136,10 +145,14 @@ class KerasActivationsTest(test.TestCase):
   def test_relu(self):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.relu(x)])
-    test_values = np.random.random((2, 5))
-    result = f([test_values])[0]
-    # No negative values in test values...
-    self.assertAllClose(result, test_values, rtol=1e-05)
+    positive_values = np.random.random((2, 5))
+    result = f([positive_values])[0]
+    self.assertAllClose(result, positive_values, rtol=1e-05)
+
+    negative_values = np.random.uniform(-1, 0, (2, 5))
+    result = f([negative_values])[0]
+    expected = np.zeros((2, 5))
+    self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_elu(self):
     x = keras.backend.placeholder(ndim=2)

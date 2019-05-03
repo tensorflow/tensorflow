@@ -59,6 +59,9 @@ void GetOpListForValidation(
 // be less than the total node count.
 Status ValidateGraphHasNoCycle(const Graph& graph);
 
+// Returns OK if the graph has no duplicate node names.
+Status VerifyNoDuplicateNodeNames(const GraphDef& graph);
+
 }  // namespace graph
 }  // namespace tensorflow
 

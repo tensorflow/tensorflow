@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
@@ -197,7 +197,7 @@ class TensorScatterOp : public OpKernel {
     }
 
     std::unique_ptr<Tensor> forwarded_input = c->forward_input(
-        2, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
+        0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
 
     if (forwarded_input == nullptr) {
       // We were not able to forward the input, so we deep copy the tensor and
@@ -215,6 +215,8 @@ class TensorScatterOp : public OpKernel {
       OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
                             c, indices, updates, shape, forwarded_input.get(),
                             false /*allocate*/));
+
+      c->set_output(0, *forwarded_input);
     }
   }
 };
@@ -351,7 +353,9 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
                                     scatter_nd_op::UpdateOp::SUB);        \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
-      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);
+      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);   \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdSub", scatter_nd_op::UpdateOp::SUB);
 
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");

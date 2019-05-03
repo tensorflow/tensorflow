@@ -45,8 +45,10 @@ class ConcatenateTest(test_base.DatasetTestBase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
     concatenated = input_dataset.concatenate(dataset_to_concatenate)
-    self.assertEqual(concatenated.output_shapes, (tensor_shape.TensorShape(
-        [20]), tensor_shape.TensorShape([15]), tensor_shape.TensorShape([])))
+    self.assertEqual(
+        dataset_ops.get_legacy_output_shapes(concatenated),
+        (tensor_shape.TensorShape([20]), tensor_shape.TensorShape([15]),
+         tensor_shape.TensorShape([])))
 
     get_next = self.getNext(concatenated)
 
@@ -76,7 +78,9 @@ class ConcatenateTest(test_base.DatasetTestBase):
     concatenated = input_dataset.concatenate(dataset_to_concatenate)
     self.assertEqual(
         [ts.as_list()
-         for ts in nest.flatten(concatenated.output_shapes)], [[20], [None]])
+         for ts in nest.flatten(
+             dataset_ops.get_legacy_output_shapes(concatenated))],
+        [[20], [None]])
     get_next = self.getNext(concatenated)
     for i in range(9):
       result = self.evaluate(get_next())

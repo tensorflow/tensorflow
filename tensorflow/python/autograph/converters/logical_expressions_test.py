@@ -77,6 +77,13 @@ class LogicalExpressionTest(converter_testing.TestCase):
     with self.converted(test_fn, logical_expressions, {}) as result:
       self.assertTrue(result.test_fn('a', ('a',)))
 
+  def test_unary_ops(self):
+    def test_fn(a):
+      return ~a, -a, +a
+
+    with self.converted(test_fn, logical_expressions, {}) as result:
+      self.assertEqual(result.test_fn(1), (-2, -1, 1))
+
 
 if __name__ == '__main__':
   test.main()

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Provides test suites that can be run to test fused convolutions.
 
 Each of the two test suites in this module, FusedConv2DBiasActivationTest and
@@ -34,9 +33,11 @@ from tensorflow.contrib.fused_conv.python.ops import fused_conv2d_bias_activatio
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -636,81 +637,8 @@ def _CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
     return (input_dim + stride - 1) // stride
 
 
-def _NchwVectCToNchw(in_tensor):
-  # [N, C / 4, H, W, 4] => [N, C / 4, 4, H, W] == [N, C, H, W]
-  t = array_ops.transpose(in_tensor, [0, 1, 4, 2, 3])
-  n = in_tensor.shape.dims[0].value
-  c = in_tensor.shape.dims[1].value * in_tensor.shape.dims[4].value
-  h = in_tensor.shape.dims[2].value
-  w = in_tensor.shape.dims[3].value
-  return array_ops.reshape(t, [n, c, h, w])
-
-
-def _OihwVectIToHwio(in_tensor):
-  # [O, I / 4, H, W, 4] => [O, I / 4, 4, H, W] == [O, I, H, W]
-  t = array_ops.transpose(in_tensor, [2, 3, 1, 4, 0])
-  o = in_tensor.shape.dims[0].value
-  i = in_tensor.shape.dims[1].value * in_tensor.shape.dims[4].value
-  h = in_tensor.shape.dims[2].value
-  w = in_tensor.shape.dims[3].value
-  return array_ops.reshape(t, [h, w, i, o])
-
-
-def _NchwToNchwVectC(in_tensor):
-  n, c, h, w = in_tensor.shape.as_list()
-  assert c % 4 == 0
-  t = array_ops.reshape(in_tensor, [n, c // 4, 4, h, w])
-  return array_ops.transpose(t, [0, 1, 3, 4, 2])
-
-
-def _HwioToOihw(in_tensor):
-  return array_ops.transpose(in_tensor, [3, 2, 0, 1])
-
-
-def _SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
-                                           padding, strides, side_input_scale,
-                                           side_input, biases, apply_relu):
-  """Simulates the int8 fused 2-D convolution op using separate float ops.
-
-    The arguments and return values have the same format, meanings and
-    restrictions as the actual op.
-  Args:
-    conv_input_scale: A scalar 'float'.
-    conv_input: A `Tensor` of type `qint8` in NCHW_VECT_C layout.
-    kernel: A `Tensor` of type `qint8` in OIHW_VECT_I layout.
-    padding: A `string` from: `"SAME", "VALID"`.
-    strides: A list of `ints`.
-    side_input_scale: A scalar 'float'.
-    side_input: A `Tensor` of type `qint8` in NCHW_VECT_C layout.
-    biases: A `Tensor` of type `float32` in NCHW layout.
-    apply_relu: A boolean to specify whether to apply "Relu" activation function
-      that clips outputs to the range [0, 127], or "None" activation that clips
-      to the range [-128, 127].
-  Returns:
-    A `Tensor` of type `qint8` in NCHW_VECT_C layout.
-  """
-  conv_result = nn_ops.conv2d(
-      _NchwVectCToNchw(gen_array_ops.dequantize(conv_input, -128, 127)),
-      _OihwVectIToHwio(gen_array_ops.dequantize(kernel, -128, 127)),
-      strides=strides,
-      padding=padding,
-      data_format="NCHW") * conv_input_scale
-
-  conv_and_side_inputs = conv_result + side_input_scale * _NchwVectCToNchw(
-      gen_array_ops.dequantize(side_input, -128, 127))
-
-  output = nn_ops.bias_add(conv_and_side_inputs, biases, data_format="NCHW")
-  if apply_relu:
-    output = nn_ops.relu(output)
-
-  result, _, _ = gen_array_ops.quantize_v2(
-      _NchwToNchwVectC(output), -128, 127, dtypes.qint8)
-  return result
-
-
-# TODO(b/114580749): XLA:CPU/GPU don't support int8 at the moment, so this test
-# doesn't currently use XLA.
-class FusedConvInt8Tests(object):
+def _GetFusedConvInt8TestParams():
+  """Returns test parameters shared by all Int8 FusedConv tests."""
   _test_params = [
       {
           "batch_size": 1,
@@ -848,6 +776,111 @@ class FusedConvInt8Tests(object):
           "padding_type": "SAME"
       },
   ]
+  return _test_params
+
+
+def _Int8Roundtrip(fn, tensor):
+  return array_ops.bitcast(
+      fn(array_ops.bitcast(tensor, dtypes.int8)), dtypes.qint8)
+
+
+def _NchwVectCToNchw(in_tensor):
+  # [N, C / 4, H, W, 4] => [N, C / 4, 4, H, W] == [N, C, H, W]
+  t = array_ops.transpose(in_tensor, [0, 1, 4, 2, 3])
+  n = in_tensor.shape.dims[0].value
+  c = in_tensor.shape.dims[1].value * in_tensor.shape.dims[4].value
+  h = in_tensor.shape.dims[2].value
+  w = in_tensor.shape.dims[3].value
+  return array_ops.reshape(t, [n, c, h, w])
+
+
+def _NchwVectCToNhwc(in_tensor):
+  # [N, C / 4, H, W, 4] => [N, H, W, C / 4, 4] == [N, H, W, C]
+  t = array_ops.transpose(in_tensor, [0, 2, 3, 1, 4])
+  n = in_tensor.shape.dims[0].value
+  h = in_tensor.shape.dims[2].value
+  w = in_tensor.shape.dims[3].value
+  c = in_tensor.shape.dims[1].value * in_tensor.shape.dims[4].value
+  return array_ops.reshape(t, [n, h, w, c])
+
+
+def _OihwVectIToHwio(in_tensor):
+  # [O, I / 4, H, W, 4] => [O, I / 4, 4, H, W] == [O, I, H, W]
+  t = array_ops.transpose(in_tensor, [2, 3, 1, 4, 0])
+  o = in_tensor.shape.dims[0].value
+  i = in_tensor.shape.dims[1].value * in_tensor.shape.dims[4].value
+  h = in_tensor.shape.dims[2].value
+  w = in_tensor.shape.dims[3].value
+  return array_ops.reshape(t, [h, w, i, o])
+
+
+def _NchwToNchwVectC(in_tensor):
+  n, c, h, w = in_tensor.shape.as_list()
+  assert c % 4 == 0
+  t = array_ops.reshape(in_tensor, [n, c // 4, 4, h, w])
+  return array_ops.transpose(t, [0, 1, 3, 4, 2])
+
+
+def _NhwcToNchwVectC(in_tensor):
+  # [H, H, W, C] => [N, H, W, C //4, 4] => [N, C / 4, H, W, 4]
+  n, h, w, c = in_tensor.shape.as_list()
+  assert c % 4 == 0
+  t = array_ops.reshape(in_tensor, [n, h, w, c // 4, 4])
+  return array_ops.transpose(t, [0, 3, 1, 2, 4])
+
+
+def _HwioToOihw(in_tensor):
+  return array_ops.transpose(in_tensor, [3, 2, 0, 1])
+
+
+def _SimulateFusedConv2dBiasActivationInt8OnCpu(conv_input_scale, conv_input,
+                                                kernel, padding, strides,
+                                                side_input_scale, side_input,
+                                                biases, apply_relu):
+  """Simulates the int8 fused 2-D convolution op using separate float ops.
+
+    The arguments and return values have the same format, meanings and
+    restrictions as the actual op.
+
+  Args:
+    conv_input_scale: A scalar 'float'.
+    conv_input: A `Tensor` of type `qint8` in NHWC layout.
+    kernel: A `Tensor` of type `qint8` in HWIO layout.
+    padding: A `string` from: `"SAME", "VALID"`.
+    strides: A list of `ints`.
+    side_input_scale: A scalar 'float'.
+    side_input: A `Tensor` of type `qint8` in NHWC layout.
+    biases: A `Tensor` of type `float32` in NHWC layout.
+    apply_relu: A boolean to specify whether to apply "Relu" activation function
+      that clips outputs to the range [0, 127], or "None" activation that clips
+      to the range [-128, 127].
+
+  Returns:
+    A `Tensor` of type `qint8` in NHWC layout.
+  """
+  conv_result = nn_ops.conv2d(
+      math_ops.cast(conv_input, dtypes.float32),
+      math_ops.cast(kernel, dtypes.float32),
+      strides=strides,
+      padding=padding,
+      data_format="NHWC") * conv_input_scale
+
+  conv_and_side_inputs = conv_result + side_input_scale * math_ops.cast(
+      side_input, dtypes.float32)
+
+  output = nn_ops.bias_add(conv_and_side_inputs, biases, data_format="NHWC")
+  if apply_relu:
+    output = nn_ops.relu(output)
+
+  # In this case quantization is identical to clipping and casting.
+  result, _, _ = gen_array_ops.quantize_v2(output, -128, 127, dtypes.qint8)
+  return result
+
+
+# FusedConv2DBiasActivation on CPU supports only NHWC/HWIO data format.
+class FusedConvInt8CPUTests(object):
+  """Verify quantization with CPU kernel."""
+  _test_params = _GetFusedConvInt8TestParams()
 
   @contextlib.contextmanager
   def test_scope(self):  # pylint: disable=invalid-name
@@ -855,6 +888,99 @@ class FusedConvInt8Tests(object):
     yield
 
   def runTest(self, test_param, apply_relu):
+    """Runs tests for dimensions configured in test_param."""
+
+    batch_size = test_param["batch_size"]
+    input_channels = test_param["input_channels"]
+    output_channels = test_param["output_channels"]
+    input_height = test_param["input_height"]
+    input_width = test_param["input_width"]
+    filter_height = test_param["filter_height"]
+    filter_width = test_param["filter_width"]
+    vertical_stride = test_param["vertical_stride"]
+    horizontal_stride = test_param["horizontal_stride"]
+    conv_input_scale = test_param["conv_input_scale"]
+    side_input_scale = test_param["side_input_scale"]
+    bias_scale = test_param["bias_scale"]
+    padding_type = test_param["padding_type"]
+
+    with self.cached_session(use_gpu=False) as sess, self.test_scope():
+      conv_input, _, _ = gen_array_ops.quantize_v2(
+          random_ops.random_uniform(
+              [batch_size, input_height, input_width, input_channels],
+              minval=-0.0,
+              maxval=1.0,
+              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+
+      kernel, _, _ = gen_array_ops.quantize_v2(
+          random_ops.random_uniform(
+              [filter_height, filter_width, input_channels, output_channels],
+              minval=-1.0,
+              maxval=1.0,
+              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+
+      output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
+                                                   vertical_stride,
+                                                   padding_type)
+      output_width = _CalculateConvolvedOutputDim(input_width, filter_width,
+                                                  horizontal_stride,
+                                                  padding_type)
+      tf_logging.info("output_height=%s, output_width=%s", output_height,
+                      output_width)
+
+      side_input, _, _ = gen_array_ops.quantize_v2(
+          random_ops.random_uniform(
+              [batch_size, output_height, output_width, output_channels],
+              minval=0.0,
+              maxval=1.0,
+              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+
+      biases = random_ops.random_uniform([output_channels],
+                                         minval=-10 * bias_scale,
+                                         maxval=20 * bias_scale,
+                                         dtype=dtypes.float32)
+
+      strides = [1, vertical_stride, horizontal_stride, 1]
+
+      actual = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+          conv_input,
+          kernel,
+          biases,
+          strides=strides,
+          padding=padding_type,
+          conv_input_scale=conv_input_scale,
+          side_input_scale=side_input_scale,
+          side_input=side_input,
+          activation_mode="Relu" if apply_relu else "None",
+          data_format="NHWC",
+          filter_format="HWIO")
+
+      expected = _SimulateFusedConv2dBiasActivationInt8OnCpu(
+          conv_input_scale, conv_input, kernel, padding_type, strides,
+          side_input_scale, side_input, biases, apply_relu)
+
+      actual_y, expected_y = sess.run([actual, expected])
+      self.assertAllClose(actual_y, expected_y, rtol=0, atol=1)
+
+  def testFusedConvInt8(self):
+    for apply_relu in [True, False]:
+      for test_param in self._test_params:
+        self.runTest(test_param, apply_relu)
+
+
+# Test that GPU and CPU kernels produce identical results for QInt8 data type.
+class FusedConvInt8CorrespondenceTests(object):
+  """Verify quantization with CPU kernel."""
+  _test_params = _GetFusedConvInt8TestParams()
+
+  @contextlib.contextmanager
+  def test_scope(self):  # pylint: disable=invalid-name
+    """Can be overridden in base classes to provide a test scope."""
+    yield
+
+  def runTest(self, test_param, apply_relu):
+    """Runs tests for dimensions configured in test_param."""
+
     batch_size = test_param["batch_size"]
     input_channels = test_param["input_channels"]
     output_channels = test_param["output_channels"]
@@ -887,10 +1013,12 @@ class FusedConvInt8Tests(object):
                                     dtype=dtypes.float32), -1.0, 1.0,
           dtypes.qint8)
 
-      output_height = _CalculateConvolvedOutputDim(
-          input_height, filter_height, vertical_stride, padding_type)
-      output_width = _CalculateConvolvedOutputDim(
-          input_width, filter_width, horizontal_stride, padding_type)
+      output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
+                                                   vertical_stride,
+                                                   padding_type)
+      output_width = _CalculateConvolvedOutputDim(input_width, filter_width,
+                                                  horizontal_stride,
+                                                  padding_type)
       tf_logging.info("output_height=%s, output_width=%s", output_height,
                       output_width)
 
@@ -908,27 +1036,38 @@ class FusedConvInt8Tests(object):
                                          maxval=20 * bias_scale,
                                          dtype=dtypes.float32)
 
-      strides = [1, 1, vertical_stride, horizontal_stride]
+      with ops.device("/cpu:0"):
+        t = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+            _Int8Roundtrip(_NchwVectCToNhwc, conv_input),
+            _Int8Roundtrip(_OihwVectIToHwio, kernel),
+            biases,
+            strides=[1, vertical_stride, horizontal_stride, 1],
+            padding=padding_type,
+            conv_input_scale=conv_input_scale,
+            side_input_scale=side_input_scale,
+            side_input=_Int8Roundtrip(_NchwVectCToNhwc, side_input),
+            activation_mode="Relu" if apply_relu else "None",
+            data_format="NHWC",
+            filter_format="HWIO")
+        cpu_result = _Int8Roundtrip(_NhwcToNchwVectC, t)
 
-      actual = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
-          conv_input,
-          kernel,
-          biases,
-          strides=strides,
-          padding=padding_type,
-          conv_input_scale=conv_input_scale,
-          side_input_scale=side_input_scale,
-          side_input=side_input,
-          activation_mode="Relu" if apply_relu else "None",
-          data_format="NCHW_VECT_C",
-          filter_format="OIHW_VECT_I")
+      with ops.device("/gpu:0"):
+        t = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+            conv_input,
+            kernel,
+            biases,
+            strides=[1, 1, vertical_stride, horizontal_stride],
+            padding=padding_type,
+            conv_input_scale=conv_input_scale,
+            side_input_scale=side_input_scale,
+            side_input=side_input,
+            activation_mode="Relu" if apply_relu else "None",
+            data_format="NCHW_VECT_C",
+            filter_format="OIHW_VECT_I")
+        gpu_result = t
 
-      expected = _SimulateFusedConv2dBiasActivationInt8(
-          conv_input_scale, conv_input, kernel, padding_type, strides,
-          side_input_scale, side_input, biases, apply_relu)
-
-      actual_y, expected_y = sess.run([actual, expected])
-      self.assertAllClose(actual_y, expected_y, rtol=0, atol=1)
+      cpu_y, gpu_y = sess.run([cpu_result, gpu_result])
+      self.assertAllClose(cpu_y, gpu_y, rtol=0, atol=0)
 
   def testFusedConvInt8(self):
     if not test.is_gpu_available(

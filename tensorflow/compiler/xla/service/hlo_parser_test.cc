@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -61,6 +62,19 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
   %y = f32[2,4]{1,0} parameter(2)
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+
+)"
+},
+// parameter replication
+{
+"ParamReplication",
+R"(HloModule param_replication_module
+
+ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
+  %a = f32[] parameter(0), parameter_replication={true}
+  %b = (f32[2,4]{1,0}, (f32[2,4]{1,0})) parameter(1), parameter_replication={false,true}
+  ROOT %tuple = (f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0}))) tuple(f32[] %a, (f32[2,4]{1,0}, (f32[2,4]{1,0})) %b)
 }
 
 )"
@@ -209,7 +223,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} greater-than(f32[4]{0} %v1, f32[4]{0} %v2), sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
 }
 
@@ -279,7 +293,7 @@ R"(HloModule WhileWithScalarS32Result_module
 %condition.v3 (prev.2: s32[]) -> pred[] {
   %constant.1 = s32[] constant(5)
   %prev.2 = s32[] parameter(0)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %prev.2)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
 }
 
 ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
@@ -461,7 +475,7 @@ R"(HloModule R4F32OverlapSmall_module
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -487,7 +501,7 @@ R"(HloModule select_and_scatter_scalar
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -553,6 +567,30 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 
 )"
 },
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
+// Triangular solve
+{
+"TriangularSolve",
+R"(HloModule TriangularSolve_module
+
+ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
+  %a.1 = f32[4,4]{1,0} parameter(0)
+  %b.2 = f32[3,4]{1,0} parameter(1)
+  ROOT %triangular-solve.3 = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a.1, f32[3,4]{1,0} %b.2), lower=true, transpose_a=NO_TRANSPOSE
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
@@ -568,16 +606,47 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -
 
 )"
 },
+// Dynamic slice with scalar indices
+{
+"DynamicSliceScalarIndices",
+R"(HloModule DynamicSlice_module
+
+ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
+  %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
+  %constant = s32[] constant(0)
+  %start_index = s32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,2,258]{2,1,0} dynamic-slice(s32[2,2,258]{2,1,0} %original_parameter, s32[] %constant, s32[] %constant, s32[] %start_index), dynamic_slice_sizes={2,2,258}
+}
+
+)"
+},
 // Dynamic update slice
 {
 "DynamicUpdateSlice",
-R"(HloModule DynamicUpdateSlice_module
+R"(HloModule DynamicSlice_module
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_indices: s32[4]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
   %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
   %start_indices = s32[4]{0} parameter(2)
   ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[4]{0} %start_indices)
+}
+
+)"
+},
+// Dynamic update slice with scalar indices
+{
+"DynamicUpdateSliceScalarIndex",
+R"(HloModule DynamicUpdateSlice_module
+
+ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
+  %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
+  %update = s32[1,1,2,1]{3,2,1,0} parameter(1)
+  %start_index.0 = s32[] parameter(2)
+  %start_index.1 = s32[] parameter(3)
+  %start_index.2 = s32[] parameter(4)
+  %start_index.3 = s32[] parameter(5)
+  ROOT %dynamic-update-slice = s32[1,1,25,1]{3,2,1,0} dynamic-update-slice(s32[1,1,25,1]{3,2,1,0} %input, s32[1,1,2,1]{3,2,1,0} %update, s32[] %start_index.0, s32[] %start_index.1, s32[] %start_index.2, s32[] %start_index.3)
 }
 
 )"
@@ -740,7 +809,17 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 R"(HloModule sparse_f32
 
 ENTRY %sparse () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
+  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 2]: 2, [1, 2, 3]: 3})
+}
+
+)"
+},
+{
+"SparseC128",
+R"(HloModule sparse_c128
+
+ENTRY %sparse () -> c128[2,3,4] {
+  ROOT %foo = c128[2,3,4]sparse{10} constant({[0, 1, 2]: (1, 0), [1, 2, 2]: (2, 5), [1, 2, 3]: (3, 10)})
 }
 
 )"
@@ -854,6 +933,58 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 
 )"
 },
+// Parse c64 literal
+{
+"ParseC64Literal",
+R"(HloModule ParseC64Literal
+
+ENTRY %ParseC64Literal () -> c64[2] {
+  ROOT %c = c64[2]{0} constant({(1, 2), (-inf, nan)})
+}
+
+)"
+},
+// Parse c128 literal
+{
+"ParseC128Literal",
+R"(HloModule ParseC128Literal
+
+ENTRY %ParseC128Literal () -> c128[2] {
+  ROOT %c = c128[2]{0} constant({(1, 2), (-inf, nan)})
+}
+
+)"
+},
+// Indexed Conditional
+{
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+%Negate (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %x)
+}
+
+%Identity (y: f32[]) -> f32[] {
+  %y = f32[] parameter(0)
+  ROOT %copy = f32[] copy(f32[] %y)
+}
+
+%Floor (z: f32[]) -> f32[] {
+  %z = f32[] parameter(0)
+  ROOT %floor = f32[] floor(f32[] %z)
+}
+
+ENTRY %Parameters1.v4 () -> f32[] {
+  %constant = s32[] constant(1)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  %constant.3 = f32[] constant(13)
+  ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -907,7 +1038,7 @@ R"(HloModule TupleReduce
 max_argmax {
   value = f32[] parameter(2)
   prev_max = f32[] parameter(0)
-  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  is_next_larger = pred[] compare(value, prev_max), direction=GE
   max = f32[] select(is_next_larger, value, prev_max)
   index = s32[] parameter(3)
   prev_argmax = s32[] parameter(1)
@@ -973,9 +1104,15 @@ ENTRY ReducePrecision {
 "SortKey",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
-  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -985,10 +1122,18 @@ ENTRY Sort {
 "SortKeyValue",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -998,9 +1143,15 @@ ENTRY Sort {
 "SortKeyR2",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   x = f32[1024,16]{0,1} parameter(0)
-  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1010,10 +1161,18 @@ ENTRY Sort {
 "SortKeyValueR2",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values = s32[1024,16]{0,1} parameter(1)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1023,20 +1182,80 @@ ENTRY Sort {
 "SortManyValues",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.2.lhs = u32[] parameter(4)
+  p.2.rhs = u32[] parameter(5)
+  p.3.lhs = f32[] parameter(6)
+  p.3.rhs = f32[] parameter(7)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values.0 = s32[1024,16]{0,1} parameter(1)
   values.1 = u32[1024,16]{0,1} parameter(2)
   values.2 = f32[1024,16]{0,1} parameter(3)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}, to_apply=compare
 }
 
 )"
 },
-// Conditional
+// Sort (Key) is_stable=true
 {
-"Conditional",
-R"(HloModule conditional
+"SortKeyStable",
+R"(HloModule sort
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+
+)"
+},
+// Indexed Conditional
+{
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+Negate {
+  x = f32[] parameter(0)
+  ROOT negate = f32[] negate(x)
+}
+
+Identity {
+  y = f32[] parameter(0)
+  ROOT copy = f32[] copy(y)
+}
+
+Floor {
+  z = f32[] parameter(0)
+  ROOT floor = f32[] floor(z)
+}
+
+ENTRY Parameters1.v4 {
+  constant = s32[] constant(1)
+  constant.1 = f32[] constant(56)
+  constant.2 = f32[] constant(12)
+  constant.3 = f32[] constant(13)
+  ROOT conditional = f32[] conditional(constant, constant.1, constant.2, constant.3), branch_computations={Negate, Identity, Floor}
+}
+
+)"
+},
+// Predicated Conditional
+{
+"PredicatedConditional",
+R"(HloModule pred_conditional
 
 Negate {
   x = f32[] parameter(0)
@@ -1208,6 +1427,17 @@ ENTRY CollectivePermute {
 
 )"
 },
+// replica-id
+{
+"ReplicaId",
+R"(HloModule replica-id
+
+ENTRY Replica-id {
+  ROOT replica-id = u32[] replica-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",
@@ -1235,10 +1465,18 @@ ENTRY Computation {
 "ScheduledModule",
 R"(HloModule scheduled_module, is_scheduled=true
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lhs = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1274,6 +1512,43 @@ ENTRY AddDependency {
 
 )"
 },
+
+// A module containing constants equal to the min/max values of various data
+// types.
+{
+"MinMaxValues",
+R"(HloModule MinMaxValues
+
+ENTRY MinMaxValues {
+  x.s8 = s8[2]{0} constant({-128, 127})
+  x.s16 = s16[2]{0} constant({-32768, 32767})
+  x.s32 = s32[2]{0} constant({-2147483648, 2147483647})
+  x.u8 = u8[2]{0} constant({0, 255})
+  x.u16 = u16[2]{0} constant({0, 65535})
+  x.u32 = u32[2]{0} constant({0, 4294967295})
+  x.f16 = f16[2]{0} constant({-65504, 65504})
+  x.bf16 = bf16[2]{0} constant({-3.38953e+38, 3.38953e+38})
+  x.f32 = f32[2]{0} constant({-3.40282e+38, 3.40282e+38})
+  x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
+  x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
+  ROOT c.c128 = c128[2]{0} constant({(-1.79769e+308, 1.79769e+308), (1.79769e+308, -1.79769e+308)})
+}
+
+)"
+},
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+}
 });
   // clang-format on
 }
@@ -1298,7 +1573,7 @@ class HloParameterizedParserTest
  protected:
   // Expects "ToString(ParseHloString(string)) == string", that is, parses the
   // string, asserts that it succeeded, stringifies the parsed module, and
-  // checks that the it equals the original string.
+  // checks that it equals the original string.
   void ExpectEqual() {
     const string& original = GetParam().module_string;
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -1329,20 +1604,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:
@@ -1395,7 +1670,7 @@ TEST_F(HloParserTest, WrongOperandsSize) {
 
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x)
+  %eq = pred[]{} compare(f32[]{} %x), direction=EQ
 }
 
 )";
@@ -1407,7 +1682,7 @@ TEST_F(HloParserTest, OperandNotFound) {
   const string original = R"(HloModule operand_not_found:
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x, f32[]{} %y)
+  %eq = pred[]{} compare(f32[]{} %x, f32[]{} %y), direction=EQ
 }
 )";
   auto result = ParseHloString(original);
@@ -1501,6 +1776,37 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
                   "is out of range for literal's primitive type F16");
 }
 
+TEST_F(HloParserTest, ConstantBf16NoOverflow) {
+  // 65505 is in range for bf16.
+  const string original = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT c = bf16[] constant(-65505)
+  })";
+  EXPECT_EQ(Status::OK(), ParseHloString(original).status());
+}
+
+TEST_F(HloParserTest, ConstantBf16Overflow) {
+  // 1e100 is out of range for bf16.
+  const string original = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT c = bf16[] constant(1e100)
+  })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "out of range");
+}
+
+TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65505})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "is out of range for literal's primitive type F16");
+}
+
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
   const string original = R"(
       HloModule ConstantUnsignedUnderflow_module
@@ -1535,6 +1841,46 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
   EXPECT_NE(Status::OK(), result.status());
 }
 
+TEST_F(HloParserTest, ConstantC64Overflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test () -> c64[] {
+        ROOT c = c64[] constant((1e100, 0))
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantC64Underflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test () -> c64[] {
+        ROOT c = c64[] constant((0, -1e100))
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantF64Overflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test {
+        ROOT c = f64[] constant(1.8e308)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantF64Underflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test {
+        ROOT c = f64[] constant(-1.8e308)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
 TEST_F(HloParserTest, ConstantWithExp) {
   const string original = R"(HloModule ConstantWithExp_module
 
@@ -1548,6 +1894,19 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
+}
+
+TEST_F(HloParserTest, ShortConstant) {
+  const string original = R"(HloModule ShortCOnstant_module
+
+ENTRY %ShortConstant.v4 () -> f32[67,89] {
+  ROOT %constant.1 = f32[67,89]{1,0} constant({...})
+}
+
+)";
+  auto result = ParseHloString(original);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, AttibutesAnyOrder) {
@@ -1918,6 +2277,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParseReplicaGroups) {
+  const string original = "{{0,1},{2,3}}";
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                          ParseReplicaGroupsOnly(original));
+  EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
   const string original = "0_1x2_3";
   TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
@@ -2022,6 +2388,31 @@ TEST(HloParserSingleOpTest, CanonicalOpWithNested) {
     tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  EXPECT_EQ(
+      computation->root_instruction()->ToString(HloPrintOptions::Canonical()),
+      text);
+}
+
+TEST(HloParserSingleOpTest, CanonicalOpIndexedConditionalInlinedBranches) {
+  const string text =
+      R"(f32[5,10]{1,0} conditional(s32[], f32[5,10]{1,0}, f32[5,10]{1,0}, f32[5,10]{1,0}), branch_computations={
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} ceil(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} floor(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} copy(f32[5,10]{1,0} tmp_0)
+}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
@@ -2249,6 +2640,46 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
                   " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
+TEST_F(HloParserTest, OutOfRangeSparseIndex) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[100]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, NegativeSparseIndex) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({-1: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, SparseIndexWithRankTooLarge) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[0, 0]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, SparseIndexWithRankTooSmall) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5, 5]sparse{10} constant({[0]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
 TEST_F(HloParserTest, ParseShapeStringR2F32) {
   string shape_string = "f32[123,456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -2291,6 +2722,60 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
+  // One tile.
+  string shape_string = "f32[123,456]{0,1:T(2,128)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1}, {Tile({2, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with negative dimension size for combining dimensions.
+  shape_string = "f32[123,456,789]{0,1,2:T(2, * , 128)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456, 789}, {0, 1, 2},
+                                     {Tile({2, Tile::kCombineDimension, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Two tiles.
+  shape_string = "bf16[123,456,789]{2,1,0:T(2,*,128)(2,1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(
+      BF16, {123, 456, 789}, {2, 1, 0},
+      {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with element size in bits.
+  shape_string = "pred[123,456]{1,0:T(2,128)E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                            {Tile({2, 128})}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size in bits without tile.
+  shape_string = "pred[123,456]{1,0:E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Wrong minor_to_major.
+  shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
+  auto result = ParseShape(shape_string);
+  ExpectHasSubstr(result.status().error_message(),
+                  "Dimensions size is 3, but minor to major size is 1.");
 }
 
 TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
@@ -2347,6 +2832,109 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, NegativeParameterNumber) {
+  const string hlo_string = "par0 = f32[3,5] parameter(-1)";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter number must be >= 0"));
+}
+
+TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
+  const string hlo_string =
+      "par0 = (f32[3,5], f32[]) parameter(0), "
+      "parameter_replication={true,false,true}";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter has 2 leaf buffers, but "
+                                   "parameter_replication has 3 elements"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[2] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("The first operand must be a scalar"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "The first operand must be a scalar of PRED or S32"));
+}
+
+TEST_F(HloParserTest,
+       CheckPredicatedConditionalRequiresTrueAndFalseComputation) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = pred[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(
+      result.status().error_message(),
+      ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
 }  // namespace

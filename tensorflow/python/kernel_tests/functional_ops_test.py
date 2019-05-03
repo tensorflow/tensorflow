@@ -23,16 +23,17 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -190,133 +191,6 @@ class FunctionalOpsTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(720.0, self.evaluate(r))
   # pylint: enable=unnecessary-lambda
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_Simple(self):
-    nums = [1, 2, 3, 4, 5, 6]
-    elems = constant_op.constant(nums, name="data")
-    r = functional_ops.map_fn(
-        lambda x: math_ops.multiply(math_ops.add(x, 3), 2), elems)
-    self.assertAllEqual(
-        np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
-
-  def testMapSparseTensor(self):
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        functional_ops.map_fn(
-            lambda x: x,
-            sparse_tensor.SparseTensor(
-                indices=[[0, 0], [0, 1], [1, 0]],
-                values=constant_op.constant([0, 1, 2]),
-                dense_shape=[2, 2]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMapOverScalarErrors(self):
-    with self.assertRaisesRegexp(ValueError, "not scalars"):
-      functional_ops.map_fn(lambda x: x, [1, 2])
-    with self.assertRaisesRegexp(ValueError, "not a scalar"):
-      functional_ops.map_fn(lambda x: x, 1)
-
-  @test_util.run_deprecated_v1
-  def testMap_Scoped(self):
-    with self.cached_session() as sess:
-
-      def double_scoped(x):
-        """2x with a dummy 2 that is scoped."""
-        with variable_scope.variable_scope("body"):
-          # Dummy variable, just to check that scoping works as intended.
-          two = variable_scope.get_variable(
-              "two", [],
-              dtype=dtypes.int32,
-              initializer=init_ops.constant_initializer(2))
-          return math_ops.multiply(x, two)
-
-      with variable_scope.variable_scope("root") as varscope:
-        elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
-        doubles = np.array([2 * x for x in [1, 2, 3, 4, 5, 6]])
-
-        r = functional_ops.map_fn(double_scoped, elems)
-        # Check that we have the one variable we asked for here.
-        self.assertEqual(len(variables.trainable_variables()), 1)
-        self.assertEqual(variables.trainable_variables()[0].name,
-                         "root/body/two:0")
-        sess.run([variables.global_variables_initializer()])
-        self.assertAllEqual(doubles, self.evaluate(r))
-
-        # Now let's reuse our single variable.
-        varscope.reuse_variables()
-        r = functional_ops.map_fn(double_scoped, elems)
-        self.assertEqual(len(variables.trainable_variables()), 1)
-        self.assertAllEqual(doubles, self.evaluate(r))
-
-  @test_util.run_deprecated_v1
-  def testMap_Grad(self):
-    with self.cached_session():
-      param = constant_op.constant(2.0)
-      elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
-      y = functional_ops.map_fn(
-          lambda x: math_ops.multiply(math_ops.square(x), param), elems)
-      r = gradients_impl.gradients(y, param)[0]
-      self.assertAllEqual(91.0, self.evaluate(r))
-      r = gradients_impl.gradients(y, elems)[0]
-      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], self.evaluate(r))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_SimpleNotTensor(self):
-    nums = np.array([1, 2, 3, 4, 5, 6])
-    r = functional_ops.map_fn(
-        lambda x: math_ops.multiply(math_ops.add(x, 3), 2), nums)
-    self.assertAllEqual(
-        np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_SingleInputMultiOutput(self):
-    nums = np.array([1, 2, 3, 4, 5, 6])
-    r = functional_ops.map_fn(
-        lambda x: ((x + 3) * 2, -(x + 3) * 2),
-        nums,
-        dtype=(dtypes.int64, dtypes.int64))
-    self.assertEqual(2, len(r))
-    self.assertEqual((6,), r[0].get_shape())
-    self.assertEqual((6,), r[1].get_shape())
-    received = self.evaluate(r)
-    self.assertAllEqual((nums + 3) * 2, received[0])
-    self.assertAllEqual(-(nums + 3) * 2, received[1])
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_MultiOutputMismatchedDtype(self):
-    nums = np.array([1, 2, 3, 4, 5, 6])
-    with self.assertRaisesRegexp(
-        TypeError, r"two structures don't have the same nested structure"):
-      # lambda emits tuple, but dtype is a list
-      functional_ops.map_fn(
-          lambda x: ((x + 3) * 2, -(x + 3) * 2),
-          nums,
-          dtype=[dtypes.int64, dtypes.int64])
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_MultiInputSingleOutput(self):
-    nums = np.array([1, 2, 3, 4, 5, 6])
-    r = functional_ops.map_fn(
-        lambda x: x[0] * x[1][0] + x[1][1], (nums, (nums, -nums)),
-        dtype=dtypes.int64)
-    self.assertEqual((6,), r.get_shape())
-    received = self.evaluate(r)
-    self.assertAllEqual(nums * nums + (-nums), received)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMap_MultiInputSameStructureOutput(self):
-    nums = np.array([1, 2, 3, 4, 5, 6])
-    r = functional_ops.map_fn(lambda x: (x[1][0], (x[1][1], x[0])),
-                              (nums, (2 * nums, -nums)))
-    r = [r[0], r[1][0], r[1][1]]
-    self.assertEqual((6,), r[0].get_shape())
-    self.assertEqual((6,), r[1].get_shape())
-    self.assertEqual((6,), r[2].get_shape())
-    received = self.evaluate(r)
-    self.assertAllEqual(2 * nums, received[0])
-    self.assertAllEqual(-nums, received[1])
-    self.assertAllEqual(nums, received[2])
 
   @test_util.run_in_graph_and_eager_modes
   def testScan_Simple(self):
@@ -481,37 +355,6 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(y.get_shape(), self.evaluate(y).shape)
 
   @test_util.run_in_graph_and_eager_modes
-  def testMapShape(self):
-    x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
-    y = functional_ops.map_fn(lambda e: e, x)
-    self.assertAllEqual(y.get_shape(), self.evaluate(y).shape)
-
-  @test_util.run_deprecated_v1
-  def testMapUnknownShape(self):
-    x = array_ops.placeholder(dtypes.float32)
-    y = functional_ops.map_fn(lambda e: e, x)
-    self.assertIs(None, y.get_shape().dims)
-
-  @test_util.disable_control_flow_v2("b/119323354")
-  @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
-  def testMapEmptyScalar(self):
-    map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
-    self.assertAllEqual([0], map_return.get_shape().dims)
-    self.assertAllEqual([0], self.evaluate(map_return).shape)
-
-  # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
-  # so the body of the while loop never executes
-  @test_util.disable_control_flow_v2("b/119323354")
-  @test_util.run_v1_only("b/120545219")
-  def testMapEmptyTensor(self):
-    with self.cached_session():
-      map_return = functional_ops.map_fn(lambda x: array_ops.zeros([3, 2]),
-                                         constant_op.constant([]))
-      self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
-      self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
-
-  @test_util.run_in_graph_and_eager_modes
   def testScanShape(self):
     x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
 
@@ -632,6 +475,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -656,6 +500,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -680,6 +525,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPUStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -762,6 +608,26 @@ class FunctionalOpsTest(test.TestCase):
           self.assertAllEqual(Run(sess, 20.), 210.)
           self.assertAllEqual(Run(sess, 100.), 5050.)
 
+  # Like above, but using int32 in order to ensure that int32 tensors don't get
+  # copied to the GPU during the application of the while.
+  def testWhileInt32(self):
+    with ops.Graph().as_default() as g:
+
+      @function.Defun(*[dtypes.int32] * 2)
+      def Cond(n, unused_x):
+        return n > 0
+
+      @function.Defun(*[dtypes.int32] * 2)
+      def Body(n, x):
+        return n - 1, x + n
+
+      def Run(sess, n):
+        return sess.run(functional_ops.While([n, 0], Cond, Body))[1]
+
+      with self.session(graph=g, use_gpu=True) as sess:
+        self.assertAllEqual(Run(sess, 20), 210)
+        self.assertAllEqual(Run(sess, 100), 5050)
+
   @test_util.run_deprecated_v1
   def testWhileLowering(self):
 
@@ -798,6 +664,7 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(Run(100., True), 5050.)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla("b/123337890")  # Different error message
   def testWhileError(self):
     for use_gpu in (True, False):
       with ops.Graph().as_default() as g:
@@ -887,7 +754,7 @@ class FunctionalOpsTest(test.TestCase):
 
           def TestCondCapture(n, *args):
             del args
-            return math_ops.to_float(n) + v < 10
+            return math_ops.cast(n, dtypes.float32) + v < 10
 
           with self.assertRaises(ValueError):
             _ = functional_ops.While(
@@ -903,7 +770,7 @@ class FunctionalOpsTest(test.TestCase):
 
         @function.Defun(dtypes.int32, dtypes.float32)
         def Body(n, x):
-          return x + math_ops.to_float(n)
+          return x + math_ops.cast(n, dtypes.float32)
 
         xs = [
             # 1 + 2  + ... + 20
@@ -932,7 +799,7 @@ class FunctionalOpsTest(test.TestCase):
 
       @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
       def TestBody(n, x):
-        return x + math_ops.to_float(n)
+        return x + math_ops.cast(n, dtypes.float32)
 
       _ = functional_ops.For(
           1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
@@ -950,15 +817,15 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32)
     def TestNullary(n):
-      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+      v + math_ops.cast(n, dtypes.float32)  # pylint: disable=expression-not-assigned
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def TestUnary(n, x):
-      return x + math_ops.to_float(n) + v
+      return x + math_ops.cast(n, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
     def TestBinary(n, x, x2):
-      return x + math_ops.to_float(n) + v, x2 + v
+      return x + math_ops.cast(n, dtypes.float32) + v, x2 + v
 
     for rewrite_with_while in (True, False):
       use_gpu = not rewrite_with_while
@@ -1032,7 +899,7 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(i, v):
-      return math_ops.to_float(i) + v
+      return math_ops.cast(i, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def ReturnsTooManyArgs(unused_i, v):
@@ -1117,6 +984,7 @@ class PartitionedCallTest(test.TestCase):
                 constant_op.constant(2.)], f=Body)
       self.assertEqual(output.eval(), 12.)
 
+  @test_util.run_deprecated_v1
   def testBasicMultiDeviceGPU(self):
     if not test_util.is_gpu_available():
       return
@@ -1197,6 +1065,7 @@ class PartitionedCallTest(test.TestCase):
     value = self.evaluate(v.read_value())
     self.assertEqual(value, 2.0)
 
+  @test_util.run_deprecated_v1
   def testFunctionWithResourcesOnDifferentDevices(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs available.")
@@ -1246,6 +1115,37 @@ class PartitionedCallTest(test.TestCase):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "NON_EXISTENT_EXECUTOR"):
       self.evaluate(op)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
+class FunctionalOpsCaseTest(test.TestCase):
+
+  def testCase(self):
+    @eager_function.defun
+    def two(x):
+      return x * 2
+
+    @eager_function.defun
+    def three(x):
+      return x * 3
+
+    @eager_function.defun
+    def four(x):
+      return x * 4
+
+    def f(branch, x):
+      tmpl = array_ops.zeros_like(x)
+      return array_ops.identity(gen_functional_ops.case(
+          branch, input=[x], Tout=[dtypes.float32],
+          branches=[f.get_concrete_function(tmpl)
+                    for f in (two, three, four)])[0])
+    one = array_ops.ones([])
+    self.assertAllEqual(np.float32(2), self.evaluate(f(0, one)))
+    self.assertAllEqual(np.float32(3), self.evaluate(f(1, one)))
+    self.assertAllEqual(np.float32(4), self.evaluate(f(2, one)))
+    self.assertAllEqual(np.float32(4), self.evaluate(f(-1, one)))  # <0 default
+    self.assertAllEqual(np.float32(4), self.evaluate(f(6, one)))  # >=N default
 
 
 if __name__ == "__main__":

@@ -29,11 +29,31 @@ class _Continue(object):
   def __init__(self):
     self.used = False
     self.control_var_name = None
-    self.create_guard = False
-    self.guard_created = False
 
   def __repr__(self):
-    return 'used: %s, var: %s' % (self.used, self.control_var_name)
+    return '<_Continue(used: {}, var: {})>'.format(self.used,
+                                                   self.control_var_name)
+
+
+class _Block(object):
+  """Tracks information about lexical blocks as they are visited in the AST.
+
+  Mainly, this object tracks the creation of block guards that replace
+  `continue` statements (e.g. `if not continue_:`).
+
+  Attributes:
+    guard_created: bool, whether the guard has been created for the last
+      continue statement.
+    create_guard: bool, whether a guard should be created because a continue
+      statement has just been encountered.
+  """
+
+  def __init__(self):
+    self.reset_guard_state()
+
+  def reset_guard_state(self):
+    self.guard_created = False
+    self.create_guard = False
 
 
 class ContinueCanonicalizationTransformer(converter.Base):
@@ -41,6 +61,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
+    self.state[_Block].reset_guard_state()
     template = """
       var_name = True
     """
@@ -68,17 +89,17 @@ class ContinueCanonicalizationTransformer(converter.Base):
     #    |                #         created if node)
 
     if self.state[_Continue].used:
-      if self.state[_Continue].guard_created:
+      if self.state[_Block].guard_created:
         return node, None
 
-      elif not self.state[_Continue].create_guard:
-        self.state[_Continue].create_guard = True
+      elif not self.state[_Block].create_guard:
+        self.state[_Block].create_guard = True
         return node, None
 
       else:
-        self.state[_Continue].guard_created = True
+        self.state[_Block].guard_created = True
         template = """
-          if not var_name:
+          if ag__.not_(var_name):
             original_node
         """
         cond, = templates.replace(
@@ -90,6 +111,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def _visit_loop_body(self, node, nodes):
     self.state[_Continue].enter()
+    self.state[_Block].enter()
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.state[_Continue].control_var_name = continue_var
@@ -103,14 +125,21 @@ class ContinueCanonicalizationTransformer(converter.Base):
       control_var_init = templates.replace(template, var_name=continue_var)
       nodes = control_var_init + nodes
 
+    self.state[_Block].exit()
     self.state[_Continue].exit()
+    return nodes
+
+  def _visit_non_loop_body(self, nodes):
+    self.state[_Block].enter()
+    nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+    self.state[_Block].exit()
     return nodes
 
   def visit_While(self, node):
     node.test = self.visit(node.test)
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
-    node.orelse = self.visit_block(node.orelse)
+    node.orelse = self._visit_non_loop_body(node.orelse)
     return node
 
   def visit_For(self, node):
@@ -118,7 +147,29 @@ class ContinueCanonicalizationTransformer(converter.Base):
     node.iter = self.generic_visit(node.iter)
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
-    node.orelse = self.visit_block(node.orelse)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    return node
+
+  def visit_If(self, node):
+    node.body = self.visit_block(node.body)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    return node
+
+  def visit_With(self, node):
+    node.items = self.visit_block(node.items)
+    node.body = self._visit_non_loop_body(node.body)
+    return node
+
+  def visit_Try(self, node):
+    node.body = self._visit_non_loop_body(node.body)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    # In Python 3.8 and later continue is allowed in finally blocks
+    node.finalbody = self._visit_non_loop_body(node.finalbody)
+    node.handlers = self.visit_block(node.handlers)
+    return node
+
+  def visit_ExceptHandler(self, node):
+    node.body = self._visit_non_loop_body(node.body)
     return node
 
 

@@ -24,11 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
-
-namespace {
-using llvm_ir::AsStringRef;
-}  // namespace
-
 namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
@@ -48,15 +43,14 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
 
 IrFunction::IrFunction(const string& function_name,
                        llvm::Function::LinkageTypes linkage,
-                       const bool optimize_for_size_requested,
-                       const bool enable_fast_math, llvm::Module* llvm_module,
-                       llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds)
+                       const HloModuleConfig& module_config,
+                       llvm::Module* llvm_module, llvm::IRBuilder<>* b,
+                       int64 num_dynamic_loop_bounds)
     : b_(b),
       llvm_module_(llvm_module),
       caller_insert_point_guard_(*b),
       num_dynamic_loop_bounds_(num_dynamic_loop_bounds) {
-  Initialize(function_name, linkage, optimize_for_size_requested,
-             enable_fast_math);
+  Initialize(function_name, linkage, module_config);
 }
 
 IrFunction::~IrFunction() {
@@ -75,8 +69,7 @@ DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
 
 void IrFunction::Initialize(const string& function_name,
                             llvm::Function::LinkageTypes linkage,
-                            const bool optimize_for_size_requested,
-                            const bool enable_fast_math) {
+                            const HloModuleConfig& module_config) {
   // The function signature is:
   //   void function(i8* retval, i8* run_options, i8** params, i8**
   //   buffer_table,
@@ -147,11 +140,8 @@ void IrFunction::Initialize(const string& function_name,
   // Functions with local linkage get an inlining bonus.  Because we know
   // a-priori that embedded functions (non-entry functions) will not have its
   // name resolved, give it local linkage.
-  function_ =
-      llvm_ir::CreateFunction(function_type, linkage,
-                              /*enable_fast_math=*/enable_fast_math,
-                              /*optimize_for_size=*/optimize_for_size_requested,
-                              function_name, llvm_module_);
+  function_ = llvm_ir::CreateCpuFunction(function_type, linkage, module_config,
+                                         function_name, llvm_module_);
 
   // Set meaningful names for the function's arguments: useful for debugging.
   llvm::Function::arg_iterator arg_iter = function_->arg_begin();
@@ -193,7 +183,7 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
   string name = absl::StrCat("dynamic_loop_bound_", offset);
   return b_->CreateLoad(b_->CreateGEP(CHECK_NOTNULL(dynamic_loop_bounds_arg_),
-                                      b_->getInt64(offset), AsStringRef(name)));
+                                      b_->getInt64(offset), name));
 }
 
 // Emits code to allocate an array of parameter address pointers, and store
@@ -216,10 +206,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
         absl::StrCat(name, "_parameter_addresses"), b);
 
     for (size_t i = 0; i < parameter_addresses.size(); ++i) {
-      llvm::Value* parameter_as_i8ptr =
-          b->CreateBitCast(parameter_addresses[i], b->getInt8PtrTy(),
-                           AsStringRef(absl::StrCat(name, "_parameter_", i,
-                                                    "_address_as_i8ptr")));
+      llvm::Value* parameter_as_i8ptr = b->CreateBitCast(
+          parameter_addresses[i], b->getInt8PtrTy(),
+          absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
       llvm::Value* slot_in_param_addresses =
           b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
       b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
@@ -266,9 +255,11 @@ Status EmitCallToParallelForkJoin(
       /*Params=*/compute_function_params,
       /*isVarArg=*/false);
 
-  llvm::Function* fork_join_func =
-      llvm::cast<llvm::Function>(module->getOrInsertFunction(
-          runtime::kParallelForkJoinSymbolName, fork_join_type));
+  llvm::Function* fork_join_func = llvm::dyn_cast<llvm::Function>(
+      module
+          ->getOrInsertFunction(runtime::kParallelForkJoinSymbolName,
+                                fork_join_type)
+          .getCallee());
   fork_join_func->setCallingConv(llvm::CallingConv::C);
   fork_join_func->setDoesNotThrow();
 
@@ -322,7 +313,7 @@ Status EmitCallToParallelForkJoin(
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
       /*Initializer=*/partitions_array,
       /*Name=*/
-      AsStringRef(absl::StrCat(name, "_parallel_dimension_partitions")));
+      absl::StrCat(name, "_parallel_dimension_partitions"));
 
   // Add argument specifying parallel dimension partitions.
   fork_join_arguments.push_back(

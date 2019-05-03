@@ -124,8 +124,8 @@ def generate_checkpoint_state_proto(save_dir,
 
 @deprecation.deprecated(
     date=None,
-    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
-                  "than manually editing the Checkpoint proto."))
+    instructions=("Use `tf.train.CheckpointManager` to manage checkpoints "
+                  "rather than manually editing the Checkpoint proto."))
 @tf_export(v1=["train.update_checkpoint_state"])
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
@@ -391,6 +391,10 @@ def get_checkpoint_mtimes(checkpoint_prefixes):
   This is the recommended way to get the mtimes, since it takes into account
   the naming difference between V1 and V2 formats.
 
+  Note: If not all checkpoints exist, the length of the returned mtimes list
+  will be smaller than the length of `checkpoint_prefixes` list, so mapping
+  checkpoints to corresponding mtimes will not be possible.
+
   Args:
     checkpoint_prefixes: a list of checkpoint paths, typically the results of
       `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
@@ -621,7 +625,8 @@ class CheckpointManager(object):
                >= self._last_preserved_timestamp)):
         self._last_preserved_timestamp = timestamp
         continue
-      remove_checkpoint(filename)
+      _delete_file_if_exists(filename + ".index")
+      _delete_file_if_exists(filename + ".data-?????-of-?????")
 
   def _record_state(self):
     """Saves the `CheckpointManager`'s state in `directory`."""
@@ -662,7 +667,7 @@ class CheckpointManager(object):
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
-      and `latest_checkpoint` properies.
+      and `latest_checkpoint` properties.
     """
     # Save counter logic duplicated from tf.train.Checkpoint, soon to diverge
     # slightly with a custom numbering option.

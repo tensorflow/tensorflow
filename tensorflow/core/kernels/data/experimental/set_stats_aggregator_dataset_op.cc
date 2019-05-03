@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -31,21 +33,13 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name,
-                      gtl::ArraySlice<double> values) override {
-    if (!tag_.empty()) {
-      wrapped_->AddToHistogram(strings::StrCat(tag_, "_", name), values);
-    } else {
-      wrapped_->AddToHistogram(name, values);
-    }
+  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+                      int64 steps) override {
+    wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
 
-  void AddScalar(const string& name, float value) override {
-    if (!tag_.empty()) {
-      wrapped_->AddScalar(strings::StrCat(tag_, "_", name), value);
-    } else {
-      wrapped_->AddScalar(name, value);
-    }
+  void AddScalar(const string& name, float value, int64 steps) override {
+    wrapped_->AddScalar(TaggedName(name), value, steps);
   }
 
   void EncodeToProto(Summary* out_summary) override {
@@ -55,15 +49,27 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   void IncrementCounter(const string& name, const string& label,
                         int64 val) override {
     if (!prefix_.empty()) {
-      wrapped_->IncrementCounter(strings::StrCat(prefix_, "/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat(prefix_, "/", TaggedName(name)), label, val);
     } else {
-      wrapped_->IncrementCounter(strings::StrCat("/tensorflow/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat("/tensorflow/", TaggedName(name)), label, val);
     }
   }
 
+  Status SetSummaryWriter(SummaryWriterInterface* summary_writer) override {
+    return wrapped_->SetSummaryWriter(summary_writer);
+  }
+
  private:
+  string TaggedName(const string& name) const {
+    if (!tag_.empty()) {
+      string tagged_name = strings::StrCat(tag_, stats_utils::kDelimiter, name);
+      return tagged_name;
+    }
+    return name;
+  }
+
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
@@ -114,8 +120,8 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::SetStatsAggregator")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::SetStatsAggregator")});
     }
 
     const DataTypeVector& output_dtypes() const override {

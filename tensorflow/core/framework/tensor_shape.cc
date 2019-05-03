@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -136,6 +136,89 @@ template <class Shape>
 TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<int64> dim_sizes) {
   set_tag(REP16);
   set_data_type(DT_INVALID);
+  InitDims(dim_sizes);
+}
+
+// Returns true iff partial is true and val is < 0.
+// REQUIRES: val < kMaxRep16
+// REQUIRES: partial || val >= 0
+static inline bool Set16(bool partial, uint16* dst, int dim, int64 val) {
+  if (partial) {
+    if (val < 0) {
+      dst[dim] = std::numeric_limits<uint16>::max();
+      return true;
+    }
+  } else {
+    CHECK_GE(val, 0);
+  }
+  dst[dim] = val;
+  return false;
+}
+
+template <class Shape>
+void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
+  DCHECK_EQ(tag(), REP16);
+
+  // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
+  // below cannot overflow.
+  static const uint64 kMaxSmall = 0xd744;
+  static_assert(kMaxSmall * kMaxSmall * kMaxSmall * kMaxSmall <= kint64max,
+                "bad overflow check");
+  bool large_size = false;
+  for (auto s : dim_sizes) {
+    if (s > kMaxSmall) {
+      large_size = true;
+      break;
+    }
+  }
+
+  if (!large_size) {
+    // Every size fits in 16 bits; use fast-paths for dims in {1,2,3,4}.
+    uint16* dst = as16()->dims_;
+    switch (dim_sizes.size()) {
+      case 1: {
+        set_ndims_byte(1);
+        const int64 size = dim_sizes[0];
+        const bool neg = Set16(kIsPartial, dst, 0, size);
+        set_num_elements(neg ? -1 : size);
+        return;
+      }
+      case 2: {
+        set_ndims_byte(2);
+        const int64 size0 = dim_sizes[0];
+        const int64 size1 = dim_sizes[1];
+        bool neg = Set16(kIsPartial, dst, 0, size0);
+        neg |= Set16(kIsPartial, dst, 1, size1);
+        set_num_elements(neg ? -1 : (size0 * size1));
+        return;
+      }
+      case 3: {
+        set_ndims_byte(3);
+        const int64 size0 = dim_sizes[0];
+        const int64 size1 = dim_sizes[1];
+        const int64 size2 = dim_sizes[2];
+        bool neg = Set16(kIsPartial, dst, 0, size0);
+        neg |= Set16(kIsPartial, dst, 1, size1);
+        neg |= Set16(kIsPartial, dst, 2, size2);
+        set_num_elements(neg ? -1 : (size0 * size1 * size2));
+        return;
+      }
+      case 4: {
+        set_ndims_byte(4);
+        const int64 size0 = dim_sizes[0];
+        const int64 size1 = dim_sizes[1];
+        const int64 size2 = dim_sizes[2];
+        const int64 size3 = dim_sizes[3];
+        bool neg = Set16(kIsPartial, dst, 0, size0);
+        neg |= Set16(kIsPartial, dst, 1, size1);
+        neg |= Set16(kIsPartial, dst, 2, size2);
+        neg |= Set16(kIsPartial, dst, 3, size3);
+        set_num_elements(neg ? -1 : (size0 * size1 * size2 * size3));
+        return;
+      }
+    }
+  }
+
   set_ndims_byte(0);
   set_num_elements(1);
   for (int64 s : dim_sizes) {

@@ -23,9 +23,9 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 
 
 def _split_variable_closure(variable):
@@ -44,7 +44,7 @@ def _combine_variable_closure(variable):
   return _consume_restore_buffer_fn
 
 
-class SaveTensorSlicesAsDeps(base.CheckpointableBase):
+class SaveTensorSlicesAsDeps(base.Trackable):
 
   def __init__(self):
     self.combined = resource_variable_ops.ResourceVariable([0., 0., 0., 0.])
@@ -54,19 +54,20 @@ class SaveTensorSlicesAsDeps(base.CheckpointableBase):
         fill_save_buffer_fn=_split_variable_closure(
             self.combined),
         consume_restore_buffer_fn=_combine_variable_closure(
-            self.combined))
+            self.combined),
+        device=self.combined.device)
     for name, dep in split_dependencies.items():
-      self._track_checkpointable(dep, name=name)
+      self._track_trackable(dep, name=name)
 
 
-class HasRegularDeps(tracking.Checkpointable):
+class HasRegularDeps(tracking.AutoTrackable):
 
   def __init__(self):
     self.first_half = resource_variable_ops.ResourceVariable([0., 0.])
     self.second_half = resource_variable_ops.ResourceVariable([0., 0.])
 
 
-class OnlyOneDep(tracking.Checkpointable):
+class OnlyOneDep(tracking.AutoTrackable):
 
   def __init__(self):
     self.first_half = resource_variable_ops.ResourceVariable([0., 0.])

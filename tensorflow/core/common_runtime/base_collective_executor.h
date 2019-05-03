@@ -58,7 +58,8 @@ class CollectiveAdapter {
 
   // Generate a scalar tensor of same DataType and on the same device
   // as the backing tensor.
-  virtual Tensor Scalar(Allocator* a) const = 0;
+  virtual Tensor Scalar(Allocator* a,
+                        const AllocationAttributes& attr) const = 0;
 
   // Debugging string describing buffer location
   virtual string TBounds(const Tensor& t) const = 0;
@@ -78,9 +79,15 @@ class CollectiveAdapter {
 };
 
 // Create a CollectiveAdaptor wrapping 'output', specialized to its
-// data-type and shape.
+// data-type and shape.  If align_chunks == true then chunk size may
+// be larger than output->NumElements() / num_chunks and one or more
+// of the suffix chunks may be empty.  Chunks will be arranged to start
+// and end on alignment boundaries.  If align_chunks == false then
+// output->NumElements() % num_chunks must be 0 and all chunks will
+// have exactly the same size, ignoring alignment issues.
 CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
-                                         Allocator* allocator);
+                                         Allocator* allocator,
+                                         bool align_chunks = true);
 
 // Default implementation of CollectiveExecutor.  Delegates the actual
 // work of moving data to a class specialized for the operation type,
@@ -135,15 +142,33 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                                client_locality, done);
   }
 
+  // If we need to enforce an ordering on any portion of collective
+  // implementation, and the ordering is encoded via attribute on the collective
+  // op, this function will block until all dependencies for this collective
+  // have completed.
+  void WaitForDependencies(const CollectiveParams& col_params) override;
+  // Record that this collective has completed the portion of the implementation
+  // that needs to be ordered wrt other collectives, to unblock any of its
+  // dependent ops.
+  void Launched(const CollectiveParams& col_params) override;
+
  protected:
   const int64 step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
   std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
   const string* gpu_ring_order_;  // Not owned.
+  mutex launch_mu_;
+  condition_variable launch_cv_;
+  // collective instance key -> number of local devices for which NCCL ops have
+  // been launched.
+  std::unordered_map<int32, int32> launched_ GUARDED_BY(launch_mu_);
 
  private:
   Status CreateCollective(const CollectiveParams& col_params,
                           CollectiveImplementationInterface** col_impl);
+  // Check if all ops on which this collective depends on have launched.
+  bool CheckDependencies(const CollectiveParams& col_params)
+      EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
 };
 
 }  // namespace tensorflow

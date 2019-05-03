@@ -210,7 +210,7 @@ void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
       get_stub(index), &completion_queue_, *get_method_ptr(index),
       call->request(), call->response(),
       /*done=*/[call](const Status& s) { call->Done(s); }, call->call_opts(),
-      nullptr /*threadpool*/, fail_fast_, timeout_in_ms_);
+      nullptr /*threadpool*/, fail_fast_, timeout_in_ms_, 0 /* max_retries */);
 }
 
 }  // namespace tensorflow

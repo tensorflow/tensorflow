@@ -85,6 +85,9 @@ class HeapSimulator {
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
     const BufferValueFlatSet* buffers_to_assign;
+    // A vector of multiple buffer value sets. Each set enforces a must-alias
+    // relationship for all buffers inside them.
+    std::vector<BufferValueFlatSet> must_alias_sets;
   };
 
   // Returns the minimum memory required to compute an HLO module where all
@@ -153,12 +156,17 @@ class HeapSimulator {
   void Free(const BufferValue* buffer, const HloInstruction* instruction);
   void ShareBuffer(const BufferValue* buffer, const BufferValue* shared,
                    const HloInstruction* instruction);
+
+  // Returns true if:
+  //  Two buffers belong to the same shared group.
+  //  Eight of the buffer has no shared group assigned.
+  bool InSameSharedGroup(const BufferValue* left, const BufferValue* right);
   Result Finish();
 
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
                       const BufferValue* buffer,
                       const HloInstruction* instruction,
-                      const BufferValue* shared_with_canonical);
+                      const BufferValue* share_with_canonical);
 
   // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
   // in which case we are calculating the same allocs/frees twice in the

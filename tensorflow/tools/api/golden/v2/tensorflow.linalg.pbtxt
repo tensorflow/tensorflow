@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorAdjoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorBlockDiag"
     mtype: "<type \'type\'>"
   }
@@ -33,7 +37,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorHouseholder"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorIdentity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearOperatorInversion"
     mtype: "<type \'type\'>"
   }
   member {
@@ -50,6 +62,10 @@ tf_module {
   }
   member {
     name: "LinearOperatorScaledIdentity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearOperatorToeplitz"
     mtype: "<type \'type\'>"
   }
   member {
@@ -141,6 +157,10 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "matrix_transpose"
+    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
+  }
+  member_method {
     name: "matvec"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'adjoint_a\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
@@ -189,11 +209,15 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "transpose"
-    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
-  }
-  member_method {
     name: "triangular_solve"
     argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "tridiagonal_matmul"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'None\'], "
+  }
+  member_method {
+    name: "tridiagonal_solve"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\'], "
   }
 }

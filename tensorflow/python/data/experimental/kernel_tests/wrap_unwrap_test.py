@@ -31,7 +31,7 @@ class WrapDatasetVariantTest(test_base.DatasetTestBase):
 
   def testBasic(self):
     ds = dataset_ops.Dataset.range(100)
-    ds_variant = ds._as_variant_tensor()  # pylint: disable=protected-access
+    ds_variant = ds._variant_tensor  # pylint: disable=protected-access
 
     wrapped_variant = gen_dataset_ops.wrap_dataset_variant(ds_variant)
     unwrapped_variant = gen_dataset_ops.unwrap_dataset_variant(wrapped_variant)
@@ -42,10 +42,10 @@ class WrapDatasetVariantTest(test_base.DatasetTestBase):
     for i in range(100):
       self.assertEqual(i, self.evaluate(get_next()))
 
-  # TODO(b/117581999): add eager coverage when supported.
+  @test_util.run_v1_only("b/123901304")
   def testSkipEagerGPU(self):
     ds = dataset_ops.Dataset.range(100)
-    ds_variant = ds._as_variant_tensor()  # pylint: disable=protected-access
+    ds_variant = ds._variant_tensor  # pylint: disable=protected-access
     wrapped_variant = gen_dataset_ops.wrap_dataset_variant(ds_variant)
 
     with ops.device("/gpu:0"):

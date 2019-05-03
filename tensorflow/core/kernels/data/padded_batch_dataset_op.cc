@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -29,7 +34,11 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
-        op_version_(ctx->def().op() == "PaddedBatchDataset" ? 1 : 2) {}
+        op_version_(ctx->def().op() == "PaddedBatchDataset" ? 1 : 2) {
+    if (ctx->HasAttr("parallel_copy")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("parallel_copy", &parallel_copy_));
+    }
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
@@ -93,31 +102,32 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     *output =
-        new Dataset(ctx, batch_size, drop_remainder, std::move(padded_shapes),
-                    std::move(padding_values), input);
+        new Dataset(ctx, batch_size, drop_remainder, parallel_copy_,
+                    std::move(padded_shapes), std::move(padding_values), input);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
-            std::vector<PartialTensorShape> padded_shapes,
+            bool parallel_copy, std::vector<PartialTensorShape> padded_shapes,
             std::vector<Tensor> padding_values, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
           drop_remainder_(drop_remainder),
+          parallel_copy_(parallel_copy),
           padded_shapes_(std::move(padded_shapes)),
           padding_values_(std::move(padding_values)),
           input_(input) {
       input_->Ref();
 
-      // NOTE(mrry): Currently we implement "batch up to"
-      // semantics. If we could tell statically that the input dataset
-      // is infinite, then we could always report `batch_size` as the
-      // 0th dimension.
-      // TODO(mrry): Need to validate that the input shape and the
-      // padded shape are "compatible" (i.e. that padded shape is >=
-      // input shape, with both static and dynamic checks as appropriate).
+      // NOTE(mrry): Currently we implement "batch up to" semantics. If we could
+      // tell statically that the input dataset is infinite, then we could
+      // always report `batch_size` as the 0th dimension.
+      //
+      // TODO(mrry): Need to validate that the input shape and the padded shape
+      // are "compatible" (i.e. that padded shape is >= input shape, with both
+      // static and dynamic checks as appropriate).
       const auto& input_shapes = input_->output_shapes();
       output_shapes_.reserve(input_shapes.size());
       for (size_t i = 0; i < input_shapes.size(); ++i) {
@@ -135,8 +145,8 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::PaddedBatch")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::PaddedBatch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -193,6 +203,9 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
       Node* drop_remainder = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
 
+      AttrValue parallel_copy;
+      b->BuildAttrValue(parallel_copy_, &parallel_copy);
+
       AttrValue output_types;
       b->BuildAttrValue(output_dtypes(), &output_types);
 
@@ -202,14 +215,14 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {{0, input_graph_node}, {1, batch_size}, {4, drop_remainder}},
           {{2, padded_shapes}, {3, padding_values}},
-          {{"Toutput_types", output_types}, {"N", N}}, output));
+          {{"parallel_copy", parallel_copy},
+           {"Toutput_types", output_types},
+           {"N", N}},
+          output));
       return Status::OK();
     }
 
    private:
-    // Copies element into the index^th slice of parent (in the 0th dimension).
-    //
-
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
@@ -259,13 +272,14 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        // Copy the retrieved batch elements into one output tensor
-        // per tuple component.
-        // NOTE(mrry): If the input or output sizes are statically
-        // known, we could potentially read the input values in-place
-        // into their respective slice locations. This would require a
-        // different GetNext() overload that supports zero-copy, and might
-        // make sense in an optimization pass.
+        // Copy the retrieved batch elements into one output tensor per tuple
+        // component.
+        //
+        // NOTE(mrry): If the input or output sizes are statically known, we
+        // could potentially read the input values in-place into their
+        // respective slice locations. This would require a different GetNext()
+        // overload that supports zero-copy, and might make sense in an
+        // optimization pass.
         const size_t num_tuple_components = batch_elements[0].size();
         const int64 num_batch_elements = batch_elements.size();
         for (size_t component_index = 0; component_index < num_tuple_components;
@@ -330,16 +344,43 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
           for (int i = 1; i < batch_component_shape.dims(); ++i) {
             component_shape.AddDim(batch_component_shape.dim_size(i));
           }
-          for (int64 i = 0; i < num_batch_elements; ++i) {
+          auto copy_element_fn = [component_index, &batch_elements,
+                                  &batch_component,
+                                  &component_shape](int index) {
             // Take the fast path if possible.
-            if (batch_elements[i][component_index].shape() == component_shape) {
+            if (batch_elements[index][component_index].shape() ==
+                component_shape) {
               TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-                  batch_elements[i][component_index], &batch_component, i));
+                  batch_elements[index][component_index], &batch_component,
+                  index));
             } else {
               TF_RETURN_IF_ERROR(batch_util::CopyElementToLargerSlice(
-                  batch_elements[i][component_index], &batch_component, i));
+                  batch_elements[index][component_index], &batch_component,
+                  index));
+            }
+            return Status::OK();
+          };
+          BlockingCounter counter(num_batch_elements);
+          Status status;
+          mutex status_mu;
+          for (size_t i = 0; i < num_batch_elements; ++i) {
+            if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
+              (*ctx->runner())(
+                  [i, &status, &status_mu, &counter, &copy_element_fn]() {
+                    Status s = copy_element_fn(i);
+                    {
+                      mutex_lock l(status_mu);
+                      status.Update(s);
+                    }
+                    counter.DecrementCount();
+                  });
+            } else {
+              status.Update(copy_element_fn(i));
+              counter.DecrementCount();
             }
           }
+          counter.Wait();
+          TF_RETURN_IF_ERROR(status);
         }
         *end_of_sequence = false;
         return Status::OK();
@@ -381,6 +422,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
     const int64 batch_size_;
     const bool drop_remainder_;
+    const bool parallel_copy_;
     const std::vector<PartialTensorShape> padded_shapes_;
     const std::vector<Tensor> padding_values_;
     const DatasetBase* const input_;
@@ -388,6 +430,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
   };
 
   const int op_version_;
+  bool parallel_copy_ = false;
 };
 
 REGISTER_KERNEL_BUILDER(Name("PaddedBatchDataset").Device(DEVICE_CPU),

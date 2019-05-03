@@ -1,0 +1,74 @@
+path: "tensorflow.distribute.experimental.TPUStrategy"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.tpu_strategy.TPUStrategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "extended"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_replicas_in_sync"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'steps_per_run\', \'device_assignment\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "colocate_vars_with"
+    argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "configure"
+    argspec: "args=[\'self\', \'session_config\', \'cluster_spec\', \'task_type\', \'task_id\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "experimental_distribute_dataset"
+    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_local_results"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_make_numpy_dataset"
+    argspec: "args=[\'self\', \'numpy_input\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_run"
+    argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "experimental_run_v2"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
+  }
+  member_method {
+    name: "group"
+    argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "make_dataset_iterator"
+    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_input_fn_iterator"
+    argspec: "args=[\'self\', \'input_fn\', \'replication_mode\'], varargs=None, keywords=None, defaults=[\'InputReplicationMode.PER_WORKER\'], "
+  }
+  member_method {
+    name: "reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "scope"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unwrap"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_config_proto"
+    argspec: "args=[\'self\', \'config_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -15,7 +15,17 @@ filegroup(
 )
 
 py_library(
-    name = "testing",
+    name = "test_modules",
+    srcs = [
+        "decorators.py",
+        "future_import_module.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "codegen",
     srcs = [
         "codegen.py",
     ],
@@ -32,6 +42,7 @@ py_test(
     name = "codegen_test",
     size = "large",
     srcs = ["codegen_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -40,7 +51,7 @@ py_test(
         "notap",
     ],
     deps = [
-        ":testing",
+        ":codegen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",

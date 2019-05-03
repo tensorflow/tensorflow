@@ -103,6 +103,7 @@ class FlexModelTest : public ::testing::Test {
  protected:
   std::unique_ptr<Interpreter> interpreter_;
   TestErrorReporter error_reporter_;
+  std::vector<int> tf_ops_;
 
  private:
   // Helper method to add a TensorFlow op. tflite_names needs to start with
@@ -112,6 +113,8 @@ class FlexModelTest : public ::testing::Test {
                const std::vector<int>& outputs);
 
   std::vector<std::vector<uint8_t>> flexbuffers_;
+
+  int next_op_index_ = 0;
 };
 
 }  // namespace testing

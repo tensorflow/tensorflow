@@ -24,11 +24,19 @@ extern "C" {
 
 /*
  *  Class:     org_tensorflow_lite_TensorFlowLite
- *  Method:    version
+ *  Method:    runtimeVersion
  *  Signature: ()Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL
-Java_org_tensorflow_lite_TensorFlowLite_version(JNIEnv*, jclass);
+Java_org_tensorflow_lite_TensorFlowLite_runtimeVersion(JNIEnv*, jclass);
+
+/*
+ *  Class:     org_tensorflow_lite_TensorFlowLite
+ *  Method:    schemaVersion
+ *  Signature: ()Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL
+Java_org_tensorflow_lite_TensorFlowLite_schemaVersion(JNIEnv*, jclass);
 
 #ifdef __cplusplus
 }  // extern "C"

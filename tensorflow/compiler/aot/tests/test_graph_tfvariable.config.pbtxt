@@ -1,0 +1,12 @@
+# Text form of tensorflow.tf2xla.Config proto.
+fetch {
+  id { node_name: "result" }
+}
+
+variable {
+  node_name: "x"
+  shape {
+    dim { size: 1 }
+  }
+  type: DT_FLOAT
+}

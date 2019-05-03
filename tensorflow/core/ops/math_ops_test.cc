@@ -144,12 +144,16 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[2]", "[d1_0]");
     INFER_OK(op, "[2];[1]", "[d0_0]");
     INFER_OK(op, "[2];[]", "[d0_0]");
+    INFER_OK(op, "[2];[?]", "[d0_0]");
 
     INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
     INFER_OK(op, "[];[0]", "[d1_0]");
     INFER_OK(op, "[1];[0]", "[d1_0]");
     INFER_OK(op, "[0];[1]", "[d0_0]");
     INFER_OK(op, "[0];[]", "[d0_0]");
+
+    INFER_OK(op, "[2];[?,?]", "[d1_0,d0_0]");
+    INFER_OK(op, "[2,2];[?,?,?]", "[d1_0,d0_0,d0_1]");
 
     // Multiple dimension cases (same test cases, switching x and y).
     INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",
@@ -201,7 +205,6 @@ TEST(MathOpsTest, Select_ShapeFn) {
   typedef std::vector<std::pair<TensorShapeProto, DataType>> ShapeDtypeV;
   std::vector<std::unique_ptr<ShapeDtypeV>> handle_data;
   std::unique_ptr<shape_inference::InferenceContext> c;
-  Status run_status;
   auto run_inference_for_handles = [&]() -> Status {
     CHECK(op_reg_data->shape_inference_fn != nullptr);
     c.reset(new shape_inference::InferenceContext(

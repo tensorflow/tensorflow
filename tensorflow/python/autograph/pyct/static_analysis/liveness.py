@@ -70,11 +70,12 @@ class Analyzer(cfg.GraphVisitor):
       # Nodes that don't have a scope annotation are assumed not to touch any
       # symbols.
       # This Name node below is a literal name, e.g. False
-      assert isinstance(node.ast_node,
-                        (gast.Name, gast.Continue, gast.Break)), type(
-                            node.ast_node)
-      live_in = prev_live_in
-      live_out = live_in
+      assert isinstance(node.ast_node, (gast.Name, gast.Continue, gast.Break,
+                                        gast.Pass)), type(node.ast_node)
+      live_out = set()
+      for n in node.next:
+        live_out |= self.in_[n]
+      live_in = live_out
 
     self.in_[node] = live_in
     self.out[node] = live_out
@@ -144,10 +145,10 @@ class WholeTreeAnalyzer(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
 
@@ -188,8 +189,14 @@ class Annotator(transformer.Base):
     return node
 
   def _block_statement_live_in(self, node, entry_node):
-    cfg_node = self.current_analyzer.graph.index[entry_node]
-    stmt_live_in = frozenset(self.current_analyzer.in_[cfg_node])
+    if entry_node in self.current_analyzer.graph.index:
+      cfg_node = self.current_analyzer.graph.index[entry_node]
+      stmt_live_in = frozenset(self.current_analyzer.in_[cfg_node])
+    else:
+      assert anno.hasanno(entry_node, anno.Static.LIVE_VARS_IN), (
+          'If not matching a CFG node, must be a block statement:'
+          ' {}'.format(entry_node))
+      stmt_live_in = anno.getanno(entry_node, anno.Static.LIVE_VARS_IN)
     anno.setanno(node, anno.Static.LIVE_VARS_IN, stmt_live_in)
     return node
 
@@ -207,6 +214,16 @@ class Annotator(transformer.Base):
     node = self.generic_visit(node)
     node = self._block_statement_live_out(node)
     return self._block_statement_live_in(node, node.test)
+
+  def visit_Try(self, node):
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.body[0])
+
+  def visit_ExceptHandler(self, node):
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.body[0])
 
   def visit_With(self, node):
     node = self.generic_visit(node)

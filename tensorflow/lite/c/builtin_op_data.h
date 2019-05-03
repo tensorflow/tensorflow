@@ -25,6 +25,11 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// Useful placeholder to put in otherwise empty structs to avoid size warnings.
+typedef struct {
+  char dummy;
+} EmptyStructPlaceholder;
+
 // IMPORTANT: All new members of structs must be added at the end to ensure
 // backwards compatibility.
 
@@ -41,9 +46,12 @@ typedef enum {
   kTfLiteMirrorPaddingSymmetric,
 } TfLiteMirrorPaddingMode;
 
+// TODO(b/130259536): We should move this out of builtin_op_data.
 typedef struct {
   int width;
   int height;
+  int width_offset;
+  int height_offset;
 } TfLitePaddingValues;
 
 typedef struct {
@@ -152,9 +160,11 @@ typedef struct {
 } TfLiteAddParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteSpaceToBatchNDParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
@@ -230,9 +240,11 @@ typedef struct {
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadV2Params;
 
 typedef struct {
@@ -272,6 +284,7 @@ typedef struct {
 } TfLiteGatherParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteTransposeParams;
 
 typedef struct {
@@ -324,6 +337,10 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteRankParams;
+
+typedef struct {
   // Parameters supported by version 1:
   float min;
   float max;
@@ -350,6 +367,23 @@ typedef struct {
 typedef struct {
   float alpha;
 } TfLiteLeakyReluParams;
+
+typedef struct {
+  TfLiteType index_out_type;
+} TfLiteUniqueParams;
+
+typedef struct {
+  int seq_dim;
+  int batch_dim;
+} TfLiteReverseSequenceParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixDiagParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
 
 #ifdef __cplusplus
 }  // extern "C"

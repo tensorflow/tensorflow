@@ -60,7 +60,7 @@ class StackOpTest(test.TestCase):
   def testSimpleParallelCPU(self):
     np.random.seed(7)
     with self.session(use_gpu=False):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
         data = np.random.randn(*shape).astype(np.float32)
         xs = list(map(constant_op.constant, data))
         c = array_ops.parallel_stack(xs)
@@ -70,7 +70,7 @@ class StackOpTest(test.TestCase):
   def testSimpleParallelGPU(self):
     np.random.seed(7)
     with self.session(use_gpu=True):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
         data = np.random.randn(*shape).astype(np.float32)
         xs = list(map(constant_op.constant, data))
         c = array_ops.parallel_stack(xs)
@@ -81,7 +81,7 @@ class StackOpTest(test.TestCase):
     np.random.seed(7)
     with self.session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        for dtype in [np.bool, np.float32, np.int32, np.int64]:
+        for dtype in [np.bool, np.float32, np.int16, np.int32, np.int64]:
           data = np.random.randn(*shape).astype(dtype)
           # Stack back into a single tensorflow tensor directly using np array
           c = array_ops.stack(data)

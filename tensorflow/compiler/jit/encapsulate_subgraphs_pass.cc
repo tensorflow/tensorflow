@@ -25,12 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -108,14 +110,14 @@ void MarkGuaranteedConstants(
   for (const auto& src_arg : src_arg_pairs) {
     srcs.push_back(src_arg.first);
   }
-  ReverseDFSFrom(graph, srcs, /*enter=*/nullptr,
-                 /*leave=*/[&guaranteed_const_nodes](const Node* n) {
-                   // TODO(vinuraja): Doesn't work in the presence of loops.
-                   if (AreAllParentsGuaranteedConst(*n,
-                                                    guaranteed_const_nodes)) {
-                     guaranteed_const_nodes.insert(n);
-                   }
-                 });
+  ReverseDFSFrom(
+      graph, srcs, /*enter=*/nullptr,
+      /*leave=*/[&guaranteed_const_nodes](const Node* n) {
+        // TODO(vinuraja): Doesn't work in the presence of loops.
+        if (AreAllParentsGuaranteedConst(*n, guaranteed_const_nodes)) {
+          guaranteed_const_nodes.insert(n);
+        }
+      });
 
   for (auto& src_arg : src_arg_pairs) {
     if (guaranteed_const_nodes.count(src_arg.first) != 0) {
@@ -307,6 +309,13 @@ class Encapsulator {
                      const std::unordered_map<const Node*, Node*>& node_images,
                      std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
 
+    // Records the src of the given edge as a control result of the graph.
+    // Used during graph to function conversion to tie control results to
+    // the function signature.
+    Status RecordControlResult(
+        const Edge* edge,
+        const std::unordered_map<const Node*, Node*>& node_images);
+
     // Creates a _Retval node for the src node of edge, and add it to results_,
     // if none exists yet. If a new _Retval node is created, also adds the edge
     // within the subgraph from the src to the _Retval node.
@@ -483,6 +492,11 @@ class Encapsulator {
 
     // Map from source tensor in the input graph to result #.
     std::unordered_map<OutputTensor, int, OutputTensor::Hash> results_;
+
+    // Set of node names that are the source of a control output of the
+    // subgraph. We store strings here so that we can tolerate nodes being
+    // removed from the graph.
+    absl::flat_hash_set<string> control_output_nodes_;
 
     // The outside_compilation clusters in this subgraph.
     std::unordered_map<string, OutsideCompilationSubgraph>
@@ -801,6 +815,15 @@ Status Encapsulator::Subgraph::RecordArg(
   return Status::OK();
 }
 
+Status Encapsulator::Subgraph::RecordControlResult(
+    const Edge* edge,
+    const std::unordered_map<const Node*, Node*>& node_images) {
+  Node* src_node = edge->src();
+  Node* src_image = node_images.at(src_node);
+  control_output_nodes_.insert(src_image->name());
+  return Status::OK();
+}
+
 Status Encapsulator::Subgraph::RecordResult(
     const Edge* edge,
     const std::unordered_map<const Node*, Node*>& node_images) {
@@ -1008,13 +1031,15 @@ Status Encapsulator::Subgraph::AddHostComputes(
       // subgraph.
       for (const auto& src_node : oc_subgraph.control_inputs) {
         Node* src_image = node_images.at(src_node);
-        graph_->AddControlEdge(src_image, host_compute);
+        graph_->AddControlEdge(src_image, host_compute,
+                               /* allow_duplicates= */ true);
       }
 
       // Connect the _HostCompute node to its ancestor host compute nodes.
       for (const auto& ancestor_name : host_compute_ancestors) {
         Node* ancestor = host_compute_node[ancestor_name];
-        graph_->AddControlEdge(ancestor, host_compute);
+        graph_->AddControlEdge(ancestor, host_compute,
+                               /* allow_duplicates= */ true);
       }
 
       // Connect the consumers in the subgraph to the _HostCompute node.
@@ -1031,7 +1056,8 @@ Status Encapsulator::Subgraph::AddHostComputes(
       // node.
       for (const auto& dst_node : oc_subgraph.control_outputs) {
         Node* dst_image = node_images.at(dst_node);
-        graph_->AddControlEdge(host_compute, dst_image);
+        graph_->AddControlEdge(host_compute, dst_image,
+                               /* allow_duplicates= */ true);
       }
     }
   }
@@ -1059,7 +1085,8 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
 void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
   if (sequencer_ != nullptr) {
     VLOG(2) << "ConnectSequencerToCallNode";
-    graph_out->AddControlEdge(sequencer_, call_node_);
+    graph_out->AddControlEdge(sequencer_, call_node_,
+                              /* allow_duplicates= */ true);
   }
 }
 
@@ -1113,17 +1140,22 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
+  auto lookup = [this](const Node* node) -> absl::optional<string> {
+    if (control_output_nodes_.contains(node->name())) {
+      return absl::make_optional(node->name());
+    }
+    return absl::nullopt;
+  };
   // Verify that the graph has well-formed control flow structure.
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &dummy));
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, lookup, &fdef));
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Build function def " << name;
-    dump_graph::DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name),
-                                *graph_, library);
-    dump_graph::DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name),
-                                      fdef);
+    DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name), *graph_,
+                    library);
+    DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name), fdef);
   }
 
   const FunctionDef* original_fdef = library->Find(name);
@@ -1186,11 +1218,10 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Replace function def " << name;
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("replace_encapsulate_fdef_graph_", name), *graph_,
-        library);
-    dump_graph::DumpFunctionDefToFile(
-        absl::StrCat("replace_encapsulate_fdef_", name), fdef);
+    DumpGraphToFile(absl::StrCat("replace_encapsulate_fdef_graph_", name),
+                    *graph_, library);
+    DumpFunctionDefToFile(absl::StrCat("replace_encapsulate_fdef_", name),
+                          fdef);
   }
 
   TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
@@ -1279,7 +1310,8 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   // completes. This has no effect on execution order but prevents the
   // RecvAtHost being pruned.
   TF_RETURN_IF_ERROR(MakeSequencingNode(subgraph_name, graph_out));
-  graph_out->AddControlEdge(oc_subgraph->recv_at_host, sequencer_);
+  graph_out->AddControlEdge(oc_subgraph->recv_at_host, sequencer_,
+                            true /* skip duplicates check */);
 
   return Status::OK();
 }
@@ -1336,7 +1368,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   // subgraph completes. This has no effect on execution order but prevents the
   // RecvAtHost being pruned.
   TF_RETURN_IF_ERROR(MakeSequencingNode(subgraph_name, graph_out));
-  graph_out->AddControlEdge(oc_subgraph->send_from_host, sequencer_);
+  graph_out->AddControlEdge(oc_subgraph->send_from_host, sequencer_,
+                            /* allow_duplicates= */ true);
 
   return Status::OK();
 }
@@ -1446,7 +1479,8 @@ Status Encapsulator::CopySubgraphEdges(
         src_func_id == dst_func_id) {
       Graph* g = subgraphs_[src_func_id].GetGraph();
       if (edge->IsControlEdge()) {
-        g->AddControlEdge(src_image, dst_image);
+        g->AddControlEdge(src_image, dst_image,
+                          /* allow_duplicates= */ true);
       } else {
         g->AddEdge(src_image, edge->src_output(), dst_image, edge->dst_input());
       }
@@ -1472,9 +1506,10 @@ Status Encapsulator::CopySubgraphEdges(
         src_subgraph.RecordOutsideCompilationInputOrControl(
             dst_outside_compilation_id, edge);
       } else {
-        // Ignore control edges leaving the subgraph. We will lift them onto the
-        // enclosing call operators in BuildOutputGraph().
-        if (!edge->IsControlEdge()) {
+        if (edge->IsControlEdge()) {
+          TF_RETURN_IF_ERROR(
+              src_subgraph.RecordControlResult(edge, node_images));
+        } else {
           TF_RETURN_IF_ERROR(src_subgraph.RecordResult(edge, node_images));
         }
       }
@@ -1549,7 +1584,7 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   if (VLOG_IS_ON(1)) {
     // Dump subgraphs.
     for (auto& entry : subgraphs_) {
-      dump_graph::DumpGraphToFile(
+      DumpGraphToFile(
           absl::StrCat("encapsulate_subgraphs_subgraph_", entry.first),
           *entry.second.GetGraph(), library);
     }
@@ -1732,7 +1767,8 @@ Status Encapsulator::CopyEdgeToOutputGraph(
     if (edges_added
             ->emplace(OutputTensor(src_image, -1), InputTensor(dst_image, -1))
             .second) {
-      graph_out->AddControlEdge(src_image, dst_image);
+      graph_out->AddControlEdge(src_image, dst_image,
+                                /* allow_duplicates= */ true);
     }
 
     return Status::OK();
@@ -1761,7 +1797,8 @@ Status Encapsulator::AddCallNodeDependencies(Graph* graph_out) {
     const string& subgraph = ancestors.first;
     for (const string& ancestor : ancestors.second) {
       graph_out->AddControlEdge(subgraphs_[ancestor].GetCallNode(),
-                                subgraphs_[subgraph].GetCallNode());
+                                subgraphs_[subgraph].GetCallNode(),
+                                /* allow_duplicates= */ true);
     }
   }
   return Status::OK();
@@ -2129,7 +2166,8 @@ Status CheckClusterDependencyForCycles(
     const string& ancestor, const string& successor,
     const std::unordered_map<string, std::unordered_set<string>>& ancestors,
     const std::unordered_map<Node*, PathDetails>& node_ancestors_map,
-    GraphCycles* cycle_detector, std::map<string, int>* cycle_detector_map) {
+    GraphCycles* cycle_detector,
+    std::unordered_map<string, int>* cycle_detector_map) {
   if (cycle_detector_map->find(ancestor) == cycle_detector_map->end()) {
     (*cycle_detector_map)[ancestor] = cycle_detector->NewNode();
   }
@@ -2173,7 +2211,7 @@ Status Encapsulator::FindClusterDependencies() {
   // We check that clusters are acyclic using this cycle detector.
   GraphCycles cycle_detector;
   // Map from cluster name to cycle detector node id.
-  std::map<string, int> cycle_detector_map;
+  std::unordered_map<string, int> cycle_detector_map;
   // Process the nodes in topologically-sorted order.
   std::vector<Node*> nodes;
   GetReversePostOrder(*graph_in_, &nodes);
@@ -2310,15 +2348,15 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
       return errors::Internal("Failed to find function ", node->type_string(),
                               " in function library.");
     }
-    FunctionBody* fbody = nullptr;
+    std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, node->attrs(), library,
-                                [library](const string& op, const OpDef** sig) {
-                                  return library->LookUpOpDef(op, sig);
-                                },
-                                &fbody));
-    InlineFunctionBody(*library, pruned_graph->get(), node, fbody);
-    delete fbody;
+        FunctionDefToBodyHelper(*fdef, node->attrs(), library, &fbody));
+
+    InlineFunctionBodyOptions inline_opts;
+    inline_opts.override_device = false;
+
+    TF_RETURN_IF_ERROR(InlineFunctionBody(*library, pruned_graph->get(), node,
+                                          fbody.get(), inline_opts));
   }
 
   return Status::OK();
@@ -2383,8 +2421,7 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
       &node_images, library));
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("pruned_graph_for_shape_inference",
-                                *pruned_graph, library);
+    DumpGraphToFile("pruned_graph_for_shape_inference", *pruned_graph, library);
   }
 
   for (auto& subgraph_entry : subgraphs_) {
@@ -2460,8 +2497,6 @@ Status EncapsulateSubgraphsInFunctions(
     const Graph& graph_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
     bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
     FunctionLibraryDefinition* library) {
-  Status s;
-
   Encapsulator encapsulator(std::move(group_attribute),
                             std::move(outside_compilation_attribute),
                             &graph_in);
@@ -2515,19 +2550,49 @@ Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
-                                options.flib_def);
+    DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
+                    options.flib_def);
   }
 
   std::unique_ptr<Graph> graph_out;
   FunctionLibraryDefinition* const library = options.flib_def;
 
+  // Constant folding below might need to run part of the function to compute
+  // constants. Create an FunctionLibraryRuntime with a single CPU device
+  // that can run the part of the function.
+  // NOTE: If this turns out to be slow, we can cache the FLRs keyed by
+  // `options`.
+  SessionOptions session_options;
+  auto* device_count = session_options.config.mutable_device_count();
+  device_count->insert({"CPU", 1});
+  std::vector<std::unique_ptr<Device>> devices;
+
+  DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
+  if (!cpu_factory) {
+    return errors::NotFound(
+        "CPU Factory not registered. Can't run EncapsulateSubgraphsPass");
+  }
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+  if (devices.empty()) {
+    return errors::NotFound(
+        "Failed to create a CPU device for EncapsulateSubgraphsPass");
+  }
+
+  std::unique_ptr<DeviceMgr> device_mgr =
+      absl::make_unique<DeviceMgr>(std::move(devices));
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, options.session_options->env,
+      new ProcessFunctionLibraryRuntime(device_mgr.get(),
+                                        options.session_options->env,
                                         TF_GRAPH_DEF_VERSION, library, opts));
   FunctionLibraryRuntime* flr =
-      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+      pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
+  if (flr == nullptr) {
+    return errors::Internal(
+        "Failed to create and retrieve function library runtime to run "
+        "constant folding");
+  }
 
   auto rewrite_subgraph =
       [flr](const std::vector<OutputTensor>& arg_source_tensors,
@@ -2535,12 +2600,39 @@ Status EncapsulateSubgraphsPass::Run(
             std::vector<int>* input_permutation,
             std::vector<int>* output_permutation, NodeDef* node) {
         // Optimize the subgraph.
-        OptimizeGraph(flr, subgraph);
+        // Do not constant fold nodes that output DT_VARIANT type tensors.
+        // XLA does not support Const nodes of Variant type since it needs
+        // to know the original ops to be able to compile them to the relevant
+        // XLA form.
+        // TODO(srbs): This filter is a little conservative. E.g. a subgraph of
+        // the form:
+        //                          Const
+        //                            |
+        // EmptyTensorList -> TensorListPushBack -> TensorListPopBack -> Op
+        //                                                  |
+        //                                        (Discard popped list)
+        //
+        // Would have been reduced to "Const -> Op" without this filter.
+        // However since we are only allowed to specify the filter at the "Node"
+        // level there is no good way to allow the above behavior. So we
+        // disallow any sort of constant folding on Variant nodes for now.
+        auto cf_consider_fn = [](const Node* n) {
+          for (const auto& output_arg : n->op_def().output_arg()) {
+            if (output_arg.type() == DT_VARIANT) {
+              return false;
+            }
+          }
+          return true;
+        };
+        GraphOptimizer::Options graph_optimizer_options;
+        graph_optimizer_options.cf_consider_fn = cf_consider_fn;
+        OptimizeGraph(flr, subgraph, graph_optimizer_options);
 
         const int num_args = input_permutation->size();
         std::vector<bool> const_args(num_args);
-        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-            **subgraph, &const_args, /*compile_time_const_nodes=*/nullptr));
+        TF_RETURN_IF_ERROR(
+            BackwardsConstAnalysis(**subgraph, &const_args,
+                                   /*compile_time_const_nodes=*/nullptr, flr));
 
         DataTypeVector arg_types(num_args);
         TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
@@ -2599,8 +2691,8 @@ Status EncapsulateSubgraphsPass::Run(
       "EncapsulateSubgraphsPass failed");
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
-                                options.flib_def);
+    DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
+                    options.flib_def);
   }
 
   *options.graph = std::move(graph_out);

@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -81,7 +83,8 @@ TEST(TFCompileTest, Add) {
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
 // non-existent buffers.
 TEST(TFCompileTest, Add_SetArg) {
-  AddComp add(AddComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  AddComp add(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
   int32 arg_x = 10;
   int32 arg_y = 32;
@@ -294,7 +297,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   foo::bar::MatMulComp matmul(
-      foo::bar::MatMulComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.
@@ -471,6 +474,79 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_values[1], fn.result0(1));
   EXPECT_EQ(expected_indices[0], fn.result1(0));
   EXPECT_EQ(expected_indices[1], fn.result1(1));
+}
+
+TEST(TFCompileTest, Variable) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  VariableComp fn;
+  float x = 23;
+  fn.set_var_x_data(&x);
+
+  fn.set_thread_pool(&device);
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 23);
+  EXPECT_EQ(fn.result0(1, 0), 65);
+  EXPECT_EQ(fn.var_x(), 65);
+
+  EXPECT_EQ(fn.var_x_data(), &x);
+  EXPECT_EQ(x, 65);
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 65);
+  EXPECT_EQ(fn.result0(1, 0), 107);
+  EXPECT_EQ(fn.var_x(), 107);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdates) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + y)
+  VariableSequentialUpdatesComp fn;
+  fn.var_x() = 2;
+  *const_cast<float*>(fn.var_y_data()) = 1;
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 1.187f, 1e-6);
+
+  const float y = 1;
+  fn.set_var_y_data(&y);
+
+  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've set
+  // the buffer to point to a constant location.
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 0.594322f, 1e-6);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  VariableSequentialUpdatesComp fn(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  float x = 2;
+  float y = 1;
+  fn.set_var_x_data(&x);
+  fn.set_var_y_data(&y);
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(x, 1.187f, 1e-6);
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {

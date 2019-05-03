@@ -25,30 +25,19 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+template <typename T>
 void RunTestPermutation(const std::vector<int>& shape,
                         const std::vector<int>& perms,
-                        std::vector<float>* input_transposed) {
+                        std::vector<T>* input_transposed) {
   // Count elements and allocate output.
   int count = 1;
   for (auto factor : shape) count *= factor;
   input_transposed->resize(count);
 
   // Create the dummy data
-  std::vector<float> input(count);
+  std::vector<T> input(count);
   for (int i = 0; i < input.size(); i++) {
     input[i] = i;
-  }
-
-  // Create reversed and padded perms.
-  int reversed_perms[4];
-  for (int output_k = 0, input_k = shape.size() - 1; output_k < shape.size();
-       output_k++, input_k--) {
-    reversed_perms[output_k] = shape.size() - perms[input_k] - 1;
-  }
-  // Unused dimensions should not be permuted so pad with identity transform
-  // subset.
-  for (int k = shape.size(); k < 4; k++) {
-    reversed_perms[k] = k;
   }
 
   // Make input and output shapes.
@@ -64,8 +53,8 @@ void RunTestPermutation(const std::vector<int>& shape,
     params.perm[i] = perms[i];
   }
 
-  reference_ops::Transpose<float>(params, input_shape, input.data(),
-                                  output_shape, input_transposed->data());
+  reference_ops::Transpose<T>(params, input_shape, input.data(), output_shape,
+                              input_transposed->data());
 }
 
 TEST(TransposeTest, TestRefOps1D) {
@@ -121,6 +110,28 @@ TEST(TransposeTest, TestRefOps4D) {
   RunTestPermutation({2, 3, 4, 5}, {0, 1, 2, 3}, &out);
   // Basic identity.
   std::vector<float> ref(out.size());
+  for (int k = 0; k < ref.size(); k++) ref[k] = k;
+  ASSERT_EQ(out, ref);
+}
+
+TEST(TransposeTest, TestRefOps4DInt8) {
+  std::vector<int8_t> out;
+  // Basic 4d.
+  RunTestPermutation({2, 3, 4, 5}, {2, 0, 1, 3}, &out);
+  ASSERT_EQ(
+      out,
+      std::vector<int8_t>(
+          {0,  1,  2,  3,  4,  20, 21, 22, 23, 24, 40,  41,  42,  43,  44,
+           60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 100, 101, 102, 103, 104,
+           5,  6,  7,  8,  9,  25, 26, 27, 28, 29, 45,  46,  47,  48,  49,
+           65, 66, 67, 68, 69, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109,
+           10, 11, 12, 13, 14, 30, 31, 32, 33, 34, 50,  51,  52,  53,  54,
+           70, 71, 72, 73, 74, 90, 91, 92, 93, 94, 110, 111, 112, 113, 114,
+           15, 16, 17, 18, 19, 35, 36, 37, 38, 39, 55,  56,  57,  58,  59,
+           75, 76, 77, 78, 79, 95, 96, 97, 98, 99, 115, 116, 117, 118, 119}));
+  RunTestPermutation({2, 3, 4, 5}, {0, 1, 2, 3}, &out);
+  // Basic identity.
+  std::vector<int8_t> ref(out.size());
   for (int k = 0; k < ref.size(); k++) ref[k] = k;
   ASSERT_EQ(out, ref);
 }
@@ -184,6 +195,7 @@ class TransposeOpDynamicModel : public TransposeOpModel {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, TestUnequalPermSize) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
 }
@@ -194,6 +206,7 @@ TEST(TransposeTest, TestPermOutOfBounds) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");
 }
+#endif
 
 TEST(TransposeTest, Test1DInputConstTensor) {
   TransposeOpConstModel m({3}, {1}, {0});
@@ -252,10 +265,12 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test5DInputTensor) {
   EXPECT_DEATH(TransposeOpConstModel({1, 2, 3, 4, 5}, {5}, {0, 1, 2, 3, 4}),
                "Transpose op only supports 1D-4D input arrays.");
 }
+#endif
 
 TEST(TransposeTest, SimpleTestNoReorderConstTensor) {
   TransposeOpConstModel m({1, 2, 3, 1}, {4}, {0, 1, 2, 3});

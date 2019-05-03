@@ -70,11 +70,15 @@ struct NodeState {
   // Each output port uses up memory space from time_scheduled to its
   // time_no_references.
 
+  // How many times this node has been executed, e.g. in a while loop.
+  int execution_count;
+
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
+    execution_count = 0;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -179,8 +183,8 @@ class LIFOManager : public ReadyNodeManager {
 };
 
 // FirstReadyManager picks a node with the minimum time_ready value.
-// Behavior is unknown if there are more than one nodes with the minimum
-// time_ready value (it depends on C++ STL push_heap and pop_heap).
+// Behavior is deterministic when there are more than one nodes with the minimum
+// time_ready value with unique node names as the tie-breaker.
 class FirstReadyManager : public ReadyNodeManager {
  public:
   FirstReadyManager();
@@ -209,7 +213,7 @@ class FirstReadyManager : public ReadyNodeManager {
 
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
-  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+  const std::unordered_map<const NodeDef*, NodeState>* node_map_;
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
@@ -256,17 +260,12 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
-  // TODO(pcma): Modify power_analyzer.cc to use new API's.
-  // DEPRECATED
-  VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
-  // DEPRECATED
-  Status Init();
-
   // Does not take ownership of cluster or ready_nodes.
-  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
+  VirtualScheduler(const bool use_static_shapes,
+                   const bool use_aggressive_shape_inference, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes,
+                   std::unique_ptr<VirtualPlacer> placer);
+
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
   // reused for a new grappler item. All internal states of the scheduler
@@ -291,10 +290,6 @@ class VirtualScheduler {
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata);
 
-  // DEPRECATED
-  static ReadyNodeManager* ReadyNodeManagerFactory(
-      const string& ready_node_manager);
-
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
@@ -305,14 +300,9 @@ class VirtualScheduler {
     return &node_map_;
   }
 
- private:
-  // Constants.
-  const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "send_device";
-  const string kAttrDstDevice = "recv_device";
-  const string kAttrTensorName = "tensor_name";
-  const string kChannelDevice = "Channel";
+  void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
 
+ private:
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -324,10 +314,8 @@ class VirtualScheduler {
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.
-  Costs& FindOrCreateZero(const string& op_name,
-                          std::map<string, Costs>* op_cost);
-  float Round2(const float x) const;
-  bool IsPersistentNode(const NodeDef* node) const;
+  void AddOutputNodesToReadyQueue(const NodeDef* node,
+                                  const Costs::Duration& curr_time);
 
   // Scheduler states:
   ReadyNodeManager* ready_nodes_;  // Not owned.
@@ -356,8 +344,10 @@ class VirtualScheduler {
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
+  bool track_mem_usage_snapshot_;
+  const bool use_aggressive_shape_inference_;
 
-  VirtualPlacer placer_;  // owned.
+  std::unique_ptr<VirtualPlacer> placer_;
 };
 
 }  // namespace grappler

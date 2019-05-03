@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -49,9 +50,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = (dtypes.int32,) * 3
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(data, [(i,) * 3 for i in range(10)])
 
@@ -61,16 +62,14 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.map(lambda x, y, z: (x, string_ops.as_string(y), z))
     expected_types = (dtypes.int32, dtypes.string, dtypes.int32)
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(
         data, [(i, compat.as_bytes(str(i)), i) for i in range(10)])
 
-  # TODO(b/117581999): Add eager coverage.
-  @test_util.run_deprecated_v1
-  def testSkipEagerUnbatchDatasetWithSparseTensor(self):
+  def testUnbatchDatasetWithSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
         values=list(range(10)),
@@ -79,47 +78,51 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    next_element = iterator.get_next()
+    expected_output = [
+        sparse_tensor.SparseTensorValue([[i]], [i], [10]) for i in range(10)
+    ]
+    self.assertDatasetProduces(data, expected_output=expected_output)
 
-    for i in range(10):
-      st_row = self.evaluate(next_element)
-      self.assertEqual([i], st_row.indices)
-      self.assertEqual([i], st_row.values)
-      self.assertEqual([10], st_row.dense_shape)
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element)
-
-  # TODO(b/117581999): Add eager coverage.
-  @test_util.run_deprecated_v1
-  def testSkipEagerUnbatchDatasetWithDenseAndSparseTensor(self):
+  def testUnbatchDatasetWithDenseSparseAndRaggedTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
         values=list(range(10)),
         dense_shape=[10, 10])
-    data = dataset_ops.Dataset.from_tensors((list(range(10)), st))
+    rt = ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]],
+                                            [[5]], [[6]], [[7]], [[8]], [[9]]])
+    data = dataset_ops.Dataset.from_tensors((list(range(10)), st, rt))
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    next_element = self.getNext(data)
+    expected_output = [(i, sparse_tensor.SparseTensorValue([[i]], [i], [10]),
+                        ragged_factory_ops.constant_value([[i]]))
+                       for i in range(10)]
+    self.assertDatasetProduces(
+        data, expected_output=expected_output)
 
-    for i in range(10):
-      dense_elem, st_row = self.evaluate(next_element())
-      self.assertEqual(i, dense_elem)
-      self.assertEqual([i], st_row.indices)
-      self.assertEqual([i], st_row.values)
-      self.assertEqual([10], st_row.dense_shape)
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element())
+  def testUnbatchDatasetWithRaggedTensor(self):
+    rt = ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]],
+                                            [[5]], [[6]], [[7]], [[8]], [[9]]])
+    data = dataset_ops.Dataset.from_tensors(rt)
+    data = data.apply(batching.unbatch())
+    data = data.batch(5)
+    data = data.batch(2)
+    data = data.apply(batching.unbatch())
+    expected_output = [
+        ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]]]),
+        ragged_factory_ops.constant_value([[[5]], [[6]], [[7]], [[8]], [[9]]]),
+    ]
+    self.assertDatasetProduces(
+        data, expected_output=expected_output)
 
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = ((dtypes.int32,),) * 3
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(data, [((i,),) * 3 for i in range(10)])
 
@@ -129,9 +132,11 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = ((dtypes.int32, dtypes.string),) * 3
     data = data.batch(2)
-    self.assertAllEqual(expected_types, data.output_types)
+    self.assertAllEqual(expected_types,
+                        dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertAllEqual(expected_types, data.output_types)
+    self.assertAllEqual(expected_types,
+                        dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(
         data,
@@ -150,7 +155,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       data.apply(batching.unbatch())
 
-  # TODO(b/117581999): eager mode doesnt capture raised error, debug.
+  # Note: dynamic shape mismatch is graph specific test.
   @test_util.run_deprecated_v1
   def testSkipEagerUnbatchDynamicShapeMismatch(self):
     ph1 = array_ops.placeholder(dtypes.int32, shape=[None])

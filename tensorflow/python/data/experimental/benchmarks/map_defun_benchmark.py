@@ -25,7 +25,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -56,14 +56,14 @@ class MapDefunBenchmark(test.Benchmark):
     def defun(x):
       return array_ops.identity(x)
 
-    def map_fn(x):
+    def fn(x):
       return array_ops.identity(x)
 
     base = math_ops.range(100)
     for input_size in [10, 100, 1000, 10000]:
       num_iters = 100000 // input_size
       map_defun_op = map_defun.map_defun(defun, [base], [dtypes.int32], [()])
-      map_fn_op = functional_ops.map_fn(map_fn, base)
+      map_fn_op = map_fn.map_fn(fn, base)
 
       self._run(
           map_defun_op, "with_defun_size_%d" % input_size, num_iters=num_iters)

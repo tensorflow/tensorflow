@@ -8,7 +8,6 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
 py_library(
     name = "contrib_py",
@@ -27,7 +26,6 @@ py_library(
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
-        "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/autograph",
@@ -59,11 +57,11 @@ py_library(
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/learn:head_test_lib",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
         "//tensorflow/contrib/libsvm",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -166,9 +164,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
-        "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/hadoop:dataset_kernels",
+        "//tensorflow/contrib/image:image_ops_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_kernels",
@@ -197,7 +195,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_kernels",
         ],
     }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
+        "//tensorflow/contrib/tensorrt:trt_op_kernels",
     ]),
 )
 
@@ -206,7 +204,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
-        "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
@@ -219,7 +216,6 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
-        "//tensorflow/contrib/tpu:all_ops",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -239,7 +235,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
     }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+        "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
     ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

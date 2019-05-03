@@ -12,104 +12,417 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow Lite tooling helper functionality.
+"""TensorFlow Lite tooling helper functionality."""
 
-EXPERIMENTAL: APIs here are unstable and likely to change without notice.
-
-@@TocoConverter
-@@TFLiteConverter
-@@toco_convert
-@@toco_convert_protos
-@@Interpreter
-@@OpHint
-@@convert_op_hints_to_stubs
-@@build_toco_convert_protos
-
-@@TFLITE
-@@GRAPHVIZ_DOT
-
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+import enum
 from six import PY3
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
+from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn  # pylint: disable=unused-import
+from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell  # pylint: disable=unused-import
+from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell  # pylint: disable=unused-import
+from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_supported_ops  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import OpsSet
-from tensorflow.lite.python.convert import tensor_name as _tensor_name
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
 from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_impl
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
-from tensorflow.lite.python.convert_saved_model import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
-from tensorflow.lite.python.convert_saved_model import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
-from tensorflow.core.framework import graph_pb2 as _graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
-from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python.optimize import calibrator as _calibrator
+from tensorflow.lite.python.util import freeze_graph as _freeze_graph
+from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
+from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
+from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
+from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
+from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
-from tensorflow.python.framework import graph_util as _tf_graph_util
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function as _def_function
+from tensorflow.python.eager import function as _function
+from tensorflow.python.framework import convert_to_constants as _convert_to_constants
+from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.grappler import tf_optimizer as _tf_optimizer
+from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
-from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
+from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-def _run_graph_optimizations(graph_def, output_arrays):
-  """Apply standard TensorFlow optimizations to the graph_def.
+@_tf_export("lite.Optimize")
+class Optimize(enum.Enum):
+  """Enum defining the optimizations to apply when generating tflite graphs.
 
-  Args:
-    graph_def: Frozen GraphDef to be optimized.
-    output_arrays: List of arrays that are considered outputs of the graph.
-
-  Returns:
-    A new, optimized GraphDef.
+  Some optimizations may come at the cost of accuracy.
   """
-  meta_graph = _export_meta_graph(graph_def=graph_def)
 
-  # We need to add a collection called 'train_op' so that grappler
-  # knows what the outputs are.
-  fetch_collection = _meta_graph_pb2.CollectionDef()
-  for output in output_arrays:
-    fetch_collection.node_list.value.append(output)
-  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
+  # Default optimization strategy.
+  #
+  # Converter will do its best to improve size and latency based on the
+  # information provided.
+  # Enhanced optimizations can be gained by providing a representative_dataset.
+  # This is recommended, and is currently equivalent to the modes below.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
+  DEFAULT = "DEFAULT"
 
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-  return _tf_optimizer.OptimizeGraph(config, meta_graph)
+  # Optimize for size.
+  #
+  # Optimizations that reduce the size of the model.
+  # The model size will be reduced.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
+  OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
+
+  # Optimize for latency.
+  #
+  # Optimizations that reduce the latency of the model.
+  # Currently, weights will be quantized and if representative_dataset is
+  # provided, activations for quantizable operations will also be quantized.
+  OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
+
+  def __str__(self):
+    return self.value
 
 
-@_tf_export("lite.TFLiteConverter")
-class TFLiteConverter(object):
-  """Convert a TensorFlow model into `output_format` using TOCO.
+@_tf_export("lite.RepresentativeDataset")
+class RepresentativeDataset(object):
+  """Representative dataset to evaluate optimizations.
+
+  A representative dataset that can be used to evaluate optimizations by the
+  converter. E.g. converter can use these examples to estimate (min, max) ranges
+  by calibrating the model on inputs. This can allow converter to quantize a
+  converted floating point model.
+  """
+
+  def __init__(self, input_gen):
+    """Creates a representative dataset.
+
+    Args:
+      input_gen: an input generator that can be used to generate input samples
+        for the model. This must be a callable object that returns an object
+        that supports the `iter()` protocol (e.g. a generator function). The
+        elements generated must have same type and shape as inputs to the model.
+    """
+    self.input_gen = input_gen
+
+
+@_tf_export("lite.TargetSpec")
+class TargetSpec(object):
+  """Specification of target device.
+
+  Details about target device. Converter optimizes the generated model for
+  specific device.
+
+  Attributes:
+    supported_ops: Experimental flag, subject to change. Set of OpsSet options
+      supported by the device. (default set([OpsSet.TFLITE_BUILTINS]))
+  """
+
+  def __init__(self, supported_ops=None):
+    if supported_ops is None:
+      supported_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.supported_ops = supported_ops
+
+
+class TFLiteConverterBase(object):
+  """Converter subclass to share functionality between V1 and V2 converters."""
+
+  def __init__(self):
+    self.representative_dataset = None
+    self.optimizations = []
+    self._target_ops = set([OpsSet.TFLITE_BUILTINS])
+
+  def _grappler_config(self):
+    is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == set(self._target_ops)
+    optimizers = ["constfold"]
+    if is_only_flex_enabled:
+      # The layout optimizer turns NHCW to NCHW. This provides performance
+      # optimizations when Flex mode is enabled. However, this is not compatible
+      # with builtin ops.
+      optimizers.append("layout")
+    return _get_grappler_config(optimizers)
+
+  def _validate_representative_dataset(self):
+    if self.representative_dataset:
+      if not isinstance(self.representative_dataset, RepresentativeDataset):
+        self.representative_dataset = RepresentativeDataset(
+            self.representative_dataset)
+      if self.representative_dataset.input_gen is None:
+        raise ValueError(
+            "Provide an input generator for representative_dataset")
+    elif self._int8_target_required():
+      raise ValueError("representative_dataset is required when specifying "
+                       "TFLITE_BUILTINs_INT8 target.")
+
+  def _int8_target_required(self):
+    return set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops)
+
+  def _is_post_training_optimize(self):
+    return (self._int8_target_required() or bool(
+        set(self.optimizations).intersection([
+            Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+            Optimize.DEFAULT
+        ])))
+
+  def _is_weight_only_quantize(self):
+    return (self._is_post_training_optimize() and
+            (self.representative_dataset is None))
+
+  def _is_calibration_quantize(self):
+    return self._is_post_training_optimize() and self.representative_dataset
+
+  def _calibrate_quantize_model(self, result, inference_input_type,
+                                inference_output_type):
+    allow_float = not self._int8_target_required()
+    calibrate_quantize = _calibrator.Calibrator(result)
+    return calibrate_quantize.calibrate_and_quantize(
+        self.representative_dataset.input_gen, inference_input_type,
+        inference_output_type, allow_float)
+
+
+@_tf_export("lite.TFLiteConverter", v1=[])
+class TFLiteConverterV2(TFLiteConverterBase):
+  """Converts a TensorFlow model into TensorFlow Lite model.
+
+  Attributes:
+    allow_custom_ops: Boolean indicating whether to allow custom operations.
+      When false any unknown operation is an error. When true, custom ops are
+      created for any op that is unknown. The developer will need to provide
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
+    target_spec: Experimental flag, subject to change. Specification of target
+      device.
+    optimizations: Experimental flag, subject to change. A list of optimizations
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]
+    representative_dataset: A representative dataset that can be used to
+      generate input and output samples for the model. The converter can use the
+      dataset to evaluate different optimizations.
+
+  Example usage:
+
+    ```python
+    # Converting a SavedModel to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+
+    # Converting a tf.Keras model to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+
+    # Converting ConcreteFunctions to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    ```
+  """
+
+  def __init__(self, funcs, trackable_obj=None):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
+      trackable_obj: tf.AutoTrackable object associated with `funcs`. A
+        reference to this object needs to be maintained so that Variables do not
+        get garbage collected since functions have a weak reference to
+        Variables. This is only required when the tf.AutoTrackable object is not
+        maintained by the user (e.g. `from_saved_model`).
+    """
+    super(TFLiteConverterV2, self).__init__()
+    self._funcs = funcs
+    self._trackable_obj = trackable_obj
+    self.allow_custom_ops = False
+    self.target_spec = TargetSpec()
+
+  @classmethod
+  def from_concrete_functions(cls, funcs):
+    """Creates a TFLiteConverter object from ConcreteFunctions.
+
+    Args:
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
+
+    Returns:
+      TFLiteConverter object.
+
+    Raises:
+      Invalid input type.
+    """
+    for func in funcs:
+      if not isinstance(func, _function.ConcreteFunction):
+        message = "This function takes in a list of ConcreteFunction."
+        if isinstance(func, _def_function.Function):
+          message += (" To get the ConcreteFunction from a Function,"
+                      " call from_concrete_function.")
+        raise ValueError(message)
+    return cls(funcs)
+
+  @classmethod
+  def from_saved_model(cls, saved_model_dir, signature_keys=None, tags=None):
+    """Creates a TFLiteConverter object from a SavedModel directory.
+
+    Args:
+      saved_model_dir: SavedModel directory to convert.
+      signature_keys: List of keys identifying SignatureDef containing inputs
+        and outputs. Elements should not be duplicated. By default the
+        `signatures` attribute of the MetaGraphdef is used. (default
+        saved_model.signatures)
+      tags: Set of tags identifying the MetaGraphDef within the SavedModel to
+        analyze. All tags in the tag set must be present. (default set(SERVING))
+
+    Returns:
+      TFLiteConverter object.
+
+    Raises:
+      Invalid signature keys.
+    """
+    saved_model = _load(saved_model_dir, tags)
+    if not signature_keys:
+      signature_keys = saved_model.signatures
+
+    funcs = []
+    for key in signature_keys:
+      if key not in saved_model.signatures:
+        raise ValueError("Invalid signature key '{}' found. Valid keys are "
+                         "'{}'.".format(key, ",".join(saved_model.signatures)))
+      funcs.append(saved_model.signatures[key])
+
+    return cls(funcs, saved_model)
+
+  @classmethod
+  def from_keras_model(cls, model):
+    """Creates a TFLiteConverter object from a Keras model.
+
+    Args:
+      model: tf.Keras.Model
+
+    Returns:
+      TFLiteConverter object.
+    """
+    func = _saving_utils.trace_model_call(model)
+    concrete_func = func.get_concrete_function()
+    return cls([concrete_func])
+
+  def convert(self):
+    """Converts a TensorFlow GraphDef based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    # TODO(b/130297984): Add support for converting multiple function.
+    self._target_ops = self.target_spec.supported_ops
+    if len(self._funcs) != 1:
+      raise ValueError("This converter can only convert a single "
+                       "ConcreteFunction. Converting multiple functions is "
+                       "under development.")
+
+    frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
+        self._funcs[0])
+    input_tensors = [
+        tensor for tensor in frozen_func.inputs
+        if tensor.dtype != _dtypes.resource
+    ]
+    output_tensors = frozen_func.outputs
+
+    # Run a Grappler pass.
+    graph_def = frozen_func.graph.as_graph_def()
+    graph_def = _run_graph_optimizations(
+        graph_def,
+        input_tensors,
+        output_tensors,
+        config=self._grappler_config(),
+        graph=frozen_func.graph)
+
+    # Checks dimensions in input tensor.
+    for tensor in input_tensors:
+      # Note that shape_list might be empty for scalar shapes.
+      shape_list = tensor.shape.as_list()
+      if None in shape_list[1:]:
+        raise ValueError(
+            "None is only supported in the 1st dimension. Tensor '{0}' has "
+            "invalid shape '{1}'.".format(_get_tensor_name(tensor), shape_list))
+      elif shape_list and shape_list[0] is None:
+        # Set the batch size to 1 if undefined.
+        shape = tensor.shape.as_list()
+        shape[0] = 1
+        tensor.set_shape(shape)
+
+    self._validate_representative_dataset()
+
+    converter_kwargs = {
+        "input_format": constants.TENSORFLOW_GRAPHDEF,
+        "allow_custom_ops": self.allow_custom_ops,
+        "post_training_quantize": self._is_weight_only_quantize(),
+        "target_ops": self.target_spec.supported_ops,
+    }
+
+    # Converts model.
+    result = _toco_convert_impl(
+        input_data=graph_def,
+        input_tensors=input_tensors,
+        output_tensors=output_tensors,
+        **converter_kwargs)
+
+    if self._is_calibration_quantize():
+      result = self._calibrate_quantize_model(result, constants.FLOAT,
+                                              constants.FLOAT)
+
+    return result
+
+
+@_tf_export(v1=["lite.TFLiteConverter"])
+class TFLiteConverter(TFLiteConverterBase):
+  """Convert a TensorFlow model into `output_format`.
 
   This is used to convert from a TensorFlow GraphDef or SavedModel into either a
   TFLite FlatBuffer or graph visualization.
 
   Attributes:
-
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`. (default tf.float32)
+      Must be `{tf.float32, tf.uint8}`. If `optimzations` are provided, this
+      parameter is ignored. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization.
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
+      for a different type for input arrays.
+      If an integer type is provided and `optimizations` are not used,
+      `quantized_inputs_stats` must be provided.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained input model, then
+      `inference_input_type` defaults to tf.uint8.
+      In all other cases, `inference_input_type` defaults to tf.float32.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
+    inference_output_type: Target data type of real-number output arrays. Allows
+      for a different type for output arrays.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained output model, then
+      `inference_output_type` defaults to tf.uint8.
+      In all other cases, `inference_output_type` must be tf.float32, an error
+      will be thrown otherwise.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -137,10 +450,11 @@ class TFLiteConverter(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
-    post_training_quantize: Boolean indicating whether to quantize the weights
-      of the converted float model. Model size will be reduced and there will be
-      latency improvements (at the cost of accuracy).
-      (default False)
+    post_training_quantize: deprecated, please specify
+     `[Optimize.DEFAULT]` for `optimizations` instead. Boolean
+     indicating whether to quantize the weights of the converted float model.
+     Model size will be reduced and there will be latency improvements
+     (at the cost of accuracy). (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
@@ -150,6 +464,11 @@ class TFLiteConverter(object):
     target_ops: Experimental flag, subject to change. Set of OpsSet
       options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
+    optimizations: Experimental flag, subject to change. A list of optimizations
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
+    representative_dataset: A representative dataset that can be used to
+      generate input and output samples for the model. The converter can use
+      the dataset to evaluate different optimizations.
 
   Example usage:
 
@@ -186,7 +505,7 @@ class TFLiteConverter(object):
     Args:
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
@@ -200,11 +519,13 @@ class TFLiteConverter(object):
     Raises:
       ValueError: Invalid arguments.
     """
+    super(TFLiteConverter, self).__init__()
     self._graph_def = graph_def
     self._input_tensors = input_tensors
     self._output_tensors = output_tensors
     self.inference_type = constants.FLOAT
     self.inference_input_type = None
+    self.inference_output_type = None
     self.output_format = constants.TFLITE
     self.quantized_input_stats = {}
     self.default_ranges_stats = None
@@ -212,7 +533,7 @@ class TFLiteConverter(object):
     self.reorder_across_fake_quant = False
     self.change_concat_input_ranges = False
     self.allow_custom_ops = False
-    self.post_training_quantize = False
+    self._post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
     self.target_ops = set([OpsSet.TFLITE_BUILTINS])
@@ -233,13 +554,13 @@ class TFLiteConverter(object):
     Args:
       sess: TensorFlow Session.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
       TFLiteConverter class.
     """
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
@@ -378,7 +699,8 @@ class TFLiteConverter(object):
                             model_file,
                             input_arrays=None,
                             input_shapes=None,
-                            output_arrays=None):
+                            output_arrays=None,
+                            custom_objects=None):
     """Creates a TFLiteConverter class from a tf.keras model file.
 
     Args:
@@ -391,13 +713,35 @@ class TFLiteConverter(object):
           None}). (default None)
       output_arrays: List of output tensors to freeze graph with. Uses output
         arrays from SignatureDef when none are provided. (default None)
+      custom_objects: Dict mapping names (strings) to custom classes or
+        functions to be considered during model deserialization. (default None)
 
     Returns:
       TFLiteConverter class.
     """
+    # Handles Keras when Eager mode is enabled.
+    if context.executing_eagerly():
+      if input_arrays or output_arrays:
+        raise ValueError("`input_arrays` and `output_arrays` are unsupported "
+                         "with Eager mode. If your model requires any of these "
+                         "parameters, please use disable_eager_execution().")
+
+      _keras.backend.set_learning_phase(False)
+      keras_model = _keras.models.load_model(model_file, custom_objects)
+
+      function = _saving_utils.trace_model_call(keras_model)
+      concrete_func = function.get_concrete_function()
+
+      frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
+          concrete_func)
+      _set_tensor_shapes(frozen_func.inputs, input_shapes)
+      return cls(frozen_func.graph.as_graph_def(), frozen_func.inputs,
+                 frozen_func.outputs)
+
+    # Handles Keras when Eager mode is disabled.
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file)
+    keras_model = _keras.models.load_model(model_file, custom_objects)
     sess = _keras.backend.get_session()
 
     # Get input and output tensors.
@@ -412,8 +756,28 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
+
+  def __setattr__(self, name, value):
+    if name == "post_training_quantize":
+      warnings.warn("Property %s is deprecated, "
+                    "please use optimizations=[Optimize.DEFAULT]"
+                    " instead." % name)
+      if value:
+        self.optimizations = [Optimize.DEFAULT]
+      else:
+        self.optimizations = []
+      return
+    object.__setattr__(self, name, value)
+
+  def __getattribute__(self, name):
+    if name == "post_training_quantize":
+      warnings.warn("Property %s is deprecated, "
+                    "please use optimizations=[Optimize.DEFAULT]"
+                    " instead." % name)
+      return Optimize.DEFAULT in set(self.optimizations)
+    return object.__getattribute__(self, name)
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -427,19 +791,22 @@ class TFLiteConverter(object):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    self._target_ops = self.target_ops
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        shape = tensor.get_shape()
-        if not shape or not shape.as_list():
+        shape = tensor.shape
+        if not shape:
           raise ValueError("Provide an input shape for input array "
-                           "'{0}'.".format(_tensor_name(tensor)))
+                           "'{0}'.".format(_get_tensor_name(tensor)))
+        # Note that shape_list might be empty for scalar shapes.
         shape_list = shape.as_list()
         if None in shape_list[1:]:
           raise ValueError(
               "None is only supported in the 1st dimension. Tensor '{0}' has "
-              "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
-        elif shape_list[0] is None:
+              "invalid shape '{1}'.".format(
+                  _get_tensor_name(tensor), shape_list))
+        elif shape_list and shape_list[0] is None:
           self._set_batch_size(batch_size=1)
 
     # Get quantization stats. Ensures there is one stat per name if the stats
@@ -459,9 +826,41 @@ class TFLiteConverter(object):
     else:
       quantized_stats = None
 
+    self._validate_representative_dataset()
+
+    toco_inference_input_type = self.inference_input_type
+    inference_input_type = self.inference_input_type
+    inference_output_type = self.inference_output_type
+    post_training_optimize = self._is_post_training_optimize()
+    if post_training_optimize:
+      # Post training optimizations require that TOCO outputs a float model.
+      if self.inference_type != constants.FLOAT:
+        raise ValueError(
+            "`optimizations` require that `inference_type` is set to float.")
+      toco_inference_input_type = constants.FLOAT
+      # Set up default values.
+      if inference_input_type is None:
+        inference_input_type = constants.FLOAT
+      if inference_output_type is None:
+        inference_output_type = constants.FLOAT
+
+    weight_only_quantize = self._is_weight_only_quantize()
+    if weight_only_quantize:
+      # Currently, weight only quantization requires float inputs and outputs.
+      if (inference_input_type != constants.FLOAT or
+          inference_output_type != constants.FLOAT):
+        raise ValueError(
+            "Provide an inference_input_type and inference_output_type of type "
+            "tf.float32.")
+
+    if not post_training_optimize and self.inference_output_type is not None:
+      raise ValueError(
+          "inference_output_type is currently not supported if optimizations "
+          "are not enabled.")
+
     converter_kwargs = {
         "inference_type": self.inference_type,
-        "inference_input_type": self.inference_input_type,
+        "inference_input_type": toco_inference_input_type,
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "output_format": self.output_format,
         "quantized_input_stats": quantized_stats,
@@ -470,19 +869,20 @@ class TFLiteConverter(object):
         "reorder_across_fake_quant": self.reorder_across_fake_quant,
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "allow_custom_ops": self.allow_custom_ops,
-        "post_training_quantize": self.post_training_quantize,
+        "post_training_quantize": weight_only_quantize,
         "target_ops": self.target_ops,
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
-    optimized_graph = None
-    if self.inference_type == constants.QUANTIZED_UINT8:
-      optimized_graph = self._graph_def
-    else:
+    optimized_graph = self._graph_def
+    if self.inference_type != constants.QUANTIZED_UINT8:
       try:
         optimized_graph = _run_graph_optimizations(
-            self._graph_def, [t.name for t in self._output_tensors])
+            self._graph_def,
+            self._input_tensors,
+            self._output_tensors,
+            config=self._grappler_config())
       except Exception:
         optimized_graph = self._graph_def
 
@@ -499,6 +899,11 @@ class TFLiteConverter(object):
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
           **converter_kwargs)
+
+    if self._is_calibration_quantize():
+      result = self._calibrate_quantize_model(result, inference_input_type,
+                                              inference_output_type)
+
     return result
 
   def get_input_arrays(self):
@@ -508,7 +913,7 @@ class TFLiteConverter(object):
       List of strings.
     """
     if self._has_valid_tensors():
-      return [_tensor_name(tensor) for tensor in self._input_tensors]
+      return [_get_tensor_name(tensor) for tensor in self._input_tensors]
     else:
       return [name for name, _ in self._input_arrays_with_shape]
 
@@ -535,12 +940,12 @@ class TFLiteConverter(object):
                        "use input_shapes parameter.")
 
     for tensor in self._input_tensors:
-      shape = tensor.get_shape().as_list()
+      shape = tensor.shape.as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
 
 
-@_tf_export("lite.TocoConverter")
+@_tf_export(v1=["lite.TocoConverter"])
 class TocoConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
@@ -592,42 +997,3 @@ class TocoConverter(object):
     """Creates a TocoConverter class from a tf.keras model file."""
     return TFLiteConverter.from_keras_model_file(model_file, input_arrays,
                                                  input_shapes, output_arrays)
-
-
-def _is_frozen_graph(sess):
-  """Determines if the graph is frozen.
-
-  Determines if a graph has previously been frozen by checking for any
-  operations of type Variable*. If variables are found, the graph is not frozen.
-
-  Args:
-    sess: TensorFlow Session.
-
-  Returns:
-    Bool.
-  """
-  for op in sess.graph.get_operations():
-    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
-      return False
-  return True
-
-
-def _freeze_graph(sess, output_tensors):
-  """Returns a frozen GraphDef.
-
-  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
-  returned.
-
-  Args:
-    sess: TensorFlow Session.
-    output_tensors: List of output tensors (only .name is used from this).
-
-  Returns:
-    Frozen GraphDef.
-  """
-  if not _is_frozen_graph(sess):
-    output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
-    return _tf_graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, output_arrays)
-  else:
-    return sess.graph_def

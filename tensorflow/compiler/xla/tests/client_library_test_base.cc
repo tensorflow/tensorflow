@@ -41,8 +41,9 @@ constexpr char kInterpreter[] = "interpreter";
 
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
-  StatusOr<Client*> result =
+LocalClient* GetOrCreateLocalClientOrDie(
+    const LocalClientOptions& client_options) {
+  StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();

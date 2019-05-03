@@ -33,7 +33,7 @@ class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -187,6 +187,40 @@ class LinearOperatorDiagTest(
         linalg_lib.LinearOperatorDiag))
     self.assertAllClose([6., 9.], self.evaluate(operator_matmul.diag))
 
+  def test_diag_solve(self):
+    operator1 = linalg_lib.LinearOperatorDiag([2., 3.], is_non_singular=True)
+    operator2 = linalg_lib.LinearOperatorDiag([1., 2.], is_non_singular=True)
+    operator3 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3., is_non_singular=True)
+    operator_solve = operator1.solve(operator2)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([0.5, 2 / 3.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator2.solve(operator1)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([2., 3 / 2.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator1.solve(operator3)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([3 / 2., 1.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator3.solve(operator1)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([2 / 3., 1.], self.evaluate(operator_solve.diag))
+
+  def test_diag_adjoint_type(self):
+    diag = [1., 3., 5., 8.]
+    operator = linalg.LinearOperatorDiag(diag, is_non_singular=True)
+    self.assertIsInstance(operator.adjoint(), linalg.LinearOperatorDiag)
+
   def test_diag_cholesky_type(self):
     diag = [1., 3., 5., 8.]
     operator = linalg.LinearOperatorDiag(
@@ -194,10 +228,14 @@ class LinearOperatorDiagTest(
         is_positive_definite=True,
         is_self_adjoint=True,
     )
-    self.assertTrue(isinstance(
-        operator.cholesky(),
-        linalg.LinearOperatorDiag))
+    self.assertIsInstance(operator.cholesky(), linalg.LinearOperatorDiag)
+
+  def test_diag_inverse_type(self):
+    diag = [1., 3., 5., 8.]
+    operator = linalg.LinearOperatorDiag(diag, is_non_singular=True)
+    self.assertIsInstance(operator.inverse(), linalg.LinearOperatorDiag)
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorDiagTest)
   test.main()

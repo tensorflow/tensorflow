@@ -1,0 +1,47 @@
+op {
+  graph_op_name: "TPUReplicateMetadata"
+  visibility: HIDDEN
+  attr {
+    name: "num_replicas"
+    description: <<END
+Number of replicas of the computation
+END
+  }
+  attr {
+    name: "num_cores_per_replica"
+    description: <<END
+Number of cores per replica. Used for model parallelism.
+END
+  }
+  attr {
+    name: "topology"
+    description: <<END
+TopologyProto indicating the topology of the TPU pod slice.
+END
+  }
+  attr {
+    name: "use_tpu"
+    description: <<END
+Whether to place the computation on the TPU.
+END
+  }
+  attr {
+    name: "device_assignment"
+    description: <<END
+The assignment of devices for the computation.
+END
+  }
+  attr {
+    name: "computation_shape"
+    description: <<END
+DEPRECATED. Use num_cores_per_replica instead.
+END
+  }
+  attr {
+    name: "host_compute_core"
+  }
+  attr {
+    name: "padding_map"
+  }
+  summary: "Metadata indicaitng how the TPU computation should be replicated."
+}

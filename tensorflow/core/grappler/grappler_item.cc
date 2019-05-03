@@ -43,7 +43,7 @@ GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
   item.save_restore_loc_tensor = save_restore_loc_tensor;
   item.queue_runners = queue_runners;
   item.devices_ = devices_;
-  item.allowed_optimizations_ = allowed_optimizations_;
+  item.optimization_options_ = optimization_options_;
   item.graph.Swap(&graph_def);
   return item;
 }
@@ -115,11 +115,23 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  if (!allowed_optimizations_.prune_ops_with_side_effects) {
-    for (const NodeDef& node : graph.node()) {
-      if (!IsFreeOfSideEffect(node)) {
-        result.insert(node.name());
-      }
+  absl::optional<FunctionLibraryDefinition> fn_library;
+  if (!optimization_options_.allow_pruning_stateful_and_dataset_ops) {
+    fn_library.emplace(OpRegistry::Global(), graph.library());
+  }
+  for (const NodeDef& node : graph.node()) {
+    // Tensorflow functions do not prune stateful or dataset-output ops from
+    // the function body (see PruneFunctionBody in common_runtime/function.cc).
+    if (!optimization_options_.allow_pruning_stateful_and_dataset_ops &&
+        (IsStateful(node, &*fn_library) || IsDataset(node))) {
+      result.insert(node.name());
+    }
+
+    // Do not remove ops with attribute _grappler_do_not_remove. This is useful
+    // for debugging.
+    auto iter = node.attr().find("_grappler_do_not_remove");
+    if (iter != node.attr().end() && iter->second.b()) {
+      result.insert(node.name());
     }
   }
 
@@ -175,13 +187,13 @@ Status GrapplerItem::InferDevicesFromGraph() {
 
 void GrapplerItem::ClearDevices() { devices_.clear(); }
 
-const GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations()
+const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
     const {
-  return allowed_optimizations_;
+  return optimization_options_;
 }
 
-GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations() {
-  return allowed_optimizations_;
+GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
+  return optimization_options_;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(

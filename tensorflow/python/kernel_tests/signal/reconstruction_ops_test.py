@@ -232,7 +232,8 @@ class ReconstructionOpsTest(test.TestCase):
       # overlap, the gradient for this batch item will be 0-99 shaped as (10,
       # 10).
       reconstruction *= array_ops.stack(
-          [array_ops.zeros((100,)), math_ops.to_float(math_ops.range(100))])
+          [array_ops.zeros((100,)),
+           math_ops.cast(math_ops.range(100), dtypes.float32)])
       loss = math_ops.reduce_sum(reconstruction)
 
       # Verify that only the second batch item receives gradient.

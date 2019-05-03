@@ -4,9 +4,9 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 common_copts = ["-Wall"] + tflite_copts()
 
@@ -35,7 +35,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
         "benchmark_plus_flex_main.cc",
@@ -69,31 +69,9 @@ cc_test(
     ],
     deps = [
         ":benchmark_tflite_model_lib",
-        ":command_line_flags",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "command_line_flags",
-    srcs = ["command_line_flags.cc"],
-    hdrs = ["command_line_flags.h"],
-    copts = common_copts,
-)
-
-cc_test(
-    name = "command_line_flags_test",
-    srcs = ["command_line_flags_test.cc"],
-    copts = common_copts,
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":command_line_flags",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -111,8 +89,10 @@ cc_library(
         ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/tools/evaluation:utils",
         "@gemmlowp",
     ],
 )
@@ -136,15 +116,11 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_params",
-        ":command_line_flags",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/profiling:profile_summarizer",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
     ],
 )
 

@@ -1,17 +1,27 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",  # @unused
     "tf_cc_test",  # @unused
 )
 
+licenses(["notice"])  # Apache 2.0
+
+package(default_visibility = ["//tensorflow:internal"])
+
+py_library(
+    name = "ipynb",
+    srcs = ["ipynb.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "@pasta",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
@@ -30,6 +40,13 @@ py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
     srcs_version = "PY2AND3",
+    deps = [":tf_upgrade_lib"],
+)
+
+py_library(
+    name = "tf_upgrade_lib",
+    srcs = ["tf_upgrade.py"],
+    srcs_version = "PY2AND3",
     deps = [":ast_edits"],
 )
 
@@ -38,7 +55,7 @@ py_test(
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tf_upgrade",
+        ":tf_upgrade_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -58,13 +75,24 @@ py_library(
 )
 
 py_library(
+    name = "all_renames_v2",
+    srcs = ["all_renames_v2.py"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [":renames_v2"],
+)
+
+py_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":all_renames_v2",
         ":ast_edits",
-        ":renames_v2",
         ":reorders_v2",
+        "@six_archive//:six",
     ],
 )
 
@@ -75,6 +103,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
+        ":ipynb",
         ":tf_upgrade_v2_lib",
     ],
 )
@@ -84,12 +113,13 @@ py_test(
     srcs = ["tf_upgrade_v2_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tf_upgrade_v2",
+        ":tf_upgrade_v2_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )
@@ -167,6 +197,7 @@ py_test(
 
 exports_files(
     [
+        "all_renames_v2.py",
         "ast_edits.py",
         "tf_upgrade.py",
         "renames_v2.py",

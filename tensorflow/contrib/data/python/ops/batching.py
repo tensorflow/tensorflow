@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.util import deprecation
 
@@ -42,7 +43,8 @@ def dense_to_sparse_batch(batch_size, row_shape):
   # contents of a dataset.
   a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
 
-  a.apply(tf.contrib.data.dense_to_sparse_batch(batch_size=2, row_shape=[6])) ==
+  a.apply(tf.data.experimental.dense_to_sparse_batch(batch_size=2,
+  row_shape=[6])) ==
   {
       ([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]],  # indices
        ['a', 'b', 'c', 'a', 'b'],                 # values
@@ -54,14 +56,13 @@ def dense_to_sparse_batch(batch_size, row_shape):
   ```
 
   Args:
-    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the
-      number of consecutive elements of this dataset to combine in a
-      single batch.
-    row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like
-      object representing the equivalent dense shape of a row in the
-      resulting `tf.SparseTensor`. Each element of this dataset must
-      have the same rank as `row_shape`, and must have size less
-      than or equal to `row_shape` in each dimension.
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
+      representing the equivalent dense shape of a row in the resulting
+      `tf.SparseTensor`. Each element of this dataset must have the same rank as
+      `row_shape`, and must have size less than or equal to `row_shape` in each
+      dimension.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -84,7 +85,7 @@ def unbatch():
   # of a dataset.
   a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
 
-  a.apply(tf.contrib.data.unbatch()) == {
+  a.apply(tf.data.experimental.unbatch()) == {
       'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
   ```
 
@@ -110,7 +111,8 @@ def batch_and_drop_remainder(batch_size):
 
   ```python
   dataset = tf.data.Dataset.range(200)
-  batched = dataset.apply(tf.contrib.data.batch_and_drop_remainder(128))
+  batched =
+  dataset.apply(tf.contrib.data.batch_and_drop_remainder(128))
   print(batched.output_shapes)  # ==> "(128,)" (the batch dimension is known)
   ```
 
@@ -120,7 +122,7 @@ def batch_and_drop_remainder(batch_size):
 
   Args:
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        consecutive elements of this dataset to combine in a single batch.
+      consecutive elements of this dataset to combine in a single batch.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -151,11 +153,10 @@ def padded_batch_and_drop_remainder(batch_size,
   Args:
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements of this dataset to combine in a single batch.
-    padded_shapes: A nested structure of `tf.TensorShape` or
-      `tf.int64` vector tensor-like objects. See
-      `tf.data.Dataset.padded_batch` for details.
-    padding_values: (Optional.) A nested structure of scalar-shaped
-      `tf.Tensor`. See `tf.data.Dataset.padded_batch` for details.
+    padded_shapes: A nested structure of `tf.TensorShape` or `tf.int64` vector
+      tensor-like objects. See `tf.data.Dataset.padded_batch` for details.
+    padding_values: (Optional.) A nested structure of scalar-shaped `tf.Tensor`.
+      See `tf.data.Dataset.padded_batch` for details.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -178,7 +179,7 @@ def assert_element_shape(expected_shapes):
 
   ```python
   shapes = [tf.TensorShape([16, 256]), tf.TensorShape([None, 2])]
-  result = dataset.apply(tf.contrib.data.assert_element_shape(shapes))
+  result = dataset.apply(tf.data.experimental.assert_element_shape(shapes))
   print(result.output_shapes)  # ==> "((16, 256), (<unknown>, 2))"
   ```
 
@@ -215,14 +216,14 @@ def assert_element_shape(expected_shapes):
     return nest.pack_sequence_as(elements, checked_tensors)
 
   def _apply_fn(dataset):
-    output_shapes = _merge_output_shapes(dataset.output_shapes,
-                                         expected_shapes)
+    output_shapes = _merge_output_shapes(
+        dataset_ops.get_legacy_output_shapes(dataset), expected_shapes)
     # pylint: disable=protected-access
     return batching._RestructuredDataset(
         dataset.map(_check_shape),
-        dataset.output_types,
+        dataset_ops.get_legacy_output_types(dataset),
         output_shapes=output_shapes,
-        output_classes=dataset.output_classes)
+        output_classes=dataset_ops.get_legacy_output_classes(dataset))
 
   return _apply_fn
 
@@ -244,8 +245,8 @@ def map_and_batch(map_func,
   deprecated.
 
   Args:
-    map_func: A function mapping a nested structure of tensors to another
-      nested structure of tensors.
+    map_func: A function mapping a nested structure of tensors to another nested
+      structure of tensors.
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements of this dataset to combine in a single batch.
     num_parallel_batches: (Optional.) A `tf.int64` scalar `tf.Tensor`,
@@ -256,9 +257,9 @@ def map_and_batch(map_func,
       whether the last batch should be dropped in case its size is smaller than
       desired; the default behavior is not to drop the smaller batch.
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
-        representing the number of elements to process in parallel. If not
-        specified, `batch_size * num_parallel_batches` elements will be
-        processed in parallel.
+      representing the number of elements to process in parallel. If not
+      specified, `batch_size * num_parallel_batches` elements will be processed
+      in parallel.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

@@ -24,9 +24,9 @@ const std::unordered_set<std::string>* GetExcludedOps() {
            "GcsConfigureBlockCache", "GcsConfigureCredentials",
 #ifdef INTEL_MKL
            // QuantizedFusedOps for Intel CPU
-           "QuantizedConv2DAndRequantize", "QuantizedConv2DWithBias",
-           "QuantizedConv2DWithBiasAndRequantize", "QuantizedConv2DAndRelu",
-           "QuantizedConv2DAndReluAndRequantize",
+           "QuantizedConcatV2", "QuantizedConv2DAndRequantize",
+           "QuantizedConv2DWithBias", "QuantizedConv2DWithBiasAndRequantize",
+           "QuantizedConv2DAndRelu", "QuantizedConv2DAndReluAndRequantize",
            "QuantizedConv2DWithBiasAndRelu",
            "QuantizedConv2DWithBiasAndReluAndRequantize",
            "QuantizedConv2DWithBiasSumAndRelu",

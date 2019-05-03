@@ -54,8 +54,8 @@ class _UniqueDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset):
     """See `unique()` for details."""
     self._input_dataset = input_dataset
-    if input_dataset.output_types not in (dtypes.int32, dtypes.int64,
-                                          dtypes.string):
+    if dataset_ops.get_legacy_output_types(input_dataset) not in (
+        dtypes.int32, dtypes.int64, dtypes.string):
       raise TypeError(
           "`tf.data.experimental.unique()` only supports inputs with a single "
           "`tf.int32`, `tf.int64`, or `tf.string` component.")

@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "ShardDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "num_shards"
+    description: <<END
+An integer representing the number of shards operating in parallel.
+END
+  }
+  in_arg {
+    name: "index"
+    description: <<END
+An integer representing the current worker index.
+END
+  }
+  summary: "Creates a `Dataset` that includes only 1/`num_shards` of this dataset."
+}

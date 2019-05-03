@@ -24,16 +24,43 @@ from __future__ import print_function
 import textwrap
 
 import gast
-import six
 
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
 
 
-def parse_entity(entity):
-  """Returns the AST of given entity."""
-  source = tf_inspect.getsource(entity)
+STANDARD_PREAMBLE = textwrap.dedent("""
+    from __future__ import division
+    from __future__ import print_function
+""")
+STANDARD_PREAMBLE_LEN = 2
 
-  def fail(comment):
+
+def parse_entity(entity, future_features):
+  """Returns the AST and source code of given entity.
+
+  Args:
+    entity: Any, Python function/method/class
+    future_features: Iterable[Text], future features to use (e.g.
+      'print_statement'). See
+      https://docs.python.org/2/reference/simple_stmts.html#future
+
+  Returns:
+    gast.AST, Text: the parsed AST node; the source code that was parsed to
+    generate the AST (including any prefixes that this function may have added).
+  """
+  try:
+    source = inspect_utils.getimmediatesource(entity)
+  except (IOError, OSError) as e:
+    raise ValueError(
+        'Unable to locate the source code of {}. Note that functions defined'
+        ' in certain environments, like the interactive Python shell do not'
+        ' expose their source code. If that is the case, you should to define'
+        ' them in a .py source file. If you are certain the code is'
+        ' graph-compatible, wrap the call using'
+        ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
+
+  def raise_parse_failure(comment):
     raise ValueError(
         'Failed to parse source code of {}, which Python reported as:\n{}\n'
         '{}'.format(entity, source, comment))
@@ -43,14 +70,19 @@ def parse_entity(entity):
   # TODO(b/115884650): Automatic handling of comments/multiline strings.
   source = textwrap.dedent(source)
 
+  future_statements = tuple(
+      'from __future__ import {}'.format(name) for name in future_features)
+  source = '\n'.join(future_statements + (source,))
+
   try:
-    return parse_str(source), source
+    return parse_str(source, preamble_len=len(future_features)), source
 
   except IndentationError:
     # The text below lists the causes of this error known to us. There may
     # be more.
-    fail('This may be caused by multiline strings or comments not indented at'
-         'the same level as the code.')
+    raise_parse_failure(
+        'This may be caused by multiline strings or comments not indented at'
+        ' the same level as the code.')
 
   except SyntaxError as e:
     if not tf_inspect.isfunction(entity) or entity.__name__ != '<lambda>':
@@ -71,38 +103,49 @@ def parse_entity(entity):
 
     # Give up if there's nothing we can chip away.
     if len(lines) == lineno and len(lines[-1]) == offset:
-      fail('If this is a lambda function, the error may be avoided by creating'
-           ' the lambda in a standalone statement.')
+      raise_parse_failure(
+          'If this is a lambda function, the error may be avoided by creating'
+          ' the lambda in a standalone statement.')
 
     # Drop all lines following the error location
     # TODO(mdan): What's with the pylint errors?
     lines = lines[:lineno]  # pylint:disable=invalid-slice-index
     # Drop all characters following the error location
     lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
-    new_source = '\n'.join(lines)
+    source = '\n'.join(lines)
 
     try:
-      return parse_str(new_source), new_source
+      return parse_str(source, preamble_len=len(future_features)), source
     except SyntaxError as e:
-      fail('If this is a lambda function, the error may be avoided by creating'
-           ' the lambda in a standalone statement. Tried to strip down the'
-           ' source to:\n{}\nBut that did not work.'.format(new_source))
+      raise_parse_failure(
+          'If this is a lambda function, the error may be avoided by creating'
+          ' the lambda in a standalone statement. Tried to strip down the'
+          ' source to:\n{}\nBut that did not work.'.format(source))
 
 
-def parse_str(src):
-  """Returns the AST of given piece of code."""
-  # TODO(mdan): This should exclude the module things are autowrapped in.
+# TODO(mdan): This should take futures as input instead.
+def parse_str(src, preamble_len=0, single_node=True):
+  """Returns the AST of given piece of code.
 
-  if six.PY2 and '.print(' in src:
-    # This special treatment is required because gast.parse is not aware of
-    # whether print_function was present in the original context.
-    src = 'from __future__ import print_function\n' + src
-    parsed_module = gast.parse(src)
-    parsed_module.body = parsed_module.body[1:]
-  else:
-    parsed_module = gast.parse(src)
+  Args:
+    src: Text
+    preamble_len: Int, indicates leading nodes in the parsed AST which should be
+      dropped.
+    single_node: Bool, whether `src` is assumed to be represented by exactly one
+      AST node.
 
-  return parsed_module
+  Returns:
+    ast.AST
+  """
+  module_node = gast.parse(src)
+  nodes = module_node.body
+  if preamble_len:
+    nodes = nodes[preamble_len:]
+  if single_node:
+    if len(nodes) != 1:
+      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+    return nodes[0]
+  return nodes
 
 
 def parse_expression(src):
@@ -115,9 +158,10 @@ def parse_expression(src):
   Raises:
     ValueError: if src does not consist of a single Expression.
   """
-  node = parse_str(src)
-  assert isinstance(node, gast.Module)
-  if len(node.body) != 1 or not isinstance(node.body[0], gast.Expr):
-    raise ValueError(
-        'Expected a single expression, found instead %s' % node.body)
-  return node.body[0].value
+  src = STANDARD_PREAMBLE + src.strip()
+  node = parse_str(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
+  if __debug__:
+    if not isinstance(node, gast.Expr):
+      raise ValueError(
+          'expected a single expression, found instead {}'.format(node))
+  return node.value

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -64,7 +63,15 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64 Cardinality() const override {
+      if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
+        return kInfiniteCardinality;
+      } else if (input_->Cardinality() == kUnknownCardinality) {
+        return kUnknownCardinality;
+      } else {
+        return input_->Cardinality() * count_;
+      }
+    }
 
    protected:
     template <class T>
@@ -80,8 +87,9 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             num_elements_(0),
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {
-        buffer_.reset(new std::vector<Tensor>[params.dataset->buffer_size_]);
-        slices_.push_back(MakeUnique<Slice>(0, 0));
+        buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+            params.dataset->buffer_size_);
+        slices_.push_back(absl::make_unique<Slice>(0, 0));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -124,11 +132,15 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             }
             epoch_++;
             int64 n = slices_.back()->end;
-            slices_.push_back(MakeUnique<Slice>(n, n));
+            slices_.push_back(absl::make_unique<Slice>(n, n));
             TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
                 ctx, this->prefix(), &input_impl_));
           }
           if (!end_of_input_sequence) {
+            if (num_elements_ == 0) {
+              VLOG(1) << "Starting to fill up shuffle buffer of size: "
+                      << this->dataset()->buffer_size_;
+            }
             this->RecordBufferEnqueue(ctx, input_element);
             buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
                 std::move(input_element);
@@ -273,7 +285,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
               reader->ReadScalar(this->full_name("slices_size"), &temp));
           slices_size = static_cast<size_t>(temp);
         }
-        buffer_.reset(new std::vector<Tensor>[this->dataset()->buffer_size_]);
+        buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+            this->dataset()->buffer_size_);
         for (size_t i = 0; i < slices_size; ++i) {
           int64 start;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
@@ -281,7 +294,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 end;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               this->full_name(strings::StrCat("slices_end_", i)), &end));
-          slices_.push_back(MakeUnique<Slice>(start, end));
+          slices_.push_back(absl::make_unique<Slice>(start, end));
           for (size_t j = start; j < end; ++j) {
             size_t index = j % this->dataset()->buffer_size_;
             int64 list_size;
@@ -399,8 +412,9 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::Shuffle")}, seed_, seed2_));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Shuffle")}, seed_,
+          seed2_);
     }
 
    protected:
@@ -412,7 +426,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {}
 
-      string DebugString() override {
+      string DebugString() const override {
         return "ReshufflingDataset::RandomSeedGenerator";
       }
 
@@ -466,8 +480,8 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
         // resource_mgr.
         ResourceMgr* mgr = ctx->resource_mgr();
         RandomSeedGenerator* seed_generator;
-        const string name = strings::StrCat(prefix(), "::", dataset()->name(),
-                                            "::RandomSeedGenerator");
+        const string name = strings::StrCat(
+            prefix(), "::", dataset()->type_string(), "::RandomSeedGenerator");
 
         int64 dataset_seed, dataset_seed2;
         {
@@ -578,9 +592,11 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new ShuffleDatasetBase::Iterator<ShuffleDatasetBase>(
-              {this, strings::StrCat(prefix, "::Shuffle")}, seed_, seed2_));
+      return absl::make_unique<
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>>(
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>::Params{
+              this, strings::StrCat(prefix, "::Shuffle")},
+          seed_, seed2_);
     }
 
    protected:
@@ -637,6 +653,10 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
     int64 count;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
 
+    OP_REQUIRES(ctx, count > 0 || count == -1,
+                errors::InvalidArgument(
+                    "count must be greater than zero or equal to -1."));
+
     // By TensorFlow convention, if both seeds are 0, then shuffling should be
     // seeded non-deterministically.
     if (seed == 0 && seed2 == 0) {
@@ -663,10 +683,11 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new ShuffleDatasetBase::Iterator<ShuffleDatasetBase>(
-              {this, strings::StrCat(prefix, "::ShuffleAndRepeat")}, seed_,
-              seed2_));
+      return absl::make_unique<
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>>(
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>::Params{
+              this, strings::StrCat(prefix, "::ShuffleAndRepeat")},
+          seed_, seed2_);
     }
 
    protected:

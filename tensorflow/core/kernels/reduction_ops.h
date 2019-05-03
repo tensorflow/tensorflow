@@ -33,6 +33,12 @@ struct MeanReducer {
   Scalar initialize() const { return Scalar(0); }
 };
 
+// Dummy class used for template specialization for l2-norm reduction.
+template <typename Scalar>
+struct EuclideanNormReducer {
+  Scalar initialize() const { return Scalar(0); }
+};
+
 template <typename Device, typename OUT_T, typename IN_T,
           typename ReductionAxes, typename Reducer>
 struct ReduceEigenImpl {
@@ -53,6 +59,39 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
     Eigen::internal::SumReducer<Scalar> sum_reducer;
     out.device(d) = in.reduce(reduction_axes, sum_reducer) /
                     static_cast<Scalar>(in.size() / out.size());
+  }
+};
+
+// TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
+// controlled by an attribute.
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes, typename Scalar>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::EuclideanNormReducer<Scalar>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::EuclideanNormReducer<Scalar>& reducer) {
+    static_assert(std::is_same<Scalar, typename OUT_T::Scalar>::value, "");
+    Eigen::internal::SumReducer<Scalar> sum_reducer;
+    out.device(d) =
+        (in * in.conjugate()).reduce(reduction_axes, sum_reducer).sqrt();
+  }
+};
+
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::EuclideanNormReducer<bfloat16>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::EuclideanNormReducer<bfloat16>& reducer) {
+    static_assert(std::is_same<bfloat16, typename OUT_T::Scalar>::value, "");
+    Eigen::internal::SumReducer<float> sum_reducer;
+    auto in_as_float = in.template cast<float>();
+    out.device(d) = (in_as_float * in_as_float.conjugate())
+                        .reduce(reduction_axes, sum_reducer)
+                        .sqrt()
+                        .template cast<bfloat16>();
   }
 };
 
@@ -78,8 +117,6 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
-FIX_MEAN_IDENTITY(complex64)
-FIX_MEAN_IDENTITY(complex128)
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>

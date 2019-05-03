@@ -57,6 +57,15 @@ def InXlaContext(graph):
   return GetContainingXLAContext(ctxt) is not None
 
 
+def GraphOrParentsInXlaContext(graph):
+  while True:
+    if InXlaContext(graph): return True
+    try:
+      graph = graph.outer_graph
+    except AttributeError:
+      return False
+
+
 def IsInWhileLoop(op):
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingWhileContext(ctxt) is not None
@@ -322,7 +331,7 @@ def CheckInputFromValidContext(op, input_op):
     if while_ctxt:
       error_msg = (
           "Cannot use '%s' as input to '%s' because they are in different while"
-          " loops." % (op.name, input_op.name))
+          " loops." % (input_op.name, op.name))
     else:
       error_msg = (
           "Cannot use '%s' as input to '%s' because '%s' is in a while loop."

@@ -65,6 +65,7 @@ py_library(
 py_test(
     name = "adam_gs_optimizer_test",
     srcs = ["python/training/adam_gs_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -80,6 +81,7 @@ py_test(
 py_test(
     name = "adamax_test",
     srcs = ["python/training/adamax_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -95,6 +97,7 @@ py_test(
 py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no-internal-py3",
@@ -115,6 +118,7 @@ py_test(
 py_test(
     name = "moving_average_optimizer_test",
     srcs = ["python/training/moving_average_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "notsan",  # b/31055119
@@ -151,6 +155,7 @@ tf_py_test(
 py_test(
     name = "multitask_optimizer_wrapper_test",
     srcs = ["python/training/multitask_optimizer_wrapper_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -168,6 +173,7 @@ py_test(
 py_test(
     name = "lazy_adam_gs_optimizer_test",
     srcs = ["python/training/lazy_adam_gs_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -187,6 +193,7 @@ py_test(
 py_test(
     name = "lazy_adam_optimizer_test",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -206,6 +213,7 @@ py_test(
 py_test(
     name = "reg_adagrad_optimizer_test",
     srcs = ["python/training/reg_adagrad_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -225,6 +233,7 @@ py_test(
 py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -244,6 +253,7 @@ py_test(
 py_test(
     name = "weight_decay_optimizers_test",
     srcs = ["python/training/weight_decay_optimizers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -319,6 +329,9 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "oss_serial",
+    ],
 )
 
 tf_py_test(
@@ -345,6 +358,7 @@ tf_py_test(
 py_test(
     name = "sign_decay_test",
     srcs = ["python/training/sign_decay_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -355,6 +369,7 @@ py_test(
 py_test(
     name = "addsign_test",
     srcs = ["python/training/addsign_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -374,6 +389,7 @@ py_test(
 py_test(
     name = "powersign_test",
     srcs = ["python/training/powersign_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -393,6 +409,7 @@ py_test(
 py_test(
     name = "ggt_test",
     srcs = ["python/training/ggt_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -410,8 +427,10 @@ py_test(
 
 py_test(
     name = "shampoo_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/shampoo_test.py"],
+    python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -431,6 +450,7 @@ py_test(
 py_test(
     name = "lars_optimizer_test",
     srcs = ["python/training/lars_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -446,6 +466,7 @@ py_test(
 py_test(
     name = "matrix_functions_test",
     srcs = ["python/training/matrix_functions_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",

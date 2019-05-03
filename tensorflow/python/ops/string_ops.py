@@ -123,7 +123,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor = tf.range(10)
         formatted = tf.strings.format("tensor: {}, suffix", tensor)
@@ -135,7 +135,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
     Formatting a multi-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor_one = tf.reshape(tf.range(100), [10, 10])
         tensor_two = tf.range(10)
@@ -192,15 +192,16 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
                                       name=name)
 
 
-@tf_export("string_split")
-def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
+def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
   containing the split tokens. Empty tokens are ignored.
 
-  If `delimiter` is an empty string, each element of the `source` is split
+  If `sep` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
   multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
   treated as a set of delimiters with each considered a potential split point.
@@ -219,9 +220,10 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
 
   Args:
     source: `1-D` string `Tensor`, the strings to split.
-    delimiter: `0-D` string `Tensor`, the delimiter character, the string should
-      be length 0 or 1.
+    sep: `0-D` string `Tensor`, the delimiter character, the string should
+      be length 0 or 1. Default is ' '.
     skip_empty: A `bool`. If `True`, skip the empty strings from the result.
+    delimiter: deprecated alias for `sep`.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -231,6 +233,11 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
   """
+  delimiter = deprecation.deprecated_argument_lookup(
+      "sep", sep, "delimiter", delimiter)
+
+  if delimiter is None:
+    delimiter = " "
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -242,7 +249,8 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-@tf_export("strings.split")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
 
@@ -265,7 +273,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
   sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
   string, consecutive whitespace are regarded as a single separator, and the
-  result will contain no empty strings at the startor end if the string has
+  result will contain no empty strings at the start or end if the string has
   leading or trailing whitespace.
 
   Note that the above mentioned behavior matches python's str.split.
@@ -321,7 +329,10 @@ def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
                 separator="",
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keepdims=None):
+  keep_dims = deprecation.deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
   inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
       inputs_t, axis, reduction_indices)
@@ -422,9 +433,19 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
     A `Tensor` of type `out_type`.
   """
   return gen_parsing_ops.string_to_number(input, out_type, name)
-tf_export(v1=["strings.to_number", "string_to_number"])(
-    gen_parsing_ops.string_to_number
-    )
+
+
+@tf_export(v1=["strings.to_number", "string_to_number"])
+def string_to_number_v1(
+    string_tensor=None,
+    out_type=dtypes.float32,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_parsing_ops.string_to_number(string_tensor, out_type, name)
+
+string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
 
 
 @tf_export("strings.to_hash_bucket", v1=[])
@@ -438,7 +459,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
   Note that the hash function may change from time to time.
   This functionality will be deprecated and it's recommended to use
-  `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
+  `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
   Args:
     input: A `Tensor` of type `string`.
@@ -450,6 +471,16 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   """
   # pylint: enable=line-too-long
   return gen_string_ops.string_to_hash_bucket(input, num_buckets, name)
-tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])(
-    gen_string_ops.string_to_hash_bucket
-    )
+
+
+@tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+def string_to_hash_bucket_v1(
+    string_tensor=None,
+    num_buckets=None,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
+
+string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__

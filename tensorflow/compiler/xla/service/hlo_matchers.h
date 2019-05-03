@@ -54,6 +54,21 @@ class HloParameterMatcher : public HloMatcher {
   int64 parameter_number_;
 };
 
+// Custom matcher for comparisons, which accepts a comparison direction.
+class HloComparisonMatcher : public HloMatcher {
+ public:
+  explicit HloComparisonMatcher(
+      ComparisonDirection direction,
+      std::vector<::testing::Matcher<const HloInstruction*>> operands)
+      : HloMatcher(HloOpcode::kCompare, operands), direction_(direction) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  ComparisonDirection direction_;
+};
+
 // Custom matcher for get-tuple-element instructions, which accepts a tuple
 // index to match.
 class HloGetTupleElementMatcher : public HloMatcher {
@@ -172,6 +187,7 @@ HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
+HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
 HLO_MATCHER(Constant);
@@ -184,28 +200,23 @@ HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
-HLO_MATCHER(Eq);
 HLO_MATCHER(Exp);
+HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
-HLO_MATCHER(Ge);
 HLO_MATCHER(AfterAll);
-HLO_MATCHER(Gt);
 HLO_MATCHER(Iota);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
-HLO_MATCHER(Le);
 HLO_MATCHER(Log);
 HLO_MATCHER(And);
 HLO_MATCHER(Not);
 HLO_MATCHER(Or);
 HLO_MATCHER(Xor);
-HLO_MATCHER(Lt);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
 HLO_MATCHER(Minimum);
 HLO_MATCHER(Multiply);
-HLO_MATCHER(Ne);
 HLO_MATCHER(Negate);
 HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
@@ -254,6 +265,38 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloMatcher(HloOpcode::kParameter, {}));
+}
+
+// Comparison matchers below do not require any additional arguments.
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Eq(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kEq, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Ne(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kNe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Ge(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kGe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Gt(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kGt, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Le(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kLe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Lt(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kLt, {operands...}));
 }
 
 // GetTupleElement(operand, N) matches a GTE instruction which gets the N'th

@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow.boosted_trees;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "BoostedTreesProtos";
 option java_multiple_files = true;
@@ -52,6 +53,16 @@ message BucketizedSplit {
   // the rule feature <= threshold.
   int32 feature_id = 1;
   int32 threshold = 2;
+  // If feature column is multivalent, this holds the index of the dimension
+  // for the split. Defaults to 0.
+  int32 dimension_id = 5;
+  enum DefaultDirection {
+    // Left is the default direction.
+    DEFAULT_LEFT = 0;
+    DEFAULT_RIGHT = 1;
+  }
+  // default direction for missing values.
+  DefaultDirection default_direction = 6;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.
@@ -116,7 +127,7 @@ message TreeMetadata {
 
   message PostPruneNodeUpdate {
     int32 new_node_id = 1;
-    float logit_change = 2;
+    repeated float logit_change = 2;
   }
 }
 

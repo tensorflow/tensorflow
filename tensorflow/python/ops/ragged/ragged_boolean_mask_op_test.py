@@ -316,7 +316,7 @@ class RaggedBooleanMaskOpTest(ragged_test_util.RaggedTensorTestCase,
   def testErrors(self):
     if not context.executing_eagerly():
       self.assertRaisesRegexp(ValueError,
-                              r'mask\.shape\.ndims must be kown statically',
+                              r'mask\.shape\.ndims must be known statically',
                               ragged_array_ops.boolean_mask, [[1, 2]],
                               array_ops.placeholder(dtypes.bool))
 

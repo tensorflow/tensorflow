@@ -39,6 +39,9 @@ def _time_resampling(data_np, target_dist, init_dist, num_to_sample):  # pylint:
           initial_dist=init_dist,
           seed=142))
 
+  options = dataset_ops.Options()
+  options.experimental_optimization.apply_default_optimizations = False
+  dataset = dataset.with_options(options)
   get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
   with session.Session() as sess:

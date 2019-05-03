@@ -67,7 +67,7 @@ class Var : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
                            tensor_.shape().DebugString());
   }
@@ -93,6 +93,34 @@ class Var : public ResourceBase {
 
   ~Var() override {}
   TF_DISALLOW_COPY_AND_ASSIGN(Var);
+};
+
+// Does unlock and unref automatically when going out of scope, and also
+// supports early manual release.
+class SCOPED_LOCKABLE ScopedUnlockUnrefVar {
+ public:
+  explicit ScopedUnlockUnrefVar(Var* var) EXCLUSIVE_LOCK_FUNCTION(var_->mu())
+      : var_(var) {
+    if (var_) {
+      var_->mu()->lock();
+    }
+  }
+  void Release() UNLOCK_FUNCTION() {
+    if (var_) {
+      var_->mu()->unlock();
+      var_->Unref();
+      var_ = nullptr;
+    }
+  }
+  ~ScopedUnlockUnrefVar() UNLOCK_FUNCTION() { Release(); }
+
+ private:
+  Var* var_;
+
+  ScopedUnlockUnrefVar(const ScopedUnlockUnrefVar&) = delete;
+  ScopedUnlockUnrefVar(ScopedUnlockUnrefVar&&) = delete;
+  ScopedUnlockUnrefVar& operator=(const ScopedUnlockUnrefVar&) = delete;
+  ScopedUnlockUnrefVar& operator=(ScopedUnlockUnrefVar&&) = delete;
 };
 
 }  //  end namespace tensorflow

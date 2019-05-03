@@ -17,35 +17,20 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 
 namespace tensorflow {
 namespace data {
 
-// This method is used to determine whether we can short-circuit the evaluation
-// of the user-defined function `func`. Short-circuting is possible if every
-// function output corresponds to one of its inputs (e.g. `f(x) = x`, `f(x,y) =
-// (y,x)`, or `f(x) = (x,x)`).
-//
-// If short-circuiting is possible, the method stores the mapping from output
-// indices to input indices in `indices`. Otherwise, `indices` will be empty.
-//
-// Returns non-ok status if analysis of the function fails.
-//
-// TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
-                                  const NameAttrList& func,
-                                  std::vector<int>* indices);
+// Returns a GraphDef representation of the given dataset.
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+                  SerializationContext&& serialization_ctx,
+                  GraphDef* graph_def);
 
-// Given a vector that maps output indices to input indices, return a vector
-// that identifies for which output indices can we move the input (assuming
-// output indices are processed left to right).
-std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
-
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
+// Rewrites the input dataset using the given config.
+Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                      std::function<RewriterConfig(void)> config_factory,
+                      bool optimize_function_library,
+                      DatasetBase** rewritten_input);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
@@ -56,6 +41,59 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
+
+// Helper class for reading data from a VariantTensorData object.
+class VariantTensorDataReader : public IteratorStateReader {
+ public:
+  explicit VariantTensorDataReader(const VariantTensorData* data);
+
+  // Returns OK iff the initialization was successful.
+  Status ReadScalar(StringPiece key, int64* val) override;
+  Status ReadScalar(StringPiece key, string* val) override;
+  Status ReadTensor(StringPiece key, Tensor* val) override;
+  bool Contains(StringPiece key) override;
+
+ private:
+  template <typename T>
+  Status ReadScalarInternal(StringPiece key, T* val);
+  Status ReadTensorInternal(StringPiece key, Tensor* val);
+
+  std::map<string, size_t> map_;
+  const VariantTensorData* data_;  // Not owned.
+};
+
+// Helper class for writing data to a VariantTensorData object.
+class VariantTensorDataWriter : public IteratorStateWriter {
+ public:
+  // Does not take ownership of data.
+  explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
+  Status WriteScalar(StringPiece key, const int64 val) override;
+  Status WriteScalar(StringPiece key, const string& val) override;
+  Status WriteTensor(StringPiece key, const Tensor& val) override;
+
+  // Writes the metadata to `data_`.
+  Status Flush();
+
+ private:
+  template <typename T>
+  Status WriteScalarInternal(StringPiece key, const T& val);
+  Status WriteTensorInternal(StringPiece key, const Tensor& val);
+
+  VariantTensorData* data_;
+  std::vector<string> keys_;
+};
+
+// Adds the functions in `to_add` to `base`. If a function with a matching
+// signature already exists in `base`, replaces it with the function from
+// `to_add`.
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionLibraryDefinition& to_add);
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionDefLibrary& to_add);
+
+// Creates a runner that runs functions with limited parallelism.
+std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
+    std::function<void(std::function<void()>)> runner, int max_parallelism);
 
 }  // namespace data
 }  // namespace tensorflow

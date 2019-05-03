@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def dot_graph_from_checkpoint(save_path):
@@ -51,7 +51,7 @@ def dot_graph_from_checkpoint(save_path):
     A graph in DOT format as a string.
   """
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-  object_graph = checkpointable_utils.object_metadata(save_path)
+  object_graph = trackable_utils.object_metadata(save_path)
   shape_map = reader.get_variable_to_shape_map()
   dtype_map = reader.get_variable_to_dtype_map()
   graph = 'digraph {\n'
@@ -63,7 +63,7 @@ def dot_graph_from_checkpoint(save_path):
       slot_ids.add(slot_reference.slot_variable_node_id)
   for node_id, node in enumerate(object_graph.nodes):
     if (len(node.attributes) == 1
-        and node.attributes[0].name == checkpointable.VARIABLE_VALUE_KEY):
+        and node.attributes[0].name == trackable.VARIABLE_VALUE_KEY):
       if node_id in slot_ids:
         color = 'orange'
         tooltip_prefix = 'Slot variable'

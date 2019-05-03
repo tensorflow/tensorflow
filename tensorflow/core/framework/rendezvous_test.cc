@@ -318,7 +318,6 @@ void BM_SendRecv(int iters) {
   Tensor val(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  Status s;
   if (iters > 0) {
     while (iters--) {
       TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
@@ -343,7 +342,6 @@ void BM_PingPong(int iters) {
     Tensor foo(DT_STRING, TensorShape({}));
     bool is_dead = false;
     Rendezvous::Args args;
-    Status s;
     for (int i = 0; i < iters; ++i) {
       TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
       TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
@@ -354,7 +352,6 @@ void BM_PingPong(int iters) {
   Tensor bar(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  Status s;
   for (int i = 0; i < iters; ++i) {
     TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
     TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));

@@ -185,7 +185,7 @@ class ShapeUtil {
   // may not actually be able to store this number of elements. See
   // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
   // elements that can be stored in a sparse shape.
-  // Precondition: IsArray(shape)
+  // Precondition: shape.IsArray()
   static int64 ElementsIn(const Shape& shape);
 
   // As ElementsIn(), but recurses through tuples.
@@ -296,11 +296,6 @@ class ShapeUtil {
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
-  // Returns the rank (number of dimensions) of the given shape.
-  // Precondition: !IsTuple(shape)
-  ABSL_DEPRECATED("Use `Shape::rank` instead.")
-  static int64 Rank(const Shape& shape);
-
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
   // fluff. Note that zero dimensions are included in the true rank, e.g.,
@@ -314,10 +309,10 @@ class ShapeUtil {
   // Scalar-specific
 
   static bool IsScalar(const Shape& shape) {
-    return IsArray(shape) && Rank(shape) == 0;
+    return shape.IsArray() && shape.rank() == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return IsArray(shape) && TrueRank(shape) == 0;
+    return shape.IsArray() && TrueRank(shape) == 0;
   }
 
   // Returns whether "shape" is a scalar (array) with the given element_type.
@@ -403,7 +398,9 @@ class ShapeUtil {
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(PrimitiveType element_type,
                                    absl::Span<const int64> dimensions,
-                                   absl::Span<const int64> minor_to_major);
+                                   absl::Span<const int64> minor_to_major,
+                                   absl::Span<const Tile> tiles = {},
+                                   int64 element_size_in_bits = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
@@ -457,31 +454,6 @@ class ShapeUtil {
   // that floating point numbers are signed.
   static bool ElementIsSigned(const Shape& shape);
 
-  // Returns whether the shape is a tuple.
-  ABSL_DEPRECATED("Use Shape::IsTuple instead.")
-  static bool IsTuple(const Shape& shape) {
-    return shape.element_type() == TUPLE;
-  }
-
-  // Returns whether the shape is an opaque value (i.e. an 'existential' typed
-  // value that is passed to CustomCall operations).
-  ABSL_DEPRECATED("Use Shape::IsOpaque instead.")
-  static bool IsOpaque(const Shape& shape) {
-    return shape.element_type() == OPAQUE;
-  }
-
-  // Returns whether the shape is an token value used for ordering
-  // side-effecting operations.
-  ABSL_DEPRECATED("Use Shape::IsToken instead.")
-  static bool IsToken(const Shape& shape) {
-    return shape.element_type() == TOKEN;
-  }
-
-  // Returns whether the shape is an array.  Note that scalars are considered
-  // arrays.
-  ABSL_DEPRECATED("Use Shape::IsArray instead.")
-  static bool IsArray(const Shape& shape);
-
   // Returns whether the given primitive type corresponds to an array shape.
   static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
 
@@ -510,12 +482,6 @@ class ShapeUtil {
   // Returns the shape of the real/imaginary components of the given complex
   // shape.
   static Shape ComplexComponentShape(const Shape& complex_shape);
-
-  // Shorthand for testing whether a shape is of a given element type and
-  // sequence of dimensions.
-  ABSL_DEPRECATED("Use Equal() instead.")
-  static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
-                      std::initializer_list<int64> dimensions);
 
   // Returns true if the given shape has a subshape at the given index.
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
@@ -612,6 +578,20 @@ class ShapeUtil {
   static std::vector<std::pair<int64, int64>> DimensionsUnmodifiedByReshape(
       const Shape& input_shape, const Shape& output_shape);
 
+  // Return whether the given reshape instruction leaves the dimensions at the
+  // given input indices unmodified, and returns their output indices.
+  //
+  // Example:
+  //   input_dim_indices = {2, 3}
+  //   input  shape = T[a, b, x, y, cd]
+  //   output shape = T[ab, x, 1, y, c, d]
+  //   return value = {1, 3}
+  //
+  // Precondition: input_dim_indices is sorted.
+  static absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
+      const Shape& from_shape, const Shape& to_shape,
+      absl::Span<const int64> input_dim_indices);
+
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
@@ -658,7 +638,7 @@ class ShapeUtil {
   // continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(Span<int64>) or compatible.
+  // StatusOr<bool>(absl::Span<int64>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        absl::Span<const int64> base,
@@ -711,11 +691,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape,
-                           [&](absl::Span<const int64> indices) {
-                             return StatusOr<bool>(visitor_function(indices));
-                           })
-        .IgnoreError();
+    ForEachIndexWithStatus(shape, [&](absl::Span<const int64> indices) {
+      return StatusOr<bool>(visitor_function(indices));
+    }).IgnoreError();
   }
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
@@ -764,7 +742,7 @@ class ShapeUtil {
     if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
-    CHECK_EQ(Rank(shape), base.size());
+    CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());
     CHECK_EQ(count.size(), base.size());
     const int64 rank = LayoutUtil::MinorToMajor(shape).size();

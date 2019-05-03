@@ -27,7 +27,7 @@ namespace tensorflow {
 // is not deleted within the allotted number of seconds.
 //
 // This can be useful in diagnosing deadlocks, stalls and memory leaks
-// without logging too agressively.
+// without logging too aggressively.
 class ExecuteOnStall {
  public:
   // delay_secs: If the object still exists after this many seconds,

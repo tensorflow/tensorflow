@@ -34,6 +34,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 
 
+_thread_local = threading.local()
+
+
 class _TaskType(object):
   PS = "ps"
   WORKER = "worker"
@@ -77,8 +80,6 @@ class _Barrier(object):
 
   def wait(self):
     """Waits until all other callers reach the same wait call."""
-    if not hasattr(self._local_sense, "value"):
-      self._local_sense.value = False
     self._local_sense.value = not self._flag
     with self._lock:
       self._counter += 1
@@ -127,7 +128,7 @@ class _WorkerContext(object):
         replicated training.
       task_id: an integer indicating id of the corresponding task. It can be
         None if it is local training or in-graph replicated training.
-      session_config: an optional `tf.ConfigProto` object.
+      session_config: an optional `tf.compat.v1.ConfigProto` object.
       rpc_layer: optional string specifying the RPC protocol for communication
         with worker masters. If None or empty, hosts in the `cluster_spec` will
         be used directly.
@@ -210,8 +211,8 @@ class _WorkerContext(object):
       ValueError: if `worker_barrier` is not passed to the __init__ method.
     """
     if not self._worker_barrier:
-      raise ValueError("`worker_barrier is not set in the worker context.` \t" +
-                       self._debug_message())
+      # TODO(yuefengz): we should throw an error in independent worker mode.
+      return
     self._worker_barrier.wait()
 
   def session_creator(self,
@@ -366,6 +367,9 @@ def _split_cluster_for_evaluator(cluster_spec, task_type):
   # distribution strategies and as a result ops in the evalauator task may have
   # unspecified devices. Those ops may end up on other tasks if we don't split
   # the cluster.
+  # Note: if you bypass distribute coordinator and bring the cluster yourself,
+  # you can equivalently set device filters to split clusters. This is already
+  # done by distribution strategy's `update_config_proto` method.
   new_cluster_spec = multi_worker_util.normalize_cluster_spec(
       cluster_spec).as_dict()
   if task_type == _TaskType.EVALUATOR:
@@ -385,6 +389,27 @@ def _run_std_server(cluster_spec=None,
                     rpc_layer=None,
                     environment=None):
   """Runs a standard server."""
+  # Check if the Server is already running. If so, assert that no configuration
+  # options have changed, and return the existing Server. This allows us to
+  # call `run_distribute_coordinator` multiple times.
+  if getattr(_thread_local, "server", None) is not None:
+    assert _thread_local.cluster_spec == cluster_spec
+    assert _thread_local.task_type == task_type
+    assert _thread_local.task_id == task_id
+    assert _thread_local.session_config_str == repr(session_config)
+    assert _thread_local.rpc_layer == rpc_layer
+    assert _thread_local.environment == environment
+    return _thread_local.server
+  else:
+    # This method is not thread-safe.
+    _thread_local.server_started = True
+    _thread_local.cluster_spec = cluster_spec
+    _thread_local.task_type = task_type
+    _thread_local.task_id = task_id
+    _thread_local.session_config_str = repr(session_config)
+    _thread_local.rpc_layer = rpc_layer
+    _thread_local.environment = environment
+
   assert cluster_spec
   target = cluster_spec.task_address(task_type, task_id)
   if rpc_layer:
@@ -406,8 +431,6 @@ def _run_std_server(cluster_spec=None,
 
   if environment == "google":
     server = _FakeServer()
-    server.start()
-    return server
   else:
     if session_config:
       logging.info(
@@ -422,8 +445,10 @@ def _run_std_server(cluster_spec=None,
         task_index=task_id,
         config=session_config,
         protocol=rpc_layer)
-    server.start()
-    return server
+
+  server.start()
+  _thread_local.server = server
+  return server
 
 
 def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
@@ -553,11 +578,11 @@ def run_standard_tensorflow_server(session_config=None):
   "grpc".
 
   Args:
-    session_config: an optional `tf.ConfigProto` object. Users can pass in
-      the session config object to configure server-local devices.
+    session_config: an optional `tf.compat.v1.ConfigProto` object. Users can
+      pass in the session config object to configure server-local devices.
 
   Returns:
-    a `tf.train.Server` object which has already been started.
+    a `tf.distribute.Server` object which has already been started.
 
   Raises:
     ValueError: if the "TF_CONFIG" environment is not complete.
@@ -650,7 +675,7 @@ def run_distribute_coordinator(worker_fn,
   for a task. The distribute coordinator will make a copy of the `strategy`
   object, call its `configure` method and pass it to `worker_fn` as an argument.
 
-  The `worker_fn` defines the training logic and is called under a its own
+  The `worker_fn` defines the training logic and is called under its own
   worker context which can be accessed to via `get_current_worker_context`. A
   worker context provides access to configurations for each task, e.g. the
   task_type, task_id, master target and so on. Since `worker_fn` will be called
@@ -676,7 +701,7 @@ def run_distribute_coordinator(worker_fn,
   the worker context.
 
   The `cluster_spec` can be either passed by the argument or parsed from the
-  "TF_CONFIG" envrionment variable. Example of a TF_CONFIG:
+  "TF_CONFIG" environment variable. Example of a TF_CONFIG:
   ```
     cluster = {'chief': ['host0:2222'],
                'ps': ['host1:2222', 'host2:2222'],
@@ -691,19 +716,19 @@ def run_distribute_coordinator(worker_fn,
   will be created to call `eval_fn` with its `task_type` set to "evaluator". If
   `eval_fn` is not defined, fall back to `worker_fn`. This implies that
   evaluation will be done on a single machine if there is an "evaluator" task.
-  If "evaluator" doesn't exit in the cluster_spec, it entirely depends on the
+  If "evaluator" doesn't exist in the cluster_spec, it entirely depends on the
   `worker_fn` for how to do evaluation.
 
   Args:
     worker_fn: the function to be called. The function should accept a
       `strategy` object and will be given access to a context object via a
       context manager scope.
-    strategy: a DistributionStrategy object which specifying whether it should
+    strategy: a DistributionStrategy object specifying whether it should
       run between-graph replicated training or not, whether to run init ops,
       etc. This object will also be configured given `session_config`,
       `cluster_spec`, `task_type` and `task_id`.
     eval_fn: optional function for "evaluator" task. If `eval_fn` is not passed
-      in but a "evaluator" task found in the `cluster_spec`, the `worker_fn`
+      in but a "evaluator" task is found in the `cluster_spec`, the `worker_fn`
       will be used for this task.
     eval_strategy: optional DistributionStrategy object for "evaluator" task.
     mode: in which mode this distribute coordinator runs.
@@ -711,8 +736,8 @@ def run_distribute_coordinator(worker_fn,
       in a cluster. If not set or empty, fall back to local training.
     task_type: the current task type, optional if this is a client.
     task_id: the current task id, optional if this is a client.
-    session_config: an optional `tf.ConfigProto` object which will be passed
-      to `strategy`'s `configure` method and used to create a session.
+    session_config: an optional `tf.compat.v1.ConfigProto` object which will be
+      passed to `strategy`'s `configure` method and used to create a session.
     rpc_layer: optional string, the protocol for RPC, e.g. "grpc".
 
   Raises:
@@ -721,7 +746,8 @@ def run_distribute_coordinator(worker_fn,
 
   Returns:
     In the client job, return the value returned by `worker_fn` if
-    it is in-graph replication; return None otherwise.
+    it is in-graph replication or INDEPENDENT_WORKER mode; return None
+    otherwise.
   """
   tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
   if not cluster_spec:
@@ -738,7 +764,7 @@ def run_distribute_coordinator(worker_fn,
   rpc_layer = tf_config.get("rpc_layer", rpc_layer)
   environment = tf_config.get("environment", None)
 
-  # Setting the session config is necessary for some strategies such
+  # Setting the session config is necessary for some strategies such as
   # CollectiveAllReduceStrategy.
   session_config = session_config or config_pb2.ConfigProto(
       allow_soft_placement=True)
@@ -808,30 +834,34 @@ def run_distribute_coordinator(worker_fn,
     _configure_session_config_for_std_servers(strategy, eval_strategy,
                                               session_config, cluster_spec,
                                               task_type, task_id)
-    server = _run_std_server(
-        cluster_spec=cluster_spec,
-        task_type=task_type,
-        task_id=task_id,
-        session_config=session_config,
-        rpc_layer=rpc_layer,
-        environment=environment)
 
+    if not getattr(strategy.extended, "_std_server_started", False):
+      # Right now, with eager mode, context is configured with a std server at
+      # the very beginning while with graph mode the std server is started when
+      # distribute coordinator is called. We should consolidate these two paths.
+      server = _run_std_server(
+          cluster_spec=cluster_spec,
+          task_type=task_type,
+          task_id=task_id,
+          session_config=session_config,
+          rpc_layer=rpc_layer,
+          environment=environment)
     if task_type in [_TaskType.CHIEF, _TaskType.WORKER]:
       if strategy.extended.experimental_between_graph:
         # All jobs run `worker_fn` if between-graph.
-        _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
-                           task_id, session_config, rpc_layer)
+        return _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
+                                  task_id, session_config, rpc_layer)
       else:
         # Only one node runs `worker_fn` if in-graph.
         context = _WorkerContext(strategy, cluster_spec, task_type, task_id)
         if context.is_chief:
-          _run_single_worker(worker_fn, strategy, cluster_spec, None, None,
-                             session_config, rpc_layer)
+          return _run_single_worker(worker_fn, strategy, cluster_spec, None,
+                                    None, session_config, rpc_layer)
         else:
           server.join()
     elif task_type == _TaskType.EVALUATOR:
-      _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
-                         task_id, session_config, rpc_layer)
+      return _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
+                                task_id, session_config, rpc_layer)
     else:
       if task_type != _TaskType.PS:
         raise ValueError("Unexpected task_type: %r" % task_type)

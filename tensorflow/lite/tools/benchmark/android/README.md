@@ -51,7 +51,7 @@ and can be appended to the `args` string alongside the required `--graph` flag
 args key).
 
 ```
-adb shell am start -S -n
+adb shell am start -S -n \
   org.tensorflow.lite.benchmark/org.tensorflow.lite.benchmark.BenchmarkModelActivity \
   --es args '"--graph=/data/local/tmp/mobilenet_quant_v1_224.tflite --num_threads=4"'
 ```

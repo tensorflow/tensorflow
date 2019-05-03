@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -185,19 +189,20 @@ class AdjustContrastOpV2 : public XlaOpKernel {
                                         factor_shape.DebugString()));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp factor = context->Input(1);
-
     DataType type = context->input_type(0);
+
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp factor = XlaHelpers::ConvertElementType(context->Input(1), type);
 
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
     auto converted = XlaHelpers::ConvertElementType(input, accumulation_type);
     auto reduce = xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                               *context->GetOrCreateAdd(accumulation_type),
                               {height_dim, width_dim});
-    auto output = XlaHelpers::ConvertElementType(reduce, type);
-    output =
-        xla::Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
+
+    auto output = xla::Div(
+        reduce, XlaHelpers::FloatLiteral(b, accumulation_type, height * width));
+    output = XlaHelpers::ConvertElementType(output, type);
 
     std::vector<int64> broadcast_dims(input_shape.dims() - 2);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
@@ -233,8 +238,10 @@ class AdjustSaturationOp : public XlaOpKernel {
                                 channels, " channels."));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp scale = context->Input(1);
+    xla::XlaOp input =
+        XlaHelpers::ConvertElementType(context->Input(0), DT_FLOAT);
+    xla::XlaOp scale =
+        XlaHelpers::ConvertElementType(context->Input(1), DT_FLOAT);
 
     DataType type = context->input_type(0);
 
@@ -249,15 +256,17 @@ class AdjustSaturationOp : public XlaOpKernel {
                                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
-    auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
-                        channel_shape);
+    auto hsv =
+        RGBToHSV(context, b, {red, green, blue}, DT_FLOAT, channel_shape);
 
-    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, type), xla::Mul(hsv[1], scale),
-                        XlaHelpers::One(b, type));
+    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, DT_FLOAT), xla::Mul(hsv[1], scale),
+                        XlaHelpers::One(b, DT_FLOAT));
 
-    auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
+    auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 
-    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
+    auto output = XlaHelpers::ConvertElementType(
+        xla::ConcatInDim(b, rgb, channel_dim), type);
+    context->SetOutput(0, output);
   }
 };
 REGISTER_XLA_OP(Name("AdjustSaturation"), AdjustSaturationOp);
@@ -283,8 +292,10 @@ class AdjustHueOp : public XlaOpKernel {
                                 channels, " channels."));
 
     xla::XlaBuilder* b = context->builder();
-    xla::XlaOp input = context->Input(0);
-    xla::XlaOp delta = context->Input(1);
+    xla::XlaOp input =
+        XlaHelpers::ConvertElementType(context->Input(0), DT_FLOAT);
+    xla::XlaOp delta =
+        XlaHelpers::ConvertElementType(context->Input(1), DT_FLOAT);
 
     DataType type = context->input_type(0);
 
@@ -299,20 +310,22 @@ class AdjustHueOp : public XlaOpKernel {
                                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
-    auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
-                        channel_shape);
+    auto hsv =
+        RGBToHSV(context, b, {red, green, blue}, DT_FLOAT, channel_shape);
 
-    auto zero = XlaHelpers::Zero(b, type);
-    auto one = XlaHelpers::One(b, type);
+    auto zero = XlaHelpers::Zero(b, DT_FLOAT);
+    auto one = XlaHelpers::One(b, DT_FLOAT);
 
     auto& hue = hsv[0];
     hue = xla::Rem(xla::Add(hsv[0], delta), one);
     hue =
         xla::Select(xla::Lt(hue, zero), xla::Rem(xla::Add(one, hue), one), hue);
 
-    auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
+    auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 
-    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
+    auto output = XlaHelpers::ConvertElementType(
+        xla::ConcatInDim(b, rgb, channel_dim), type);
+    context->SetOutput(0, output);
   }
 };
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);
@@ -351,24 +364,26 @@ struct SuppressBodyFn {
     auto num_outputs_so_far = values[1];
     auto iou_mask = values[2];
     auto included_iou = values[3];
-    auto zero_r1 = xla::ConstantR1<int32>(builder, {0});
+    auto zero = xla::ConstantR0<int32>(builder, 0);
     // Determine if current elem is active using a slice.
-    auto row_idx_r1 = xla::Reshape(row_idx, {1});
-    auto active_elem = xla::DynamicSlice(included_iou, row_idx_r1, {1});
+    // TODO(b/118437727): The only reason we need an explicit vector is because
+    // some old GCCs can't deduce the right type for MakeConstSpan, and
+    // providing a single-value initializer list directly uses the wrong
+    // overload. Delete this once the deprecated overload is gone.
+    std::vector<xla::XlaOp> row_idx_vector = {row_idx};
+    auto active_elem = xla::DynamicSlice(included_iou, row_idx_vector, {1});
     active_elem = xla::Reshape(active_elem, {});
     // Increment output count iff current elem is not suppressed.
     num_outputs_so_far = xla::Select(
         active_elem, num_outputs_so_far + xla::ConstantR0<int32>(builder, 1),
         num_outputs_so_far);
     // Slice out the row_idx.
-    auto starts = xla::ConcatInDim(builder, {row_idx_r1, zero_r1}, 0);
-    auto row_iou = xla::DynamicSlice(iou_mask, starts, {1, num_boxes});
+    auto row_iou = xla::DynamicSlice(iou_mask, {row_idx, zero}, {1, num_boxes});
     // Remove the diagonal from consideration. An elem cannot suppress
     // itself.
-    auto update_starts = xla::ConcatInDim(builder, {zero_r1, row_idx_r1}, 0);
     row_iou = xla::DynamicUpdateSlice(
         row_iou, xla::ConstantR2FromArray2D<bool>(builder, {{false}}),
-        update_starts);
+        {zero, row_idx});
     // Create a suppression by inverting polarity.
     row_iou = xla::Reshape(row_iou, {num_boxes});
     auto supp_mask = xla::Not(row_iou);
@@ -414,7 +429,8 @@ class NonMaxSuppressionOp : public XlaOpKernel {
                 errors::InvalidArgument("XLA compilation requires number of "
                                         "boxes to be <= kint32max, got ",
                                         num_boxes));
-
+    xla::PrimitiveType boxes_xla_type = context->InputXlaType("boxes");
+    xla::PrimitiveType scores_xla_type = context->InputXlaType("scores");
     const xla::XlaOp boxes_input = context->Input("boxes");
     const xla::XlaOp scores_input = context->Input("scores");
     int64 output_size;
@@ -432,15 +448,18 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     // Choose a more convenient layout.
     const xla::XlaOp boxes = xla::Transpose(boxes_input, {1, 0});
     const xla::XlaOp boxes_sorted = xla::GetTupleElement(
-        xla::Sort(/*keys=*/-xla::Broadcast(scores_input, {4}),
-                  /*values=*/{boxes},
+        xla::Sort({xla::Broadcast(scores_input, {4}), boxes},
+                  xla::CreateScalarGtComputation(
+                      {scores_xla_type, boxes_xla_type}, builder),
                   /*dimension=*/1),
         1);
     // Track the mapping of indices into sorted domain.
     const xla::XlaOp iota_indices = xla::Iota(builder, xla::S32, num_boxes);
-    const xla::XlaOp indices_sort = xla::Sort(-scores_input, {iota_indices});
+    const xla::XlaOp indices_sort = xla::Sort(
+        {scores_input, iota_indices},
+        xla::CreateScalarGtComputation({scores_xla_type, xla::S32}, builder));
     const xla::XlaOp indices_sorted = xla::GetTupleElement(indices_sort, 1);
-    const xla::XlaOp scores = xla::Neg(xla::GetTupleElement(indices_sort, 0));
+    const xla::XlaOp scores = xla::GetTupleElement(indices_sort, 0);
 
     // Shapes are henceforth [1, num_boxes]. 'c_y0' denotes 'coordinate' y0.
     const xla::XlaOp c_y0 = xla::Reshape(xla::SliceInDim(boxes_sorted,

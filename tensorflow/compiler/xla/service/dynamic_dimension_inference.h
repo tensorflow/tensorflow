@@ -83,10 +83,21 @@ class DynamicDimensionInference {
   // by a scalar instruction `size`.
   void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
                       HloInstruction* size) {
+    Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
+    CHECK(!subshape.IsTuple())
+        << "Can't set a tuple shape to dynamic dimension";
+    CHECK(dim < subshape.rank() && dim >= 0)
+        << "Asked to set invalid dynamic dimension. Shape: "
+        << subshape.ToString() << ", Dimension: " << dim;
     dynamic_mapping_.try_emplace(DynamicDimension{inst, index, dim}, size);
     auto iter = per_hlo_dynamic_dimensions_.try_emplace(inst);
     iter.first->second.emplace(DynamicDimension{inst, index, dim});
   }
+
+  // Copies the internal mapping from instruction `from` to instruction `to`.
+  // This is useful when an instruction is replaced by the other during the
+  // inferencing process.
+  void CopyMapping(HloInstruction* from, HloInstruction* to);
 
   // AnalyzeDynamicDimensions starts the analysis of the dynamic dimensions in
   // module_.
@@ -101,6 +112,8 @@ class DynamicDimensionInference {
   using DynamicMapping = absl::flat_hash_map<DynamicDimension, HloInstruction*>;
   DynamicMapping dynamic_mapping_;
 
+  // A convenient mapping from an hlo to the set of dynamic dimensions that it
+  // holds.
   using PerHloDynamicDimensions =
       absl::flat_hash_map<HloInstruction*,
                           absl::flat_hash_set<DynamicDimension>>;

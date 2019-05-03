@@ -25,6 +25,7 @@ import numpy as np  # pylint: disable=unused-import
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -60,9 +62,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testPushPopGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testPushPop(max_num_elements)
 
@@ -89,6 +90,58 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.evaluate(l)
 
+  def testPopUninitializedTensorUseListElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
+    _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(e, np.zeros((2, 3)))
+
+  def testPopUninitializedTensorUseSpecifiedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 3], num_elements=3)
+    _, e = gen_list_ops.tensor_list_pop_back(
+        l, element_dtype=dtypes.float32, element_shape=[4, 3])
+    self.assertAllEqual(e, np.zeros((4, 3)))
+
+  def testPopUninitializedTensorWithInvalidElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to read an uninitialized tensor but "
+        "element_shape is not fully defined"):
+      _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      self.evaluate(e)
+
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 2], num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Incompatible shapes during merge: \[1,3\] vs. \[\?,2\]"):
+      _, e = gen_list_ops.tensor_list_pop_back(
+          l, element_dtype=dtypes.float32, element_shape=[1, 3])
+      self.evaluate(e)
+
+  def testPushGetGrad(self):
+    with backprop.GradientTape() as tape:
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32, element_shape=None)
+      c0 = constant_op.constant(5.0)
+      c1 = constant_op.constant([10.0, 20.0])
+      tape.watch(c0)
+      tape.watch(c1)
+      l = list_ops.tensor_list_push_back(l, c0)
+      l = list_ops.tensor_list_push_back(l, c1)
+      t1 = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t1), [10.0, 20.0])
+      # t1 == c1 so the gradient should be [0., [1., 1.]]
+      # This tests that the gradient of push_back correctly converts DT_INVALID
+      # tensors to zeros. The list returned by the gradient of GetItem will
+      # have only have tensor at index 1 set and others set to DT_INVALID.
+      dt0, dt1 = tape.gradient(t1, [c0, c1])
+      self.assertAllEqual(self.evaluate(dt1), [1.0, 1.0])
+      self.assertEqual(self.evaluate(dt0), 0.0)
+
   def _testStack(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -108,9 +161,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testStackGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStack(max_num_elements)
 
@@ -130,7 +182,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Should raise an error when the element tensors do not all have the same
     # shape.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "unequal shapes"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Incompatible ranks during merge: 0 vs. 1"):
       l = list_ops.tensor_list_push_back(l, constant_op.constant([3.0, 4.0]))
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
@@ -151,7 +204,9 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Should raise an error when the element tensors do not all have the same
     # shape.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "unequal shapes"):
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Incompatible shapes during merge: \[1\] vs. \[2\]"):
       l = list_ops.tensor_list_push_back(l, constant_op.constant([2.0, 3.0]))
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
@@ -188,6 +243,56 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           max_num_elements=max_num_elements)
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
+
+  def _testStackWithUninitializedTensors(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(t, [0., 0., 0.])
+
+  def testStackWithUninitializedTensors(self):
+    self._testStackWithUninitializedTensors()
+
+  @test_util.run_gpu_only
+  def testStackWithUninitializedTensorsGpu(self):
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensors()
+
+  def _testStackWithUninitializedTensorsInferShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [1., 2.])
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(t, [[0., 0.], [1., 2.], [0., 0.]])
+
+  def testStackWithUninitializedTensorsInferShape(self):
+    self._testStackWithUninitializedTensorsInferShape()
+
+  @test_util.run_gpu_only
+  def testStackWithUninitializedTensorsInferShapeGpu(self):
+    with context.device("gpu:0"):
+      self._testStackWithUninitializedTensorsInferShape()
+
+  def testStackReservedListWithNoElementsAndPartialElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Tried to stack list which only contains "
+                                 "uninitialized tensors and has a "
+                                 "non-fully-defined element_shape: <unknown>"):
+      t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testStackUsingSpecifiedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t = gen_list_ops.tensor_list_stack(
+        l, element_dtype=dtypes.float32, element_shape=[])
+    if context.executing_eagerly():
+      self.assertEqual(t.shape.as_list(), [3])
+    else:
+      self.assertEqual(t.shape.as_list(), [None])
+    self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
@@ -227,7 +332,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Should raise an error when the requested tensors do not all have the same
     # shape.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "unequal shapes"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Incompatible ranks during merge: 0 vs. 1"):
       t = list_ops.tensor_list_gather(l, [0, 2], element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -251,7 +357,9 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Should raise an error when the requested tensors do not all have the same
     # shape.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "unequal shapes"):
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Incompatible shapes during merge: \[1\] vs. \[2\]"):
       t = list_ops.tensor_list_gather(l, [0, 2], element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -290,12 +398,131 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_gather(l, [], element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  def testGatherGradWithNonContiguousIndices(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      t = constant_op.constant([1.0, 2.0, 3.0])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      c = constant_op.constant(5.0)
+      tape.watch(c)
+      l = list_ops.tensor_list_set_item(l, 1, c)
+      t = list_ops.tensor_list_gather(l, [1], element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t), [5.0])
+      s = t[0] * t[0]
+    dt = tape.gradient(s, c)
+    self.assertAllEqual(self.evaluate(dt), 10.0)
+    dl = tape.gradient(t, l)
+    dl_length = list_ops.tensor_list_length(dl)
+    self.assertAllEqual(self.evaluate(dl_length), 3)
+
+  def _testGatherWithUninitializedTensors(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    t = list_ops.tensor_list_gather(l, [0, 2], element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [0., 0.])
+
+  def testGatherWithUninitializedTensors(self):
+    self._testGatherWithUninitializedTensors()
+
+  @test_util.run_gpu_only
+  def testGatherWithUninitializedTensorsGpu(self):
+    with context.device("gpu:0"):
+      self._testGatherWithUninitializedTensors()
+
+  def _testGatherWithUninitializedTensorsInferShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [1., 2.])
+    t = list_ops.tensor_list_gather(l, [1, 2], element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(t), [[1., 2.], [0., 0.]])
+
+  def testGatherWithUninitializedTensorsInferShape(self):
+    self._testGatherWithUninitializedTensorsInferShape()
+
+  @test_util.run_gpu_only
+  def testGatherWithUninitializedTensorsInferShapeGpu(self):
+    with context.device("gpu:0"):
+      self._testGatherWithUninitializedTensorsInferShape()
+
+  def testGatherReservedListWithNoElementsAndPartialElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Tried to gather uninitialized tensors from a"
+        " list with non-fully-defined element_shape"):
+      t = list_ops.tensor_list_gather(l, [0], element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testGatherUsingSpecifiedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t = gen_list_ops.tensor_list_gather(
+        l, [0, 1, 2], element_dtype=dtypes.float32, element_shape=[])
+    self.assertEqual(t.shape.as_list(), [3])
+    self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
+
+  def testScatterOutputListSize(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    l = list_ops.tensor_list_scatter(c0, [1, 3], [])
+    # TensorListScatter should return a list with size largest index + 1.
+    self.assertAllEqual(list_ops.tensor_list_length(l), 4)
+
+  def testScatterOutputListSizeWithNumElementsSpecified(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    l = gen_list_ops.tensor_list_scatter_v2(
+        c0, [1, 3], list_ops._build_element_shape([]), num_elements=5)
+    # TensorListScatter should return a list with size num_elements.
+    self.assertAllEqual(list_ops.tensor_list_length(l), 5)
+
+  def testScatterFailsWhenIndexLargerThanNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter: Trying to scatter at index 3 in list with size 3"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=3)
+      self.evaluate(l)
+
+  def testScatterFailsWithInvalidNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter expects num_elements >= -1, found: -2"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=-2)
+      self.evaluate(l)
+
+  def testScatterWithInvalidRowsInInputTensorFails(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Invalid number of rows in input tensor. Expected: 3 Actual: 2"):
+      l = list_ops.tensor_list_scatter(c0, [1, 0, 2], [])
+      self.evaluate(l)
+
+  def testScatterWithNegativeIndicesFails(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Indices in TensorListScatter must all be non-negative."):
+      l = list_ops.tensor_list_scatter(c0, [-1, -2], element_shape=[])
+      self.evaluate(l)
+
+  def testScatterIntoExistingList(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    l = list_ops.tensor_list_scatter(tensor=[1.], indices=[0], element_shape=[])
+    l = list_ops.tensor_list_scatter(
+        tensor=[2., 3.], indices=[1, 2], element_shape=[], input_handle=l)
+    self.assertAllEqual(
+        list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
+        [1., 2., 3.])
+
   def testScatterGrad(self):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
       tape.watch(c0)
-      l = list_ops.tensor_list_scatter(
-          c0, [1, 0], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [1, 0], element_shape=[])
       t0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
       t1 = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
       self.assertAllEqual(self.evaluate(t0), 2.0)
@@ -304,22 +531,34 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     dt = tape.gradient(loss, c0)
     self.assertAllEqual(self.evaluate(dt), [2., 4.])
 
+  def testScatterWithPartialReadGrad(self):
+    with backprop.GradientTape() as tape:
+      c0 = constant_op.constant([1.0, 2.0])
+      tape.watch(c0)
+      l = list_ops.tensor_list_scatter(c0, [1, 0], element_shape=[])
+      t0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t0), 2.0)
+      loss = t0 * t0
+    dt = tape.gradient(loss, c0)
+    self.assertAllEqual(self.evaluate(dt), [0., 4.])
+
   def testTensorListFromTensor(self):
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+    e = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+    self.assertAllEqual(e, 1.0)
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
-    self.assertAllEqual(self.evaluate(e), 2.0)
+    self.assertAllEqual(e, 2.0)
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
-    self.assertAllEqual(self.evaluate(e), 1.0)
-    self.assertAllEqual(self.evaluate(list_ops.tensor_list_length(l)), 0)
+    self.assertAllEqual(e, 1.0)
+    self.assertAllEqual(list_ops.tensor_list_length(l), 0)
 
+  @test_util.run_gpu_only
   def testFromTensorGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testTensorListFromTensor()
 
-  def testGetSetItem(self):
+  def testGetSet(self):
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
@@ -328,11 +567,24 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
 
+  @test_util.run_gpu_only
   def testGetSetGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
-      self.testGetSetItem()
+      self.testGetSet()
+
+  def testGetSetReserved(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=2)
+    e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+    self.assertAllEqual(e0, 0.0)
+    l = list_ops.tensor_list_set_item(l, 0, 3.0)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(t, [3.0, 0.0])
+
+  @test_util.run_gpu_only
+  def testGetSetReservedGPU(self):
+    with context.device("gpu:0"):
+      self.testGetSetReserved()
 
   def testSetGetGrad(self):
     with backprop.GradientTape() as tape:
@@ -344,6 +596,73 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       e = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
       self.assertAllEqual(self.evaluate(e), 10.0)
     self.assertAllEqual(self.evaluate(tape.gradient(e, t)), 2.0)
+
+  def testGetUninitializedTensorUseListElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 0, 5.)
+    e1 = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
+    e2 = list_ops.tensor_list_get_item(l, 2, element_dtype=dtypes.float32)
+    self.assertEqual(self.evaluate(e1), 0.)
+    self.assertEqual(self.evaluate(e2), 0.)
+
+  def testGetUninitializedTensorUseSpecifiedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    e0 = gen_list_ops.tensor_list_get_item(
+        l, 0, element_shape=[], element_dtype=dtypes.float32)
+    e1 = gen_list_ops.tensor_list_get_item(
+        l, 1, element_shape=[2, 3], element_dtype=dtypes.float32)
+    self.assertEqual(e0.shape.as_list(), [])
+    self.assertEqual(e1.shape.as_list(), [2, 3])
+    self.assertEqual(self.evaluate(e0), 0.)
+    self.assertAllEqual(self.evaluate(e1), np.zeros((2, 3)))
+
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 3], num_elements=3)
+    e1 = gen_list_ops.tensor_list_get_item(
+        l, 1, element_shape=[2, 3], element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(e1), np.zeros((2, 3)))
+
+  def testGetUninitializedTensorWithInvalidElementShapeFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to read an uninitialized tensor but "
+        "element_shape is not fully defined"):
+      e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      self.evaluate(e0)
+
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 2], num_elements=3)
+
+    # In eager mode the shape mismatch is caught in the TensorListGetItem
+    # kernel which raises an InvalidArgumentError.
+    # In graph mode the shape mismatch is caught in the C++ shape inference
+    # which raises a ValueError.
+    if context.executing_eagerly():
+      error_type = errors.InvalidArgumentError
+    else:
+      error_type = ValueError
+    with self.assertRaisesRegexp(error_type, r"shapes"):
+      e0 = gen_list_ops.tensor_list_get_item(
+          l, 0, element_dtype=dtypes.float32, element_shape=[1, 3])
+      self.evaluate(e0)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerSetItemIndexOutOfBounds(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[])
+    e0 = constant_op.constant(5.)
+    l = list_ops.tensor_list_set_item(
+        l, 0, 2. * e0, resize_if_index_out_of_bounds=True)
+    l = list_ops.tensor_list_set_item(
+        l, 1, 1., resize_if_index_out_of_bounds=True)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t, e0)[0]
+    self.assertAllEqual(self.evaluate(grad), 2.)
 
   @test_util.run_deprecated_v1
   def testSetOnEmptyListWithMaxNumElementsFails(self):
@@ -365,9 +684,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopy(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     with context.device("gpu:0"):
@@ -382,9 +700,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             list_ops.tensor_list_pop_back(
                 l_cpu, element_dtype=dtypes.float32)[1]), 2.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopyNested(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     child_l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     l = list_ops.empty_tensor_list(
@@ -523,9 +840,6 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(element_shape), -1)
 
   def testSerializeListWithMaxNumElements(self):
-    if context.num_gpus():
-      # TODO(b/119151861): Enable on GPU.
-      return
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):
@@ -666,16 +980,25 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               list_ops.empty_tensor_list([], dtypes.float32),
               element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "element shapes are not identical at index 0"):
+    if context.executing_eagerly():
+      expected_error = (
+          errors.InvalidArgumentError,
+          "element shapes are not identical at index 0")
+    else:
+      expected_error = (ValueError, "Shapes must be equal rank")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_vec_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([[1.0]], element_shape=[1])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_vec_tls,
                                             element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r"input_b\[0\].dtype != element_dtype."):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError,
+                        r"input_b\[0\].dtype != element_dtype.")
+    else:
+      expected_error = (ValueError, "input_b.type != element_dtype")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_int_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([1], element_shape=[])] * 2)
       self.evaluate(
@@ -720,8 +1043,11 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(
           list_ops.tensor_list_push_back_batch(l_batch, [[3.0], [4.0]]))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Invalid data type at index 0"):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError, "Invalid data type")
+    else:
+      expected_error = (ValueError, "wrong element dtype")
+    with self.assertRaisesRegexp(*expected_error):
       self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
 
   def testZerosLike(self):
@@ -880,6 +1206,43 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(result_0), [6., 8.])
     self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
+  def testAddTensorListsFailsIfLeadingDimsMismatch(self):
+    l1 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=2)
+    l2 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to add two lists of tensors with different lengths"):
+      l = math_ops.add_n([l1, l2])
+      self.evaluate(list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
+
+  @test_util.run_v1_only("Uses placeholders")
+  def testSkipEagerAddTensorListsFailsIfElementShapesMismatch(self):
+    with self.cached_session() as sess:
+      # Use placeholders instead of constant values for shapes to prevent TF's
+      # shape inference from catching this early.
+      l1_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l2_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l1 = list_ops.tensor_list_reserve(
+          element_shape=l1_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l2 = list_ops.tensor_list_reserve(
+          element_shape=l2_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l = math_ops.add_n([l1, l2])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to add two lists of tensors with incompatible element shapes"
+      ):
+        sess.run(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32), {
+                l1_element_shape: [],
+                l2_element_shape: [2]
+            })
+
   @test_util.run_deprecated_v1
   def testSkipEagerConcatShapeInference(self):
 
@@ -917,9 +1280,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l = list_ops.tensor_list_push_back(l, [[0., 1.]])
     l = list_ops.tensor_list_push_back(l, [[2.], [4.]])
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        r"Tried to concat tensors with unequal shapes: "
-        r"\[2\] vs \[1\]"):
+        errors.InvalidArgumentError, r"Incompatible shapes during merge: "
+        r"\[2\] vs. \[1\]"):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -978,6 +1340,65 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         errors.InvalidArgumentError, "Concat saw a scalar shape at index 1"
         " but requires at least vectors"):
       t = list_ops.tensor_list_concat(l1, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatWithUninitializedTensorsUseListElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(np.zeros((6, 3)), t)
+
+  def testConcatWithUninitializedTensorsUseProvidedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t = list_ops.tensor_list_concat(
+        l, element_dtype=dtypes.float32, element_shape=(2, 3))
+    self.assertAllEqual(np.zeros((6, 3)), t)
+
+  def testConcatWithUninitializedTensorsUseProvidedElementShapeAndLengths(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t, _ = gen_list_ops.tensor_list_concat_v2(
+        l,
+        element_dtype=dtypes.float32,
+        element_shape=list_ops._build_element_shape((None, 3)),
+        leading_dims=[2, 3, 5])
+    self.assertAllEqual(np.zeros((10, 3)), t)
+    l = list_ops.tensor_list_set_item(l, 1, [[2., 3.], [4., 5.], [6., 7.]])
+    t, _ = gen_list_ops.tensor_list_concat_v2(
+        l,
+        element_dtype=dtypes.float32,
+        element_shape=list_ops._build_element_shape((None, 2)),
+        leading_dims=[2, 3, 4])
+    self.assertAllEqual([[0., 0.], [0., 0.], [2., 3.], [4., 5.], [6., 7.],
+                         [0., 0.], [0., 0.], [0., 0.], [0., 0.]], t)
+
+  def testConcatWithUninitializedTensorsInferShapeFromElements(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [[2., 3.], [4., 5.], [6., 7.]])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual([[0., 0.], [0., 0.], [0., 0.], [2., 3.], [4., 5.],
+                         [6., 7.], [0., 0.], [0., 0.], [0., 0.]], t)
+
+  def testConcatWithUninitializedTensorsFailsIfNoElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Trying to concat list with only uninitialized tensors "
+        r"but element_shape_except_first_dim_ is not fully defined"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatWithUninitializedTensorsFailsIfNoInputLengths(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 3], num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"List contains uninitialized tensor at index 0"
+        r" but leading_dims has only 0 elements."):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
   def testEvenSplit(self):
@@ -1095,6 +1516,60 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_split([[1.], [2.]],
                                    element_shape=[1],
                                    lengths=[1, 1])
+
+  def testResizeGrow(self):
+    l = list_ops.tensor_list_from_tensor([1., 2.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 4)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 4)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)),
+        1.)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)),
+        2.)
+
+  def testResizeShrink(self):
+    l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)),
+        [1., 2.])
+
+  def testResizeWithInvalidSizeFails(self):
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListSlice expects size to be non-negative"):
+      l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+      l = list_ops.tensor_list_resize(l, -1)
+      self.evaluate(l)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerResizeGrad(self):
+    t = constant_op.constant([1., 2., 3.])
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+    l = list_ops.tensor_list_set_item(
+        l, 3, 4., resize_if_index_out_of_bounds=True)
+    t1 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t1, t)[0]
+    self.assertAllEqual(self.evaluate(grad), [1., 1., 1.])
+
+  def testHandleDataAcrossFunctionCall(self):
+
+    @def_function.function
+    def func():
+      t = constant_op.constant([1., 2., 3.])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      return l
+
+    tensor_list = func()
+    element = list_ops.tensor_list_get_item(
+        tensor_list, 0, element_dtype=dtypes.float32)
+    self.assertAllEqual(element.shape.as_list(), [])
 
 
 if __name__ == "__main__":

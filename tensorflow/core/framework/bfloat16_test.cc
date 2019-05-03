@@ -75,7 +75,7 @@ TEST_P(Bfloat16Test, TruncateTest) {
   EXPECT_EQ(GetParam().expected_rounding, float(rounded));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     Bfloat16Test_Instantiation, Bfloat16Test,
     ::testing::Values(
         Bfloat16TestParam{

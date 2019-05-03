@@ -54,12 +54,24 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
+  for (Tile tile : tiles) {
+    for (int64 dim : tile.dimensions()) {
+      if (dim < 0 && dim != Tile::kCombineDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+                      "it's negative. Value is "
+                   << dim;
+      }
+    }
+    *layout.add_tiles() = tile;
+  }
+  layout.set_element_size_in_bits(element_size_in_bits);
   return layout;
 }
 
@@ -235,6 +247,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       }
       dimensions_in_layout[dim] = true;
     }
+  } else {
+    if (layout.tiles_size() != 0) {
+      return InvalidArgument("Only dense layouts can be tiled.");
+    }
   }
 
   return Status::OK();
@@ -290,8 +306,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
-    return std::all_of(shape.tuple_shapes().begin(), shape.tuple_shapes().end(),
-                       [](const Shape& s) { return HasLayout(s); });
+    return absl::c_all_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasLayout(s); });
   } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
@@ -424,7 +440,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));
   }
-  std::sort(positions_in_layout.begin(), positions_in_layout.end());
+  absl::c_sort(positions_in_layout);
   for (size_t i = 1; i < positions_in_layout.size(); ++i) {
     if (1 != positions_in_layout[i] - positions_in_layout[i - 1]) {
       return false;

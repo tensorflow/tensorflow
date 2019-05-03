@@ -30,9 +30,8 @@ import sys
 import warnings
 
 import numpy as np
-
 from six import integer_types
-from tensorflow.contrib.saved_model.python.saved_model import reader
+
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -56,7 +55,7 @@ def _show_tag_sets(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
     print(', '.join(sorted(tag_set)))
@@ -190,7 +189,7 @@ def _show_all(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
     print("\nMetaGraphDef with tag-set: '%s' "
           "contains the following SignatureDefs:" % ', '.join(tag_set))
@@ -654,7 +653,7 @@ def scan(args):
     scan_meta_graph_def(
         saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
   else:
-    saved_model = reader.read_saved_model(args.dir)
+    saved_model = saved_model_utils.read_saved_model(args.dir)
     for meta_graph_def in saved_model.meta_graphs:
       scan_meta_graph_def(meta_graph_def)
 

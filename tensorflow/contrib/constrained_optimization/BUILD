@@ -41,11 +41,11 @@ py_library(
 py_test(
     name = "candidates_test",
     srcs = ["python/candidates_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
-        # TODO(b/121223093): Re-enable this test after fixing "Distribution
-        # should match known solution" errors.
-        "no_mac",
+        # TODO(b/129496144): Re-enable MSAN test.
+        "nomsan",
     ],
     deps = [
         ":constrained_optimization",
@@ -70,6 +70,7 @@ py_library(
 py_test(
     name = "external_regret_optimizer_test",
     srcs = ["python/external_regret_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":constrained_optimization",
@@ -84,6 +85,7 @@ py_test(
 py_test(
     name = "swap_regret_optimizer_test",
     srcs = ["python/swap_regret_optimizer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":constrained_optimization",

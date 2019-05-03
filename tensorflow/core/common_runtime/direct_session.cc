@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -59,15 +58,17 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -93,7 +94,9 @@ Status NewThreadPoolFromThreadPoolOptions(
     VLOG(1) << "Direct session inter op parallelism threads for pool "
             << pool_number << ": " << num_threads;
     *pool = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
     *owned = true;
     return Status::OK();
   }
@@ -108,7 +111,9 @@ Status NewThreadPoolFromThreadPoolOptions(
   if (mvalue->second == nullptr) {
     mvalue->first = thread_pool_options.num_threads();
     mvalue->second = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
   } else {
     if (mvalue->first != thread_pool_options.num_threads()) {
       return errors::InvalidArgument(
@@ -214,40 +219,6 @@ static DirectSessionRegistrar registrar;
 
 std::atomic_int_fast64_t DirectSession::step_id_counter_(1);
 
-// NOTE: On Android with a single device, there is never
-// a risk of an OpKernel blocking indefinitely:
-//
-// 1) No operations do I/O that depends on other simultaneous kernels,
-//
-// 2) Recv nodes always complete immediately: The inputs are sent into
-//    the local rendezvous before we start the executor, so the
-//    corresponding recvs will not block.
-//
-// Based on these assumptions, we can use the same thread pool for
-// both "non-blocking" and "blocking" OpKernels on Android.
-//
-// This may change down the road when we add support for multiple
-// devices that run concurrently, in which case we will need to
-// revisit this decision.
-void DirectSession::SchedClosure(thread::ThreadPool* pool,
-                                 std::function<void()> c) {
-// TODO(sanjay): Get rid of __ANDROID__ path
-#ifdef __ANDROID__
-  // On Android, there is no implementation of ThreadPool that takes
-  // std::function, only Closure, which we cannot easily convert.
-  //
-  // Instead, we just run the function in-line, which is currently
-  // safe given the reasoning above.
-  c();
-#else
-  if (pool != nullptr) {
-    pool->Schedule(std::move(c));
-  } else {
-    c();
-  }
-#endif  // __ANDROID__
-}
-
 static RunHandlerPool* GetOrCreateRunHandlerPool(
     const SessionOptions& options) {
   static RunHandlerPool* pool =
@@ -303,10 +274,8 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
   }
-  // NOTE(mrry): We do not need to use a unique string for the session
-  // handle, because DirectSession owns its devices. This may change
-  // in future versions.
-  session_handle_ = "direct";
+  session_handle_ =
+      strings::StrCat("direct", strings::FpToString(random::New64()));
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
@@ -371,6 +340,7 @@ Status DirectSession::MaybeInitializeExecutionState(
   GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
+  options.session_handle = session_handle_;
   // TODO(mrry,suharshs): We explicitly copy `graph` so that
   // `MakeForBaseGraph()` can take ownership of its
   // contents. Previously this happened implicitly in calls to the
@@ -464,9 +434,10 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
-  const uint64 start_time_usecs = Env::Default()->NowMicros();
-  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
-  tracing::ScopedActivity activity(session_id_meta);
+  const uint64 start_time_usecs = options_.env->NowMicros();
+  profiler::TraceMe activity(
+      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
+      profiler::TraceMeLevel::kInfo);
 
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
@@ -502,7 +473,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       std::unique_ptr<DeviceResolverInterface> drl(
           new DeviceResolverLocal(device_mgr_.get()));
       std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
+                                           drl.get(),
                                            "/job:localhost/replica:0/task:0"));
       collective_executor_mgr_.reset(new CollectiveExecutorMgr(
           options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
@@ -533,6 +505,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   CancellationManager step_cancellation_manager;
   args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
@@ -558,18 +531,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-  std::unique_ptr<DeviceTracer> tracer;
+  std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer = CreateDeviceTracer();
-    // tracer may be NULL on platforms without accelerators.
-    if (tracer) {
-      Status s = tracer->Start();
-      if (!s.ok()) {
-        run_state.executors_done.Notify();
-        delete barrier;
-        return s;
-      }
-    }
+    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -631,7 +595,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     };
   } else {
     default_runner = [this, pool](Executor::Args::Closure c) {
-      SchedClosure(pool, std::move(c));
+      pool->Schedule(std::move(c));
     };
   }
 
@@ -647,7 +611,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       args.runner = default_runner;
     } else {
       args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
-        SchedClosure(device_thread_pool, std::move(c));
+        device_thread_pool->Schedule(std::move(c));
       };
     }
     item.executor->RunAsync(args, barrier->Get());
@@ -665,9 +629,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-  if (tracer) {
-    TF_RETURN_IF_ERROR(tracer->Stop());
-    TF_RETURN_IF_ERROR(tracer->Collect(run_state.collector.get()));
+  if (profiler_session) {
+    TF_RETURN_IF_ERROR(profiler_session->CollectData(run_metadata));
   }
 
   {
@@ -719,7 +682,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
-  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+  metrics::UpdateGraphExecTime(options_.env->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }
@@ -737,9 +700,12 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Extract the inputs names for this run of the session.
   std::vector<string> input_tensor_names;
   input_tensor_names.reserve(inputs.size());
+  size_t input_size = 0;
   for (const auto& it : inputs) {
     input_tensor_names.push_back(it.first);
+    input_size += it.second.AllocatedBytes();
   }
+  metrics::RecordGraphInputTensors(input_size);
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -814,6 +780,7 @@ Status DirectSession::Run(const RunOptions& run_options,
       }
     }
     outputs->clear();
+    size_t output_size = 0;
     outputs->reserve(sorted_outputs.size());
     for (int i = 0; i < output_names.size(); ++i) {
       const string& output_name = output_names[i];
@@ -824,7 +791,9 @@ Status DirectSession::Run(const RunOptions& run_options,
       } else {
         outputs->push_back((*outputs)[first_indices[i]]);
       }
+      output_size += outputs->back().AllocatedBytes();
     }
+    metrics::RecordGraphOutputTensors(output_size);
   }
 
   return Status::OK();
@@ -885,9 +854,10 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // their use is intended.
   args.collective_executor = nullptr;
   args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
+    pool->Schedule(std::move(c));
   };
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state->tensor_store;
   args.step_container = &run_state->step_container;
   if (LogMemory::IsEnabled()) {
@@ -1190,6 +1160,12 @@ Status DirectSession::CreateExecutors(
   options.use_function_convention = !run_state_args->is_partial_run;
   options.collective_graph_key =
       callable_options.run_options().experimental().collective_graph_key();
+  if (options_.config.experimental()
+          .collective_deterministic_sequential_execution()) {
+    options.collective_order = GraphCollectiveOrder::kEdges;
+  } else if (options_.config.experimental().collective_nccl()) {
+    options.collective_order = GraphCollectiveOrder::kAttrs;
+  }
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1465,6 +1441,7 @@ Status DirectSession::CreateGraphs(
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
     prune_options.stateful_placements = stateful_placements_;
+    prune_options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
         execution_state_->original_graph_def().library(), prune_options,
         execution_state_->original_graph_def(), subgraph_options,
@@ -1518,12 +1495,6 @@ Status DirectSession::CreateGraphs(
   if (run_state_args->is_partial_run) {
     run_state_args->graph.reset(new Graph(flib_def_.get()));
     CopyGraph(*execution_state->full_graph(), run_state_args->graph.get());
-  }
-
-  // Make collective execution order deterministic if needed.
-  if (options_.config.experimental()
-          .collective_deterministic_sequential_execution()) {
-    TF_RETURN_IF_ERROR(OrderCollectives(&client_graph->graph));
   }
 
   // Partition the graph across devices.
@@ -1822,6 +1793,12 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
         "outputs.");
   }
 
+  size_t input_size = 0;
+  for (auto& tensor : feed_tensors) {
+    input_size += tensor.AllocatedBytes();
+  }
+  metrics::RecordGraphInputTensors(input_size);
+
   // A specialized CallFrame implementation that takes advantage of the
   // optimized RunCallable interface.
 
@@ -1835,6 +1812,14 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
   TF_RETURN_IF_ERROR(
       RunInternal(step_id, executors_and_keys->callable_options.run_options(),
                   &call_frame, executors_and_keys.get(), run_metadata));
+
+  if (fetch_tensors != nullptr) {
+    size_t output_size = 0;
+    for (auto& tensor : *fetch_tensors) {
+      output_size += tensor.AllocatedBytes();
+    }
+    metrics::RecordGraphOutputTensors(output_size);
+  }
 
   return Status::OK();
 }

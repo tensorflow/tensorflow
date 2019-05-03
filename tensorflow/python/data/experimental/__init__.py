@@ -26,10 +26,13 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@DatasetStructure
+@@DistributeOptions
+@@MapVectorizationOptions
 @@NestedStructure
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
+@@RaggedTensorStructure
 @@RandomDataset
 @@Reducer
 @@SparseTensorStructure
@@ -38,18 +41,21 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@StatsOptions
 @@Structure
 @@TFRecordWriter
+@@TensorArrayStructure
 @@TensorStructure
 @@ThreadingOptions
 
 @@bucket_by_sequence_length
+@@bytes_produced_stats
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
-@@filter_for_shard
+@@from_variant
 @@get_next_as_optional
 @@get_single_element
+@@get_structure
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
@@ -58,6 +64,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_csv_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
+@@map_and_batch_with_legacy_function
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
@@ -65,6 +72,8 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
+@@take_while
+@@to_variant
 @@unbatch
 @@unique
 
@@ -78,17 +87,17 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
+from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
 from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
-from tensorflow.python.data.experimental.ops.filter_for_shard_ops import filter_for_shard
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
 from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_length
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
@@ -100,6 +109,7 @@ from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_d
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
+from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
@@ -113,18 +123,25 @@ from tensorflow.python.data.experimental.ops.resampling import rejection_resampl
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
+from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
 from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
+from tensorflow.python.data.experimental.ops.take_while_ops import take_while
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import from_variant
+from tensorflow.python.data.ops.dataset_ops import get_structure
+from tensorflow.python.data.ops.dataset_ops import to_variant
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalStructure
 from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import RaggedTensorStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorArrayStructure
 from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 

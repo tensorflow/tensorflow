@@ -119,7 +119,7 @@ class CategoricalTest(xla_test.XLATestCase):
 
   def testSamplingCorrectness(self):
     np.random.seed(1618)  # Make it reproducible.
-    num_samples = 21000
+    num_samples = 40000
 
     rand_probs = np.random.dirichlet([1., 1., 2., 3.])
     rand_probs2 = np.random.dirichlet([1., 4., 5.], size=3)  # batched

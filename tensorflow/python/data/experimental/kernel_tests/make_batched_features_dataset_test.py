@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -206,8 +207,9 @@ class MakeBatchedFeaturesDatasetTest(
         label_key="label",
         num_epochs=None,
         batch_size=32)
-    for shape, clazz in zip(nest.flatten(dataset.output_shapes),
-                            nest.flatten(dataset.output_classes)):
+    for shape, clazz in zip(
+        nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)),
+        nest.flatten(dataset_ops.get_legacy_output_classes(dataset))):
       if issubclass(clazz, ops.Tensor):
         self.assertEqual(32, shape[0])
 

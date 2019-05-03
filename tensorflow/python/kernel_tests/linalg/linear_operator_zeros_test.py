@@ -34,20 +34,21 @@ class LinearOperatorZerosTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _tests_to_skip(self):
-    return ["cholesky", "log_abs_det", "solve", "solve_with_broadcast"]
-
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def tests_to_skip():
     return [
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 4, 4))]
+        "cholesky", "log_abs_det", "inverse", "solve", "solve_with_broadcast"]
 
-  def _operator_and_matrix(
+  @staticmethod
+  def operator_shapes_infos():
+    shapes_info = linear_operator_test_util.OperatorShapesInfo
+    return [
+        shapes_info((1, 1)),
+        shapes_info((1, 3, 3)),
+        shapes_info((3, 4, 4)),
+        shapes_info((2, 1, 4, 4))]
+
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     del ensure_self_adjoint_and_pd
@@ -191,7 +192,7 @@ class LinearOperatorZerosTest(
 class LinearOperatorZerosNotSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     del use_placeholder
     shape = list(build_info.shape)
 
@@ -208,4 +209,6 @@ class LinearOperatorZerosNotSquareTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorZerosTest)
+  linear_operator_test_util.add_tests(LinearOperatorZerosNotSquareTest)
   test.main()

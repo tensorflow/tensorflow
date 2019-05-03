@@ -35,8 +35,10 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
+  // The size limit will only be considered if the newly created node is greater
+  // than original_size (optional).
   static Status CreateNodeDef(const string& name, const TensorValue& tensor,
-                              NodeDef* node);
+                              NodeDef* node, size_t original_size = 0);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
@@ -65,8 +67,10 @@ class ConstantFolding : public GraphOptimizer {
                                           const GraphProperties& properties);
   Status MaterializeReductionIndices(NodeDef* node,
                                      const GraphProperties& properties);
-
+  Status MaterializeConstantValuedNode(NodeDef* node,
+                                       const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
+
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
@@ -76,6 +80,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
                              bool* result_too_large);
 
+  Status FoldMergeNode(NodeDef* node, GraphDef* output_graph);
   Status FoldNode(NodeDef* node, GraphDef* output_graph,
                   bool* result_too_large);
 
@@ -87,12 +92,14 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceOperationWithSnapshot(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);
+  void ReplaceBinaryOperationWithBroadcastTo(int input_to_broadcast,
+                                             const GraphProperties& properties,
+                                             NodeDef* node, GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
   Status ReplaceOperationWithConstant(double value,
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node, GraphDef* graph,
-                                      bool* success);
+                                      NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
@@ -124,11 +131,12 @@ class ConstantFolding : public GraphOptimizer {
 
   // Pushes down constants on '+' and '*' operators if applicable. Returns true
   // the transformation applied successfully.
-  bool ConstantPushDown(NodeDef* node);
+  bool ConstantPushDown(GraphDef* optimized_graph, NodeDef* node);
 
   // Aggregate constants present around a conv operator. Returns true if the
   // transformation was applied successfully.
-  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+  bool MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
+                       const GraphProperties& properties);
 
   // Strength reduces floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)).
@@ -139,8 +147,7 @@ class ConstantFolding : public GraphOptimizer {
   // was applied.
   Status SimplifyArithmeticOperations(const GraphProperties& properties,
                                       bool use_shape_info,
-                                      GraphDef* optimized_graph, NodeDef* node,
-                                      bool* success);
+                                      GraphDef* optimized_graph, NodeDef* node);
 
   // Simplifies a Reshape operation to an Identity operation if applicable.
   bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
@@ -188,47 +195,49 @@ class ConstantFolding : public GraphOptimizer {
   bool SimplifyPack(GraphDef* optimized_graph, NodeDef* node);
 
   // Simplifies a Squeeze operation to an Identity operation if applicable.
-  bool SimplifySqueeze(const GraphProperties& properties, bool use_shape_info,
+  void SimplifySqueeze(const GraphProperties& properties, bool use_shape_info,
                        GraphDef* optimized_graph, NodeDef* node);
 
   // Simplifies a Pad operation to an Identity operation if applicable.
   Status SimplifyPad(const GraphProperties& properties, bool use_shape_info,
-                     GraphDef* optimized_graph, NodeDef* node, bool* success);
+                     GraphDef* optimized_graph, NodeDef* node);
 
   // Simplifies a Tile operation to an Identity operation if applicable.
   Status SimplifyTile(const GraphProperties& properties, bool use_shape_info,
-                      GraphDef* optimized_graph, NodeDef* node, bool* success);
+                      GraphDef* optimized_graph, NodeDef* node);
 
   // Simplifies a StridedSlice operation to an Identity operation if applicable.
   Status SimplifyStridedSlice(const GraphProperties& properties,
                               bool use_shape_info, GraphDef* optimized_graph,
-                              NodeDef* node, bool* success);
+                              NodeDef* node);
 
   // Simplifies a Slice operation to an Identity operation if applicable.
   Status SimplifySlice(const GraphProperties& properties, bool use_shape_info,
-                       GraphDef* optimized_graph, NodeDef* node, bool* success);
+                       GraphDef* optimized_graph, NodeDef* node);
 
   // Removes Reverse op over dimensions with size 1.
   Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
-                       GraphDef* optimized_graph, NodeDef* node, bool* success);
+                       GraphDef* optimized_graph, NodeDef* node);
 
   // Removes RandomShuffle op if it is scalar or first dimension is of size 1.
-  bool RemoveRandomShuffle(const GraphProperties& properties,
+  void RemoveRandomShuffle(const GraphProperties& properties,
                            bool use_shape_info, GraphDef* optimized_graph,
                            NodeDef* node);
 
   // Removes Shuffle or Transpose op over dimensions of size 1.
   Status RemoveShuffleOrTranspose(const GraphProperties& properties,
                                   bool use_shape_info,
-                                  GraphDef* optimized_graph, NodeDef* node,
-                                  bool* success);
+                                  GraphDef* optimized_graph, NodeDef* node);
 
   // Removes Split or SplitV node if possible.
-  bool RemoveSplitOrSplitV(const GraphProperties& properties,
+  void RemoveSplitOrSplitV(const GraphProperties& properties,
                            GraphDef* optimized_graph, NodeDef* node);
 
   bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
                    GraphDef* optimized_graph, NodeDef* node);
+
+  Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
+                                               GraphDef* optimized_graph);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;

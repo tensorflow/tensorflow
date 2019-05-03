@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A TFGAN-backed GAN Estimator that works on TPU."""
+"""A TF-GAN-backed GAN Estimator that works on TPU."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -64,8 +64,8 @@ class TPUGANEstimator(tpu_estimator.TPUEstimator):
           discriminator_fn=discriminator_fn,
           generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
           discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
-          generator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
-          discriminator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
+          generator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5),
+          discriminator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5),
           train_batch_size=4,
           config=config)
 
@@ -294,9 +294,10 @@ def _get_estimator_spec(
         gan_model, gan_loss, gan_loss_no_reduction, get_eval_metric_ops_fn)
   else:  # model_fn_lib.ModeKeys.TRAIN:
     gan_loss = tfgan_tuples.GANLoss(
-        generator_loss=generator_loss_fn(gan_model, add_summaries=False),
+        generator_loss=generator_loss_fn(
+            gan_model, add_summaries=not is_on_tpu),
         discriminator_loss=discriminator_loss_fn(
-            gan_model, add_summaries=False))
+            gan_model, add_summaries=not is_on_tpu))
 
     # Construct optimizers if arguments were callable. For TPUs, they must be
     # `CrossShardOptimizer`.

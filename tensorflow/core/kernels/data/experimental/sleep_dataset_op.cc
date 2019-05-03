@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -55,7 +54,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
+      return absl::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Sleep")});
     }
 
@@ -135,6 +134,12 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset").Device(DEVICE_CPU),
+                        SleepDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("sleep_microseconds")
+                            .HostMemory("input_dataset")
+                            .HostMemory("handle"),
                         SleepDatasetOp);
 
 }  // namespace

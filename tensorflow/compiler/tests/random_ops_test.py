@@ -36,7 +36,7 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def _random_types(self):
     return set(self.numeric_types) - set(
-        self.complex_types) - {np.uint8, np.int8}
+        self.complex_types) - {np.uint64, np.int64, np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
@@ -71,6 +71,30 @@ class RandomOpsTest(xla_test.XLATestCase):
 
     for dtype in self._random_types() & self.float_types:
       self._testRngIsNotConstant(rng, dtype)
+
+  def testRandomNormalMean(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.cached_session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=1.4,
+                                            stddev=1.2)
+          mean = math_ops.reduce_mean(normal)
+          x = self.evaluate(mean)
+          self.assertAllClose(x, 1.4, rtol=1e-1, atol=1e-1)
+
+  def testRandomNormalVariance(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.cached_session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=2.3,
+                                            stddev=2.0)
+          variance = math_ops.reduce_variance(normal)
+          x = self.evaluate(variance)
+          self.assertAllClose(x, 4.0, rtol=1e-1, atol=1e-1)
 
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
@@ -122,8 +146,8 @@ class RandomOpsTest(xla_test.XLATestCase):
         beta = (b - mu) / sigma
         z = normal_cdf(beta) - normal_cdf(alpha)
 
-        self.assertTrue((y >= a).sum() == count)
-        self.assertTrue((y <= b).sum() == count)
+        self.assertEqual((y >= a).sum(), count)
+        self.assertEqual((y <= b).sum(), count)
 
         # For more information on these calculations, see:
         # Burkardt, John. "The Truncated Normal Distribution".

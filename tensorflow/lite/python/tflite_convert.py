@@ -25,6 +25,8 @@ import sys
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.platform import app
 
 
@@ -109,8 +111,8 @@ def _get_toco_converter(flags):
   return converter_fn(**converter_kwargs)
 
 
-def _convert_model(flags):
-  """Calls function to convert the TensorFlow model into a TFLite model.
+def _convert_tf1_model(flags):
+  """Calls function to convert the TensorFlow 1.X model into a TFLite model.
 
   Args:
     flags: argparse.Namespace object.
@@ -193,8 +195,30 @@ def _convert_model(flags):
     f.write(output_data)
 
 
-def _check_flags(flags, unparsed):
-  """Checks the parsed and unparsed flags to ensure they are valid.
+def _convert_tf2_model(flags):
+  """Calls function to convert the TensorFlow 2.0 model into a TFLite model.
+
+  Args:
+    flags: argparse.Namespace object.
+
+  Raises:
+    ValueError: Unsupported file format.
+  """
+  # Load the model.
+  if flags.saved_model_dir:
+    converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
+  elif flags.keras_model_file:
+    model = keras.models.load_model(flags.keras_model_file)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+
+  # Convert the model.
+  tflite_model = converter.convert()
+  with open(flags.output_file, "wb") as f:
+    f.write(tflite_model)
+
+
+def _check_tf1_flags(flags, unparsed):
+  """Checks the parsed and unparsed flags to ensure they are valid in 1.X.
 
   Raises an error if previously support unparsed flags are found. Raises an
   error for parsed flags that don't meet the required conditions.
@@ -256,11 +280,10 @@ def _check_flags(flags, unparsed):
                      "--dump_graphviz_dir")
 
 
-def run_main(_):
-  """Main in toco_convert.py."""
+def _get_tf1_parser():
+  """Returns ArgumentParser for tflite_convert for TensorFlow 1.X."""
   parser = argparse.ArgumentParser(
-      description=("Command line tool to run TensorFlow Lite Optimizing "
-                   "Converter (TOCO)."))
+      description=("Command line tool to run TensorFlow Lite Converter."))
 
   # Output file flag.
   parser.add_argument(
@@ -343,13 +366,13 @@ def run_main(_):
             "floats. Used for quantized input tensors. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
-      type=int,
+      type=float,
       help=("Default value for min bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
   parser.add_argument(
       "--default_ranges_max",
-      type=int,
+      type=float,
       help=("Default value for max bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
@@ -426,16 +449,54 @@ def run_main(_):
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
+  return parser
+
+
+def _get_tf2_parser():
+  """Returns ArgumentParser for tflite_convert for TensorFlow 2.0."""
+  parser = argparse.ArgumentParser(
+      description=("Command line tool to run TensorFlow Lite Converter."))
+
+  # Output file flag.
+  parser.add_argument(
+      "--output_file",
+      type=str,
+      help="Full filepath of the output file.",
+      required=True)
+
+  # Input file flags.
+  input_file_group = parser.add_mutually_exclusive_group(required=True)
+  input_file_group.add_argument(
+      "--saved_model_dir",
+      type=str,
+      help="Full path of the directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
+  return parser
+
+
+def run_main(_):
+  """Main in toco_convert.py."""
+  if tf2.enabled():
+    parser = _get_tf2_parser()
+  else:
+    parser = _get_tf1_parser()
 
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
-  try:
-    _check_flags(tflite_flags, unparsed)
-  except ValueError as e:
-    parser.print_usage()
-    file_name = os.path.basename(sys.argv[0])
-    sys.stderr.write("{0}: error: {1}\n".format(file_name, str(e)))
-    sys.exit(1)
-  _convert_model(tflite_flags)
+
+  if tf2.enabled():
+    _convert_tf2_model(tflite_flags)
+  else:
+    try:
+      _check_tf1_flags(tflite_flags, unparsed)
+    except ValueError as e:
+      parser.print_usage()
+      file_name = os.path.basename(sys.argv[0])
+      sys.stderr.write("{0}: error: {1}\n".format(file_name, str(e)))
+      sys.exit(1)
+    _convert_tf1_model(tflite_flags)
 
 
 def main():

@@ -96,7 +96,7 @@ cc_library(
     ],
     hdrs = ["nccl.h"],
     copts = cuda_default_copts() + ["-Wno-vla"],
-    include_prefix = "third_party/nccl/",
+    include_prefix = "third_party/nccl",
     visibility = ["//visibility:public"],
     deps = [
         ":device",

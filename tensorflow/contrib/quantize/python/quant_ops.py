@@ -161,12 +161,12 @@ def LastValueQuantize(inputs,
         # than the positive range.
         min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
 
-      # TFLite requires that 0.0 if always in the [min; max] range. Because
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
       # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
       range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
       range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
     else:
-      # TFLite requires that 0.0 if always in the [min; max] range.
+      # TFLite requires that 0.0 is always in the [min; max] range.
       range_min = math_ops.minimum(batch_min, 0.0)
       range_max = math_ops.maximum(batch_max, 0.0)
 
@@ -224,8 +224,8 @@ def MovingAvgQuantize(inputs,
       None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
     scope.set_partitioner(None)
     input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
     if per_channel:
+      input_dim = len(input_shape)
       # Only support quantizing 1-, 2- and 4-dimensional tensors.
       assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
                                       ' scope: %s' % (input_shape, name_prefix))
@@ -286,12 +286,12 @@ def MovingAvgQuantize(inputs,
         # than the positive range.
         min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
 
-      # TFLite requires that 0.0 if always in the [min; max] range. Because
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
       # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
       range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
       range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
     else:
-      # TFLite requires that 0.0 if always in the [min; max] range.
+      # TFLite requires that 0.0 is always in the [min; max] range.
       range_min = math_ops.minimum(batch_min, 0.0)
       range_max = math_ops.maximum(batch_max, 0.0)
 

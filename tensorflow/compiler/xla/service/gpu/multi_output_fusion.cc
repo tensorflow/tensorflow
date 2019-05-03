@@ -45,15 +45,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 }
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
-  // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
-  return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) ||
-          (instr->opcode() == HloOpcode::kFusion &&
-           instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr->IsElementwise());
+  return IsFusibleAsMultiOutputFusionRoot(*instr);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -67,7 +59,7 @@ int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
   }
   int64 profit = 0;
   for (auto instr : instr2->operands()) {
-    if (!IsProfitableOperand(instr) || in_list.count(instr) == 0) {
+    if (!IsProfitableOperand(instr) || !in_list.contains(instr)) {
       continue;
     }
     profit += ShapeUtil::ByteSizeOf(instr->shape());
@@ -92,8 +84,8 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionToVector(*instr2) &&
-       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+      (IsReductionFromOrToContiguousDimensions(*instr2) &&
+       instr1->IsLoopFusion())) {
     return false;
   }
 
@@ -155,10 +147,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
-      const bool is_loop_fusion =
-          producer->opcode() == HloOpcode::kFusion &&
-          producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!producer->IsElementwise() && !is_loop_fusion) {
+      if (!producer->IsElementwise() && !producer->IsLoopFusion()) {
         VLOG(3) << producer->name() << " is not a loop fusion.";
         continue;
       }

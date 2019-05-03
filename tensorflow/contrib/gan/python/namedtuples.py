@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Named tuples for TFGAN.
+"""Named tuples for TF-GAN.
 
-TFGAN training occurs in four steps, and each step communicates with the next
-step via one of these named tuples. At each step, you can either use a TFGAN
+TF-GAN training occurs in four steps, and each step communicates with the next
+step via one of these named tuples. At each step, you can either use a TF-GAN
 helper function in `train.py`, or you can manually construct a tuple.
 """
 

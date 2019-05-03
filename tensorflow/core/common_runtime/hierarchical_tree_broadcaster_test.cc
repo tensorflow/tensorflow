@@ -455,8 +455,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_EQ(instances_[di]->status_.error_message(),
-                  "Deliberate failure");
+        ASSERT_NE(
+            instances_[di]->status_.error_message().find("Deliberate failure"),
+            string::npos);
         mutex_lock l(mu_);
         ++failure_count_;
         continue;
@@ -504,7 +505,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     // instance may succeed while others fail, even if a transmission
     // failure occurs early in the operation chain.  So, when an abort
     // is specified we need to verify that at least one Op fails with
-    // the expected status and any Op that succeeds yeilds the correct
+    // the expected status and any Op that succeeds yields the correct
     // value.
     if (fail_after > 0) {
       mutex_lock l(mu_);
@@ -616,7 +617,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
         dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [this, &notification](Status s) {
+            &cpu_tensor, device_, &tensor_, [&notification](Status s) {
               TF_CHECK_OK(s);
               notification.Notify();
             });

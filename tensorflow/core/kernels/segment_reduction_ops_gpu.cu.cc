@@ -19,12 +19,13 @@ limitations under the License.
 
 // We need to include cuda_kernel_helper.h before segment_reduction_ops.h
 // See comment in segment_reduction_ops.h for more details.
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+// clang-format off
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-
+#include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
 
@@ -138,8 +139,9 @@ void SegmentSumFunctor<T, Index>::operator()(
   }
   // Set 'output' to zeros.
   CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-  SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      output.size(), output.data());
+  TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(),
+                               output.size(), output.data()));
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -162,10 +164,11 @@ void SegmentSumFunctor<T, Index>::operator()(
       input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetCudaLaunchConfig(total_stripe_count, d);
-  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          input_outer_dim_size, input_inner_dim_size, output_rows,
-          segment_ids.data(), data, output.data(), total_stripe_count);
+  TF_CHECK_OK(CudaLaunchKernel(
+      SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
+      input_outer_dim_size, input_inner_dim_size, output_rows,
+      segment_ids.data(), data, output.data(), total_stripe_count));
 }
 
 template <typename T, typename Index, typename InitialValueF,
@@ -182,8 +185,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-    SetToValue<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        output.size(), output.data(), InitialValueF()());
+    TF_CHECK_OK(CudaLaunchKernel(
+        SetToValue<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output.size(), output.data(), InitialValueF()()));
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -196,10 +200,11 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index input_inner_dim_size = data_size / input_outer_dim_size;
     config = GetCudaLaunchConfig(data_size, d);
 
-    UnsortedSegmentCustomKernel<T, Index, ReductionF>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            input_outer_dim_size, input_inner_dim_size, num_segments,
-            segment_ids.data(), data, output.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,
+        config.thread_per_block, 0, d.stream(), input_outer_dim_size,
+        input_inner_dim_size, num_segments, segment_ids.data(), data,
+        output.data()));
   }
 };
 

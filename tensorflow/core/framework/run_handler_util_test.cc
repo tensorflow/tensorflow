@@ -22,8 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void VerifyFunction(int num_active_requests, int num_threads,
-                    int min_threads_per_request, bool print_stats = false) {
+void VerifySchedulingRanges(int num_active_requests, int num_threads,
+                            int min_threads_per_request,
+                            bool print_stats = false) {
   if (print_stats) {
     LOG(INFO) << "Test case# num_active_requests: " << num_active_requests
               << " num_threads: " << num_threads
@@ -82,10 +83,33 @@ TEST(RunHandlerUtilTest, TestComputeInterOpSchedulingRanges) {
          ++num_active_requests) {
       for (int num_threads = min_threads_per_request;
            num_threads <= kMaxThreads; ++num_threads) {
-        VerifyFunction(num_active_requests, num_threads,
-                       min_threads_per_request);
+        VerifySchedulingRanges(num_active_requests, num_threads,
+                               min_threads_per_request);
       }
     }
+  }
+}
+
+TEST(RunHandlerUtilTest, TestComputeInterOpStealingRanges) {
+  int num_inter_op_threads = 9;
+  std::vector<std::uint_fast32_t> start_vec(num_inter_op_threads);
+  std::vector<std::uint_fast32_t> end_vec(num_inter_op_threads);
+
+  // When there is 9 threads, there should be two thread groups.
+  // The first group has threads [0, 6) with stealing range [0, 6)
+  // The second group has threads [6, 9) with stealing range [3, 9)
+
+  ComputeInterOpStealingRanges(num_inter_op_threads, 6, &start_vec, &end_vec);
+  int stealing_ranges[2][2] = {{0, 6}, {3, 9}};
+
+  for (int i = 0; i < num_inter_op_threads; ++i) {
+    int expected_start = stealing_ranges[i / 6][0];
+    int expected_end = stealing_ranges[i / 6][1];
+    string message =
+        strings::StrCat("Stealing range of thread ", i, " should be [",
+                        expected_start, ", ", expected_end, "]");
+    ASSERT_EQ(start_vec[i], expected_start) << message;
+    ASSERT_EQ(end_vec[i], expected_end) << message;
   }
 }
 

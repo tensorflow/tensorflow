@@ -214,6 +214,16 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kFft) {
+      // cuFFT requires a dim0 major layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
                instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
@@ -240,6 +250,32 @@ Status GpuLayoutAssignment::AddBackendConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(keys_layout, *output_buffer));
       }
+    } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
+      // TODO(phawkins): Ideally we would relax this constraint. What we
+      // actually want is that:
+      // a) the batch dimensions are major, in no particular order.
+      // b) the two minor dimensions are in fortran (column-major) order,
+      // although for the 'a' argument we could potentially accept row-major
+      // order and fold the transpose into the operator.
+      auto set_fortran_layout = [](Shape* shape) {
+        LayoutUtil::SetToDefaultLayout(shape);
+        int n = shape->mutable_layout()->minor_to_major_size();
+        CHECK_GE(n, 2);
+        std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
+                  shape->mutable_layout()->mutable_minor_to_major()->at(1));
+      };
+      Shape op0_shape = instruction->operand(0)->shape();
+      Shape op1_shape = instruction->operand(1)->shape();
+      Shape output_shape = instruction->shape();
+      set_fortran_layout(&op0_shape);
+      set_fortran_layout(&op1_shape);
+      set_fortran_layout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     }
   }
   return Status::OK();

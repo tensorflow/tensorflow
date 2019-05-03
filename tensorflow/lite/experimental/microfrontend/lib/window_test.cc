@@ -15,8 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/window.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/window_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace {
 
@@ -29,9 +28,9 @@ const int16_t kFakeAudioData[] = {
     0, 32767, 0, -32768, 0, 32767, 0, -32768, 0, 32767, 0, -32768};
 
 // Test window function behaviors using default config values.
-class WindowTest : public ::testing::Test {
- protected:
-  WindowTest() {
+class WindowTestConfig {
+ public:
+  WindowTestConfig() {
     config_.size_ms = 25;
     config_.step_size_ms = 10;
   }
@@ -39,84 +38,98 @@ class WindowTest : public ::testing::Test {
   struct WindowConfig config_;
 };
 
-TEST_F(WindowTest, CheckCoefficients) {
+}  // namespace
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(WindowState_CheckCoefficients) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
 
   const int16_t expected[] = {16,   144,  391,  743,  1176, 1664, 2177,
                               2681, 3145, 3541, 3843, 4032, 4096, 4032,
                               3843, 3541, 3145, 2681, 2177, 1664, 1176,
                               743,  391,  144,  16};
-  ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.size; ++i) {
-    EXPECT_EQ(state.coefficients[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(state.coefficients[i], expected[i]);
   }
 
   WindowFreeStateContents(&state);
 }
 
-TEST_F(WindowTest, CheckResidualInput) {
+TF_LITE_MICRO_TEST(WindowState_CheckResidualInput) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
 
   int i;
   for (i = kStepSamples; i < kWindowSamples; ++i) {
-    EXPECT_EQ(state.input[i - kStepSamples], kFakeAudioData[i]);
+    TF_LITE_MICRO_EXPECT_EQ(state.input[i - kStepSamples], kFakeAudioData[i]);
   }
 
   WindowFreeStateContents(&state);
 }
 
-TEST_F(WindowTest, CheckOutputValues) {
+TF_LITE_MICRO_TEST(WindowState_CheckOutputValues) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
 
   const int16_t expected[] = {
       0, 1151,   0, -5944, 0, 13311,  0, -21448, 0, 28327, 0, -32256, 0, 32255,
       0, -28328, 0, 21447, 0, -13312, 0, 5943,   0, -1152, 0};
-  ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.size; ++i) {
-    EXPECT_EQ(state.output[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(state.output[i], expected[i]);
   }
 
   WindowFreeStateContents(&state);
 }
 
-TEST_F(WindowTest, CheckMaxAbsValue) {
+TF_LITE_MICRO_TEST(WindowState_CheckMaxAbsValue) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
 
-  EXPECT_EQ(state.max_abs_output_value, 32256);
+  TF_LITE_MICRO_EXPECT_EQ(state.max_abs_output_value, 32256);
 
   WindowFreeStateContents(&state);
 }
 
-TEST_F(WindowTest, CheckConsecutiveWindow) {
+TF_LITE_MICRO_TEST(WindowState_CheckConsecutiveWindow) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData + kWindowSamples,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]) - kWindowSamples,
       &num_samples_read));
@@ -124,38 +137,41 @@ TEST_F(WindowTest, CheckConsecutiveWindow) {
   const int16_t expected[] = {
       0, -1152, 0, 5943,   0, -13312, 0, 21447, 0, -28328, 0, 32255, 0, -32256,
       0, 28327, 0, -21448, 0, 13311,  0, -5944, 0, 1151,   0};
-  ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.size; ++i) {
-    EXPECT_EQ(state.output[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(state.output[i], expected[i]);
   }
 
   WindowFreeStateContents(&state);
 }
 
-TEST_F(WindowTest, CheckNotEnoughSamples) {
+TF_LITE_MICRO_TEST(WindowState_CheckNotEnoughSamples) {
+  WindowTestConfig config;
   struct WindowState state;
-  ASSERT_TRUE(WindowPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      WindowPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
-  ASSERT_TRUE(WindowProcessSamples(
+  TF_LITE_MICRO_EXPECT(WindowProcessSamples(
       &state, kFakeAudioData + kWindowSamples,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]) - kWindowSamples,
       &num_samples_read));
-  ASSERT_FALSE(WindowProcessSamples(
-      &state, kFakeAudioData + kWindowSamples + kStepSamples,
-      sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]) - kWindowSamples -
-          kStepSamples,
-      &num_samples_read));
+  TF_LITE_MICRO_EXPECT_EQ(
+      false, WindowProcessSamples(
+                 &state, kFakeAudioData + kWindowSamples + kStepSamples,
+                 sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]) -
+                     kWindowSamples - kStepSamples,
+                 &num_samples_read));
 
-  EXPECT_EQ(
+  TF_LITE_MICRO_EXPECT_EQ(
       state.input_used,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]) - 2 * kStepSamples);
 
   WindowFreeStateContents(&state);
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END

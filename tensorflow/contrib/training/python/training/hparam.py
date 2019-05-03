@@ -161,6 +161,11 @@ def _cast_to_type_if_compatible(name, param_type, value):
       "Could not cast hparam '%s' of type '%s' from value %r" %
       (name, param_type, value))
 
+  # If `value` is already of type `param_type`, return it directly.
+  # `isinstance` is too weak (e.g. isinstance(True, int) == True).
+  if type(value) == param_type:  # pylint: disable=unidiomatic-typecheck
+    return value
+
   # Some callers use None, for which we can't do any casting/checking. :(
   if issubclass(param_type, type(None)):
     return value
@@ -353,8 +358,10 @@ class HParams(object):
   def my_program():
     # Create a HParams object specifying the names and values of the
     # model hyperparameters:
-    hparams = tf.HParams(learning_rate=0.1, num_hidden_units=100,
-                         activations=['relu', 'tanh'])
+    hparams = tf.contrib.training.HParams(
+        learning_rate=0.1,
+        num_hidden_units=100,
+        activations=['relu', 'tanh'])
 
     # Override hyperparameters values by parsing the command line
     hparams.parse(args.hparams)
@@ -387,7 +394,7 @@ class HParams(object):
     # Define 3 hyperparameters: 'learning_rate' is a float parameter,
     # 'num_hidden_units' an integer parameter, and 'activation' a string
     # parameter.
-    hparams = tf.HParams(
+    hparams = tf.contrib.training.HParams(
         learning_rate=0.1, num_hidden_units=100, activation='relu')
 
     hparams.activation ==> 'relu'
@@ -499,6 +506,7 @@ class HParams(object):
       value: New value of the hyperparameter.
 
     Raises:
+      KeyError: If the hyperparameter doesn't exist.
       ValueError: If there is a type mismatch.
     """
     param_type, is_list = self._hparam_types[name]
@@ -517,6 +525,8 @@ class HParams(object):
   def del_hparam(self, name):
     """Removes the hyperparameter with key 'name'.
 
+    Does nothing if it isn't present.
+
     Args:
       name: Name of the hyperparameter.
     """
@@ -525,21 +535,22 @@ class HParams(object):
       del self._hparam_types[name]
 
   def parse(self, values):
-    """Override hyperparameter values, parsing new values from a string.
+    """Override existing hyperparameter values, parsing new values from a string.
 
     See parse_values for more detail on the allowed format for values.
 
     Args:
-      values: String.  Comma separated list of `name=value` pairs where
-        'value' must follow the syntax described above.
+      values: String.  Comma separated list of `name=value` pairs where 'value'
+        must follow the syntax described above.
 
     Returns:
       The `HParams` instance.
 
     Raises:
-      ValueError: If `values` cannot be parsed.
+      ValueError: If `values` cannot be parsed or a hyperparameter in `values`
+      doesn't exist.
     """
-    type_map = dict()
+    type_map = {}
     for name, t in self._hparam_types.items():
       param_type, _ = t
       type_map[name] = param_type
@@ -548,7 +559,7 @@ class HParams(object):
     return self.override_from_dict(values_map)
 
   def override_from_dict(self, values_dict):
-    """Override hyperparameter values, parsing new values from a dictionary.
+    """Override existing hyperparameter values, parsing new values from a dictionary.
 
     Args:
       values_dict: Dictionary of name:value pairs.
@@ -557,6 +568,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_dict` doesn't exist.
       ValueError: If `values_dict` cannot be parsed.
     """
     for name, value in values_dict.items():
@@ -596,7 +608,7 @@ class HParams(object):
         sort_keys=sort_keys)
 
   def parse_json(self, values_json):
-    """Override hyperparameter values, parsing new values from a json object.
+    """Override existing hyperparameter values, parsing new values from a json object.
 
     Args:
       values_json: String containing a json object of name:value pairs.
@@ -605,6 +617,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_json` doesn't exist.
       ValueError: If `values_json` cannot be parsed.
     """
     values_map = json.loads(values_json)
@@ -650,10 +663,13 @@ class HParams(object):
     return key in self._hparam_types
 
   def __str__(self):
-    return str(sorted(self.values().items()))
+    hpdict = self.values()
+    output_list = ['{}={}'.format(key, hpdict[key]) for key in hpdict]
+    return ','.join(output_list)
 
   def __repr__(self):
-    return '%s(%s)' % (type(self).__name__, self.__str__())
+    strval = str(sorted(self.values().items()))
+    return '%s(%s)' % (type(self).__name__, strval)
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

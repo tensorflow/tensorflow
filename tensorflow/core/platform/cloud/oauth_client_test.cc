@@ -42,7 +42,7 @@ class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() override { return now; }
+  uint64 NowSeconds() const override { return now; }
   uint64 now = 10000;
 };
 
@@ -166,7 +166,6 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
                 const_cast<unsigned char*>(
                     reinterpret_cast<const unsigned char*>(signature.data())),
                 signature.size()));
-  EVP_MD_CTX_cleanup(md_ctx);
 
   // Free all the crypto-related resources.
   EVP_PKEY_free(key);

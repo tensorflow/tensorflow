@@ -89,7 +89,7 @@ class DynamicParameterBinding {
   //
   // Returns nullopt if the binding is not set.
   absl::optional<DynamicParameter> GetBinding(
-      const DynamicDimension& dynamic_dimension);
+      const DynamicDimension& dynamic_dimension) const;
 
   using BindingFn =
       std::function<Status(const DynamicParameter& dynamic_parameter,

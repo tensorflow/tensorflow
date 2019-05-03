@@ -199,7 +199,7 @@ Status HeapSimulator::RunComputation(
 
       // If the buffer has no users and isn't an entry parameter or output, it
       // must be a dead value.
-      if (live_buffers.count(buffer) == 0) {
+      if (!live_buffers.contains(buffer)) {
         dead_buffers_to_free.push_back(buffer);
       }
     }
@@ -225,10 +225,10 @@ Status HeapSimulator::RunComputation(
       }
     }
     // Sort to get a deterministic iteration order.
-    std::sort(operand_buffers_to_free.begin(), operand_buffers_to_free.end(),
-              [](const BufferValue* x, const BufferValue* y) {
-                return x->id() < y->id();
-              });
+    absl::c_sort(operand_buffers_to_free,
+                 [](const BufferValue* x, const BufferValue* y) {
+                   return x->id() < y->id();
+                 });
 
     // Allocate buffers defined by this instruction.  This is the latest point
     // that we can allocate; right before the buffer is first used.  This must
@@ -251,9 +251,28 @@ Status HeapSimulator::RunComputation(
       // We can only share with the operand buffer if it is about to be freed;
       // we must be the last user of the buffer.
       bool shared = false;
-      if (options_.may_reuse_operand_buffers) {
+      auto shared_it = shared_buffers_.find(buffer);
+      if (shared_it != shared_buffers_.end()) {
+        std::shared_ptr<SharedGroup> group = shared_it->second;
+        if (group->refcount != 0) {
+          // This buffer has a shared group with already some instructions
+          // scheduled (refcount > 0), find and share buffer with the
+          // canonical instruction.
+          shared = true;
+          VLOG(3) << "  Sharing: " << buffer->ToString()
+                  << " with must aliased buffer "
+                  << group->canonical->ToString();
+          FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer,
+                         instruction, group->canonical);
+        } else {
+          VLOG(3) << "  New shared group, canonical buffer: "
+                  << buffer->ToString();
+          group->canonical = buffer;
+        }
+        group->refcount++;
+      } else if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
-          if (reused_buffers.count(operand_buffer) != 0) {
+          if (reused_buffers.contains(operand_buffer)) {
             continue;
           }
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
@@ -261,12 +280,17 @@ Status HeapSimulator::RunComputation(
               points_to_analysis.CanShareOperandBufferWithUser(
                   operand_buffer->instruction(), operand_buffer->index(),
                   buffer->instruction(), buffer->index())) {
-            VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
-                    << operand_buffer->ToString();
-            ShareBuffer(buffer, operand_buffer, instruction);
-            shared = true;
-            reused_buffers.insert(operand_buffer);
-            break;
+            // Make sure the two buffers belong to the same shared groups.
+            // Otherwise we'd need to merge those shared groups which is not
+            // suported.
+            if (InSameSharedGroup(buffer, operand_buffer)) {
+              VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
+                      << operand_buffer->ToString();
+              ShareBuffer(buffer, operand_buffer, instruction);
+              shared = true;
+              reused_buffers.insert(operand_buffer);
+              break;
+            }
           }
         }
       }
@@ -335,10 +359,9 @@ Status HeapSimulator::RunComputation(
     to_free.push_back(buffer);
   }
 
-  std::sort(to_free.begin(), to_free.end(),
-            [](const BufferValue* x, const BufferValue* y) {
-              return x->id() < y->id();
-            });
+  absl::c_sort(to_free, [](const BufferValue* x, const BufferValue* y) {
+    return x->id() < y->id();
+  });
   for (const BufferValue* buffer : to_free) {
     VLOG(3) << "Freeing pending: " << buffer->ToString();
     Free(buffer, root);
@@ -359,6 +382,17 @@ HeapSimulator::HeapSimulator(
       options_(options),
       schedule_(schedule),
       memory_by_computation_(memory_by_computation) {
+  for (const BufferValueFlatSet& value_set : options.must_alias_sets) {
+    auto group = std::make_shared<SharedGroup>();
+    group->refcount = 0;
+    VLOG(2) << "Shared buffers:";
+    for (const BufferValue* buffer_value : value_set) {
+      VLOG(2) << "    " << buffer_value->ToString();
+      shared_buffers_.emplace(buffer_value, group);
+      // Refcounts are not incremented here as buffers are shared but not
+      // referenced yet.
+    }
+  }
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
@@ -374,15 +408,15 @@ bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
     return true;
   }
   return options_.buffers_to_assign != nullptr &&
-         options_.buffers_to_assign->count(buffer) == 0;
+         !options_.buffers_to_assign->contains(buffer);
 }
 
 // Alloc always calls the underlying heap algorithm.
 void HeapSimulator::Alloc(const BufferValue* buffer,
                           const HloInstruction* instruction) {
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
@@ -403,17 +437,21 @@ void HeapSimulator::Free(const BufferValue* buffer,
   if (shared_it != shared_buffers_.end()) {
     std::shared_ptr<SharedGroup> group = shared_it->second;
     --group->refcount;
+    VLOG(3) << "    Decrementing refcount : " << group->canonical->ToString();
     if (group->refcount > 0) {
+      // Another buffer still holds the reference to this shared group, don't
+      // free the underlying canonical buffer.
       return;
     }
+    VLOG(3) << "    Ref == 0 " << group->canonical->ToString();
     CHECK_EQ(group->refcount, 0)
         << "Free caused negative refcount on shared buffer: " << *buffer;
     buffer = group->canonical;
   }
 
-  CHECK(allocated_buffers_.count(buffer) > 0)
+  CHECK(allocated_buffers_.contains(buffer))
       << "Free called on non-allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Free called on freed buffer: " << *buffer;
 
   freed_buffers_.insert(buffer);
@@ -422,6 +460,21 @@ void HeapSimulator::Free(const BufferValue* buffer,
   no_fragmentation_stats_->Free(buffer, size);
 
   FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
+}
+
+bool HeapSimulator::InSameSharedGroup(const BufferValue* left,
+                                      const BufferValue* right) {
+  auto left_it = shared_buffers_.find(left);
+  if (left_it == shared_buffers_.end()) {
+    return true;
+  }
+
+  auto right_it = shared_buffers_.find(right);
+  if (right_it == shared_buffers_.end()) {
+    return true;
+  }
+
+  return left_it->second == right_it->second;
 }
 
 // ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
@@ -433,11 +486,11 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
                                 const HloInstruction* instruction) {
   CHECK_LE(size_fn_(*buffer), size_fn_(*shared))
       << "ShareBuffer oversized buffer" << *buffer << " shared: " << *shared;
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "ShareBuffer called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "ShareBuffer called on freed buffer: " << *buffer;
-  CHECK(freed_buffers_.count(shared) == 0)
+  CHECK(!freed_buffers_.contains(shared))
       << "ShareBuffer called on freed shared buffer: " << *shared;
 
   const BufferValue* canonical = nullptr;
@@ -446,13 +499,19 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
     // The 'shared' buffer already has a group; it might be the canonical, but
     // also might not be.  Just add 'buffer' to the existing group.
     std::shared_ptr<SharedGroup> group = shared_it->second;
+
+    if (group->refcount == 0) {
+      // Nothing is scheduled at the shared group yet. This must be the
+      // canonical.
+      group->canonical = shared;
+    }
     canonical = group->canonical;
     ++group->refcount;
     shared_buffers_.emplace(buffer, group);
   } else {
     // The 'shared' buffer doesn't have a group; it must be the canonical.  Add
     // both 'buffer' and 'shared' to a new group.
-    CHECK(allocated_buffers_.count(shared) > 0)
+    CHECK(allocated_buffers_.contains(shared))
         << "ShareBuffer called on non-allocated shared buffer: " << *shared;
     auto group = std::make_shared<SharedGroup>();
     canonical = shared;
@@ -476,7 +535,7 @@ HeapSimulator::Result HeapSimulator::Finish() {
     for (const auto& share_pair : shared_buffers_) {
       const BufferValue* buffer = share_pair.first;
       std::shared_ptr<SharedGroup> group = share_pair.second;
-      if (buffer != group->canonical) {
+      if (buffer != group->canonical && group->canonical != nullptr) {
         // The canonical must already exist in the chunk_map, since we called
         // Alloc(canonical) on the underlying algorithm.  Add non-canonical
         // chunks with the same offset as the canonical.
@@ -596,7 +655,7 @@ void DecreasingSizeRunsHeap::CallAndDrainRun() {
   }
 
   // Call ops in the run sorted by decreasing size, breaking ties by buffer id.
-  std::sort(run_.begin(), run_.end(), [](const Op& a, const Op& b) {
+  absl::c_sort(run_, [](const Op& a, const Op& b) {
     if (a.size != b.size) {
       return a.size > b.size;
     }
@@ -866,23 +925,23 @@ HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  std::sort(sorted_buffer_intervals.begin(), sorted_buffer_intervals.end(),
-            [](const BufferInterval& x, const BufferInterval& y) {
-              if (x.size != y.size) {
-                return x.size > y.size;
-              }
-              if (x.end - x.start != y.end - y.start) {
-                return x.end - x.start > y.end - y.start;
-              }
-              return x.buffer->id() < y.buffer->id();
-            });
+  absl::c_sort(sorted_buffer_intervals,
+               [](const BufferInterval& x, const BufferInterval& y) {
+                 if (x.size != y.size) {
+                   return x.size > y.size;
+                 }
+                 if (x.end - x.start != y.end - y.start) {
+                   return x.end - x.start > y.end - y.start;
+                 }
+                 return x.buffer->id() < y.buffer->id();
+               });
 
   BufferIntervalTree interval_tree(sorted_buffer_intervals.size());
   for (auto& buffer_interval : sorted_buffer_intervals) {
     auto chunks_overlapping_in_time = interval_tree.ChunksOverlappingInTime(
         buffer_interval.start, buffer_interval.end);
-    std::sort(
-        chunks_overlapping_in_time.begin(), chunks_overlapping_in_time.end(),
+    absl::c_sort(
+        chunks_overlapping_in_time,
         [](const Chunk& x, const Chunk& y) { return x.offset < y.offset; });
 
     // Find the minimum free chunk that can hold this buffer.

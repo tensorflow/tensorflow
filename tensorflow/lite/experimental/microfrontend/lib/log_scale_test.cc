@@ -15,15 +15,18 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/log_scale.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/log_scale_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace {
 
 const int kScaleShift = 6;
 const int kCorrectionBits = -1;
 
-TEST(LogScaleTest, CheckOutputValues) {
+}  // namespace
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(LogScaleTest_CheckOutputValues) {
   struct LogScaleState state;
   state.enable_log = true;
   state.scale_shift = kScaleShift;
@@ -36,11 +39,11 @@ TEST(LogScaleTest, CheckOutputValues) {
   const uint16_t expected[] = {479, 425};
   int i;
   for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
-    EXPECT_EQ(output[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(output[i], expected[i]);
   }
 }
 
-TEST(LogScaleTest, CheckOutputValuesNoLog) {
+TF_LITE_MICRO_TEST(LogScaleTest_CheckOutputValuesNoLog) {
   struct LogScaleState state;
   state.enable_log = false;
   state.scale_shift = kScaleShift;
@@ -53,8 +56,8 @@ TEST(LogScaleTest, CheckOutputValuesNoLog) {
   const uint16_t expected[] = {65535, 45998};
   int i;
   for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
-    EXPECT_EQ(output[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(output[i], expected[i]);
   }
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END

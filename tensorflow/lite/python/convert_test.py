@@ -23,18 +23,18 @@ from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
+from tensorflow.python.framework.graph_util_impl import _node_name
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -177,7 +177,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         "QUANTIZED_UINT8.", str(error.exception))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""
 
@@ -322,6 +322,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
+      self.assertEqual(self._get_sort_index(b), 0)
       self.assertEqual(self._get_input_index(c), 0)
       self.assertEqual(self._get_sort_index(c), 1)
 
@@ -368,26 +369,28 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
               output_nodes=[op_hint._tensor_name_base(output.name)]),
           set(["agg", "Const", "Identity"]))
 
-  def testConvertDtype(self):
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(lite_constants.FLOAT),
-        _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.complex64),
-        _types_pb2.COMPLEX64)
-    with self.assertRaises(ValueError):
-      convert.convert_dtype_to_tflite_type(dtypes.bool)
+  def testFindHintedOutputNodes(self):
+    """Test if all hinted output nodes are correctly found."""
+
+    def _build_ophinted_op(name, input1, input2):
+      custom_op = op_hint.OpHint(name)
+      input1 = custom_op.add_input(input1)
+      input2 = custom_op.add_input(input2)
+      output = math_ops.mul(input1, input2)
+      return custom_op.add_output(output)
+
+    output_1 = _build_ophinted_op("custom_op_1", array_ops.constant([1.]),
+                                  array_ops.constant([2.]))
+    output_2 = _build_ophinted_op("custom_op_2", array_ops.constant([3.]),
+                                  array_ops.constant([4.]))
+    with self.cached_session() as sess:
+      hinted_outputs_nodes = op_hint.find_all_hinted_output_nodes(sess)
+      expected_hinted_output_nodes = [
+          _node_name(output_1.name),
+          _node_name(output_2.name)
+      ]
+      self.assertEqual(
+          len(hinted_outputs_nodes), len(expected_hinted_output_nodes))
 
 
 if __name__ == "__main__":

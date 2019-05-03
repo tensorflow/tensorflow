@@ -1,8 +1,16 @@
 path: "tensorflow.nn"
 tf_module {
   member {
-    name: "rnn_cell"
-    mtype: "<type \'module\'>"
+    name: "RNNCellDeviceWrapper"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RNNCellDropoutWrapper"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RNNCellResidualWrapper"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "swish"
@@ -22,7 +30,15 @@ tf_module {
   }
   member_method {
     name: "avg_pool"
-    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool1d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool2d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
   }
   member_method {
     name: "avg_pool3d"
@@ -50,35 +66,31 @@ tf_module {
   }
   member_method {
     name: "conv1d"
-    argspec: "args=[\'input\', \'filters\', \'stride\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filters\', \'stride\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "conv1d_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NWC\', \'None\', \'None\'], "
   }
   member_method {
     name: "conv2d"
     argspec: "args=[\'input\', \'filters\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\'], "
   }
   member_method {
-    name: "conv2d_backprop_filter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "conv2d_backprop_input"
-    argspec: "args=[\'input_sizes\', \'filters\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "conv2d_transpose"
-    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NHWC\', \'None\', \'None\'], "
   }
   member_method {
     name: "conv3d"
     argspec: "args=[\'input\', \'filters\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'None\', \'None\'], "
   }
   member_method {
-    name: "conv3d_backprop_filter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
+    name: "conv3d_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NDHWC\', \'None\', \'None\'], "
   }
   member_method {
-    name: "conv3d_transpose"
-    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NDHWC\', \'None\'], "
+    name: "conv_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convolution"
@@ -134,11 +146,11 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup"
-    argspec: "args=[\'params\', \'ids\', \'partition_strategy\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'ids\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "erosion2d"
@@ -194,7 +206,15 @@ tf_module {
   }
   member_method {
     name: "max_pool"
-    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "max_pool1d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\'], "
+  }
+  member_method {
+    name: "max_pool2d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
   }
   member_method {
     name: "max_pool3d"
@@ -202,7 +222,7 @@ tf_module {
   }
   member_method {
     name: "max_pool_with_argmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \"<dtype: \'int64\'>\", \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'output_dtype\', \'include_batch_in_index\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \"<dtype: \'int64\'>\", \'False\', \'None\'], "
   }
   member_method {
     name: "moments"
@@ -250,7 +270,7 @@ tf_module {
   }
   member_method {
     name: "sigmoid_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "softmax"
@@ -278,11 +298,7 @@ tf_module {
   }
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "static_state_saving_rnn"
-    argspec: "args=[\'cell\', \'inputs\', \'state_saver\', \'state_name\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "sufficient_statistics"
@@ -298,7 +314,7 @@ tf_module {
   }
   member_method {
     name: "weighted_cross_entropy_with_logits"
-    argspec: "args=[\'targets\', \'logits\', \'pos_weight\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'pos_weight\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "weighted_moments"
