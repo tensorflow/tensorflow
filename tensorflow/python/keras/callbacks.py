@@ -1170,9 +1170,8 @@ class LearningRateScheduler(Callback):
       verbose: int. 0: quiet, 1: update messages.
   
   ```python
-  # This function keeps the learning rate 
-  # at 0.001 for the first ten epochs and  
-  # decreases it exponentially after that.
+  # This function keeps the learning rate at 0.001 for the first ten epochs 
+  # and decreases it exponentially after that.
   def scheduler(epoch):
     if epoch < 10:
       return 0.001
