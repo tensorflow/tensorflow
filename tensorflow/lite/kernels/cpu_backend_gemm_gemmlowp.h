@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "public/gemmlowp.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
