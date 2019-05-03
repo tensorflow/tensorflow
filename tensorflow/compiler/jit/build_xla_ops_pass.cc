@@ -437,9 +437,9 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   bool lazy_compilation_enabled =
       enable_lazy_compilation_
           ? *enable_lazy_compilation_
-          : GetBuildXlaOpsPassFlags().tf_xla_enable_lazy_compilation;
+          : GetBuildXlaOpsPassFlags()->tf_xla_enable_lazy_compilation;
   bool insert_print_nodes =
-      GetBuildXlaOpsPassFlags().tf_xla_print_cluster_outputs;
+      GetBuildXlaOpsPassFlags()->tf_xla_print_cluster_outputs;
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(
