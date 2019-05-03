@@ -26,14 +26,28 @@ class ForwardAllocation : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  StatusOr<bool> Run(HloComputation* comp,
-                     std::set<const HloInstruction*>& ops_with_layout);
+  absl::optional<TensorTarget> CreateForwardAllocationTarget(
+      HloReachabilityMap* reachability_map, HloInstruction* source,
+      HloInstruction* target, const int64 input_index,
+      HloInstruction* layout_producer, const int64 layout_output_index,
+      const std::vector<HloInstruction*>& other_targets,
+      const std::vector<HloInstruction*>& forward_path,
+      const std::vector<HloInstruction*>& backward_path,
+      const DeferredAllocationsPath& deferred_allocations_path);
+
+  StatusOr<bool> FindLayoutSensativeTargets(
+      HloComputation* comp, std::set<const HloInstruction*>& ops_with_layout);
+
+  StatusOr<bool> FindLayoutDependentTargets(HloComputation* comp);
+
   absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath> FindInputs(
       HloComputation* comp);
+
   void FlattenInputs(
       HloInstruction* inst, std::vector<const HloInstruction*> path,
       absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>&
           input_to_deferred_allocation_path);
+
   TensorAllocationMap& tensor_allocation_map;
   DeferredAllocations& deferred_allocations;
   const InplaceInstructions& inplace_instructions;
