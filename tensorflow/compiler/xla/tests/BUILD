@@ -1375,6 +1375,7 @@ xla_test(
 
 xla_test(
     name = "token_hlo_test",
+    tags = ["no_rocm"],
     srcs = ["token_hlo_test.cc"],
     deps = [
         ":test_macros_header",
