@@ -10,12 +10,6 @@ MLIR follows the [LLVM style](https://llvm.org/docs/CodingStandards.html) guide
 except:
 
 *   Adopts [camelBack](https://llvm.org/docs/Proposals/VariableNames.html);
-*   Prefer `int` when possible and use unsigned only for bitmask and when you
-    intend to rely on wrapping behavior. For the rational about this, see
-    [unsigned: A Guideline for Better
-    Code](https://www.youtube.com/watch?v=wvtFGa6XJDU) and [Garbage In,
-    Garbage Out: Arguing about Undefined
-    Behavior...](https://www.youtube.com/watch?v=yG1OZ69H_-o)
 
 ## Pass name and other command line options
 
