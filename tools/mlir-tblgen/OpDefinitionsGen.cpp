@@ -461,9 +461,9 @@ void OpEmitter::genAttrGetters() {
 }
 
 void OpEmitter::genNamedOperandGetters() {
-  const unsigned numOperands = op.getNumOperands();
-  const unsigned numVariadicOperands = op.getNumVariadicOperands();
-  const unsigned numNormalOperands = numOperands - numVariadicOperands;
+  const int numOperands = op.getNumOperands();
+  const int numVariadicOperands = op.getNumVariadicOperands();
+  const int numNormalOperands = numOperands - numVariadicOperands;
 
   // Special case for ops without variadic operands: the i-th value is for the
   // i-th operand defined in the op.
@@ -473,7 +473,7 @@ void OpEmitter::genNamedOperandGetters() {
   // operand.
   if (numVariadicOperands <= 1) {
     bool emittedVariadicOperand = false;
-    for (unsigned i = 0; i != numOperands; ++i) {
+    for (int i = 0; i != numOperands; ++i) {
       const auto &operand = op.getOperand(i);
       if (operand.name.empty())
         continue;
@@ -506,17 +506,17 @@ void OpEmitter::genNamedOperandGetters() {
                                  "specification over their sizes");
   }
 
-  unsigned emittedNormalOperands = 0;
-  unsigned emittedVariadicOperands = 0;
+  int emittedNormalOperands = 0;
+  int emittedVariadicOperands = 0;
 
-  for (unsigned i = 0; i != numOperands; ++i) {
+  for (int i = 0; i != numOperands; ++i) {
     const auto &operand = op.getOperand(i);
     if (operand.name.empty())
       continue;
 
     const char *code = R"(
-  unsigned variadicOperandSize = (this->getNumOperands() - {0}) / {1};
-  unsigned offset = {2} + variadicOperandSize * {3};
+  int variadicOperandSize = (this->getNumOperands() - {0}) / {1};
+  int offset = {2} + variadicOperandSize * {3};
   return )";
     auto sizeAndOffset =
         formatv(code, numNormalOperands, numVariadicOperands,
@@ -537,9 +537,9 @@ void OpEmitter::genNamedOperandGetters() {
 }
 
 void OpEmitter::genNamedResultGetters() {
-  const unsigned numResults = op.getNumResults();
-  const unsigned numVariadicResults = op.getNumVariadicResults();
-  const unsigned numNormalResults = numResults - numVariadicResults;
+  const int numResults = op.getNumResults();
+  const int numVariadicResults = op.getNumVariadicResults();
+  const int numNormalResults = numResults - numVariadicResults;
 
   // Special case for ops without variadic results: the i-th value is for the
   // i-th result defined in the op.
@@ -549,7 +549,7 @@ void OpEmitter::genNamedResultGetters() {
   // result.
   if (numVariadicResults <= 1) {
     bool emittedVariadicResult = false;
-    for (unsigned i = 0; i != numResults; ++i) {
+    for (int i = 0; i != numResults; ++i) {
       const auto &result = op.getResult(i);
       if (result.name.empty())
         continue;
@@ -582,17 +582,17 @@ void OpEmitter::genNamedResultGetters() {
                                  "specification over their sizes");
   }
 
-  unsigned emittedNormalResults = 0;
-  unsigned emittedVariadicResults = 0;
+  int emittedNormalResults = 0;
+  int emittedVariadicResults = 0;
 
-  for (unsigned i = 0; i != numResults; ++i) {
+  for (int i = 0; i != numResults; ++i) {
     const auto &result = op.getResult(i);
     if (result.name.empty())
       continue;
 
     const char *code = R"(
-  unsigned variadicResultSize = (this->getNumResults() - {0}) / {1};
-  unsigned offset = {2} + variadicResultSize * {3};
+  int variadicResultSize = (this->getNumResults() - {0}) / {1};
+  int offset = {2} + variadicResultSize * {3};
   return )";
     auto sizeAndOffset = formatv(code, numNormalResults, numVariadicResults,
                                  emittedNormalResults, emittedVariadicResults);
@@ -628,7 +628,7 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
 
   // Emit parameters for all return types
   if (!useOperandType && !useAttrType) {
-    for (unsigned i = 0; i != numResults; ++i) {
+    for (int i = 0; i != numResults; ++i) {
       const auto &result = op.getResult(i);
       std::string resultName = result.name;
       if (resultName.empty())
@@ -674,7 +674,7 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   // Push all result types to the result
   if (numResults > 0) {
     if (!useOperandType && !useAttrType) {
-      for (unsigned i = 0; i < numResults; ++i) {
+      for (int i = 0; i < numResults; ++i) {
         const auto &result = op.getResult(i);
         m.body() << "  " << builderOpState;
         if (result.isVariadic()) {
@@ -699,14 +699,14 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
             formatv("{0}{1}->getType()", getArgumentName(op, 0), index).str();
       }
       m.body() << "  " << builderOpState << "->addTypes({" << resultType;
-      for (unsigned i = 1; i != numResults; ++i)
+      for (int i = 1; i != numResults; ++i)
         m.body() << ", " << resultType;
       m.body() << "});\n\n";
     }
   }
 
   // Push all operands to the result
-  for (unsigned i = 0; i < numOperands; ++i) {
+  for (int i = 0; i < numOperands; ++i) {
     const auto &operand = op.getOperand(i);
     m.body() << "  " << builderOpState;
     if (operand.isVariadic()) {
@@ -755,13 +755,13 @@ void OpEmitter::genBuilder() {
     }
   }
 
-  unsigned numResults = op.getNumResults();
-  unsigned numVariadicResults = op.getNumVariadicResults();
-  unsigned numNonVariadicResults = numResults - numVariadicResults;
+  int numResults = op.getNumResults();
+  int numVariadicResults = op.getNumVariadicResults();
+  int numNonVariadicResults = numResults - numVariadicResults;
 
-  unsigned numOperands = op.getNumOperands();
-  unsigned numVariadicOperands = op.getNumVariadicOperands();
-  unsigned numNonVariadicOperands = numOperands - numVariadicOperands;
+  int numOperands = op.getNumOperands();
+  int numVariadicOperands = op.getNumVariadicOperands();
+  int numNonVariadicOperands = numOperands - numVariadicOperands;
 
   // Generate default builders that requires all result type, operands, and
   // attributes as parameters.
@@ -955,11 +955,11 @@ void OpEmitter::genVerifier() {
     }
   };
 
-  for (unsigned i = 0, e = op.getNumOperands(); i < e; ++i) {
+  for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
     verifyValue(op.getOperand(i), i, /*isOperand=*/true);
   }
 
-  for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
+  for (int i = 0, e = op.getNumResults(); i < e; ++i) {
     verifyValue(op.getResult(i), i, /*isOperand=*/false);
   }
 
@@ -979,8 +979,8 @@ void OpEmitter::genVerifier() {
 }
 
 void OpEmitter::genTraits() {
-  unsigned numResults = op.getNumResults();
-  unsigned numVariadicResults = op.getNumVariadicResults();
+  int numResults = op.getNumResults();
+  int numVariadicResults = op.getNumVariadicResults();
 
   // Add return size trait.
   if (numVariadicResults != 0) {
@@ -1008,8 +1008,8 @@ void OpEmitter::genTraits() {
   }
 
   // Add variadic size trait and normal op traits.
-  unsigned numOperands = op.getNumOperands();
-  unsigned numVariadicOperands = op.getNumVariadicOperands();
+  int numOperands = op.getNumOperands();
+  int numVariadicOperands = op.getNumVariadicOperands();
 
   // Add operand size trait.
   if (numVariadicOperands != 0) {

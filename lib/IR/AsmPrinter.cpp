@@ -1099,7 +1099,7 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 
   // Print constraints.
   os << " : (";
-  auto numConstraints = set.getNumConstraints();
+  int numConstraints = set.getNumConstraints();
   for (int i = 1; i < numConstraints; ++i) {
     printAffineConstraint(set.getConstraint(i - 1), set.isEq(i - 1));
     os << ", ";

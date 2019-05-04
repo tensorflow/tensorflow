@@ -98,13 +98,13 @@ def OpH : NS_Op<"all_variadic_results_op", [SameVariadicResultSize]> {
 }
 
 // CHECK-LABEL: Operation::result_range OpH::output1()
-// CHECK-NEXT:      unsigned variadicResultSize = (this->getNumResults() - 0) / 2;
-// CHECK-NEXT:      unsigned offset = 0 + variadicResultSize * 0;
+// CHECK-NEXT:      variadicResultSize = (this->getNumResults() - 0) / 2;
+// CHECK-NEXT:      offset = 0 + variadicResultSize * 0;
 // CHECK-NEXT:      return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
 
 // CHECK-LABEL: Operation::result_range OpH::output2()
-// CHECK-NEXT:      unsigned variadicResultSize = (this->getNumResults() - 0) / 2;
-// CHECK-NEXT:      unsigned offset = 0 + variadicResultSize * 1;
+// CHECK-NEXT:      variadicResultSize = (this->getNumResults() - 0) / 2;
+// CHECK-NEXT:      offset = 0 + variadicResultSize * 1;
 // CHECK-NEXT:      return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
 
 
@@ -117,18 +117,18 @@ def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> 
 }
 
 // CHECK-LABEL: Operation::result_range OpI::output1()
-// CHECK-NEXT:    unsigned variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicResultSize * 0;
+// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicResultSize * 0;
 // CHECK-NEXT:    return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
 
 // CHECK-LABEL: Value *OpI::output2()
-// CHECK-NEXT:    unsigned variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicResultSize * 1;
+// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicResultSize * 1;
 // CHECK-NEXT:    return this->getResult(offset);
 
 // CHECK-LABEL: Operation::result_range OpI::output3()
-// CHECK-NEXT:    unsigned variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 1 + variadicResultSize * 1;
+// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
+// CHECK-NEXT:    offset = 1 + variadicResultSize * 1;
 // CHECK-NEXT:    return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
 
 // CHECK-LABEL: OpI::build

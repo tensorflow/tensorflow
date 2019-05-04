@@ -1153,7 +1153,7 @@ LogicalResult DimOp::verify() {
 
   auto type = getOperand()->getType();
   if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
-    if (index >= tensorType.getRank())
+    if (index >= static_cast<uint64_t>(tensorType.getRank()))
       return emitOpError("index is out of range");
   } else if (auto memrefType = type.dyn_cast<MemRefType>()) {
     if (index >= memrefType.getRank())

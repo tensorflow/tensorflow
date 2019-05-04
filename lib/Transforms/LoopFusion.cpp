@@ -1676,7 +1676,7 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
                             << "   fused mem: " << fusedMem << "\n"
                             << "   slice mem: " << sliceMemEstimate << "\n");
 
-    if (fusedMem > srcMemSizeVal + dstMemSizeVal) {
+    if (static_cast<long>(fusedMem) > srcMemSizeVal + dstMemSizeVal) {
       LLVM_DEBUG(llvm::dbgs() << "Fusion is not profitable; NOT fusing.\n");
       return false;
     }

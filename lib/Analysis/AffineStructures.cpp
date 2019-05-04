@@ -429,7 +429,7 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos, Value *id) {
     numReservedCols++;
   }
 
-  unsigned absolutePos;
+  int absolutePos;
 
   if (kind == IdKind::Dimension) {
     absolutePos = pos;

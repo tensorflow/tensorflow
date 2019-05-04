@@ -420,8 +420,8 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
         PrintFatalError(loc, "only support up to 4-entity constraints now");
       }
       SmallVector<std::string, 4> names;
-      unsigned i = 0;
-      for (unsigned e = entities.size(); i < e; ++i)
+      int i = 0;
+      for (int e = entities.size(); i < e; ++i)
         names.push_back(resolveSymbol(entities[i]));
       for (; i < 4; ++i)
         names.push_back("<unused>");
@@ -475,7 +475,7 @@ void PatternEmitter::emit(StringRef rewriteName) {
 void PatternEmitter::emitRewriteMethod() {
   const Operator &rootOp = pattern.getSourceRootOp();
   int numExpectedResults = rootOp.getNumResults();
-  unsigned numProvidedResults = pattern.getNumResults();
+  int numProvidedResults = pattern.getNumResults();
 
   if (numProvidedResults < numExpectedResults)
     PrintFatalError(
@@ -490,7 +490,7 @@ void PatternEmitter::emitRewriteMethod() {
 
   // Collect the replacement value for each result
   llvm::SmallVector<std::string, 2> resultValues;
-  for (unsigned i = 0; i < numProvidedResults; ++i) {
+  for (int i = 0; i < numProvidedResults; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
     resultValues.push_back(handleRewritePattern(resultTree, i, 0));
     // Keep track of bound symbols at the top-level DAG nodes
@@ -595,7 +595,7 @@ std::string PatternEmitter::emitReplaceWithNativeCodeCall(DagNode tree) {
     PrintFatalError(loc, "unsupported NativeCodeCall argument numbers: " +
                              Twine(tree.getNumArgs()));
   }
-  for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i) {
+  for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
   }
   return tgfmt(fmt, &rewriteCtx, attrs[0], attrs[1], attrs[2], attrs[3],
@@ -646,7 +646,7 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   // First go through all the child nodes who are nested DAG constructs to
   // create ops for them, so that we can use the results in the current node.
   // This happens in a recursive manner.
-  for (unsigned i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
+  for (int i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
     if (auto child = tree.getArgAsNestedDag(i)) {
       childNodeNames[i] = handleRewritePattern(child, i, depth + 1);
       // Keep track of bound symbols at the middle-level DAG nodes

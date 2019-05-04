@@ -53,7 +53,7 @@ public:
 
   /// Perform the rewrites. Return true if the rewrite converges in
   /// `maxIterations`.
-  bool simplifyFunction(unsigned maxIterations);
+  bool simplifyFunction(int maxIterations);
 
   void addToWorklist(Operation *op) {
     // Check to see if the worklist already contains this op.
@@ -146,7 +146,7 @@ private:
 }; // end anonymous namespace
 
 /// Perform the rewrites.
-bool GreedyPatternRewriteDriver::simplifyFunction(unsigned maxIterations) {
+bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   Function *fn = builder.getFunction();
   ConstantFoldHelper helper(fn);
 

@@ -433,19 +433,19 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Verify that the rank of the indices matches the held type.
   auto rank = type.getRank();
-  if (rank != index.size())
+  if (static_cast<size_t>(rank) != index.size())
     return Attribute();
 
   // Verify that all of the indices are within the shape dimensions.
   auto shape = type.getShape();
   for (unsigned i = 0; i != rank; ++i)
-    if (shape[i] <= index[i])
+    if (shape[i] <= static_cast<int64_t>(index[i]))
       return Attribute();
 
   // Reduce the provided multidimensional index into a 1D index.
   uint64_t valueIndex = 0;
   uint64_t dimMultiplier = 1;
-  for (auto i = rank - 1; i >= 0; --i) {
+  for (int i = rank - 1; i >= 0; --i) {
     valueIndex += index[i] * dimMultiplier;
     dimMultiplier *= shape[i];
   }
@@ -701,7 +701,7 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   auto type = getType();
 
   // Verify that the rank of the indices matches the held type.
-  auto rank = type.getRank();
+  size_t rank = type.getRank();
   if (rank != index.size())
     return Attribute();
 
@@ -715,8 +715,7 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   llvm::SmallDenseMap<llvm::ArrayRef<uint64_t>, size_t> mappedIndices;
   auto numSparseIndices = sparseIndices.getType().getDimSize(0);
   for (size_t i = 0, e = numSparseIndices; i != e; ++i)
-    mappedIndices.try_emplace(
-        {sparseIndexValues + (i * rank), static_cast<size_t>(rank)}, i);
+    mappedIndices.try_emplace({sparseIndexValues + (i * rank), rank}, i);
 
   // Look for the provided index key within the mapped indices. If the provided
   // index is not found, then return a zero attribute.

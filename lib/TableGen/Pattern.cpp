@@ -114,16 +114,16 @@ Operator &tblgen::DagNode::getDialectOp(RecordOperatorMap *mapper) const {
               .first->second;
 }
 
-unsigned tblgen::DagNode::getNumOps() const {
-  unsigned count = isReplaceWithValue() ? 0 : 1;
-  for (unsigned i = 0, e = getNumArgs(); i != e; ++i) {
+int tblgen::DagNode::getNumOps() const {
+  int count = isReplaceWithValue() ? 0 : 1;
+  for (int i = 0, e = getNumArgs(); i != e; ++i) {
     if (auto child = getArgAsNestedDag(i))
       count += child.getNumOps();
   }
   return count;
 }
 
-unsigned tblgen::DagNode::getNumArgs() const { return node->getNumArgs(); }
+int tblgen::DagNode::getNumArgs() const { return node->getNumArgs(); }
 
 bool tblgen::DagNode::isNestedDagArg(unsigned index) const {
   return isa<llvm::DagInit>(node->getArg(index));
@@ -161,7 +161,7 @@ tblgen::DagNode tblgen::Pattern::getSourcePattern() const {
   return tblgen::DagNode(def.getValueAsDag("sourcePattern"));
 }
 
-unsigned tblgen::Pattern::getNumResults() const {
+int tblgen::Pattern::getNumResults() const {
   auto *results = def.getValueAsListInit("resultPatterns");
   return results->size();
 }
@@ -248,7 +248,7 @@ void tblgen::Pattern::collectBoundArguments(DagNode tree) {
     boundOps.insert(treeName);
 
   // TODO(jpienaar): Expand to multiple matches.
-  for (unsigned i = 0; i != numTreeArgs; ++i) {
+  for (int i = 0; i != numTreeArgs; ++i) {
     if (auto treeArg = tree.getArgAsNestedDag(i)) {
       // This DAG node argument is a DAG node itself. Go inside recursively.
       collectBoundArguments(treeArg);

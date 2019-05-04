@@ -41,13 +41,13 @@ def OpC : NS_Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
 }
 
 // CHECK-LABEL: Operation::operand_range OpC::input1()
-// CHECK-NEXT:    unsigned variadicOperandSize = (this->getNumOperands() - 0) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicOperandSize * 0;
+// CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 0) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
 // CHECK-NEXT:    return {std::next(operand_begin(), offset), std::next(operand_begin(), offset + variadicOperandSize)};
 
 // CHECK-LABEL: Operation::operand_range OpC::input2()
-// CHECK-NEXT:    unsigned variadicOperandSize = (this->getNumOperands() - 0) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicOperandSize * 1;
+// CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 0) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 1;
 // CHECK-NEXT:    return {std::next(operand_begin(), offset), std::next(operand_begin(), offset + variadicOperandSize)};
 
 // CHECK-LABEL: OpC::build
@@ -59,18 +59,18 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 }
 
 // CHECK-LABEL: Operation::operand_range OpD::input1()
-// CHECK-NEXT:    unsigned variadicOperandSize = (this->getNumOperands() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicOperandSize * 0;
+// CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
 // CHECK-NEXT:    return {std::next(operand_begin(), offset), std::next(operand_begin(), offset + variadicOperandSize)};
 
 // CHECK-LABEL: Value *OpD::input2()
-// CHECK-NEXT:    unsigned variadicOperandSize = (this->getNumOperands() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 0 + variadicOperandSize * 1;
+// CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 1;
 // CHECK-NEXT:    return this->getOperand(offset);
 
 // CHECK-LABEL: Operation::operand_range OpD::input3()
-// CHECK-NEXT:    unsigned variadicOperandSize = (this->getNumOperands() - 1) / 2;
-// CHECK-NEXT:    unsigned offset = 1 + variadicOperandSize * 1;
+// CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
+// CHECK-NEXT:    offset = 1 + variadicOperandSize * 1;
 // CHECK-NEXT:    return {std::next(operand_begin(), offset), std::next(operand_begin(), offset + variadicOperandSize)};
 
 // CHECK-LABEL: OpD::build
