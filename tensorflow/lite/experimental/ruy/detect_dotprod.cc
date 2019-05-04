@@ -19,6 +19,7 @@ limitations under the License.
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <mutex>
 

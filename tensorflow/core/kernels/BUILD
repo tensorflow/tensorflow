@@ -747,6 +747,7 @@ cc_library(
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -759,6 +760,7 @@ cc_library(
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
