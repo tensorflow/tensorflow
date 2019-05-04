@@ -26,9 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -191,31 +189,6 @@ def flatten_per_replica_values(distribution_strategy, per_replica_values):
   # returns all the values associated with it.
   return [e for flattened in nest.flatten(per_replica_values)
           for e in distribution_strategy.unwrap(flattened)]
-
-
-def unwrap_per_replica_values(distribution_strategy, per_replica_values):
-  """Unwraps a nest of PerReplica parameters.
-
-  PerReplica values have one value associated with each device. Each entry in
-  the PerReplica dict has a device `key` and the corresponding value on the
-  device as the `value`. In this function we take a PerReplica value or a list
-  of PerReplica values, transform all the values in each PerReplica dict to a
-  list and return a list of such lists.
-
-  Args:
-    distribution_strategy: DistributionStrategy used to distribute training and
-      validation.
-    per_replica_values: List of PerReplica object or a single PerReplica object.
-
-  Returns:
-    List of lists of values of all the PerReplica objects.
-
-  """
-  flats = [
-      distribution_strategy.unwrap(flattened)
-      for flattened in nest.flatten(per_replica_values)
-  ]
-  return list(zip(*flats))
 
 
 def validate_callbacks(input_callbacks, optimizer):
@@ -609,25 +582,12 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   if is_distributing_by_cloning(model):
     inputs = flatten_per_replica_values(strategy, inputs)
     targets = flatten_per_replica_values(strategy, targets)
-  else:
-    # TODO(b/129653859):  Simplify after PerReplica can be the input of
-    # `def_function.function`.
-    # Without cloning the `inputs` and `target` are the inputs to
-    # `values.regroup`.  Instead of a flat list of `len(inputs) * num_replicas`
-    # we need a list of `len(inputs)` lists, where each per-input list has
-    # `len(num_replicas)` elements. Each element[i] in the per-input
-    # list is the input to the i-th replica.  For example, if inputs are
-    # `[[1, 2], [3, 4]]` and there are two replicas, then we want
-    # `[[1, 3], [2, 4]]` (see `values_test.testWrapAListOfTwoTuples`) so that
-    # we arrive at a `PerReplica(d0: 1, d1: 2)` and a `PerReplica(d0:3, d1:4)`.
-    inputs = unwrap_per_replica_values(strategy, inputs)
-    targets = unwrap_per_replica_values(strategy, targets)
+    # Expand 1-dimensional inputs.
+    # TODO(b/124535720): Remove once this standarize data logic is shared with
+    # main flow.
+    inputs, targets = nest.map_structure(
+        training_utils.standardize_single_array, (inputs, targets))
 
-  # Expand 1-dimensional inputs.
-  # TODO(b/124535720): Remove once this standarize data logic is shared with
-  # main flow.
-  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
-                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -825,7 +785,6 @@ def _make_execution_function(model, mode):
 def _make_execution_function_without_cloning(model, mode):
   """Creates a function to run one step of distributed model execution."""
   strategy = model._distribution_strategy
-  devices = strategy.extended.worker_devices
 
   with strategy.scope():
     per_replica_function = _make_replica_execution_function(model, mode)
@@ -834,26 +793,6 @@ def _make_execution_function_without_cloning(model, mode):
     def distributed_function(x, y, sample_weights, learning_phase=None):
       """A single step of the distributed execution across replicas."""
       del learning_phase
-
-      # TODO(b/129653859):  Simplify after PerReplica can be the input of
-      # `def_function.function`.  `regroup` calls and re-wrapping in
-      # PerReplica won't be needed then.
-      if isinstance(strategy, one_device_strategy.OneDeviceStrategy):
-        device_map = values.SingleDeviceMap(devices[0])
-        wrap_class = lambda d, x: x
-      else:
-        device_map = values.ReplicaDeviceMap(devices)
-        wrap_class = values.PerReplica
-
-      # Transform each lists of lists of values into per replica objects
-      # in the case of mirrored strategy.  For example, for 2 replicas:
-      # [[x0, y0], [x1, y1]] > [PerReplica(d0:x0, d1:x1),
-      #                         PerReplica(d0:y0, d1:y1)]
-      x = values.regroup(device_map, x, wrap_class)
-      y = values.regroup(device_map, y, wrap_class) if y else None
-      sample_weights = values.regroup(device_map, sample_weights,
-                                      wrap_class) if sample_weights else None
-
       # Call `Model.{train,test,predict}_on_batch` on every replica passing
       # PerReplicas as arguments.  On every replica inside this call, each
       # PerReplica object will return the value for that replica.  The outputs
