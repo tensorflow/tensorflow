@@ -102,7 +102,7 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 #RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
 
 # Build rocRAND from source
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
+#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
 
 # Build MIOpen from source
 #RUN cd $HOME && git clone -b <> https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
