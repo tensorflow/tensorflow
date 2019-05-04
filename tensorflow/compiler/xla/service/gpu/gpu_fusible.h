@@ -79,9 +79,6 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
-bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
-                                     const HloInstruction& instr2);
-
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in

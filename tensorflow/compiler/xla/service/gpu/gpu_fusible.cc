@@ -233,16 +233,6 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
   return true;
 }
 
-bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
-                                     const HloInstruction& instr2) {
-
-  if (!IsLoopFusible(instr1) && !IsInputFusibleReduction(instr1)) return false;
-
-  if (!IsLoopFusible(instr2) && !IsInputFusibleReduction(instr2)) return false;
-
-  return FusionWouldBeTooLarge(&instr1, &instr2);
-}
-
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
