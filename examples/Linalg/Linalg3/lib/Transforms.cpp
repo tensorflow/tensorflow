@@ -222,6 +222,29 @@ void linalg::lowerToLoops(mlir::Function *f) {
   });
 }
 
+/// Emits and returns the standard load and store ops from the view indexings.
+/// If the indexing is of index type, use it as an index to the load/store.
+/// If the indexing is a range, use range.min + indexing as an index to the
+/// load/store.
+template <typename LoadOrStoreOp>
+static SmallVector<Value *, 8>
+emitAndReturnLoadStoreOperands(LoadOrStoreOp loadOrStoreOp, ViewOp viewOp) {
+  unsigned storeDim = 0;
+  SmallVector<Value *, 8> operands;
+  for (auto *indexing : viewOp.getIndexings()) {
+    if (indexing->getType().isa<IndexType>()) {
+      operands.push_back(indexing);
+      continue;
+    }
+    RangeOp range = indexing->getDefiningOp()->cast<RangeOp>();
+    ValueHandle min(range.getMin());
+    Value *storeIndex = *(loadOrStoreOp.getIndices().begin() + storeDim++);
+    using edsc::op::operator+;
+    operands.push_back(min + ValueHandle(storeIndex));
+  }
+  return operands;
+}
+
 namespace {
 
 /// Rewriting linalg::LoadOp and linalg::StoreOp to mlir::LoadOp and
@@ -247,30 +270,6 @@ struct LowerLinalgLoadStorePass
     applyPatternsGreedily(getFunction(), std::move(patterns));
   }
 };
-} // namespace
-
-/// Emits and returns the standard load and store ops from the view indexings.
-/// If the indexing is of index type, use it as an index to the load/store.
-/// If the indexing is a range, use range.min + indexing as an index to the
-/// load/store.
-template <typename LoadOrStoreOp>
-static SmallVector<Value *, 8>
-emitAndReturnLoadStoreOperands(LoadOrStoreOp loadOrStoreOp, ViewOp viewOp) {
-  unsigned storeDim = 0;
-  SmallVector<Value *, 8> operands;
-  for (auto *indexing : viewOp.getIndexings()) {
-    if (indexing->getType().isa<IndexType>()) {
-      operands.push_back(indexing);
-      continue;
-    }
-    RangeOp range = indexing->getDefiningOp()->cast<RangeOp>();
-    ValueHandle min(range.getMin());
-    Value *storeIndex = *(loadOrStoreOp.getIndices().begin() + storeDim++);
-    using edsc::op::operator+;
-    operands.push_back(min + ValueHandle(storeIndex));
-  }
-  return operands;
-}
 
 template <>
 PatternMatchResult
@@ -303,6 +302,7 @@ Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
                                              operands);
   return matchSuccess();
 }
+} // namespace
 
 FunctionPassBase *linalg::createLowerLinalgLoadStorePass() {
   return new LowerLinalgLoadStorePass();

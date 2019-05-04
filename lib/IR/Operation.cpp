@@ -70,19 +70,25 @@ unsigned OpResult::getResultNumber() {
 // OpOperand
 //===----------------------------------------------------------------------===//
 
+// TODO: This namespace is only required because of a bug in GCC<7.0.
+namespace mlir {
 /// Return which operand this is in the operand list.
 template <> unsigned OpOperand::getOperandNumber() {
   return this - &getOwner()->getOpOperands()[0];
 }
+} // end namespace mlir
 
 //===----------------------------------------------------------------------===//
 // BlockOperand
 //===----------------------------------------------------------------------===//
 
+// TODO: This namespace is only required because of a bug in GCC<7.0.
+namespace mlir {
 /// Return which operand this is in the operand list.
 template <> unsigned BlockOperand::getOperandNumber() {
   return this - &getOwner()->getBlockOperands()[0];
 }
+} // end namespace mlir
 
 //===----------------------------------------------------------------------===//
 // Operation

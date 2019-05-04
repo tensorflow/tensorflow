@@ -120,7 +120,6 @@ struct VectorTransferRewriter : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override;
 };
-} // end anonymous namespace
 
 /// Analyzes the `transfer` to find an access dimension along the fastest remote
 /// MemRef dimension. If such a dimension with coalescing properties is found,
@@ -160,9 +159,9 @@ void coalesceCopy(VectorTransferOpTy transfer,
 /// Emits remote memory accesses that are clipped to the boundaries of the
 /// MemRef.
 template <typename VectorTransferOpTy>
-static llvm::SmallVector<edsc::ValueHandle, 8>
-clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
-     ArrayRef<edsc::IndexHandle> ivs) {
+llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
+                                             edsc::MemRefView &view,
+                                             ArrayRef<edsc::IndexHandle> ivs) {
   using namespace mlir::edsc;
   using namespace edsc::op;
   using edsc::intrinsics::select;
@@ -357,7 +356,6 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   return matchSuccess();
 }
 
-namespace {
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
   void runOnFunction() {
