@@ -31,6 +31,7 @@ class RangeOp : public mlir::Op<RangeOp, mlir::OpTrait::NOperands<3>::Impl,
                                 mlir::OpTrait::OneResult,
                                 mlir::OpTrait::HasNoSideEffect> {
 public:
+  friend mlir::Operation;
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////

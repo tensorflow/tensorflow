@@ -307,6 +307,7 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
   for (const auto &trait : traits)
     os << ", " << trait;
   os << "> {\npublic:\n";
+  os << "  friend Operation;\n";
   os << "  using Op::Op;\n";
   for (const auto &method : methods) {
     method.writeDeclTo(os);

@@ -102,6 +102,7 @@ class DotOp : public TensorContractionBase<DotOp>,
               public mlir::Op<DotOp, mlir::OpTrait::VariadicOperands,
                               mlir::OpTrait::ZeroResult> {
 public:
+  friend mlir::Operation;
   using Op::Op;
   using TensorContractionBaseType =
       TensorContractionBase::TensorContractionBaseType;
@@ -162,6 +163,7 @@ class MatvecOp : public TensorContractionBase<MatvecOp>,
                  public mlir::Op<MatvecOp, mlir::OpTrait::VariadicOperands,
                                  mlir::OpTrait::ZeroResult> {
 public:
+  friend mlir::Operation;
   using Op::Op;
   using TensorContractionBaseType =
       TensorContractionBase::TensorContractionBaseType;
@@ -222,6 +224,7 @@ class MatmulOp : public TensorContractionBase<MatmulOp>,
                  public mlir::Op<MatmulOp, mlir::OpTrait::VariadicOperands,
                                  mlir::OpTrait::ZeroResult> {
 public:
+  friend mlir::Operation;
   using Op::Op;
   using TensorContractionBaseType =
       TensorContractionBase::TensorContractionBaseType;

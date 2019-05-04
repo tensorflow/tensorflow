@@ -93,6 +93,7 @@ class VectorTransferReadOp
   enum Offsets : unsigned { MemRefOffset = 0, FirstIndexOffset = 1 };
 
 public:
+  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "vector.transfer_read"; }
@@ -157,6 +158,7 @@ class VectorTransferWriteOp
   };
 
 public:
+  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "vector.transfer_write"; }
@@ -192,6 +194,7 @@ public:
 class VectorTypeCastOp
     : public Op<VectorTypeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
+  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "vector.type_cast"; }
