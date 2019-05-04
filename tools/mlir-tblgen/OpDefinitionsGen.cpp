@@ -229,7 +229,7 @@ void OpMethodSignature::writeDefTo(raw_ostream &os,
 
 bool OpMethodSignature::endsWithRefOrPtr(StringRef type) {
   return type.endswith("&") || type.endswith("*");
-};
+}
 
 OpMethodBody::OpMethodBody(bool declOnly) : isEffective(!declOnly) {}
 
