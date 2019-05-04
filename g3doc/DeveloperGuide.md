@@ -15,7 +15,7 @@ except:
 
 To avoid collision between options provided by different dialects, the naming
 convention is to prepend the dialect name to every dialect-specific passes and
-options in general. Also options that are specific to a pass should also be
-prefixed with the pass name. For example, the affine dialect is providing a
-loop tiling pass that will be registered on the command line as "-affine-tile",
-and the tile size option can be set with "-affine-tile-size".
+options in general. Options that are specific to a pass should also be prefixed
+with the pass name. For example, the affine dialect provides a loop tiling pass
+that is registered on the command line as `-affine-tile`, and with a tile size
+option that can be set with `-affine-tile-size`.
