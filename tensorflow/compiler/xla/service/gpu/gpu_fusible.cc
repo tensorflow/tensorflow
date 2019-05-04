@@ -234,7 +234,7 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
 }
 
 bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
-                          const HloInstruction& instr2) {
+                                     const HloInstruction& instr2) {
 
   if (!IsLoopFusible(instr1) && !IsInputFusibleReduction(instr1)) return false;
 
@@ -279,8 +279,7 @@ bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
 // This limit is also often good for performance.  In a fusion with many
 // operands, each GPU thread likely has to do a lot of work, and so possibly
 // uses a lot of registers, thus limiting occupancy.
-bool FusionWouldBeTooLarge(
-    const HloInstruction* a, const HloInstruction* b) {
+bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b) {
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
