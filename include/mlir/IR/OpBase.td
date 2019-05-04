@@ -250,6 +250,9 @@ class BuildableType<code builder> {
 // Any type at all.
 def AnyType : Type<CPred<"true">, "any type">;
 
+// None type
+def NoneType : Type<CPred<"$_self.isa<NoneType>()">, "none type">;
+
 // Any type from the given list
 class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
     // Satisfy any of the allowed type's condition
@@ -261,6 +264,7 @@ class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
                prev # " or " # cur.description),
         // Otherwise use the provided one
         description)>;
+
 
 // Integer types.
 class IntegerBase<CPred pred, string descr> : Type<pred, descr>;
@@ -964,22 +968,19 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
           "getElementType() == $_op.getOperand(" # j # ")->getType()."
           "cast<VectorOrTensorType>().getElementType()">]>;
 
-// Predicate OpTrait to verify that all the operands at the given `indices`
+// Predicate to verify that all the operands at the given `indices`
 // have the same element type.
 // Type Constraint operands' Vector or Tensor Element type are all Same At
 // the given `indices`.
-//
+// We query the operands' types into a list and check they are all the same.
 // Precondition:
 // 1) all operands involved are of vector or tensor type and
 // 2) the indices are not out of range.
-class TCopVTEtAreSameAt<list<int> indices = []> : PredOpTrait<
-    "operands indexed at " # Stringify<indices>.result #
-      " should all have the same type",
-    // We query the operands' types into a list and check they are all the same.
+class TCopVTEtAreSameAt<list<int> indices> :
     CPred<"llvm::is_splat(mlir::functional::map("
             "[this](unsigned i) { return this->getOperand(i)->getType()"
               ".cast<VectorOrTensorType>().getElementType(); }, "
-            "llvm::ArrayRef<unsigned>({" # Stringify<indices>.result # "})))">>;
+            "llvm::ArrayRef<unsigned>({" # Stringify<indices>.result # "})))">;
 
 //===----------------------------------------------------------------------===//
 // Pattern definitions

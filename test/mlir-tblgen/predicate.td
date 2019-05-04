@@ -93,8 +93,9 @@ def OpI: NS_Op<"op_for_arr_min_value_at_index", []> {
 // CHECK: (((tblgen_attr.cast<ArrayAttr>().size() > 0)) && ((tblgen_attr.cast<ArrayAttr>().getValue()[0].cast<IntegerAttr>().getInt() >= 8)))))
 // CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute whose 0-th element must be at least 8");
 
-def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt",
-               [TCopVTEtAreSameAt<[0, 2, 3]>]> {
+def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
+                PredOpTrait<"operands indexed at 0, 2, 3 should all have "
+                 "the same type", TCopVTEtAreSameAt<[0, 2, 3]>>]> {
   let arguments = (ins
     Tensor:$a,
     Tensor:$b,
