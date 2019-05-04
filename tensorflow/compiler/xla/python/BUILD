@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

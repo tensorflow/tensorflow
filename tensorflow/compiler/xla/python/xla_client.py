@@ -103,15 +103,17 @@ class Backend(object):
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None):
+  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
       xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+      asynchronous: A boolean; should we enable asynchronous execution?
+        (Experimental.)
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(xla_platform_id)
+    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
 
   def device_count(self):
     return self.client.DeviceCount()
