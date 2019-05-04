@@ -798,6 +798,39 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
   return success();
 }
 
+LogicalResult
+OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
+  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+    return failure();
+
+  auto type = op->getResult(0)->getType().dyn_cast<VectorOrTensorType>();
+  if (!type)
+    return op->emitOpError("requires vector or tensor type results");
+  auto elementType = type.getElementType();
+
+  // Verify result element type matches first result's element type.
+  for (auto result : drop_begin(op->getResults(), 1)) {
+    auto resultType = result->getType().dyn_cast<VectorOrTensorType>();
+    if (!resultType)
+      return op->emitOpError("requires vector or tensor type results");
+    if (resultType.getElementType() != elementType)
+      return op->emitOpError(
+          "requires the same element type for all operands and results");
+  }
+
+  // Verify operand's element type matches first result's element type.
+  for (auto operand : op->getOperands()) {
+    auto operandType = operand->getType().dyn_cast<VectorOrTensorType>();
+    if (!operandType)
+      return op->emitOpError("requires vector or tensor type operands");
+    if (operandType.getElementType() != elementType)
+      return op->emitOpError(
+          "requires the same element type for all operands and results");
+  }
+
+  return success();
+}
+
 LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return failure();

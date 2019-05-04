@@ -781,6 +781,9 @@ def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
 def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
 def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
+// Op has the same operand and result element type.
+def SameOperandsAndResultElementType :
+  NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a terminator.
 def Terminator       : NativeOpTrait<"IsTerminator">;
 

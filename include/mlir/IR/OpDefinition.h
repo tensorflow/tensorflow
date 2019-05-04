@@ -317,6 +317,7 @@ LogicalResult verifyOneResult(Operation *op);
 LogicalResult verifyNResults(Operation *op, unsigned numOperands);
 LogicalResult verifyAtLeastNResults(Operation *op, unsigned numOperands);
 LogicalResult verifySameOperandsAndResultShape(Operation *op);
+LogicalResult verifySameOperandsAndResultElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultType(Operation *op);
 LogicalResult verifyResultsAreBoolLike(Operation *op);
 LogicalResult verifyResultsAreFloatLike(Operation *op);
@@ -573,11 +574,23 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
+/// operand and result element type.
+///
+/// TODO: This only works for VectorOrTensorType at the moment.
+template <typename ConcreteType>
+class SameOperandsAndResultElementType
+    : public TraitBase<ConcreteType, SameOperandsAndResultElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsAndResultElementType(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
 /// operand and result type.
 ///
-/// Note: this trait subsumes the SameOperandsAndResultShape trait.
-/// Additionally, it requires all operands and results should also have
-/// the same element type.
+/// Note: this trait subsumes the SameOperandsAndResultShape and
+/// SameOperandsAndResultElementType traits.
 template <typename ConcreteType>
 class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
