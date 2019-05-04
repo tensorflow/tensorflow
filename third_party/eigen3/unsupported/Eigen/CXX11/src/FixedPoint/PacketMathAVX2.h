@@ -182,7 +182,8 @@ struct unpacket_traits<Packet32q8i> {
     size = 32,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 template <>
@@ -193,7 +194,8 @@ struct unpacket_traits<Packet16q8i> {
     size = 16,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 template <>
@@ -204,7 +206,8 @@ struct unpacket_traits<Packet16q16i> {
     size = 16,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 template <>
@@ -215,7 +218,8 @@ struct unpacket_traits<Packet8q16i> {
     size = 8,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 template <>
@@ -226,7 +230,8 @@ struct unpacket_traits<Packet32q8u> {
     size = 32,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 template <>
@@ -237,7 +242,8 @@ struct unpacket_traits<Packet8q32i> {
     size = 8,
     alignment = Aligned32,
     vectorizable = true,
-    masked_load_available = false
+    masked_load_available = false,
+    masked_store_available = false
   };
 };
 
