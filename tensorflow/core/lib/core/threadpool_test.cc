@@ -64,7 +64,10 @@ void RunSharding(int64 block_size, int64 total, ThreadPool* threads) {
   mutex mu;
   int64 num_shards = 0;
   int64 num_done_work = 0;
-  std::vector<std::atomic<bool>> work(total, false);
+  std::vector<std::atomic<bool>> work(total);
+  for (int i = 0; i < total; i++) {
+    work[i] = false;
+  }
   threads->TransformRangeConcurrently(
       block_size, total,
       [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 end) {
