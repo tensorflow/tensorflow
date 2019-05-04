@@ -223,6 +223,7 @@ public:
   /// This function is used to convert the value to a double, even if it loses
   /// precision.
   double getValueAsDouble() const;
+  static double getValueAsDouble(APFloat val);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Float; }

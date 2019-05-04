@@ -195,10 +195,11 @@ APFloat FloatAttr::getValue() const {
 }
 
 double FloatAttr::getValueAsDouble() const {
-  const auto &semantics = getType().cast<FloatType>().getFloatSemantics();
-  auto value = getValue();
-  bool losesInfo = false; // ignored
-  if (&semantics != &APFloat::IEEEdouble()) {
+  return getValueAsDouble(getValue());
+}
+double FloatAttr::getValueAsDouble(APFloat value) {
+  if (&value.getSemantics() != &APFloat::IEEEdouble()) {
+    bool losesInfo = false;
     value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
                   &losesInfo);
   }
