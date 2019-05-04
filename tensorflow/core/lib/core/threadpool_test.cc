@@ -166,7 +166,7 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
     }
     pool.ParallelForWithWorkerId(
         kWorkItems, kHugeCost,
-        [&threads_running, &work, num_threads](int64 begin, int64 end,
+        [&threads_running, &work](int64 begin, int64 end,
                                                int64 id) {
           // Store true for the current thread, and assert that another thread
           // is not running with the same id.
