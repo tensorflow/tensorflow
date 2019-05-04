@@ -1013,6 +1013,7 @@ class GradientTape(object):
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
     # need gradients through the enclosed operations.
+    self._recording = False # _recording flag will be toogled to True after _push_tape method is called
     self._push_tape()
     target = array_ops.reshape(target, [-1])
     self._pop_tape()
