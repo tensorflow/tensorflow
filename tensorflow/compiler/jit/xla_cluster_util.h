@@ -71,6 +71,9 @@ void RemoveFromXlaCluster(Node* node);
 // Returns true if `node` has a DT_RESOURCE typed input or output.
 bool HasResourceInputOrOutput(const Node& node);
 
+// Returns true if `node` has a DT_RESOURCE typed input, which is a Switch.
+bool HasResourceInputFromSwitch(const Node& node);
+
 // Determines the global jit level based on GraphOptimizationPassOptions,
 // --tf_xla_auto_jit and whether the graph is a single GPU graph.
 OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(

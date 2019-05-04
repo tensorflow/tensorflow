@@ -892,6 +892,23 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
+    //
+    // This is to workaround a problem with the following use pattern,
+    //     op0 : VarHandleOp
+    //     op1 : Switch op0, pred
+    //     op2 : ReadVariableOp op0
+    //     op3 : ReadVariableOp op1
+    //
+    //  If op2 and op3 are clustered, the op0 and op1 are inputs,
+    //  and they are both considered as resources, and
+    //  op1 and op0 happen to point to the same resource, and
+    //  this will cause an execution error since the resource is
+    //  not allowed to be initialized (locked) twice.
+    //
+    if (HasResourceInputFromSwitch(*node)) {
+      continue;
+    }
+
     if (compile_time_const_nodes[node->id()]) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
