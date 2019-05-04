@@ -2011,10 +2011,10 @@ class Options(options_lib.OptionsBase):
     attribute that is set to different values in `self` and `options`.
 
     Args:
-      options: a `tf.data.Options` to merge with
+      options: a `tf.data.Options` to merge with.
 
     Raises:
-      ValueError: if the given `tf.data.Options` cannot be merged
+      ValueError: if the given `tf.data.Options` cannot be merged.
 
     Returns:
       New `tf.data.Options()` object which is the result of merging self with
