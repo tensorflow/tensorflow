@@ -1863,6 +1863,9 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
 
+  def consumers(self):
+    return self._consumers()
+
 
 def is_ragged(value):
   """Returns true if `value` is a ragged tensor or ragged tensor value."""

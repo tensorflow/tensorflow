@@ -260,6 +260,9 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
 
+  def consumers(self):
+    return self._consumers()
+
 
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
