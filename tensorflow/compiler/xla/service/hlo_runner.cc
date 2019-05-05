@@ -273,6 +273,12 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
+  return ExecuteReplicated(executable.get(), options, device_assignment);
+}
+
+StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+    Executable* executable, const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
 

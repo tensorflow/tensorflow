@@ -183,6 +183,15 @@ class HloRunner {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
+  // Same as above, but with a reusable Executable.  This may update the profile
+  // information in *executable.
+  //
+  // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
+  // since we've already compiled the Executable.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      Executable* executable, const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
   //
