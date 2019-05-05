@@ -448,7 +448,7 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
   """Clones layer_op with input_tensor and weight_tensor as new inputs."""
   new_layer_name = layer_op.name.split('/')[-1] + '_Fold'
   if layer_op.type == 'Conv2D':
-    return nn_ops.conv2d(
+    conv = nn_ops.conv2d(
         input_tensor,
         weight_tensor,
         strides=layer_op.get_attr('strides'),
@@ -456,6 +456,17 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         use_cudnn_on_gpu=layer_op.get_attr('use_cudnn_on_gpu'),
         data_format=layer_op.get_attr('data_format').decode(),
         name=new_layer_name)
+    # Copy the batch to space operation if we have a atrous convolution.
+    if batch_to_space_op:
+      batch_to_space_op = layer_op.outputs[0].consumers()[0]
+      new_batch_to_space_name = batch_to_space_op.name.split('/')[-1] + '_Fold'
+      conv = array_ops.batch_to_space_nd(
+          conv,
+          batch_to_space_op.inputs[1],
+          batch_to_space_op.inputs[2],
+          name=new_batch_to_space_name)
+    return conv
+
   elif layer_op.type == 'MatMul':
     return math_ops.matmul(
         input_tensor,
