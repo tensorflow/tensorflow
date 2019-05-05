@@ -215,7 +215,7 @@ class ExhaustiveOpTest
         RunImpl<half, uint16>(enqueue_op, evaluate_op);
         break;
       case BF16:
-        SetDefaultErrSpec(0.001, 0.02);
+        SetDefaultErrSpec(0.002, 0.02);
         RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op);
         break;
       default:
@@ -563,10 +563,17 @@ XLA_TEST_P(ExhaustiveOpTest, Acosh) {
   }
   Run(Acosh, std::acosh);
 }
+XLA_TEST_P(ExhaustiveOpTest, Asinh) {
+  // Error inherited from Log, which our implementation of Asinh uses.
+  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
+    abs_err_ = 0.001;
+    rel_err_ = 0.001;
+  }
+  Run(Asinh, std::asinh);
+}
 
 // TODO(jlebar): Enable these.
 // XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
-// XLA_TEST_P(ExhaustiveOpTest, Asinh) { Run(Asinh, std::asinh); }
 // XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
 // XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
 // XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
