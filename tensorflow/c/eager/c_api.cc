@@ -397,9 +397,7 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->ClearCaches();
-}
+void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context->ClearCaches(); }
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
