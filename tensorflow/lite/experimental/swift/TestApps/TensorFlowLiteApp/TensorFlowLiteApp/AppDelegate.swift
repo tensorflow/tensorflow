@@ -14,11 +14,3 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     return true
   }
 }
-
-// MARK: - Extensions
-
-#if !swift(>=4.2)
-extension UIApplication {
-  typealias LaunchOptionsKey = UIApplicationLaunchOptionsKey
-}
-#endif  // !swift(>=4.2)

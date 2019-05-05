@@ -211,7 +211,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP, Register_EMBEDDING_LOOKUP(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
@@ -234,7 +234,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_MUL, Register_MUL());
+  AddBuiltin(BuiltinOperator_MUL, Register_MUL(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION(),
              /* min_version */ 1,
              /* max_version */ 2);

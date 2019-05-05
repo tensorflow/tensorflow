@@ -168,8 +168,7 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
-  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
+  def testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(2).interleave(
           (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
@@ -184,7 +183,8 @@ class MirroredTwoDeviceDistributionTest(
         expected_input_pipeline_id=0)
     iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
-                                 expected_values, test_reinitialize=False)
+                                 expected_values, test_reinitialize=False,
+                                 ignore_order=True)
 
   def testNumpyDataset(self, distribution):
     self._test_numpy_dataset(distribution)
@@ -1572,7 +1572,7 @@ class MultiWorkerMirroredStrategyTest(
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
 
-  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
+  def testMakeInputFnIteratorWithCallable(self, distribution):
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)
@@ -1596,7 +1596,7 @@ class MultiWorkerMirroredStrategyTest(
       iterator = distribution.make_input_fn_iterator(input_fn)
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess,
-          test_reinitialize=False)
+          test_reinitialize=False, ignore_order=True)
 
   def testUpdateConfigProto(self, distribution):
     distribution.configure(cluster_spec={"worker": ["fake1", "fake2"]})

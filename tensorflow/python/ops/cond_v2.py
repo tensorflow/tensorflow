@@ -115,7 +115,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(skyewm): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -656,7 +656,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         tensor in self._forward_graph.outputs):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
       if tensor not in self.captures:

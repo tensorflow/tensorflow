@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
@@ -319,14 +320,6 @@ class CuptiCallbackHook {
 
 class TraceCollectorImpl : public tracing::TraceCollector {
  public:
-  class ActivityHandle : public Handle {
-   public:
-    ActivityHandle(std::string&& name, int level)
-        : trace_me_(std::move(name), level) {}
-
-   private:
-    profiler::TraceMe trace_me_;
-  };
   TraceCollectorImpl() : active_trace_session_(false) {
     tracing::SetTraceCollector(this);
   }
@@ -351,21 +344,8 @@ class TraceCollectorImpl : public tracing::TraceCollector {
     return absl::make_unique<Impl>(ConcatenateNames(name_part1, name_part2));
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(
-      StringPiece name_part1, StringPiece name_part2, bool is_expensive) const {
-    if (!IsEnabledForActivities(is_expensive)) {
-      return nullptr;
-    }
-    return absl::make_unique<ActivityHandle>(
-        ConcatenateNames(name_part1, name_part2), GetLevel(is_expensive));
-  }
-
   bool IsEnabledForAnnotations() const override {
     return active_trace_session_.load(std::memory_order_relaxed);
-  }
-
-  bool IsEnabledForActivities(bool is_expensive) const override {
-    return profiler::TraceMeRecorder::Active(GetLevel(is_expensive));
   }
 
   void Start() {
@@ -380,10 +360,6 @@ class TraceCollectorImpl : public tracing::TraceCollector {
   }
 
  private:
-  static int GetLevel(bool is_expensive) {
-    return profiler::GetTFTraceMeLevel(is_expensive);
-  }
-
   std::atomic<bool> active_trace_session_;
 };
 
@@ -559,7 +535,7 @@ class CudaEventCollector {
   }
 
   // Returns time in microseconds between events recorded on the GPU.
-  static uint64_t GetElasedTimeUs(CUevent start, CUevent stop) {
+  static uint64_t GetElapsedTimeUs(CUevent start, CUevent stop) {
     float elapsed_ms = 0.0f;
     LogIfError(ToStatus(cuEventElapsedTime(&elapsed_ms, start, stop)));
     return static_cast<uint64>(
@@ -606,8 +582,8 @@ class CudaEventCollector {
     const auto& stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
     auto start_us =
-        GetElasedTimeUs(record.start_event, stream_info.ctx_info->end_event);
-    auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = record.kernel_name;
@@ -635,8 +611,8 @@ class CudaEventCollector {
     const auto& stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
     auto start_us =
-        GetElasedTimeUs(record.start_event, stream_info.ctx_info->end_event);
-    auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = GetMemcpyName(record);
@@ -741,7 +717,11 @@ std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
 }
 
 auto register_device_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateDeviceTracer);
+  bool enable;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_GPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateDeviceTracer);
+  }
   return 0;
 }();
 

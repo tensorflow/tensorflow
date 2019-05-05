@@ -225,17 +225,17 @@ class Thread {
   BlockingCounter* const counter_to_decrement_when_ready_;
 };
 
-void ThreadPool::Execute(int task_count, Task** tasks_ptrs) {
+void ThreadPool::ExecuteImpl(int task_count, int stride, Task* tasks) {
   RUY_DCHECK_GE(task_count, 1);
   // Task #0 will be run on the current thread.
   CreateThreads(task_count - 1);
   counter_to_decrement_when_ready_.Reset(task_count - 1);
   for (int i = 1; i < task_count; i++) {
-    threads_[i - 1]->StartWork(tasks_ptrs[i]);
+    auto task_address = reinterpret_cast<std::uintptr_t>(tasks) + i * stride;
+    threads_[i - 1]->StartWork(reinterpret_cast<Task*>(task_address));
   }
   // Execute task #0 workload immediately on the current thread.
-  Task* last_task = tasks_ptrs[0];
-  last_task->Run();
+  (tasks + 0)->Run();
   // Wait for the threads submitted above to finish.
   counter_to_decrement_when_ready_.Wait();
 }

@@ -62,7 +62,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow:tensorflow_py",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/examples/saved_model/integration_tests:util",
-    "//tensorflow/examples/speech_commands:test_lib",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
@@ -87,6 +86,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+    "//tensorflow/python/keras/distribute:mnist_multi_worker_lib",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
@@ -179,7 +179,6 @@ filegroup(
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
-        "@kissfft//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -254,7 +253,7 @@ filegroup(
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
     ]) + if_rocm([
-        "@rocprim_archive//:LICENSE.TXT",
+        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

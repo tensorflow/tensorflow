@@ -37,9 +37,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "noasan",  # Fix b/118130911
-        "nomsan",  # Fix b/118130911
-        "notsan",  # Fix b/118130911
         "optonly",
         "oss_serial",
     ],

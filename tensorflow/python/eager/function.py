@@ -588,8 +588,10 @@ class ConcreteFunction(object):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
 
-    for v in self._func_graph.variables:
-      resource_variable_ops.variable_accessed(v)
+    if (tape.could_possibly_record() or
+        hasattr(ops.get_default_graph(), "watch_variable")):
+      for v in self._func_graph.variables:
+        resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
     variables_used = set([])
@@ -1039,7 +1041,7 @@ class FunctionSpec(object):
 
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
-                                                      expand_composites=False))
+                                                      expand_composites=True))
 
   @property
   def fullargspec(self):
@@ -1656,7 +1658,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature, expand_composites=False)):
+         for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 

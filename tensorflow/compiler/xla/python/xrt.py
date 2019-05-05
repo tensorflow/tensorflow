@@ -77,6 +77,9 @@ class XrtBackend(xla_client.Backend):
   def destructure_tuple(self, c_buffer):
     return c_buffer.DestructureTuple()
 
+  def make_tuple(self, buffers, device_ordinal):
+    return _xla.xrt.XrtBuffer.MakeTuple(self.context, buffers)
+
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access
     program_shape = xla_client._wrap_program_shape(

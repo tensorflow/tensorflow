@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -227,15 +226,6 @@ TraceMeRecorder::Events TraceMeRecorder::Stop() {
   mutex_lock lock(GetTraceMeContext()->global_lock);
   if (internal::g_trace_level.exchange(
           kTracingDisabled, std::memory_order_acq_rel) == kTracingDisabled) {
-    return {};
-  }
-  return Clear();
-}
-
-TraceMeRecorder::Events TraceMeRecorder::Collect() {
-  mutex_lock lock(GetTraceMeContext()->global_lock);
-  if (internal::g_trace_level.load(std::memory_order_acquire) ==
-      kTracingDisabled) {
     return {};
   }
   return Clear();

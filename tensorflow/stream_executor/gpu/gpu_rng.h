@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 
-#include "tensorflow/stream_executor/platform/mutex.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/rng.h"
-
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 
@@ -83,8 +82,8 @@ class GpuRng : public rng::RngSupport {
   // with random number generation.
   bool SetStream(Stream* stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // mutex that guards the gpu rng library handle for this device.
-  mutex mu_;
+  // Guards the gpu rng library handle for this device.
+  absl::Mutex mu_;
 
   // GpuExecutor which instantiated this GpuRng.
   // Immutable post-initialization.

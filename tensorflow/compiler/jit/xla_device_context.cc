@@ -65,6 +65,9 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   tf_stats.peak_bytes_in_use = se_stats->peak_bytes_in_use;
   tf_stats.largest_alloc_size = se_stats->largest_alloc_size;
   tf_stats.bytes_limit = se_stats->bytes_limit;
+  tf_stats.bytes_reserved = se_stats->bytes_reserved;
+  tf_stats.peak_bytes_reserved = se_stats->peak_bytes_reserved;
+  tf_stats.bytes_reservable_limit = se_stats->bytes_reservable_limit;
   return tf_stats;
 }
 
@@ -106,7 +109,8 @@ void XlaDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              Device* device,
                                              Tensor* device_tensor,
-                                             StatusCallback done) const {
+                                             StatusCallback done,
+                                             bool sync_dst_compute) const {
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
     done(Status::OK());
@@ -242,16 +246,25 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
       cpu_tensor, &literal));
 
   TensorReference ref(*device_tensor);
+  const bool device_allows_sync_on_completion =
+      device->AllowsSyncOnCompletion();
   // Explicitly capture device_to_host_stream to make sure the stream is alive
   // before the transfer finishes.
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
-      [ref, xla_tensor, done, device_to_host_stream](xla::Status status) {
-        done([&]() -> Status {
-          VLOG(2) << "Transfer from device as literal: "
-                  << xla_tensor->shaped_buffer().ToString();
-          return status;
-        }());
+      [ref, xla_tensor, done, device_to_host_stream,
+       device_allows_sync_on_completion](xla::Status status) {
+        Status done_status = status;
+        VLOG(2) << "Transfer from device as literal: "
+                << xla_tensor->shaped_buffer().ToString();
+        // For devices don't allow sync on completion, the device execution is
+        // deferred. We check the execution stream status here to avoid wrong
+        // results from a failed stream being propogated to following
+        // host-side ops.
+        if (!device_allows_sync_on_completion) {
+          done_status.Update(xla_tensor->RefreshStatusOfStreams());
+        }
+        done(done_status);
         ref.Unref();
       });
 }

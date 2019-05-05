@@ -783,6 +783,8 @@ ADD_ATTR(bool)
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
                                 NodeDef* node_def) {
   node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+
+  // Update frame name to avoid multiple LoopCond nodes in one frame.
   if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
     string frame_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
@@ -790,6 +792,13 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
     frame_name = strings::StrCat(prefix, frame_name, suffix);
     attr.set_s(frame_name);
   }
+
+  // Update colocation constraints.
+  auto class_attr = node_def->mutable_attr()->find("_class");
+  if (class_attr != node_def->mutable_attr()->end()) {
+    class_attr->second.set_s(strings::StrCat(prefix, class_attr->second.s()));
+  }
+
   return Status::OK();
 }
 

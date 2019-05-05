@@ -268,6 +268,20 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
+  def test_matrix_band_part(self):
+    x = random_ops.random_uniform([3, 4, 2, 2])
+
+    for num_lower, num_upper in ((0, -1), (-1, 0), (1, 1)):
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return array_ops.matrix_band_part(
+            array_ops.gather(x, i),
+            num_lower=num_lower,
+            num_upper=num_upper)
+      # pylint: enable=cell-var-from-loop
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_matrix_diag_part(self):
     x = random_ops.random_uniform([3, 4, 2])
 

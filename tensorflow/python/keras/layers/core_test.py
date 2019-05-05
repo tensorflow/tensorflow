@@ -217,6 +217,29 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertEqual(keras.backend.get_value(train_out), 1.)
     self.assertEqual(keras.backend.get_value(eval_out), 2.)
 
+  def test_lambda_with_mask(self):
+
+    def add_one(inputs):
+      return inputs + 1.0
+
+    def mask(unused_inputs, previous_mask):
+      return previous_mask
+
+    layer = keras.layers.Lambda(add_one, mask=mask)
+    x = np.ones([5, 4, 3])
+    x[:, -1, :] = 0
+    masking = keras.layers.Masking()
+    out = layer(masking(x))
+
+    expected_out = np.full([5, 4, 3], 2.0)
+    expected_out[:, -1, :] = 1.0
+    expected_mask = np.ones([5, 4])
+    expected_mask[:, -1] = 0.0
+
+    self.assertAllClose(self.evaluate(out), expected_out)
+    self.assertIsNotNone(out._keras_mask)
+    self.assertAllClose(self.evaluate(out._keras_mask), expected_mask)
+
 
 class TestStatefulLambda(keras_parameterized.TestCase):
 

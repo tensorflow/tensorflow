@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -537,10 +538,10 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-  def testPostTrainingCalibrateAndQuantize(self):
+  def _getCalibrationQuantizeModel(self):
     np.random.seed(0)
-    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
-                                name='input')
+    inp = array_ops.placeholder(
+        dtype=dtypes.float32, shape=(1, 5, 5, 3), name='input')
     conv = nn_ops.conv2d(
         inp,
         filter=array_ops.ones([3, 3, 3, 16]),
@@ -552,6 +553,10 @@ class FromSessionTest(test_util.TensorFlowTestCase):
       for _ in range(5):
         yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
 
+    return (inp, output, calibration_gen)
+
+  def testPostTrainingCalibrateAndQuantize(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
     sess = session.Session()
 
     # Convert float model.
@@ -559,7 +564,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     float_tflite = float_converter.convert()
     self.assertTrue(float_tflite)
 
-    # Convert quantized weights model.
+    # Convert quantized model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -580,21 +585,39 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  def testCalibrateAndQuantizeBuiltinInt8(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert model by specifying target spec (instead of optimizations), since
+    # when targeting an integer only backend, quantization is mandatory.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.target_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
   def testPostTrainingCalibrateAndQuantizeInt8Inputs(self):
-    np.random.seed(0)
-    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
-                                name='input')
-    conv = nn_ops.conv2d(
-        inp,
-        filter=array_ops.ones([3, 3, 3, 16]),
-        strides=[1, 1, 1, 1],
-        padding='SAME')
-    output = nn_ops.relu(conv, name='output')
-
-    def calibration_gen():
-      for _ in range(5):
-        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
-
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
     sess = session.Session()
 
     # Convert float model.
@@ -1565,6 +1588,40 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     converter.post_training_quantize = False
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+
+@test_util.run_v1_only('Incompatible with 2.0.')
+class GrapplerTest(test_util.TensorFlowTestCase):
+
+  def testConstantFolding(self):
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
+    y_const = constant_op.constant([1., 2., 3.])
+    y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+    out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
+    sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([3, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([3, 3] == output_details[0]['shape']).all())
 
 
 class ImportOpsUtilTest(test_util.TensorFlowTestCase):

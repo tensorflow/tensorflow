@@ -236,7 +236,10 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "nomsan",  # TODO(b/131773093): Re-enable.
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1070,6 +1073,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 
@@ -1104,6 +1108,34 @@ tf_py_test(
     name = "string_strip_op_test",
     size = "small",
     srcs = ["string_strip_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
+    name = "string_lower_op_test",
+    size = "small",
+    srcs = ["string_lower_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
+    name = "string_upper_op_test",
+    size = "small",
+    srcs = ["string_upper_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -2676,6 +2708,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -3760,4 +3793,17 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
     ],
+)
+
+tf_py_test(
+    name = "tridiagonal_matmul_op_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+    shard_count = 5,
 )

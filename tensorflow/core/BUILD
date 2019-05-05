@@ -949,7 +949,6 @@ tf_cuda_library(
         "util/batch_util.h",
         "util/bcast.h",
         "util/matmul_bcast.h",
-        "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -1641,9 +1640,14 @@ cc_library(
     ] + if_dynamic_kernels(
         [],
         otherwise = [
+            "//tensorflow/core/kernels:aggregate_ops",
+            "//tensorflow/core/kernels:bcast_ops",
             "//tensorflow/core/kernels:cast_op",
             "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:identity_op",
             "//tensorflow/core/kernels:random_ops",
+            "//tensorflow/core/kernels:reduction_ops",
+            "//tensorflow/core/kernels:reshape_op",
         ],
     ),
 )
@@ -1671,6 +1675,13 @@ tf_cuda_library(
         ":direct_session_internal",
     ],
     alwayslink = 1,
+)
+
+# -----------------------------------------------------------------------------
+# MKL targets
+cc_library(
+    name = "mkl_graph_util",
+    hdrs = ["graph/mkl_graph_util.h"],
 )
 
 # -----------------------------------------------------------------------------
@@ -2192,6 +2203,13 @@ tf_pyclif_proto_library(
     name = "protobuf/saved_model_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/saved_model.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/variable_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/variable.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -2863,6 +2881,7 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
@@ -2930,7 +2949,6 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = [
-        "util/cuda_device_functions.h",
         "util/gpu_device_functions.h",
     ],
     visibility = ["//visibility:public"],
@@ -3199,6 +3217,8 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -3228,6 +3248,7 @@ tf_cuda_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -3277,6 +3298,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/profiler/lib:profiler_graph_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -3313,7 +3335,6 @@ tf_cuda_library(
         ":lib",
         ":protos_all_cc",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
 )
@@ -3401,6 +3422,7 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

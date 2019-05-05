@@ -228,7 +228,7 @@ def clear_session():
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
-    with ops.name_scope(''):
+    with name_scope(''):
       phase = array_ops.placeholder_with_default(
           False, shape=(), name='keras_learning_phase')
     _GRAPH_LEARNING_PHASES = {}
@@ -289,7 +289,7 @@ def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
     if graph not in _GRAPH_LEARNING_PHASES:
-      with ops.name_scope(''):
+      with name_scope(''):
         phase = array_ops.placeholder_with_default(
             False, shape=(), name='keras_learning_phase')
       _GRAPH_LEARNING_PHASES[graph] = phase
@@ -388,7 +388,7 @@ def eager_learning_phase_scope(value):
   """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
-  assert context.executing_eagerly()
+  assert ops.executing_eagerly_outside_functions()
   previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
@@ -694,7 +694,32 @@ def to_dense(tensor):
     return tensor
 
 
-name_scope = ops.name_scope
+@keras_export('keras.backend.name_scope', v1=[])
+def name_scope(name):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      # Define some computation that uses `a`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensor `a` will have the name `MyOp/a`.
+
+  Args:
+    name: The prefix to use on all names created within the name scope.
+
+  Returns:
+    Name scope context manager.
+  """
+  return ops.name_scope_v2(name)
 
 
 @keras_export('keras.backend.variable')
@@ -1346,21 +1371,20 @@ def cast(x, dtype):
   Returns:
       Keras tensor with dtype `dtype`.
 
-  Example:
+  Examples:
+      Cast a float32 variable to a float64 tensor
+
   ```python
-      >>> from keras import backend as K
-      >>> input = K.placeholder((2, 3), dtype='float32')
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # It doesn't work in-place as below.
-      >>> K.cast(input, dtype='float16')
-      <tf.Tensor 'Cast_1:0' shape=(2, 3) dtype=float16>
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # you need to assign it.
-      >>> input = K.cast(input, dtype='float16')
-      >>> input
-      <tf.Tensor 'Cast_2:0' shape=(2, 3) dtype=float16>
+      >>> import tensorflow as tf
+      >>> from tensorflow.keras import backend as K
+      >>> input = K.ones(shape=(1,3))
+      >>> print(input)
+      >>> cast_input = K.cast(input, dtype='float64')
+      >>> print(cast_input)
+
+      <tf.Variable 'Variable:0' shape=(1, 3) dtype=float32,
+           numpy=array([[1., 1., 1.]], dtype=float32)>
+      tf.Tensor([[1. 1. 1.]], shape=(1, 3), dtype=float64)
   ```
   """
   return math_ops.cast(x, dtype)
@@ -2637,6 +2661,17 @@ def batch_flatten(x):
 
   Returns:
       A tensor.
+
+  Examples:
+    Flattening a 3D tensor to 2D by collapsing the last dimension.
+
+  ```python
+      >>> from tensorflow.keras import backend as K
+      >>> x_batch = K.ones(shape=(2, 3, 4, 5))
+      >>> x_batch_flatten = K.batch_flatten(x_batch)
+      >>> K.int_shape(x_batch_flatten)
+      (2, 60)
+  ```
   """
   x = array_ops.reshape(x, array_ops.stack([-1, prod(shape(x)[1:])]))
   return x

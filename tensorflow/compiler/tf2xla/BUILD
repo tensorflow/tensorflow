@@ -17,7 +17,10 @@ package_group(
 package_group(
     name = "friends",
     includes = [":internal"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/tools/tf_replay/...",
+        "//tensorflow/...",
+    ],
 )
 
 package(
@@ -286,6 +289,7 @@ cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
+    visibility = [":friends"],
     deps = [
         ":sharding_util",
         ":tf2xla_proto",

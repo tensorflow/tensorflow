@@ -346,7 +346,7 @@ we can both ensure that each layer uses the same values and simplify the code:
   with slim.arg_scope([slim.conv2d], padding='SAME',
                       weights_initializer=tf.truncated_normal_initializer(stddev=0.01)
                       weights_regularizer=slim.l2_regularizer(0.0005)):
-    net = slim.conv2d(inputs, 64, [11, 11], scope='conv1')
+    net = slim.conv2d(inputs, 64, [11, 11], 4, scope='conv1')
     net = slim.conv2d(net, 128, [11, 11], padding='VALID', scope='conv2')
     net = slim.conv2d(net, 256, [11, 11], scope='conv3')
 ```

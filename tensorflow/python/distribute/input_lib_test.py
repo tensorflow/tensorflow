@@ -298,6 +298,34 @@ class DistributedIteratorMultiWorkerTest(
 
   @combinations.generate(combinations.combine(
       mode=["graph"],
+      input_type=["dataset"],
+      api_type=["wrap_into_iterator", "wrap_into_dataset"],
+      iteration_type=["get_next", "for_loop"],
+      autoshard=[True, False]))
+  def testAutoshardingOption(self, input_type, api_type, iteration_type,
+                             autoshard):
+    ds_option = dataset_ops.Options()
+    ds_option.experimental_distribute.auto_shard = autoshard
+
+    worker_devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      if tf2.enabled():
+        dataset_fn = (
+            lambda _: dataset_ops.DatasetV2.range(4).with_options(ds_option))
+      else:
+        dataset_fn = (
+            lambda _: dataset_ops.Dataset.range(4).with_options(ds_option))
+
+      if autoshard:
+        expected_values = [[0, 1], [2, 3]]
+      else:
+        expected_values = [[0, 0], [1, 1], [2, 2], [3, 3]]
+      self._test_input_iteration(input_type, api_type, iteration_type,
+                                 dataset_fn, worker_devices,
+                                 expected_values, sess)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph"],
       input_type=["input_fn", "dataset"],
       api_type=["wrap_into_iterator", "wrap_into_dataset"],
       iteration_type=["get_next", "for_loop"]))

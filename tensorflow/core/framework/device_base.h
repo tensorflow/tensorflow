@@ -74,11 +74,11 @@ class DeviceContext : public core::RefCounted {
   }
 
   // "cpu_tensor" is a tensor on a CPU. Copies "cpu_tensor" into
-  // "device_tensor" which is on a GPU device "device". "device_tensor"
+  // "device_tensor" which is on a non-CPU device "device". "device_tensor"
   // must be allocated to be of the same size as "cpu_tensor".
   virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                                     Tensor* device_tensor,
-                                     StatusCallback done) const {
+                                     Tensor* device_tensor, StatusCallback done,
+                                     bool sync_dst_compute = true) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
@@ -253,7 +253,7 @@ class DeviceBase {
   // device memory tagged with an earlier freed-at count is really unencumbered
   // by pending uses.  For this to be useful the device memory allocator must
   // be tagging deallocated memory chunks using the same counter.
-  virtual uint64 SafeAllocFrontier() { return 0; }
+  virtual uint64 SafeAllocFrontier(uint64 old_value) { return 0; }
 
   // Copies `input_tensor` to `output_tensor`, where both tensors are on this
   // device. This function assumes that `output_tensor` has already been

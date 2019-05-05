@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -256,8 +256,7 @@ class MarkForCompilationPassImpl {
   // Nodes that XLA can compile are put in `compilation_candidates_`.
   Status FindCompilationCandidates();
 
-  bool CompilationDisallowedByXlaCompileAttr(Node* node,
-                                             const DeviceType& jit_device_type);
+  bool CompilationDisallowedByXlaCompileAttr(Node* node);
 
   // Populates `clusters_`.
   Status BuildInitialClusterSet();
@@ -374,7 +373,7 @@ class MarkForCompilationPassImpl {
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   absl::flat_hash_map<const Cluster*, bool> should_compile_cluster_cache_;
-  DeviceInfoCache device_info_cache_;
+  jit::DeviceInfoCache device_info_cache_;
 
   bool initialized_ = false;
   bool edges_contracted_ = false;
@@ -510,8 +509,8 @@ void MarkForCompilationPassImpl::Cluster::Merge(Cluster* other) {
   other->resource_var_operation_node_ids_.clear();
 }
 
-Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
-                                         const Node& n, bool* ignore) {
+Status IgnoreResourceOpForSafetyAnalysis(
+    jit::DeviceInfoCache* device_info_cache, const Node& n, bool* ignore) {
   // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
   // ignore it during resource operation safety analysis.  We need this hack
   // because of two reasons:
@@ -869,7 +868,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     VLOG(4) << "Device type for " << node->name() << ": "
             << device_type.type_string();
 
-    if (CompilationDisallowedByXlaCompileAttr(node, device_type)) {
+    if (CompilationDisallowedByXlaCompileAttr(node)) {
       VLOG(2) << "Not clustering " << node->name()
               << ": disallowed by _XlaCompile attribute";
       continue;
@@ -955,14 +954,8 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
-    Node* node, const DeviceType& device_type) {
+    Node* node) {
   if (debug_options_.ignore_xla_compile_attr) {
-    return false;
-  }
-
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    VLOG(2) << "Rejecting " << node->name() << ": could not find JIT device.";
     return false;
   }
 
@@ -1062,7 +1055,6 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
 StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
     Cluster* cluster_from) {
   bool changed = false;
-  // Needs to be RPO because of shape consumer opt
   for (int to :
        cycles_graph_.Successors(cluster_from->cycles_graph_node_id())) {
     iteration_count_++;
@@ -1422,6 +1414,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_control_trigger = true;
   op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
+  op_filter.allow_svd_op = true;
 
   return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
       .IsCompilableCall(ndef, flr);

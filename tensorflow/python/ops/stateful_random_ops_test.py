@@ -353,6 +353,21 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     """
     self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
 
+  @parameterized.parameters(INTS + [dtypes.uint32, dtypes.uint64])
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testGPUEqualsCPU(self, dtype):
+    """Tests that GPU and CPU generate the same integer outputs."""
+    seed = 1234
+    shape = [315, 49]
+    with ops.device("/device:CPU:0"):
+      cpu = random.Generator(seed=seed).uniform_full_int(
+          shape=shape, dtype=dtype)
+    with ops.device(test_util.gpu_device_name()):
+      gpu = random.Generator(seed=seed).uniform_full_int(
+          shape=shape, dtype=dtype)
+    self.assertAllEqual(cpu, gpu)
+
   @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
   def testUniformIsInRange(self, dtype):

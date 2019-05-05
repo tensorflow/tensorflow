@@ -85,6 +85,7 @@ void AddXrtSubmodule(py::module* module) {
 
   py::class_<XrtBuffer, std::shared_ptr<XrtBuffer>>(m, "XrtBuffer")
       .def_static("FromLiteral", &XrtBuffer::FromLiteral)
+      .def_static("MakeTuple", &XrtBuffer::MakeTuple)
       .def("ToPython",
            [](std::shared_ptr<XrtBuffer> buffer) -> xla::StatusOr<py::object> {
              auto literal = absl::make_unique<xla::Literal>();

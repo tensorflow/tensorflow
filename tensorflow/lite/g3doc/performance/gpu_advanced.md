@@ -57,7 +57,7 @@ precision:
 
 ## Basic Usage
 
-### Android
+### Android (Java)
 
 Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
 GpuDelegate through `Interpreter.Options`.
@@ -79,7 +79,50 @@ readFromOutputTensor(outputTensor);
 delegate.close();
 ```
 
-### iOS
+### Android (C/C++)
+
+For C/C++ usage of TensorFlow Lite GPU on Android, the GPU delegate can be
+created with `TfLiteGpuDelegateCreate()` and destroyed with
+`TfLiteGpuDelegateDelete()`.
+
+```c++
+// Set up interpreter.
+auto model = FlatBufferModel::BuildFromFile(model_path);
+if (!model) return false;
+ops::builtin::BuiltinOpResolver op_resolver;
+std::unique_ptr<Interpreter> interpreter;
+InterpreterBuilder(*model, op_resolver)(&interpreter);
+
+// NEW: Prepare GPU delegate.
+const TfLiteGpuDelegateOptions options = {
+  .metadata = NULL,
+  .compile_options = {
+    .precision_loss_allowed = 1,  // FP16
+    .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
+    .dynamic_batch_enabled = 0,   // Not fully functional yet
+  },
+};
+auto* delegate = TfLiteGpuDelegateCreate(&options);
+if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+
+// Run inference.
+WriteToInputTensor(interpreter->typed_input_tensor<float>(0));
+if (interpreter->Invoke() != kTfLiteOk) return false;
+ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
+
+// NEW: Clean up.
+TfLiteGpuDelegateDelete(delegate);
+```
+
+TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
+The delegate can be built, for example, using the following command:
+
+```sh
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_delegate                  # for static library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
+```
+
+### iOS (ObjC++)
 
 To use TensorFlow Lite on GPU, get the GPU delegate via `NewGpuDelegate()` and
 then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling

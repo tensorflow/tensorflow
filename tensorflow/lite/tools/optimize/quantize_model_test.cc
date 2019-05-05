@@ -934,6 +934,42 @@ TEST_F(QuantizeFCTest, VerifyFC) {
   EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
+class QuantizeCustomOpTest : public QuantizeModelTest {
+ protected:
+  QuantizeCustomOpTest() {
+    input_model_ = ReadModel(internal::kModelMixed);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_INT8, TensorType_INT8,
+                    /*allow_float=*/true, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+  const auto& subgraph = model_.subgraphs[0];
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+  // The original model reshape->custom->custom->squeeze.
+  ASSERT_EQ(float_graph->operators()->size(), 4);
+  // The resulting model should be:
+  // reshape->dequantize->custom->custom->quantize->squeeze.
+  ASSERT_EQ(subgraph->operators.size(), 6);
+  const std::vector<BuiltinOperator> op_codes = {
+      BuiltinOperator_RESHAPE,  BuiltinOperator_DEQUANTIZE,
+      BuiltinOperator_CUSTOM,   BuiltinOperator_CUSTOM,
+      BuiltinOperator_QUANTIZE, BuiltinOperator_SQUEEZE};
+  const std::vector<TensorType> op_input_types = {
+      TensorType_INT8,    TensorType_INT8,    TensorType_FLOAT32,
+      TensorType_FLOAT32, TensorType_FLOAT32, TensorType_INT8};
+  for (int i = 0; i < subgraph->operators.size(); ++i) {
+    OperatorT* op = subgraph->operators[i].get();
+    ASSERT_EQ(model_.operator_codes[op->opcode_index]->builtin_code,
+              op_codes[i]);
+    ASSERT_EQ(subgraph->tensors[op->inputs[0]]->type, op_input_types[i]);
+  }
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

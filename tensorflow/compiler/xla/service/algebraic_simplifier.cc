@@ -234,6 +234,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
+  Status HandleScatter(HloInstruction* scatter) override;
 
   Status HandleSelect(HloInstruction* select) override;
 
@@ -292,6 +293,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     transpose_dimensions.insert(transpose_dimensions.end(),
                                 contracting_dimensions.begin(),
                                 contracting_dimensions.end());
+    if (absl::c_is_sorted(transpose_dimensions)) {
+      return dot_operand;
+    }
     return MakeTransposeHlo(dot_operand, transpose_dimensions);
   }
 
@@ -307,10 +311,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     simplifier_->UpdateLayout(&shape);
     return computation_->AddInstruction(HloInstruction::CreateReduce(
         shape, hlo, zero, dims, AddReduce_computation));
-  }
-
-  HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
-    return AddReduce(hlo, std::vector<int64>{dim});
   }
 
   // Convenience method for replacing an instruction with a bitcast. If operand
@@ -381,6 +381,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
+
+  StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
+      HloInstruction* dot);
 
   HloComputation* GetOrCreateScalarAddComputation() {
     if (scalar_add_computation_) {
@@ -1205,17 +1208,25 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
   }
 
   HloInstruction* new_lhs =
-      dot->parent()->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::DropDegenerateDimensions(lhs_shape),
-          dot->mutable_operand(0)));
+      num_degenerate_lhs_dims > 0
+          ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::DropDegenerateDimensions(lhs_shape),
+                dot->mutable_operand(0)))
+          : dot->mutable_operand(0);
   HloInstruction* new_rhs =
-      dot->parent()->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::DropDegenerateDimensions(rhs_shape),
-          dot->mutable_operand(1)));
+      num_degenerate_rhs_dims > 0
+          ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::DropDegenerateDimensions(rhs_shape),
+                dot->mutable_operand(1)))
+          : dot->mutable_operand(1);
   TF_ASSIGN_OR_RETURN(auto new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
                                                dot->precision_config()));
-  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-      dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
+  if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
+  } else {
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
+  }
   return true;
 }
 
@@ -1491,6 +1502,211 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   return memoized_lookup;
 }
 
+// This function tries to transform
+//   dot(reshape(transpose(A)), Const) to
+//   dot(reshape(A), reshape(transpose(reshape(Const)))),
+// so that the reshape and transpose on the Const side can be constant folded.
+//
+// The basic idea is that since the accumulation in the dot operation is
+// associative, so as long as we permute the elements of the contracting
+// dimensions on both sides of the dot in the same way, the result of the
+// dot is not affected.
+StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
+    HloInstruction* dot) {
+  // This transformation assumes layout is not assigned yet.
+  if (options_.is_layout_sensitive()) {
+    return nullptr;
+  }
+
+  // Canonicalize dot(<constant>, rhs) to dot(rhs, <constant>) to make the
+  // remainder of this function easier.
+  auto dnums = dot->dot_dimension_numbers();
+  auto lhs_contracting_dims = dnums.lhs_contracting_dimensions();
+  auto rhs_contracting_dims = dnums.rhs_contracting_dimensions();
+  auto* lhs = dot->mutable_operand(0);
+  auto* rhs = dot->mutable_operand(1);
+  if (dot->operand(0)->IsConstant()) {
+    std::swap(lhs, rhs);
+    std::swap(lhs_contracting_dims, rhs_contracting_dims);
+  }
+
+  // Require single contracting dim to make the implementation easier to
+  // track contracting dims.
+  if (dnums.lhs_contracting_dimensions_size() != 1) {
+    return nullptr;
+  }
+
+  // Pattern match Dot(reshape(transpose(input), constant))
+  HloInstruction* reshape;
+  HloInstruction* transpose;
+  HloInstruction* input;
+  HloInstruction* constant;
+  if (!Match(lhs,
+             m::Reshape(&reshape, m::Transpose(&transpose, m::Op(&input)))) ||
+      !Match(rhs, m::Constant(&constant))) {
+    return nullptr;
+  }
+
+  // Check that reshape squishes some dims into one dim and that this one
+  // dim is the dot's lhs contracting dim. The size of unmodified_dims should
+  // be N - 1, where N is the rank of the reshape output. This means that the
+  // reshape squishes some dims into one dim. lhs contracting dim should not
+  // be in unmodified_dims. This means that the squishing target dim is the
+  // lhs contracting dim.
+  auto unmodified_dims = ShapeUtil::DimensionsUnmodifiedByReshape(
+      reshape->operand(0)->shape(), reshape->shape());
+  CHECK_EQ(lhs_contracting_dims.size(), 1);
+  if ((unmodified_dims.size() != reshape->shape().rank() - 1) ||
+      absl::c_any_of(unmodified_dims, [&](const std::pair<int64, int64>& p) {
+        return p.second == lhs_contracting_dims[0];
+      })) {
+    return nullptr;
+  }
+
+  // Virtually pull the reshape into the dot so the dot operates on the
+  // transpose, with "unsquished" lhs contracting dims.  The new contracting
+  // dims are all of the dims that are modified by the reshape -- that is, every
+  // dimension that's not in `unmodified_dims[i].first`.
+  //
+  // (We don't need to actually create a new dot instruction. We can just keep
+  // track of lhs and lhs_contracting_dims.)
+  absl::flat_hash_set<int64> unmodified_transpose_dims;
+  for (const auto& pair : unmodified_dims) {
+    unmodified_transpose_dims.insert(pair.first);
+  }
+  lhs_contracting_dims.Clear();
+  for (int64 i = 0; i < transpose->shape().dimensions_size(); ++i) {
+    if (!unmodified_transpose_dims.contains(i)) {
+      lhs_contracting_dims.Add(i);
+    }
+  }
+  lhs = lhs->mutable_operand(0);
+
+  // Check that the transpose only permutes the contracting dims.
+  const auto& transpose_dims = transpose->dimensions();
+  for (int64 i = 0; i < transpose_dims.size(); ++i) {
+    if (transpose_dims[i] != i &&
+        !absl::c_linear_search(lhs_contracting_dims, i)) {
+      return nullptr;
+    }
+  }
+  // Virtually pull the transpose into the dot. Now the dot is equivalent to
+  // a new dot with "permuted" lhs contracting dims.
+  std::vector<int64> permutation;
+  for (auto dim : lhs_contracting_dims) {
+    permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
+  }
+  auto new_lhs_contracting_dims =
+      ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
+  lhs_contracting_dims.Clear();
+  for (auto dim : new_lhs_contracting_dims) {
+    lhs_contracting_dims.Add(dim);
+  }
+  lhs = lhs->mutable_operand(0);
+
+  // All checks are passed at this point.
+  //
+  // Transform lhs. Remove the transpose and reshape by sorting the lhs
+  // contracting dims and squishing them into a single one. We don't actually
+  // squish the lhs_contracting_dims here because we still need the unsquished
+  // contracting dims to invert reshape and transpose.
+  absl::c_sort(lhs_contracting_dims);
+  lhs = computation_->AddInstruction(
+      HloInstruction::CreateReshape(reshape->shape(), lhs));
+
+  // Transform rhs. Say the input HLO is:
+  //
+  //   t0 = f32[2, 2, 3] parameter(0)
+  //   t1 = f32[2, 3, 2] transpose(t0) dimensions={0, 2, 1}
+  //   t2 = f32[2, 6] reshape(t1)
+  //   t3 = f32[6, 2] constant(...)
+  //   dot = f32[2, 2] dot(t2, t3) lhs_contracting_dims={1},
+  //                               rhs_contracting_dims={0}
+  //
+  // At this point in the function, we have decided that the second and third
+  // dims of t0 can be switched to remove the transpose, and we have
+  // "virtually decomposed" the input HLO to:
+  //
+  //   t0 = f32[2, 2, 3] parameter(0)
+  //   t2' = f32[2, 6] reshape(t0)
+  //   t3' = f32[6, 2] ops-to-be-filled ...
+  //   dot = f32[2, 2] dot(t2', t3') lhs_contracting_dims={1},
+  //                                 rhs_contracting_dims={0}
+  //
+  // The rest of this function is to fill in the ops of t3'. To do this, we
+  // unsquish the contracting dimensions in t3 and then apply the inverse of
+  // the transpose from t1.
+
+  // Invert reshape.
+  CHECK_EQ(rhs_contracting_dims.size(), 1);
+  auto rhs_unsquished_shape_dims = constant->shape().dimensions();
+  auto it = rhs_unsquished_shape_dims.erase(rhs_unsquished_shape_dims.begin() +
+                                            rhs_contracting_dims[0]);
+  for (auto dim : lhs_contracting_dims) {
+    it = rhs_unsquished_shape_dims.insert(it,
+                                          transpose->shape().dimensions(dim));
+    ++it;
+  }
+  HloInstruction* rhs_reshape =
+      computation_->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(constant->shape().element_type(),
+                               rhs_unsquished_shape_dims),
+          constant));
+  rhs = rhs_reshape;
+
+  // Rhs reshape "unsquishes" the single rhs contracting dim into multiple dims.
+  rhs_contracting_dims.Resize(lhs_contracting_dims.size(),
+                              rhs_contracting_dims[0]);
+  absl::c_iota(rhs_contracting_dims, rhs_contracting_dims[0]);
+
+  // Invert transpose. First compute the shape.
+  auto rhs_transpose_shape_dims = rhs_reshape->shape().dimensions();
+  it = rhs_transpose_shape_dims.erase(
+      rhs_transpose_shape_dims.begin() + rhs_contracting_dims[0],
+      rhs_transpose_shape_dims.begin() + rhs_contracting_dims[0] +
+          rhs_contracting_dims.size());
+  for (auto dim : lhs_contracting_dims) {
+    it = rhs_transpose_shape_dims.insert(it, input->shape().dimensions(dim));
+    ++it;
+  }
+  // Then compute the transpose dims.
+  std::vector<int64> rhs_transpose_dims(rhs_reshape->shape().rank());
+  absl::c_iota(rhs_transpose_dims, 0);
+  it = rhs_transpose_dims.erase(
+      rhs_transpose_dims.begin() + rhs_contracting_dims[0],
+      rhs_transpose_dims.begin() + rhs_contracting_dims[0] +
+          rhs_contracting_dims.size());
+  auto inverse_lhs_transpose_dims = InversePermutation(transpose_dims);
+  for (auto dim : lhs_contracting_dims) {
+    it = rhs_transpose_dims.insert(it, inverse_lhs_transpose_dims[dim] -
+                                           lhs_contracting_dims[0] +
+                                           rhs_contracting_dims[0]);
+    ++it;
+  }
+  HloInstruction* rhs_transpose =
+      computation_->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(constant->shape().element_type(),
+                               rhs_transpose_shape_dims),
+          rhs_reshape, rhs_transpose_dims));
+  rhs = rhs_transpose;
+
+  // Squish the multiple rhs contracting dims into a single one.
+  rhs = computation_->AddInstruction(
+      HloInstruction::CreateReshape(constant->shape(), rhs));
+
+  // If we virtually swapped lhs and rhs, we need to swap it back before
+  // creating new dot.
+  if (dot->operand(0)->IsConstant()) {
+    std::swap(lhs, rhs);
+  }
+
+  HloInstruction* new_dot =
+      computation_->AddInstruction(HloInstruction::CreateDot(
+          dot->shape(), lhs, rhs, dnums, dot->precision_config()));
+  return new_dot;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
@@ -1624,6 +1840,18 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return ReplaceInstruction(dot, new_dot);
   }
 
+  // Simplify dot(reshape(transpose(A)), Const) to:
+  // dot(reshape(A), reshape(transpose(reshape(Const)))), so that the reshape
+  // and transpose on the Const side can be constant folded.
+  TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_reorder_optimized,
+                      OptimizeDotOfReorderContractingDims(dot));
+  if (dot_of_reorder_optimized) {
+    VLOG(10) << " Replaced dot " << dot->ToString()
+             << " with new dot operation: "
+             << dot_of_reorder_optimized->ToString();
+    return ReplaceInstruction(dot, dot_of_reorder_optimized);
+  }
+
   TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_concat_optimized,
                       OptimizeDotOfConcat(dot));
   if (dot_of_concat_optimized) {
@@ -1704,9 +1932,9 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
             m::Multiply(m::Multiply(m::NonConstant(&a), m::Constant(&c1)),
                         m::Constant(&c2))) ||
       Match(multiply,
-            m::Multiply(m::Multiply(m::NonConstant(&a),
-                                    m::Broadcast(m::ConstantScalar(&c1))),
-                        m::Broadcast(m::ConstantScalar(&c2))))) {
+            m::Multiply(
+                m::Multiply(m::Op(&a), m::Broadcast(m::ConstantScalar(&c1))),
+                m::Broadcast(m::ConstantScalar(&c2))))) {
     TF_ASSIGN_OR_RETURN(auto* product_of_constants,
                         MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
     if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
@@ -3175,6 +3403,22 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   return Status::OK();
 }
 
+Status AlgebraicSimplifierVisitor::HandleScatter(HloInstruction* scatter) {
+  if (ShapeUtil::IsZeroElementArray(scatter->operand(2)->shape()) &&
+      ReplaceInstructionIfSameShape(scatter, scatter->mutable_operand(0))) {
+    return Status::OK();
+  }
+  if (ShapeUtil::IsZeroElementArray(scatter->operand(1)->shape()) &&
+      SameShape(scatter, scatter->operand(0)) &&
+      SameShape(scatter, scatter->operand(2))) {
+    return ReplaceWithNewInstruction(
+        scatter, HloInstruction::CreateMap(
+                     scatter->shape(),
+                     {scatter->mutable_operand(0), scatter->mutable_operand(2)},
+                     scatter->to_apply()));
+  }
+  return Status::OK();
+}
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64 dimension_to_sort = sort->dimensions(0);
@@ -3191,8 +3435,8 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
 }
 
 namespace {
-bool OnlyPermutesMoreThanOneDegenerateDim(const Shape& shape,
-                                          absl::Span<const int64> perm) {
+bool OnlyPermutesDegenerateDims(const Shape& shape,
+                                absl::Span<const int64> perm) {
   std::vector<int64> new_permutation;
   int64 degenerate_count = 0;
   for (int64 i = 0; i < perm.size(); ++i) {
@@ -3202,7 +3446,7 @@ bool OnlyPermutesMoreThanOneDegenerateDim(const Shape& shape,
       ++degenerate_count;
     }
   }
-  return degenerate_count > 1 && absl::c_is_sorted(new_permutation);
+  return degenerate_count > 0 && absl::c_is_sorted(new_permutation);
 }
 }  // namespace
 
@@ -3224,8 +3468,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 
   // Replace transpose with a reshape if more than one degenerate method is
   // permuted.
-  if (OnlyPermutesMoreThanOneDegenerateDim(transpose->shape(),
-                                           transpose->dimensions())) {
+  if (OnlyPermutesDegenerateDims(transpose->shape(), transpose->dimensions())) {
     return ReplaceWithNewInstruction(
         transpose, HloInstruction::CreateReshape(
                        transpose->shape(), transpose->mutable_operand(0)));

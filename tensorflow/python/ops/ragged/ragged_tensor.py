@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -241,16 +242,28 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                        "of the factory methods instead (e.g., "
                        "RaggedTensor.from_row_lengths())")
 
-    # Validate the arguments.
-    if not isinstance(values, (RaggedTensor, ops.Tensor)):
-      raise TypeError("values must be a Tensor or RaggedTensor.")
-    if not isinstance(row_splits, ops.Tensor):
-      raise TypeError("Row-partitioning argument must be a Tensor.")
-    if row_splits.dtype not in (dtypes.int32, dtypes.int64):
-      raise ValueError("Row-partitioning argument must be int32 or int64")
-    values.shape.with_rank_at_least(1)
+    is_tensor_spec = isinstance(row_splits, tensor_spec.TensorSpec)
+    if is_tensor_spec:
+      if not (isinstance(values, tensor_spec.TensorSpec) or
+              (isinstance(values, RaggedTensor) and
+               isinstance(values.row_splits, tensor_spec.TensorSpec))):
+        raise TypeError("Expected values to be a TensorSpec, got %r" % values)
+    else:
+      # Validate the arguments.
+      if not isinstance(row_splits, ops.Tensor):
+        raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
+                        row_splits)
+      if not isinstance(values, (RaggedTensor, ops.Tensor)):
+        raise TypeError("values must be a Tensor or RaggedTensor, got %r" %
+                        values)
+      if row_splits.dtype not in (dtypes.int32, dtypes.int64):
+        raise ValueError("Row-partitioning argument must be int32 or int64")
+
+    # Validate shapes & dtypes.
     row_splits.shape.assert_has_rank(1)
-    row_splits.set_shape([None])
+    values.shape.with_rank_at_least(1)
+    if not is_tensor_spec:
+      row_splits.set_shape([None])
     if isinstance(values, RaggedTensor):
       assert row_splits.dtype == values.row_splits.dtype
 
@@ -431,6 +444,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     if isinstance(row_splits, (list, tuple)) and not row_splits:
       raise ValueError("row_splits tensor may not be empty.")
+    if isinstance(row_splits, tensor_spec.TensorSpec):
+      return cls(values=values, row_splits=row_splits, internal=True)
 
     with ops.name_scope(name, "RaggedFromRowSplits", [values, row_splits]):
       values, row_splits = cls._convert_values_and_row_partition(
@@ -1627,6 +1642,105 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                                         result.sparse_values,
                                         result.sparse_dense_shape)
 
+  @classmethod
+  def _from_variant(cls,
+                    variant,
+                    dtype,
+                    output_ragged_rank,
+                    input_ragged_rank=None,
+                    name=None):
+    """Converts a `variant` Tensor into a `RaggedTensor`.
+
+    The input `variant` could be a scalar, meaning it encodes a single
+    `RaggedTensor` with ragged_rank `output_ragged_rank`. Alternatively it could
+    have an arbitrary rank, in which case each element is decoded into a
+    `RaggedTensor` with ragged_rank `input_ragged_rank` and these are then
+    stacked according to the input shape to output a single `RaggedTensor`
+    with ragged_rank `output_ragged_rank`. If `input_ragged_rank` is not
+    provided, it is inferred dynamically as `output_ragged_rank` -
+    `rank(variant)`. If `input_ragged_rank` is provided, the following must be
+    true: `output_ragged_rank` = `input_ragged_rank` + `rank(variant)`.
+
+    Example:
+
+    ```python
+    >>> rt = ragged.constant([[0], [1, 2]])
+    >>> et = rt._to_variant()
+    >>> stacked_et = ragged.stack([et, et])
+    >>> ragged.RaggedTensor._from_variant(  # scalar input.
+          et, dtype=tf.int32, output_ragged_rank=1).eval().tolist()
+    [[0], [1, 2]]
+    >>> ragged.RaggedTensor._from_variant(  # batched input.
+          stacked_et, dtype=tf.int32, output_ragged_rank=2).eval().tolist()
+    [[[0], [1, 2]], [[0], [1, 2]]]
+    ```
+
+    Args:
+      variant: A `variant` Tensor representing an encoded (possibly
+        nested-batched) `RaggedTensor`.
+      dtype: The dtype of the encoded `RaggedTensor`.
+      output_ragged_rank: The expected ragged rank of the output `RaggedTensor`.
+      input_ragged_rank: The ragged rank of each encoded `RaggedTensor`. This
+        is optional and inferred dynamically if not provided.
+      name: A name prefix for the returned tensors (optional).
+
+    Returns:
+      A `RaggedTensor` of dtype `dtype` and ragged rank `output_ragged_rank`.
+
+    Raises:
+      ValueError: If the input rank is known, `input_ragged_rank` is provided
+          and `output_ragged_rank` = `input_ragged_rank` + `rank(variant)` does
+          not hold.
+    """
+    variant = ops.convert_to_tensor(
+        variant, name="variant", dtype=dtypes.variant)
+    if (variant.shape.ndims is not None and input_ragged_rank is not None and
+        output_ragged_rank != input_ragged_rank + variant.shape.ndims):
+      raise ValueError(
+          "output_ragged_rank must be equal to input_ragged_rank +"
+          "variant.shape.ndims, found variant.shape.ndims: %d, "
+          "input_ragged_rank: %d, output_ragged_rank: %d" %
+          (variant.shape.ndims, input_ragged_rank, output_ragged_rank))
+    input_ragged_rank = -1 if input_ragged_rank is None else input_ragged_rank
+    with ops.name_scope(
+        name, "RaggedFromVariant",
+        [variant, dtype, input_ragged_rank, output_ragged_rank]):
+      result = gen_ragged_conversion_ops.ragged_tensor_from_variant(
+          variant, input_ragged_rank, output_ragged_rank, dtype, dtypes.int64,
+          name)
+      return cls.from_nested_row_splits(
+          result.output_dense_values,
+          result.output_nested_splits,
+          validate=False)
+
+  def _to_variant(self, batched_input=False, name=None):
+    """Converts this `RaggedTensor` into a `variant` Tensor.
+
+    If `batched_input` is `True`, then the `RaggedTensor` is unbatched along the
+    zero-th dimension, each component `RaggedTensor` is encoded into a scalar
+    `variant` Tensor, and these are stacked to return a 1-D `variant` Tensor.
+    If `batched_input` is `False`, then the `RaggedTensor` is encoded as is and
+    a scalar `variant` Tensor is returned.
+
+    Example:
+    >>> rt = ragged.constant([[[0]], [[1]], [[2]]])
+    >>> rt._to_variant().shape.as_list()
+    []
+    >>> rt._to_variant(batched_input=True).shape.as_list()
+    [3]
+
+    Args:
+      batched_input: If `True`, the `RaggedTensor` is unbatched and converted to
+        a `variant` vector. Set to `False` by default.
+      name: A name prefix for the returned tensors (optional).
+
+    Returns:
+      A `variant` Tensor that encodes this `RaggedTensor`.
+    """
+    with ops.name_scope(name, "RaggedToVariant", [self, batched_input]):
+      return gen_ragged_conversion_ops.ragged_tensor_to_variant(
+          self.nested_row_splits, self.flat_values, batched_input, name)
+
   #=============================================================================
   # String Encoding
   #=============================================================================
@@ -1748,6 +1862,9 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   @property
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
+
+  def consumers(self):
+    return self._consumers()
 
 
 def is_ragged(value):

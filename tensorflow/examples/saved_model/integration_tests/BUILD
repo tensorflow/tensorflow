@@ -62,6 +62,7 @@ py_test(
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
+        "no_pip",  # b/131697937
     ],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -34,31 +34,9 @@ IntroduceFloatingPointJitterPassFlags* jitter_flags;
 std::vector<Flag>* flag_list;
 std::once_flag flags_init;
 
-bool SetterForXlaAutoJitFlag(const string& value) {
-  int32 opt_level;
-  if (absl::SimpleAtoi(value, &opt_level)) {
-    mark_for_compilation_flags->xla_auto_jit_flag
-        .optimization_level_single_gpu = opt_level;
-    mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general =
-        opt_level;
-    return true;
-  }
-
-  absl::string_view value_sv(value);
-  if (!absl::ConsumePrefix(&value_sv, "single-gpu(") ||
-      !absl::ConsumeSuffix(&value_sv, ")") ||
-      !absl::SimpleAtoi(value_sv, &opt_level)) {
-    return false;
-  }
-
-  mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
-      opt_level;
-  return true;
-}
-
 void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   std::vector<Flag> new_flags = {
-      Flag("tf_xla_auto_jit", SetterForXlaAutoJitFlag, "0",
+      Flag("tf_xla_auto_jit", SetXlaAutoJitFlagFromFlagString, "0",
            "Control compilation of operators into XLA computations on CPU and "
            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
            "things very likely to be improved; 2 = on for everything.  "
@@ -155,9 +133,29 @@ void AllocateAndParseFlags() {
 
 }  // namespace
 
-const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags() {
+bool SetXlaAutoJitFlagFromFlagString(const string& value) {
+  int32 opt_level;
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  if (absl::SimpleAtoi(value, &opt_level)) {
+    flags->xla_auto_jit_flag.optimization_level_single_gpu = opt_level;
+    flags->xla_auto_jit_flag.optimization_level_general = opt_level;
+    return true;
+  }
+
+  absl::string_view value_sv(value);
+  if (!absl::ConsumePrefix(&value_sv, "single-gpu(") ||
+      !absl::ConsumeSuffix(&value_sv, ")") ||
+      !absl::SimpleAtoi(value_sv, &opt_level)) {
+    return false;
+  }
+
+  flags->xla_auto_jit_flag.optimization_level_single_gpu = opt_level;
+  return true;
+}
+
+BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
-  return *build_ops_flags;
+  return build_ops_flags;
 }
 
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {

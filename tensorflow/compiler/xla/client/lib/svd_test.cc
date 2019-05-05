@@ -77,11 +77,10 @@ class SVDTest : public ClientLibraryTestBase {
     auto u = result.u;
     auto d = result.d;
 
-    auto zero = Zero(builder, S32);
     if (m > n) {
-      u = DynamicSliceInMinorDims(u, {zero, zero}, {m, n});
+      u = SliceInMinorDims(u, {0, 0}, {m, n});
     } else if (m < n) {
-      v = DynamicSliceInMinorDims(v, {zero, zero}, {n, m});
+      v = SliceInMinorDims(v, {0, 0}, {n, m});
     }
 
     int num_dims = u_shape.rank();
@@ -90,25 +89,6 @@ class SVDTest : public ClientLibraryTestBase {
     broadcast_dims[num_dims - 2] = num_dims - 1;
     return BatchDot(Mul(u, d, broadcast_dims), TransposeInMinorDims(v),
                     PrecisionConfig::HIGHEST);
-  }
-
-  Array3D<float> ExtractTriangularMatrix(const Array3D<float>& matrix,
-                                         bool lower) {
-    Array3D<float> result(matrix);
-    for (int i = 0; i < result.n1(); ++i) {
-      for (int j = 0; j < result.n2(); ++j) {
-        if (lower) {
-          for (int k = j + 1; k < result.n3(); ++k) {
-            result({i, j, k}) = 0.0;
-          }
-        } else {
-          for (int k = 0; k < j; ++k) {
-            result({i, j, k}) = 0.0;
-          }
-        }
-      }
-    }
-    return result;
   }
 
   XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {

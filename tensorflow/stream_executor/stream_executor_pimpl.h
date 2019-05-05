@@ -23,13 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -619,13 +619,13 @@ class StreamExecutor {
   void SubmitTrace(TraceCallT trace_call, ArgsT&&... args);
 
   // Reader/writer lock for class-static StreamExecutor members.
-  static mutex static_mu_;
+  static absl::Mutex static_mu_;
 
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
   // can acquire the lock on their first (mutating) call as well.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Reference to the platform that created this executor.
   const Platform *platform_;

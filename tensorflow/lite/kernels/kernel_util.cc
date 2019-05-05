@@ -110,11 +110,14 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               TfLiteTensor* output,
                                               double* multiplier) {
   const double input_product_scale = input->params.scale * filter->params.scale;
-  const double bias_scale = bias->params.scale;
   // TODO(ahentz): The following conditions must be guaranteed by the training
   // pipeline.
-  TF_LITE_ENSURE(context, std::abs(input_product_scale - bias_scale) <=
-                              1e-6 * std::min(input_product_scale, bias_scale));
+  if (bias) {
+    const double bias_scale = bias->params.scale;
+    TF_LITE_ENSURE(context,
+                   std::abs(input_product_scale - bias_scale) <=
+                       1e-6 * std::min(input_product_scale, bias_scale));
+  }
   return GetQuantizedConvolutionMultipler(context, input, filter, output,
                                           multiplier);
 }

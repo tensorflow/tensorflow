@@ -89,6 +89,28 @@ class TfExportAwareDocGeneratorVisitor(
     return (canonical_score,) + scores
 
 
+def _hide_layer_and_module_methods():
+  """Hide methods and properties defined in the base classes of keras layers."""
+  # __dict__ only sees attributes defined in *this* class, not on parent classes
+  module_contents = list(tf.Module.__dict__.items())
+  layer_contents = list(tf.keras.layers.Layer.__dict__.items())
+
+  for name, obj in module_contents + layer_contents:
+    if name == "__init__":
+      continue
+
+    if isinstance(obj, property):
+      obj = obj.fget
+
+    if isinstance(obj, (staticmethod, classmethod)):
+      obj = obj.__func__
+
+    try:
+      doc_controls.do_not_doc_in_subclasses(obj)
+    except AttributeError:
+      pass
+
+
 def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
@@ -97,6 +119,8 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  _hide_layer_and_module_methods()
+
   try:
     doc_controls.do_not_generate_docs(tf.tools)
   except AttributeError:
@@ -105,16 +129,16 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   base_dir = path.dirname(tf.__file__)
   base_dirs = (
       base_dir,
-      path.normpath(path.join(base_dir, "../../tensorflow")),
+      # External packages base directories,
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )
 
   code_url_prefixes = (
       code_url_prefix,
-      # External packages source repositories
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard"
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator"
+      # External packages source repositories,
+      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
   doc_generator = generate_lib.DocGenerator(

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import enum  # pylint: disable=g-bad-import-order
 import functools
 import os
@@ -670,7 +671,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -687,7 +688,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -734,7 +735,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -836,7 +837,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -887,7 +888,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -1993,7 +1994,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2017,7 +2018,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2071,7 +2072,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2176,7 +2177,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2228,7 +2229,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -3138,3 +3139,14 @@ def report_uninitialized_variables(var_list=None,
 ops.register_tensor_conversion_function(
     PartitionedVariable,
     PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
+
+
+class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
+  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
+  pass
+
+
+@six.add_metaclass(AbstractVariableMetaclass)
+class AbstractVariable(Variable):
+  """`Variable`, but abstract."""
+  pass

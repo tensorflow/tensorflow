@@ -100,11 +100,16 @@ class Status {
 // Helper class to manage multiple child status values.
 class StatusGroup {
  public:
-  // Return a merged status with combined child status messages.
-  //
-  // The status code returned is OK if all children were successful, otherwise
-  // the first non-OK child status code is reported.
-  Status as_status() const;
+  // Utility function to mark a Status as derived. By marking derived status,
+  // Derived status messages are ignored when reporting errors to end users.
+  static Status MakeDerived(const Status& s);
+  static bool IsDerived(const Status& s);
+
+  // Return a merged status with combined child status messages with a summary.
+  Status as_summary_status() const;
+  // Return a merged status with combined child status messages with
+  // concatenation.
+  Status as_concatenated_status() const;
 
   bool ok() const { return ok_; }
 

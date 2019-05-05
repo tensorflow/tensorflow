@@ -163,7 +163,7 @@ class BatchNormalizationBase(Layer):
       self.axis = axis
     else:
       raise TypeError('axis must be int or list, type given: %s'
-                      % type(self.axis))
+                      % type(axis))
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -424,8 +424,7 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum):
-    with ops.name_scope(None, 'AssignMovingAvg',
-                        [variable, value, momentum]) as scope:
+    with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
@@ -651,10 +650,11 @@ class BatchNormalizationBase(Layer):
 
       mean = tf_utils.smart_cond(training,
                                  lambda: mean,
-                                 lambda: moving_mean)
-      variance = tf_utils.smart_cond(training,
-                                     lambda: variance,
-                                     lambda: moving_variance)
+                                 lambda: ops.convert_to_tensor(moving_mean))
+      variance = tf_utils.smart_cond(
+          training,
+          lambda: variance,
+          lambda: ops.convert_to_tensor(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are

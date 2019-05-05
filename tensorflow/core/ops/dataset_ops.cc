@@ -281,6 +281,7 @@ REGISTER_OP("ShardDataset")
     .Input("num_shards: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("require_non_empty: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {

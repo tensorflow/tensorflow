@@ -117,7 +117,7 @@ py_library(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -194,6 +194,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
@@ -1328,9 +1329,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "topology_test",
+    name = "network_test",
     size = "medium",
-    srcs = ["engine/topology_test.py"],
+    srcs = ["engine/network_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

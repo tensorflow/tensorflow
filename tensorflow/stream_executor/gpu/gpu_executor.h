@@ -26,12 +26,12 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -287,7 +287,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Guards the on-disk-module mapping.
-  mutex disk_modules_mu_;
+  absl::Mutex disk_modules_mu_;
 
   // Mapping from filename to GPUModuleHandle, if it was already retrieved.
   // Multiple GPUFunctionHandle are usually obtained from a single
@@ -296,7 +296,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::map<string, GpuModuleHandle> disk_modules_ GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.
-  mutex in_memory_modules_mu_;
+  absl::Mutex in_memory_modules_mu_;
 
   std::map<const char*, GpuModuleHandle> in_memory_modules_
       GUARDED_BY(in_memory_modules_mu_);
@@ -309,7 +309,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       gpu_binary_to_module_ GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
-  mutex launched_kernels_mu_;
+  absl::Mutex launched_kernels_mu_;
 
   // Keeps track of the set of launched kernels. Currently used to suppress the
   // occupancy check on subsequent launches.

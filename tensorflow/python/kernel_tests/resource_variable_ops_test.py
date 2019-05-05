@@ -1067,9 +1067,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with copy_to_graph.as_default():  # Intentionally testing v1 behavior
       copied = resource_variable_ops.copy_to_graph_uninitialized(v)
       self.assertEqual(v.name, copied.name)
-      with self.session(copy_to_graph) as session:
-        with self.assertRaises(errors.InvalidArgumentError):
-          session.run(copied.initializer)
+      self.assertIsNone(copied.initializer)
 
   def create_variant_shape_and_type_data(self):
     variant_shape_and_type_data = (

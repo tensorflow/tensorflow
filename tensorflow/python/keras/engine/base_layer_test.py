@@ -392,6 +392,22 @@ class BaseLayerTest(keras_parameterized.TestCase):
         [l.name for l in model.layers],
         ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
 
+  def test_add_trainable_weight_on_frozen_layer(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=(), trainable=True)
+
+      def call(self, inputs):
+        return self.w * inputs
+
+    layer = TestLayer()
+    layer.trainable = False
+    layer.build(None)
+    layer.trainable = True
+    self.assertListEqual(layer.trainable_weights, [layer.w])
+
 
 class SymbolicSupportTest(test.TestCase):
 
@@ -635,13 +651,20 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
 
   def test_name_scope_sublayer(self):
+
+    class NameScopeTracker(keras.layers.Layer):
+
+      def call(self, inputs):
+        self.active_name_scope = ops.get_name_scope()
+        return inputs
+
     x = keras.backend.placeholder(shape=(10, 10))
-    layer = keras.layers.Dense(
-        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
-    y = layer(x)
+    sublayer = NameScopeTracker(name='Sublayer')
+    layer = keras.layers.Dense(10, activation=sublayer, name='MyName2')
+    layer(x)
     self.assertEqual(layer.bias.name, 'MyName2/bias:0')
     self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
-    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+    self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
     x = ops.convert_to_tensor(np.ones((10, 10)))
@@ -763,7 +786,8 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
 
       def call(self, inputs, training=None):
         if training:
-          self.add_update(self.counter.assign_add(math_ops.reduce_sum(inputs)))
+          z = math_ops.reduce_sum(inputs)
+          self.add_update(lambda: self.counter.assign_add(z))
         return inputs
 
       def compute_output_shape(self, input_shape):
@@ -781,7 +805,9 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       # TODO(fchollet): support the same workflow in graph mode.
       with self.assertRaisesRegexp(RuntimeError,
                                    '`add_update` in a control flow branch'):
-        layer = MyLayer()(keras.Input((3,)))
+        layer = MyLayer()
+        layer(keras.Input((3,)))
+        _ = layer.updates
 
   @parameterized.named_parameters(('eager', True),
                                   ('symbolic', False))
