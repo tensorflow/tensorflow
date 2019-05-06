@@ -836,9 +836,9 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
   Args:
     op: The BatchNormOp for which we need to compute gradients.
     version: Integer indicating which version to use of the fused batch
-             norm gradient.
+      norm gradient.
     *grad: An argument list for tensors of gradients wrt the outputs
-           with grad[0] as grad_y.
+      with grad[0] as grad_y.
 
   Returns:
     grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *

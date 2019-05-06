@@ -3299,13 +3299,11 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   float zero = 0.0;
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-#if CUDNN_VERSION >= 7402
-  cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
-#endif
   DeviceMemory<uint8> workspace;
   DeviceMemory<uint8> reserve_space;
-  if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
 #if CUDNN_VERSION >= 7402
+  const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+  if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(workspace,
                         CreateBatchNormForwardWorkspace(
                             stream, cudnn, mode, bn_ops, x_descriptor,
@@ -3321,8 +3319,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
                           reserve_space_allocator->AllocateBytes(
                               stream, reserve_space_size_in_bytes));
     }
-#endif
   }
+#endif
 
   if (is_training) {
     CHECK_EQ(batch_mean->is_null(), batch_var->is_null())
@@ -3456,7 +3454,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7402
   if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
-    cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+    const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
                         CreateBatchNormBackwardWorkspace(
                             stream, cudnn, mode, bn_ops, x_descriptor,
