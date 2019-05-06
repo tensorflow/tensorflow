@@ -3163,9 +3163,8 @@ Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
       return errors::InvalidArgument("Value at index ", i,
                                      " is outside the range of int32");
     }
+    dst[i] = static_cast<int32>(src[i]);
   }
-  std::transform(src, src + tensor.NumElements(), dst,
-                 [](const CType& val) { return static_cast<int32>(val); });
   return Status::OK();
 }
 
