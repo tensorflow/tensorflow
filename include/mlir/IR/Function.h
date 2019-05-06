@@ -157,6 +157,9 @@ public:
   /// Return all of the attributes on this function.
   ArrayRef<NamedAttribute> getAttrs() { return attrs.getAttrs(); }
 
+  /// Return the internal attribute list on this function.
+  NamedAttributeList &getAttrList() { return attrs; }
+
   /// Return all of the attributes for the argument at 'index'.
   ArrayRef<NamedAttribute> getArgAttrs(unsigned index) {
     assert(index < getNumArguments() && "invalid argument number");
@@ -165,13 +168,13 @@ public:
 
   /// Set the attributes held by this function.
   void setAttrs(ArrayRef<NamedAttribute> attributes) {
-    attrs.setAttrs(getContext(), attributes);
+    attrs.setAttrs(attributes);
   }
 
   /// Set the attributes held by the argument at 'index'.
   void setArgAttrs(unsigned index, ArrayRef<NamedAttribute> attributes) {
     assert(index < getNumArguments() && "invalid argument number");
-    argAttrs[index].setAttrs(getContext(), attributes);
+    argAttrs[index].setAttrs(attributes);
   }
 
   /// Return all argument attributes of this function.
@@ -212,15 +215,13 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute value) {
-    attrs.set(getContext(), name, value);
-  }
+  void setAttr(Identifier name, Attribute value) { attrs.set(name, value); }
   void setAttr(StringRef name, Attribute value) {
     setAttr(Identifier::get(name, getContext()), value);
   }
   void setArgAttr(unsigned index, Identifier name, Attribute value) {
     assert(index < getNumArguments() && "invalid argument number");
-    argAttrs[index].set(getContext(), name, value);
+    argAttrs[index].set(name, value);
   }
   void setArgAttr(unsigned index, StringRef name, Attribute value) {
     setArgAttr(index, Identifier::get(name, getContext()), value);
@@ -229,12 +230,12 @@ public:
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   NamedAttributeList::RemoveResult removeAttr(Identifier name) {
-    return attrs.remove(getContext(), name);
+    return attrs.remove(name);
   }
   NamedAttributeList::RemoveResult removeArgAttr(unsigned index,
                                                  Identifier name) {
     assert(index < getNumArguments() && "invalid argument number");
-    return attrs.remove(getContext(), name);
+    return attrs.remove(name);
   }
 
   //===--------------------------------------------------------------------===//

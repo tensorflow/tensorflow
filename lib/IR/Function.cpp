@@ -30,15 +30,13 @@ using namespace mlir;
 Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
-      type(type), attrs(type.getContext(), attrs),
-      argAttrs(type.getNumInputs()), body(this) {}
+      type(type), attrs(attrs), argAttrs(type.getNumInputs()), body(this) {}
 
 Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs,
                    ArrayRef<NamedAttributeList> argAttrs)
     : name(Identifier::get(name, type.getContext())), location(location),
-      type(type), attrs(type.getContext(), attrs), argAttrs(argAttrs),
-      body(this) {}
+      type(type), attrs(attrs), argAttrs(argAttrs), body(this) {}
 
 Function::~Function() {
   // Clean up function attributes referring to this function.

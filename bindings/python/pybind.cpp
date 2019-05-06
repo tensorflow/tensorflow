@@ -571,7 +571,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
       inAttrs.emplace_back(Identifier::get(named.name, &mlirContext),
                            mlir::Attribute::getFromOpaquePointer(
                                reinterpret_cast<const void *>(named.value)));
-    inputAttrs.emplace_back(&mlirContext, inAttrs);
+    inputAttrs.emplace_back(inAttrs);
   }
 
   // Create the function itself.
@@ -634,7 +634,7 @@ PYBIND11_MODULE(pybind, m) {
   });
   m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
     auto *function = reinterpret_cast<Function *>(func.function);
-    auto attr = FunctionAttr::get(function, function->getContext());
+    auto attr = FunctionAttr::get(function);
     return ValueHandle::create<ConstantOp>(function->getType(), attr);
   });
   m.def("appendTo", [](const PythonBlockHandle &handle) {

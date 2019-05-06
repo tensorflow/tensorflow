@@ -290,25 +290,37 @@ void mlir::createAffineComputationSlice(
   }
 }
 
-void mlir::remapFunctionAttrs(
-    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
-  for (auto attr : op.getAttrs()) {
+static void
+remapFunctionAttrs(NamedAttributeList &attrs,
+                   const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+  for (auto attr : attrs.getAttrs()) {
     // Do the remapping, if we got the same thing back, then it must contain
     // functions that aren't getting remapped.
-    auto newVal =
-        attr.second.remapFunctionAttrs(remappingTable, op.getContext());
+    auto newVal = attr.second.remapFunctionAttrs(remappingTable);
     if (newVal == attr.second)
       continue;
 
     // Otherwise, replace the existing attribute with the new one.  It is safe
     // to mutate the attribute list while we walk it because underlying
     // attribute lists are uniqued and immortal.
-    op.setAttr(attr.first, newVal);
+    attrs.set(attr.first, newVal);
   }
 }
 
 void mlir::remapFunctionAttrs(
+    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+  ::remapFunctionAttrs(op.getAttrList(), remappingTable);
+}
+
+void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+
+  // Remap the attributes of the function.
+  ::remapFunctionAttrs(fn.getAttrList(), remappingTable);
+
+  // Remap the attributes of the arguments of this function.
+  for (auto &attrList : fn.getAllArgAttrs())
+    ::remapFunctionAttrs(attrList, remappingTable);
 
   // Look at all operations in a Function.
   fn.walk([&](Operation *op) { remapFunctionAttrs(*op, remappingTable); });
@@ -316,7 +328,6 @@ void mlir::remapFunctionAttrs(
 
 void mlir::remapFunctionAttrs(
     Module &module, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
-  for (auto &fn : module) {
+  for (auto &fn : module)
     remapFunctionAttrs(fn, remappingTable);
-  }
 }

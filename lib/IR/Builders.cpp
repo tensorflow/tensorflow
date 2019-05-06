@@ -167,12 +167,10 @@ IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
   return IntegerSetAttr::get(set);
 }
 
-TypeAttr Builder::getTypeAttr(Type type) {
-  return TypeAttr::get(type, context);
-}
+TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
 
 FunctionAttr Builder::getFunctionAttr(Function *value) {
-  return FunctionAttr::get(value, context);
+  return FunctionAttr::get(value);
 }
 
 ElementsAttr Builder::getSplatElementsAttr(VectorOrTensorType type,

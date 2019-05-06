@@ -102,7 +102,7 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList, MLIRContext *context) {
   return create(location, name, operands, resultTypes,
-                NamedAttributeList(context, attributes), successors, numRegions,
+                NamedAttributeList(attributes), successors, numRegions,
                 resizableOperandList, context);
 }
 

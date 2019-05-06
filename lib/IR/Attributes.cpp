@@ -67,6 +67,9 @@ Attribute::Kind Attribute::getKind() const {
 /// Return the type of this attribute.
 Type Attribute::getType() const { return attr->getType(); }
 
+/// Return the context this attribute belongs to.
+MLIRContext *Attribute::getContext() const { return getType().getContext(); }
+
 bool Attribute::isOrContainsFunction() const {
   return attr->isOrContainsFunctionCache();
 }
@@ -75,8 +78,7 @@ bool Attribute::isOrContainsFunction() const {
 // table, walk it and rewrite it to use the mapped function.  If it doesn't
 // refer to anything in the table, then it is returned unmodified.
 Attribute Attribute::remapFunctionAttrs(
-    const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable,
-    MLIRContext *context) const {
+    const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable) const {
   // Most attributes are trivially unrelated to function attributes, skip them
   // rapidly.
   if (!isOrContainsFunction())
@@ -93,7 +95,7 @@ Attribute Attribute::remapFunctionAttrs(
   SmallVector<Attribute, 8> remappedElts;
   bool anyChange = false;
   for (auto elt : arrayAttr.getValue()) {
-    auto newElt = elt.remapFunctionAttrs(remappingTable, context);
+    auto newElt = elt.remapFunctionAttrs(remappingTable);
     remappedElts.push_back(newElt);
     anyChange |= (elt != newElt);
   }
@@ -101,7 +103,7 @@ Attribute Attribute::remapFunctionAttrs(
   if (!anyChange)
     return *this;
 
-  return ArrayAttr::get(remappedElts, context);
+  return ArrayAttr::get(remappedElts, getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -262,8 +264,9 @@ IntegerSet IntegerSetAttr::getValue() const {
 // TypeAttr
 //===----------------------------------------------------------------------===//
 
-TypeAttr TypeAttr::get(Type value, MLIRContext *context) {
-  return AttributeUniquer::get<TypeAttr>(context, Attribute::Kind::Type, value);
+TypeAttr TypeAttr::get(Type value) {
+  return AttributeUniquer::get<TypeAttr>(value.getContext(),
+                                         Attribute::Kind::Type, value);
 }
 
 Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
@@ -272,10 +275,10 @@ Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 // FunctionAttr
 //===----------------------------------------------------------------------===//
 
-FunctionAttr FunctionAttr::get(Function *value, MLIRContext *context) {
+FunctionAttr FunctionAttr::get(Function *value) {
   assert(value && "Cannot get FunctionAttr for a null function");
-  return AttributeUniquer::get<FunctionAttr>(context, Attribute::Kind::Function,
-                                             value);
+  return AttributeUniquer::get<FunctionAttr>(value->getContext(),
+                                             Attribute::Kind::Function, value);
 }
 
 /// This function is used by the internals of the Function class to null out
@@ -737,9 +740,8 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 // NamedAttributeList
 //===----------------------------------------------------------------------===//
 
-NamedAttributeList::NamedAttributeList(MLIRContext *context,
-                                       ArrayRef<NamedAttribute> attributes) {
-  setAttrs(context, attributes);
+NamedAttributeList::NamedAttributeList(ArrayRef<NamedAttribute> attributes) {
+  setAttrs(attributes);
 }
 
 /// Return all of the attributes on this operation.
@@ -748,8 +750,7 @@ ArrayRef<NamedAttribute> NamedAttributeList::getAttrs() const {
 }
 
 /// Replace the held attributes with ones provided in 'newAttrs'.
-void NamedAttributeList::setAttrs(MLIRContext *context,
-                                  ArrayRef<NamedAttribute> attributes) {
+void NamedAttributeList::setAttrs(ArrayRef<NamedAttribute> attributes) {
   // Don't create an attribute list if there are no attributes.
   if (attributes.empty()) {
     attrs = nullptr;
@@ -759,7 +760,7 @@ void NamedAttributeList::setAttrs(MLIRContext *context,
   assert(llvm::all_of(attributes,
                       [](const NamedAttribute &attr) { return attr.second; }) &&
          "attributes cannot have null entries");
-  attrs = AttributeListStorage::get(attributes, context);
+  attrs = AttributeListStorage::get(attributes);
 }
 
 /// Return the specified attribute if present, null otherwise.
@@ -778,8 +779,7 @@ Attribute NamedAttributeList::get(Identifier name) const {
 
 /// If the an attribute exists with the specified name, change it to the new
 /// value.  Otherwise, add a new attribute with the specified name/value.
-void NamedAttributeList::set(MLIRContext *context, Identifier name,
-                             Attribute value) {
+void NamedAttributeList::set(Identifier name, Attribute value) {
   assert(value && "attributes may never be null");
 
   // If we already have this attribute, replace it.
@@ -788,27 +788,32 @@ void NamedAttributeList::set(MLIRContext *context, Identifier name,
   for (auto &elt : newAttrs)
     if (elt.first == name) {
       elt.second = value;
-      attrs = AttributeListStorage::get(newAttrs, context);
+      attrs = AttributeListStorage::get(newAttrs);
       return;
     }
 
   // Otherwise, add it.
   newAttrs.push_back({name, value});
-  attrs = AttributeListStorage::get(newAttrs, context);
+  attrs = AttributeListStorage::get(newAttrs);
 }
 
 /// Remove the attribute with the specified name if it exists.  The return
 /// value indicates whether the attribute was present or not.
-auto NamedAttributeList::remove(MLIRContext *context, Identifier name)
-    -> RemoveResult {
+auto NamedAttributeList::remove(Identifier name) -> RemoveResult {
   auto origAttrs = getAttrs();
   for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
     if (origAttrs[i].first == name) {
+      // Handle the simple case of removing the only attribute in the list.
+      if (e == 1) {
+        attrs = nullptr;
+        return RemoveResult::Removed;
+      }
+
       SmallVector<NamedAttribute, 8> newAttrs;
       newAttrs.reserve(origAttrs.size() - 1);
       newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
       newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
-      attrs = AttributeListStorage::get(newAttrs, context);
+      attrs = AttributeListStorage::get(newAttrs);
       return RemoveResult::Removed;
     }
   }

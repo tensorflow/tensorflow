@@ -316,8 +316,8 @@ LogicalResult impl::FunctionConversion::run(Module *module) {
     if (!converted)
       return failure();
 
-    auto origFuncAttr = FunctionAttr::get(func, context);
-    auto convertedFuncAttr = FunctionAttr::get(converted, context);
+    auto origFuncAttr = FunctionAttr::get(func);
+    auto convertedFuncAttr = FunctionAttr::get(converted);
     convertedFuncs.push_back(converted);
     functionAttrRemapping.insert({origFuncAttr, convertedFuncAttr});
   }

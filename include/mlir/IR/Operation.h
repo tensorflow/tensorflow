@@ -239,6 +239,9 @@ public:
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() { return attrs.getAttrs(); }
 
+  /// Return the internal attribute list on this operation.
+  NamedAttributeList &getAttrList() { return attrs; }
+
   /// Return the specified attribute if present, null otherwise.
   Attribute getAttr(Identifier name) { return attrs.get(name); }
   Attribute getAttr(StringRef name) { return attrs.get(name); }
@@ -253,9 +256,7 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute value) {
-    attrs.set(getContext(), name, value);
-  }
+  void setAttr(Identifier name, Attribute value) { attrs.set(name, value); }
   void setAttr(StringRef name, Attribute value) {
     setAttr(Identifier::get(name, getContext()), value);
   }
@@ -263,7 +264,7 @@ public:
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   NamedAttributeList::RemoveResult removeAttr(Identifier name) {
-    return attrs.remove(getContext(), name);
+    return attrs.remove(name);
   }
 
   //===--------------------------------------------------------------------===//

@@ -127,6 +127,9 @@ public:
   /// Return the type of this attribute.
   Type getType() const;
 
+  /// Return the context this attribute belongs to.
+  MLIRContext *getContext() const;
+
   /// Return true if this field is, or contains, a function attribute.
   bool isOrContainsFunction() const;
 
@@ -135,8 +138,7 @@ public:
   /// remapping table.  Return the original attribute if it (or any of nested
   /// attributes) is not present in the table.
   Attribute remapFunctionAttrs(
-      const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable,
-      MLIRContext *context) const;
+      const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable) const;
 
   /// Print the attribute.
   void print(raw_ostream &os) const;
@@ -299,7 +301,7 @@ public:
   using ImplType = detail::TypeAttributeStorage;
   using ValueType = Type;
 
-  static TypeAttr get(Type type, MLIRContext *context);
+  static TypeAttr get(Type value);
 
   Type getValue() const;
 
@@ -320,7 +322,7 @@ public:
   using ImplType = detail::FunctionAttributeStorage;
   using ValueType = Function *;
 
-  static FunctionAttr get(Function *value, MLIRContext *context);
+  static FunctionAttr get(Function *value);
 
   Function *getValue() const;
 
@@ -642,13 +644,13 @@ using NamedAttribute = std::pair<Identifier, Attribute>;
 class NamedAttributeList {
 public:
   NamedAttributeList() : attrs(nullptr) {}
-  NamedAttributeList(MLIRContext *context, ArrayRef<NamedAttribute> attributes);
+  NamedAttributeList(ArrayRef<NamedAttribute> attributes);
 
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() const;
 
   /// Replace the held attributes with ones provided in 'newAttrs'.
-  void setAttrs(MLIRContext *context, ArrayRef<NamedAttribute> attributes);
+  void setAttrs(ArrayRef<NamedAttribute> attributes);
 
   /// Return the specified attribute if present, null otherwise.
   Attribute get(StringRef name) const;
@@ -656,13 +658,13 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void set(MLIRContext *context, Identifier name, Attribute value);
+  void set(Identifier name, Attribute value);
 
   enum class RemoveResult { Removed, NotFound };
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
-  RemoveResult remove(MLIRContext *context, Identifier name);
+  RemoveResult remove(Identifier name);
 
 private:
   detail::AttributeListStorage *attrs;

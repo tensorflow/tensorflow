@@ -849,8 +849,8 @@ static int compareNamedAttributes(const NamedAttribute *lhs,
 /// Given a list of NamedAttribute's, canonicalize the list (sorting
 /// by name) and return the unique'd result.  Note that the empty list is
 /// represented with a null pointer.
-AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
-                                                MLIRContext *context) {
+AttributeListStorage *
+AttributeListStorage::get(ArrayRef<NamedAttribute> attrs) {
   // We need to sort the element list to canonicalize it, but we also don't want
   // to do a ton of work in the super common case where the element list is
   // already sorted.
@@ -888,7 +888,7 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
     }
   }
 
-  auto &impl = context->getImpl();
+  auto &impl = attrs[0].second.getContext()->getImpl();
 
   // Safely get or create an attribute instance.
   return safeGetOrCreate(impl.attributeLists, attrs, impl.attributeMutex, [&] {

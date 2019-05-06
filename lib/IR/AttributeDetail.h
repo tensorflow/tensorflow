@@ -408,8 +408,7 @@ public:
   /// Given a list of NamedAttribute's, canonicalize the list (sorting
   /// by name) and return the unique'd result.  Note that the empty list is
   /// represented with a null pointer.
-  static AttributeListStorage *get(ArrayRef<NamedAttribute> attrs,
-                                   MLIRContext *context);
+  static AttributeListStorage *get(ArrayRef<NamedAttribute> attrs);
 
   /// Return the element constants for this aggregate constant.  These are
   /// known to all be constants.
