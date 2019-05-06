@@ -2490,10 +2490,9 @@ TEST_F(OpConverterTest, ConvertActivation) {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     if (op_name == "LeakyRelu") {
-      auto act =
-          ops::internal::LeakyRelu(
-              s.WithOpName("my_act"), input,
-              ops::internal::LeakyRelu::Alpha(kLeakyReluAlpha));
+      auto act = ops::internal::LeakyRelu(
+          s.WithOpName("my_act"), input,
+          ops::internal::LeakyRelu::Alpha(kLeakyReluAlpha));
       return act.operation.node()->def();
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
@@ -5352,7 +5351,7 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
   TestConvertClipByValue<DT_FLOAT>(this);
   TestConvertClipByValue<DT_HALF>(this);
 }
-#endif // IS_TRT_VERSION_GE(5, 1, 2, 0)
+#endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
 }  // namespace convert
 }  // namespace tensorrt

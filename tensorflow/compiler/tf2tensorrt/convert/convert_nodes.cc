@@ -2936,14 +2936,14 @@ const std::unordered_map<string, nvinfer1::ActivationType>*
 ActivationTypeMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::ActivationType>({
-          {"Relu", nvinfer1::ActivationType::kRELU},
-          {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
-          {"Tanh", nvinfer1::ActivationType::kTANH},
+        {"Relu", nvinfer1::ActivationType::kRELU},
+            {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+            {"Tanh", nvinfer1::ActivationType::kTANH},
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
-        {"Elu", nvinfer1::ActivationType::kELU},
-        {"Selu", nvinfer1::ActivationType::kSELU},
-        {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
-        {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
+            {"Elu", nvinfer1::ActivationType::kELU},
+            {"Selu", nvinfer1::ActivationType::kSELU},
+            {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
+            {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
 #endif
       });
   return m;
