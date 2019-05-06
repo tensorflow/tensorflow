@@ -67,7 +67,7 @@ in the cuDNN case), to be reused in the gradient computation.
 END
   }
   out_arg {
-    name: "reserve_space"
+    name: "reserve_space_3"
     description: <<END
 A 1D Tensor for some intermediate results, to be reused in the gradient
 computation for better efficiency.

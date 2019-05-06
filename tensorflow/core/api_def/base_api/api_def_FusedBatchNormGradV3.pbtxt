@@ -38,7 +38,7 @@ order gradient computation.
 END
   }
   in_arg {
-    name: "reserve_space"
+    name: "reserve_space_3"
     description: <<END
 When is_training is True, a 1D Tensor for some intermediate results to be reused
 in gradient computation. When is_training is False, a dummy empty Tensor will be
@@ -64,13 +64,13 @@ A 1D Tensor for the gradient with respect to offset.
 END
   }
   out_arg {
-    name: "reserve_space_3"
+    name: "reserve_space_4"
     description: <<END
 Unused placeholder to match the mean input in FusedBatchNorm.
 END
   }
   out_arg {
-    name: "reserve_space_4"
+    name: "reserve_space_5"
     description: <<END
 Unused placeholder to match the variance input
 in FusedBatchNorm.
