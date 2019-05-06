@@ -1223,14 +1223,15 @@ argument-list ::= type attribute-dict? (`,` type attribute-dict?)* | /*empty*/
 named-argument ::= ssa-id `:` type attribute-dict?
 
 function-attributes ::= `attributes` attribute-dict
-function-body ::= `{` block+ `}`
+function-body ::= region
 ```
 
 An external function declaration (used when referring to a function declared in
-some other module) has no body.  A function definition contains a control
-flow graph made up of one or more blocks. While the MLIR textual form provides a
-nice inline syntax for function arguments, they are internally represented as
-"block arguments" to the first block in the function.
+some other module) has no body. A function definition contains a
+[region](#regions) made up of one or more blocks forming the function body.
+While the MLIR textual form provides a nice inline syntax for function
+arguments, they are internally represented as "block arguments" to the first
+block in the region.
 
 Examples:
 
@@ -1245,6 +1246,107 @@ func @count(%x: i64) -> (i64, i64)
   return %x, %x: i64, i64
 }
 ```
+
+## Regions
+
+A region is a CFG of MLIR [Blocks](#blocks). Regions serve as a generalization
+of a function body that can be nested under arbitrary operations. A region
+semantics is defined by the containing entity (operation or function). Regions
+do not have a name or an address, only the blocks contained in a region do.
+
+The first block in the region cannot be a successor of any other block. The
+arguments of this block are treated as arguments of the region. The syntax for
+the region is as follows:
+
+``` {.ebnf}
+region ::= region-signature? region-body
+region-signature ::= `(` argument-list `)` (`->` function-result-type)?
+region-body ::= `{` block+ `}`
+```
+
+The function body is an example of a region, the body of an `affine.for`
+operation is another example, this time of an single-block region.
+
+Regions provide nested control isolation: it is impossible to branch to a block
+within a region from outside it, or to branch from within a region to a block
+outside it. Similarly it provides a natural scoping for value visibility: SSA
+values defined in a region don't escape to the enclosing region if any. By
+default, a region can referenced values defined outside of the region, whenever
+it would have been legal to use them as operands to the enclosing operation.
+This can be further restricted using custom verifier.
+
+Example:
+
+```mlir {.mlir}
+func $@accelerator_compute(i64, i1) -> i64 {
+^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
+  br_cond %cond, ^bb1, ^bb2
+
+^bb1:
+  // This def for %value does not dominate ^bb2
+  %value = "op.convert"(%a) : (i64) -> i64
+  br ^bb3(%a: i64)    // Branch passes %a as the argument
+
+^bb2:
+  "accelerator.launch"() {
+    ^bb0:
+      // Region of code nested under "accelerator_launch", it can reference %a but
+      // not %value.
+      %new_value = "accelerator.do_something"(%a) : (i64) -> ()
+  }
+  // %new_value cannot be referenced outside of the region
+...
+}
+```
+
+Regions are Single-Entry-Multiple-Exit (SEME). It means that control can only
+flow into the first block of the region, but can flow out of the region at the
+end of any of the blocks it contains. (This behavior is similar to that of
+functions in most programming languages). Nonetheless, when exiting the region
+from any of its multiple exit points, the control flows to the same successor.
+
+Regions present in an operation can be executed any number of times. The IR does
+not guarantee if a region passed as an argument to an operation will be
+executed; if so, how many times and when. In particular, a region can be
+executed zero, one or multiple times, in no particular order with respect to
+other regions or operations. It may be executed as a part of an operation, or by
+some later operation using any values produced by the operation that contains
+the region. The successor to a region’s exit points may not necessarily exist:
+regions enclosing non-terminating code such as infinite loops are possible, as
+well as an operation implementing an infinite loop over a region. Concurrent or
+asynchronous execution of regions is unspecified. Operations may define pecific
+rules of execution, e.g. sequential loops or switch-like blocks.
+
+In case of zero executions, control does not flow into the region. In case of
+multiple executions, the control may exit the region from any of the region exit
+points and enter it again at its entry point. It may also enter another region.
+If an operation has multiple region arguments, the semantics of the operation
+defines into which regions the control flows and in which order, if any. An
+operation may trigger execution of regions that were specified in other
+operations, in particular those that defined the values the given operation
+uses. When all argument regions were executed the number of times required by
+the operation semantics, the control flows from any of the region exit points to
+the original control-successor of the operation that triggered the execution.
+Thus operations with region arguments can be treated opaquely in the enclosing
+control flow graph, providing a level of control flow isolation similar to that
+of the call operation.
+
+Regions allow to define an operation that creates a closure, for example by
+“boxing” the body of the region into a value they produce. It remains up to the
+operation to define its semantics. In this situation, the value “containing” the
+region may be passed to or returned from a function/region, at which point the
+values defined in dominating blocks are no longer accessible. If this region
+directly uses such values, passing a value “containing” it across function
+boundaries or using it in operations leads to undefined behavior. This is
+similar to returning a lambda capturing a reference to a local variable in C++.
+Note that if an operation triggers asynchronous execution of the region, it is
+under the responsibility of the operation caller to wait for the region to be
+executed guaranteeing that any directly used values remain live.
+
+Regions produce a (possibly empty) list of values. For function body regions,
+`return` is the standard region-exiting terminator, but dialects can provide
+their own. For regions passed as operation arguments, the operation semantics
+defines the relation between the region results and the operation results.
 
 ## Blocks
 
