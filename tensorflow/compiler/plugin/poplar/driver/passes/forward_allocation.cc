@@ -179,8 +179,18 @@ static absl::optional<int64> IsSuffixPathOk(
              : 0LL;
 }
 
-// TODO - this should probably be in a more central location
+// An operation is layout sensitive if the allocation of one of its inputs
+// requires us to be able to access a tensor and the corresponding
+// HloInstruction which created another input.
 static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
+  return IsPopOpsElementwiseBinary(target);
+}
+
+// An operation is layout dependent if the allocation of one of its inputs
+// depends on the layout of another input tensor - note that unlike layout
+// sensitive target, we do not need the access to the instruction which created
+// the tensor on which we depend on.
+static bool IsLayoutDependentTarget(const HloInstruction* target) {
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -196,11 +206,11 @@ static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
     default:
       break;
   }
-  return IsPopOpsElementwiseBinary(target);
+  return false;
 }
 
 // TODO - this should probably be in a more central location
-static absl::optional<int64> IsLayoutSensitiveOperand(
+static absl::optional<int64> GetLayoutSensitiveOperandIndex(
     const HloInstruction* target, const HloInstruction* operand,
     const HloInstruction* layout_producer) {
   const auto op_idx = target->operand_index(operand);
@@ -210,15 +220,18 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
   if (IsPopOpsElementwiseBinary(target) && op_idx < 2) {
     return op_idx;
   }
+  return absl::nullopt;
+}
 
+static absl::optional<std::pair<int64, int64>> GetLayoutDependentOperandIndices(
+    const HloInstruction* target, const HloInstruction* operand) {
+  const auto op_idx = target->operand_index(operand);
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
-      // Only a layout sensitive target on operands index 1 and 2 iff
-      // layout_producer is operand 0.
-      if (target->operand(0) == layout_producer &&
-          (op_idx == 1 || op_idx == 2)) {
-        return op_idx;
+      // Only a layout dependent target on operands index 1 and 2.
+      if (op_idx == 1 || op_idx == 2) {
+        return std::make_pair(op_idx, 0);
       }
       return absl::nullopt;
     case HloOpcode::kCustomCall: {
@@ -226,9 +239,8 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
         auto poplar_inst = Cast<HloPoplarInstruction>(target);
         auto layout_dependencies = poplar_inst->LayoutDependencies();
         auto itr = layout_dependencies.find(op_idx);
-        if (itr != layout_dependencies.end() &&
-            target->operand(itr->second) == layout_producer) {
-          return op_idx;
+        if (itr != layout_dependencies.end()) {
+          return *itr;
         }
         return absl::nullopt;
       }
@@ -330,15 +342,73 @@ ForwardAllocation::FindInputs(HloComputation* comp) {
   absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>
       input_to_deferred_allocation_path;
   for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kParameter ||
-        inst->opcode() == HloOpcode::kInfeed) {
+    if (inst->opcode() == HloOpcode::kConstant ||
+        inst->opcode() == HloOpcode::kInfeed ||
+        inst->opcode() == HloOpcode::kParameter) {
       FlattenInputs(inst, {inst}, input_to_deferred_allocation_path);
     }
   }
   return input_to_deferred_allocation_path;
 }
 
-StatusOr<bool> ForwardAllocation::Run(
+absl::optional<TensorTarget> ForwardAllocation::CreateForwardAllocationTarget(
+    HloReachabilityMap* reachability_map, HloInstruction* source,
+    HloInstruction* target, const int64 input_index,
+    HloInstruction* layout_producer, const int64 layout_output_index,
+    const std::vector<HloInstruction*>& other_targets,
+    const std::vector<HloInstruction*>& forward_path,
+    const std::vector<HloInstruction*>& backward_path,
+    const DeferredAllocationsPath& deferred_allocations_path) {
+  // Make sure that the layout producer can be executed before the
+  // source - i.e. source is not reachable form the layout producer.
+  if (reachability_map->IsReachable(source, layout_producer)) {
+    return absl::nullopt;
+  }
+  layout_producer->AddControlDependencyTo(source);
+  reachability_map->UpdateReachabilityThroughInstruction(source);
+
+  // Make sure that the target can be executed before all the other
+  // independent targets with the new control dependency.
+  // Keep track of any dependencies we add in case we have to undo
+  // them.
+  std::vector<HloInstruction*> added_dependants;
+  bool dependencies_ok = true;
+  for (auto new_dependent : other_targets) {
+    if (new_dependent == target) {
+      continue;
+    }
+    if (!reachability_map->IsReachable(target, new_dependent)) {
+      target->AddControlDependencyTo(new_dependent);
+      reachability_map->UpdateReachabilityThroughInstruction(new_dependent);
+      added_dependants.push_back(target);
+    } else {
+      dependencies_ok = false;
+      break;
+    }
+  }
+  if (!dependencies_ok) {
+    // Remove all the added dependencies
+    layout_producer->RemoveControlDependencyTo(source);
+    reachability_map->UpdateReachabilityThroughInstruction(source);
+    for (auto inst : added_dependants) {
+      target->RemoveControlDependencyTo(inst);
+      reachability_map->UpdateReachabilityThroughInstruction(inst);
+    }
+    return absl::nullopt;
+  }
+
+  std::vector<const HloInstruction*> c_forward_path(forward_path.begin(),
+                                                    forward_path.end());
+  std::vector<const HloInstruction*> c_backward_path(backward_path.begin(),
+                                                     backward_path.end());
+  deferred_allocations.insert(deferred_allocations_path.begin(),
+                              deferred_allocations_path.end());
+  return TensorTarget(target, input_index, layout_producer, layout_output_index,
+                      c_forward_path, c_backward_path,
+                      deferred_allocations_path);
+}
+
+StatusOr<bool> ForwardAllocation::FindLayoutSensativeTargets(
     HloComputation* comp, std::set<const HloInstruction*>& ops_with_layout) {
   bool found_target = false;
 
@@ -441,7 +511,7 @@ StatusOr<bool> ForwardAllocation::Run(
         auto prefix = *optional_prefix;
         auto suffix = *optional_suffix;
         // Only some operands are layout sensitive.
-        auto optional_op_idx = IsLayoutSensitiveOperand(
+        auto optional_op_idx = GetLayoutSensitiveOperandIndex(
             target, prefix.rbegin()[1], layout_producer);
         if (optional_op_idx) {
           const auto op_idx = *optional_op_idx;
@@ -455,61 +525,107 @@ StatusOr<bool> ForwardAllocation::Run(
           if (prefix_path_ok && suffix_path_ok) {
             if (!source_consumers[source].contains(layout_producer)) {
               auto layout_output_idx = *suffix_path_ok;
-              auto src = std::make_pair(source, 0);
-              auto deferred_allocations_path =
-                  input_to_deferred_allocations[source];
-              std::vector<const HloInstruction*> csuffix(suffix.begin(),
-                                                         suffix.end());
-              std::vector<const HloInstruction*> cprefix(prefix.begin(),
-                                                         prefix.end());
-
-              // Make sure that the layout producer can be executed before the
-              // source - i.e. source is not reachable form the layout producer.
-              if (reachability_map->IsReachable(source, layout_producer)) {
-                continue;
+              auto optional_allocation_target = CreateForwardAllocationTarget(
+                  reachability_map.get(), source, target, op_idx,
+                  layout_producer, layout_output_idx, targets, suffix, prefix,
+                  input_to_deferred_allocations[source]);
+              if (optional_allocation_target) {
+                auto src = std::make_pair(source, 0);
+                tensor_allocation_map[src] = *optional_allocation_target;
+                found_target = true;
+                break;
               }
-              layout_producer->AddControlDependencyTo(source);
-              reachability_map->UpdateReachabilityThroughInstruction(source);
-
-              // Make sure that the target can be executed before all the other
-              // independent targets with the new control dependency.
-              // Keep track of any dependencies we add in case we have to undo
-              // them.
-              std::vector<HloInstruction*> added_dependants;
-              bool dependencies_ok = true;
-              for (auto new_dependent : targets) {
-                if (new_dependent == target) {
-                  continue;
-                }
-                if (!reachability_map->IsReachable(target, new_dependent)) {
-                  target->AddControlDependencyTo(new_dependent);
-                  reachability_map->UpdateReachabilityThroughInstruction(
-                      new_dependent);
-                  added_dependants.push_back(target);
-                } else {
-                  dependencies_ok = false;
-                  break;
-                }
-              }
-              if (!dependencies_ok) {
-                // Remove all the added dependencies
-                layout_producer->RemoveControlDependencyTo(source);
-                reachability_map->UpdateReachabilityThroughInstruction(source);
-                for (auto inst : added_dependants) {
-                  target->RemoveControlDependencyTo(inst);
-                  reachability_map->UpdateReachabilityThroughInstruction(inst);
-                }
-                continue;
-              }
-              tensor_allocation_map[src] = TensorTarget(
-                  target, op_idx, layout_producer, layout_output_idx, csuffix,
-                  cprefix, deferred_allocations_path);
-              deferred_allocations.insert(deferred_allocations_path.begin(),
-                                          deferred_allocations_path.end());
-              found_target = true;
-              break;
             }
           }
+        }
+      }
+    }
+  }
+  return found_target;
+}
+
+StatusOr<bool> ForwardAllocation::FindLayoutDependentTargets(
+    HloComputation* comp) {
+  bool found_target = false;
+
+  auto input_to_deferred_allocations = FindInputs(comp);
+
+  const auto is_input = [&input_to_deferred_allocations,
+                         this](HloInstruction* inst) {
+    auto itr = input_to_deferred_allocations.find(inst);
+    if (itr != input_to_deferred_allocations.end()) {
+      return tensor_allocation_map.find(std::make_pair(inst, 0)) ==
+             tensor_allocation_map.end();
+    }
+    return false;
+  };
+
+  const auto get_operands = [](HloInstruction* inst) {
+    return inst->operands();
+  };
+
+  const auto g =
+      MetaGraph<HloInstruction*>(comp->root_instruction(), get_operands);
+
+  std::unique_ptr<HloReachabilityMap> reachability_map =
+      HloReachabilityMap::Build(comp);
+
+  const auto source_ops = g.FindVertices(is_input);
+
+  // Get everything that depends on a source op
+  const auto get_source_consumers = [g](HloInstruction* inst) {
+    return g.FindConsumers(inst, [](HloInstruction*) { return true; }, true);
+  };
+  const MetaGraph<HloInstruction*> source_consumers(source_ops,
+                                                    get_source_consumers);
+
+  for (const auto& edges : source_consumers) {
+    const auto& source = edges.first;
+    if (!edges.second.empty()) {
+      // Target is the op consuming the allocated tensor which is layout
+      // dependent.
+      const auto is_valid_target = [&](HloInstruction* a) {
+        return IsLayoutDependentTarget(a);
+      };
+      const auto optional_targets = find_all_targets(
+          edges.second, reachability_map.get(), is_valid_target);
+      if (!optional_targets) {
+        continue;
+      }
+      std::vector<HloInstruction*> targets = *optional_targets;
+      for (auto target : targets) {
+        // Try and find the shortest paths to target.
+        auto optional_prefix = g.ShortestPath(source, target);
+        if (!optional_prefix) {
+          continue;
+        }
+        auto prefix = *optional_prefix;
+        // Only some operands are layout dependent.
+        auto optional_op_idices =
+            GetLayoutDependentOperandIndices(target, prefix.rbegin()[1]);
+        if (!optional_op_idices) {
+          continue;
+        }
+        int64 op_idx, layout_operand_idx;
+        std::tie(op_idx, layout_operand_idx) = *optional_op_idices;
+        // The path don't contain the source or target instructions
+        prefix.erase(prefix.begin());
+        prefix.pop_back();
+        auto layout_producer = target->mutable_operand(layout_operand_idx);
+        // Check that the prefix path is one that we can traverse.
+        const auto prefix_path_ok = IsPrefixPathOk(prefix);
+        if (!prefix_path_ok) {
+          continue;
+        }
+
+        auto optional_allocation_target = CreateForwardAllocationTarget(
+            reachability_map.get(), source, target, op_idx, layout_producer, 0,
+            targets, {}, prefix, input_to_deferred_allocations[source]);
+        if (optional_allocation_target) {
+          auto src = std::make_pair(source, 0);
+          tensor_allocation_map[src] = *optional_allocation_target;
+          found_target = true;
+          break;
         }
       }
     }
@@ -546,9 +662,13 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
     if (IsPopOpsFusion(computation)) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool found_target_in_computation,
-                        Run(computation, ops_with_layout));
-    found_target |= found_target_in_computation;
+    TF_ASSIGN_OR_RETURN(
+        bool found_sensative_target_in_computation,
+        FindLayoutSensativeTargets(computation, ops_with_layout));
+    found_target |= found_sensative_target_in_computation;
+    TF_ASSIGN_OR_RETURN(bool found_dependent_target_in_computation,
+                        FindLayoutDependentTargets(computation));
+    found_target |= found_dependent_target_in_computation;
   }
 
   return found_target;
