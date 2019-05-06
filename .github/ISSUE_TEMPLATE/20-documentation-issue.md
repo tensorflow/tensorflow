@@ -1,9 +1,9 @@
---------------------------------------------------------------------------------
+---
+name: Documentation Issue
+about: Use this template for documentation related
+labels: 'type:docs'
 
-name: Documentation Issue about: Use this template for documentation related
-issues
-
-## labels: 'type:docs'
+---
 
 Thank you for submitting a TensorFlow documentation issue. Per our GitHub
 policy, we only address code/doc bugs, performance issues, feature requests, and
