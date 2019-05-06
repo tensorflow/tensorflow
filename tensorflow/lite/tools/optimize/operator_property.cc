@@ -120,6 +120,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_LEAKY_RELU:
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 1;
+      break;
     case BuiltinOperator_MAXIMUM:
       property.input_indexes = {0};
       property.output_indexes = {0};
