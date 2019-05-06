@@ -31,6 +31,9 @@ using namespace mlir::detail;
 // Integer Type
 //===----------------------------------------------------------------------===//
 
+// static constexpr must have a definition (until in C++17 and inline variable).
+constexpr unsigned IntegerType::kMaxWidth;
+
 /// Verify the construction of an integer type.
 LogicalResult IntegerType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, unsigned width) {
