@@ -3216,6 +3216,8 @@ public:
     return false;
   }
 
+  bool parseOptionalComma() override { return !parser.consumeIf(Token::comma); }
+
   /// Parse an optional keyword.
   bool parseOptionalKeyword(const char *keyword) override {
     // Check that the current token is a bare identifier or keyword.

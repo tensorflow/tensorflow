@@ -2,51 +2,36 @@
 
 // CHECK-LABEL:func @no_args(%arg0: index)
 func @no_args(%sz : index) {
-// CHECK:  "gpu.launch"(%arg0, %arg0, %arg0, %arg0, %arg0, %arg0)
-// CHECK-SAME: {
-  "gpu.launch"(%sz, %sz, %sz, %sz, %sz, %sz) ({
-  ^bb1(%bx: index, %by: index, %bz: index,
-       %tx: index, %ty: index, %tz: index,
-       %szbx: index, %szby: index, %szbz: index,
-       %sztx: index, %szty: index, %sztz: index):
+// CHECK: gpu.launch blocks(%i0, %i1, %i2) in (%i6 = %arg0, %i7 = %arg0, %i8 = %arg0) threads(%i3, %i4, %i5) in (%i9 = %arg0, %i10 = %arg0, %i11 = %arg0)
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %sz, %grid_y = %sz, %grid_z = %sz)
+             threads(%tx, %ty, %tz) in (%block_x = %sz, %block_y = %sz, %block_z = %sz) {
     return
-// CHECK: (index, index, index, index, index, index) -> ()
-  }) : (index, index, index, index, index, index) -> ()
+  }
   return
 }
 
 // CHECK-LABEL:func @args(%arg0: index, %arg1: index, %arg2: f32, %arg3: memref<?xf32, 1>) {
 func @args(%blk : index, %thrd : index, %float : f32, %data : memref<?xf32,1>) {
-// CHECK:  "gpu.launch"(%arg0, %arg0, %arg0, %arg1, %arg1, %arg1, %arg2, %arg3)
-// CHECK-SAME: {
-  "gpu.launch"(%blk, %blk, %blk, %thrd, %thrd, %thrd, %float, %data) ({
-  ^bb1(%bx: index, %by: index, %bz: index,
-       %tx: index, %ty: index, %tz: index,
-       %szbx: index, %szby: index, %szbz: index,
-       %sztx: index, %szty: index, %sztz: index,
-       %data0: f32, %data1: memref<?xf32,1>):
+// CHECK: gpu.launch blocks(%i0, %i1, %i2) in (%i6 = %arg0, %i7 = %arg0, %i8 = %arg0) threads(%i3, %i4, %i5) in (%i9 = %arg1, %i10 = %arg1, %i11 = %arg1) args(%i12 = %arg2, %i13 = %arg3) : f32, memref<?xf32, 1>
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
+             threads(%tx, %ty, %tz) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd)
+	     args(%kernel_arg0 = %float, %kernel_arg1 = %data) : f32, memref<?xf32, 1> {
     return
-// CHECK: (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
-  }) : (index, index, index, index, index, index, f32, memref<?xf32,1>) -> ()
+  }
   return
 }
 
 // It is possible to use values passed into the region as arguments.
 // CHECK-LABEL: func @passing_values
 func @passing_values(%blk : index, %thrd : index, %float : f32, %data : memref<?xf32,1>) {
-// CHECK:  "gpu.launch"(%arg0, %arg0, %arg0, %arg1, %arg1, %arg1, %arg2, %arg3)
-// CHECK-SAME: {
-  "gpu.launch"(%blk, %blk, %blk, %thrd, %thrd, %thrd, %float, %data) ({
-// CHECK: ^bb1(%i0: index, %i1: index, %i2: index, %i3: index, %i4: index, %i5: index, %i6: index, %i7: index, %i8: index, %i9: index, %i10: index, %i11: index, %i12: f32, %i13: memref<?xf32, 1>)
-  ^bb1(%bx: index, %by: index, %bz: index,
-       %tx: index, %ty: index, %tz: index,
-       %szbx: index, %szby: index, %szbz: index,
-       %sztx: index, %szty: index, %sztz: index,
-       %data0: f32, %data1: memref<?xf32,1>):
+// CHECK: gpu.launch blocks(%i0, %i1, %i2) in (%i6 = %arg0, %i7 = %arg0, %i8 = %arg0) threads(%i3, %i4, %i5) in (%i9 = %arg1, %i10 = %arg1, %i11 = %arg1) args(%i12 = %arg2, %i13 = %arg3) : f32, memref<?xf32, 1>
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
+             threads(%tx, %ty, %tz) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd)
+	     args(%kernel_arg0 = %float, %kernel_arg1 = %data) : f32, memref<?xf32, 1> {
 // CHECK: "use"(%i12)
-    "use"(%data0): (f32) -> ()
+    "use"(%kernel_arg0): (f32) -> ()
     return
-  }) : (index, index, index, index, index, index, f32, memref<?xf32,1>) -> ()
+  }
   return
 }
 
@@ -54,11 +39,8 @@ func @passing_values(%blk : index, %thrd : index, %float : f32, %data : memref<?
 // cross kernel launch region boundaries.
 // CHECK-LABEL: func @nested_isolation
 func @nested_isolation(%sz : index) {
-  "gpu.launch"(%sz, %sz, %sz, %sz, %sz, %sz) ({
-  ^bb1(%bx: index, %by: index, %bz: index,
-       %tx: index, %ty: index, %tz: index,
-       %szbx: index, %szby: index, %szbz: index,
-       %sztx: index, %szty: index, %sztz: index):
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %sz, %grid_y = %sz, %grid_z = %sz)
+             threads(%tx, %ty, %tz) in (%block_x = %sz, %block_y = %sz, %block_z = %sz) {
     "region"() ({
 // CHECK: %0 = "produce"()
       %val = "produce"() : () -> (index)
@@ -67,6 +49,6 @@ func @nested_isolation(%sz : index) {
         "use"(%val) : (index) -> ()
       }) : () -> ()
     }) : () -> ()
-  }) : (index, index, index, index, index, index) -> ()
+  }
   return
 }

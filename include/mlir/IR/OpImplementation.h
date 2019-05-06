@@ -159,6 +159,9 @@ public:
   /// This parses... a comma!
   virtual bool parseComma() = 0;
 
+  /// Parses a comma if present.
+  virtual bool parseOptionalComma() = 0;
+
   /// Parse a `:` token.
   virtual bool parseColon() = 0;
 

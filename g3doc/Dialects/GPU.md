@@ -38,11 +38,28 @@ body region. Nested regions inside the kernel body are allowed to use values
 defined in their ancestor regions as long as they don't cross the kernel body
 region boundary.
 
-Custom syntax for this operation is currently not available.
+Syntax:
+
+``` {.ebnf}
+operation ::= `gpu.launch` `block` `(` ssa-id-list `)` `in` ssa-reassignment
+                         `threads` `(` ssa-id-list `)` `in` ssa-reassignment
+                           (`args` ssa-reassignment `:` type-list)?
+                           region attr-dict?
+ssa-reassignment ::= `(` ssa-id `=` ssa-use (`,` ssa-id `=` ssa-use)* `)`
+```
 
 Example:
 
 ```mlir {.mlir}
+gpu.launch blocks(%bx, %by, %bz) in (%sz_bx = %0, %sz_by = %1, %sz_bz = %2)
+           threads(%tx, %ty, %tz) in (%sz_tx = %3, %sz_ty = %4, %sz_tz = %5)
+           args(%arg0 = %6, %arg1 = 7) : f32, memref<?xf32, 1> {
+  // Block and thread identifiers, as well as block/grid sizes are
+  // immediately usable inside body region.
+  "some_op"(%bx, %tx) : (index, index) -> ()
+  %42 = load %arg1[%bx] : memref<?xf32, 1>
+}
+
 // Generic syntax explains how the pretty syntax maps to the IR structure.
 "gpu.launch"(%cst, %cst, %c1,  // Grid sizes.
                     %cst, %c1, %c1,   // Block sizes.
