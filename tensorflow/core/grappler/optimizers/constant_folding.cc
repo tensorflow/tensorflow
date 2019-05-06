@@ -2382,20 +2382,28 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::IsReductionCandidateForSimplification(
-    const NodeDef& node, const GraphProperties& properties,
-    TensorShapeProto* input_tensor_shape, TensorShapeProto* output_tensor_shape,
-    bool* is_single_element_op) const {
+bool ConstantFolding::IsReductionWithConstantIndices(
+    const NodeDef& node, bool* indices_is_empty) const {
   // Ensure its an appropriate Reduce node.
   if (!IsReduction(node) || node.input_size() < 2) {
     return false;
   }
   // Ensure that the axes to reduce by are constant.
   NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
-  if (!IsReallyConstant(*reductions_indices)) {
+  if (!IsReallyConstant(*reductions_indices) ||
+      !reductions_indices->attr().count("value")) {
     return false;
   }
+  const TensorShapeProto& reduction_indices_shape =
+      reductions_indices->attr().at("value").tensor().tensor_shape();
+  *indices_is_empty = TensorShape(reduction_indices_shape).num_elements() == 0;
+  return true;
+}
 
+bool ConstantFolding::IsReductionCandidateForSimplification(
+    const NodeDef& node, const GraphProperties& properties,
+    TensorShapeProto* input_tensor_shape, TensorShapeProto* output_tensor_shape,
+    bool* is_single_element_op) const {
   // Get the properties of the input & output tensors and check if they both
   // contain a single element.
   if (!properties.HasInputProperties(node.name()) ||
@@ -2460,9 +2468,34 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
   return simplifiable;
 }
 
+bool ConstantFolding::ReplaceReductionWithIdentity(NodeDef* node) const {
+  // Replace the reduction node with an identity node, that can be further
+  // optimized by other passes.
+  DataType output_type;
+  if (node->attr().count("T") != 0) {
+    output_type = node->attr().at("T").type();
+  } else if (IsAny(*node) || IsAll(*node)) {
+    output_type = DT_BOOL;
+  } else {
+    return false;
+  }
+  node->set_op("Identity");
+  node->clear_attr();
+  (*node->mutable_attr())["T"].set_type(output_type);
+  *node->mutable_input(1) = AsControlDependency(node->input(1));
+  return true;
+}
+
 bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
                                         const GraphProperties& properties,
                                         NodeDef* node) {
+  bool indices_is_empty = false;
+  if (!IsReductionWithConstantIndices(*node, &indices_is_empty)) {
+    return false;
+  }
+  if (indices_is_empty) {
+    return ReplaceReductionWithIdentity(node);
+  }
   bool is_single_element_op = false;
   TensorShapeProto input_tensor_shape, output_tensor_shape;
   if (!IsReductionCandidateForSimplification(
@@ -2524,20 +2557,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
     (*node->mutable_attr())["Tshape"] = attr_type_indices;
     return true;
   } else if (simplifiable_to_identity) {
-    // Replace the reduction node with an identity node, that can be further
-    // optimized by the model pruner.
-    DataType output_type;
-    if (node->attr().count("T") != 0) {
-      output_type = node->attr().at("T").type();
-    } else {
-      // This is an 'any' or 'all' reduction. The output is always boolean.
-      output_type = DT_BOOL;
-    }
-    node->set_op("Identity");
-    node->clear_attr();
-    (*node->mutable_attr())["T"].set_type(output_type);
-    *node->mutable_input(1) = AsControlDependency(node->input(1));
-    return true;
+    return ReplaceReductionWithIdentity(node);
   }
   return false;
 }
