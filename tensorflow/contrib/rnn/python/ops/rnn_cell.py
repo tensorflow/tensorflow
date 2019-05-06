@@ -33,6 +33,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -3295,6 +3296,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
+
+  For a detailed analysis of IndyLSTMs, see https://arxiv.org/abs/1903.08023.
   """
 
   def __init__(self,
@@ -3409,6 +3412,354 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     return new_h, new_state
 
 
+NTMControllerState = collections.namedtuple(
+    "NTMControllerState",
+    ("controller_state", "read_vector_list", "w_list", "M", "time"))
+
+
+class NTMCell(rnn_cell_impl.LayerRNNCell):
+  """Neural Turing Machine Cell with RNN controller.
+
+    Implementation based on:
+    https://arxiv.org/abs/1807.08518
+    Mark Collier, Joeran Beel
+
+    which is in turn based on the source code of:
+    https://github.com/snowkylin/ntm
+
+    and of course the original NTM paper:
+    Neural Turing Machines
+    https://arxiv.org/abs/1410.5401
+    A Graves, G Wayne, I Danihelka
+  """
+
+  def __init__(self,
+               controller,
+               memory_size,
+               memory_vector_dim,
+               read_head_num,
+               write_head_num,
+               shift_range=1,
+               output_dim=None,
+               clip_value=20,
+               dtype=dtypes.float32,
+               name=None):
+    """Initialize the NTM Cell.
+
+      Args:
+        controller: an RNNCell, the RNN controller.
+        memory_size: int, The number of memory locations in the NTM memory
+          matrix
+        memory_vector_dim: int, The dimensionality of each location in the NTM
+          memory matrix
+        read_head_num: int, The number of read heads from the controller into
+          memory
+        write_head_num: int, The number of write heads from the controller into
+          memory
+        shift_range: int, The number of places to the left/right it is possible
+          to iterate the previous address to in a single step
+        output_dim: int, The number of dimensions to make a linear projection of
+          the NTM controller outputs to. If None, no linear projection is
+          applied
+        clip_value: float, The maximum absolute value the controller parameters
+          are clipped to
+        dtype: Default dtype of the layer (default of `None` means use the type
+          of the first input). Required when `build` is called before `call`.
+        name: String, the name of the layer. Layers with the same name will
+          share weights, but to avoid mistakes we require reuse=True in such
+          cases.
+    """
+    super(NTMCell, self).__init__(dtype=dtype, name=name)
+
+    rnn_cell_impl.assert_like_rnncell("NTM RNN controller cell", controller)
+
+    self.controller = controller
+    self.memory_size = memory_size
+    self.memory_vector_dim = memory_vector_dim
+    self.read_head_num = read_head_num
+    self.write_head_num = write_head_num
+    self.clip_value = clip_value
+
+    self.output_dim = output_dim
+    self.shift_range = shift_range
+
+    self.num_parameters_per_head = (
+        self.memory_vector_dim + 2 * self.shift_range + 4)
+    self.num_heads = self.read_head_num + self.write_head_num
+    self.total_parameter_num = (
+        self.num_parameters_per_head * self.num_heads +
+        self.memory_vector_dim * 2 * self.write_head_num)
+
+  @property
+  def state_size(self):
+    return NTMControllerState(
+        controller_state=self.controller.state_size,
+        read_vector_list=[
+            self.memory_vector_dim for _ in range(self.read_head_num)
+        ],
+        w_list=[
+            self.memory_size
+            for _ in range(self.read_head_num + self.write_head_num)
+        ],
+        M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]),
+        time=tensor_shape.TensorShape([]))
+
+  @property
+  def output_size(self):
+    return self.output_dim
+
+  def build(self, inputs_shape):
+    if self.output_dim is None:
+      if inputs_shape[1].value is None:
+        raise ValueError(
+            "Expected inputs.shape[-1] to be known, saw shape: %s" %
+            inputs_shape)
+      else:
+        self.output_dim = inputs_shape[1].value
+
+    def _create_linear_initializer(input_size, dtype=dtypes.float32):
+      stddev = 1.0 / math.sqrt(input_size)
+      return init_ops.truncated_normal_initializer(stddev=stddev, dtype=dtype)
+
+    self._params_kernel = self.add_variable(
+        "parameters_kernel",
+        shape=[self.controller.output_size, self.total_parameter_num],
+        initializer=_create_linear_initializer(self.controller.output_size))
+
+    self._params_bias = self.add_variable(
+        "parameters_bias",
+        shape=[self.total_parameter_num],
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+
+    self._output_kernel = self.add_variable(
+        "output_kernel",
+        shape=[
+            self.controller.output_size +
+            self.memory_vector_dim * self.read_head_num, self.output_dim
+        ],
+        initializer=_create_linear_initializer(self.controller.output_size +
+                                               self.memory_vector_dim *
+                                               self.read_head_num))
+
+    self._output_bias = self.add_variable(
+        "output_bias",
+        shape=[self.output_dim],
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+
+    self._init_read_vectors = [
+        self.add_variable(
+            "initial_read_vector_%d" % i,
+            shape=[1, self.memory_vector_dim],
+            initializer=initializers.glorot_uniform())
+        for i in range(self.read_head_num)
+    ]
+
+    self._init_address_weights = [
+        self.add_variable(
+            "initial_address_weights_%d" % i,
+            shape=[1, self.memory_size],
+            initializer=initializers.glorot_uniform())
+        for i in range(self.read_head_num + self.write_head_num)
+    ]
+
+    self._M = self.add_variable(
+        "memory",
+        shape=[self.memory_size, self.memory_vector_dim],
+        initializer=init_ops.constant_initializer(1e-6, dtype=self.dtype))
+
+    self.built = True
+
+  def call(self, x, prev_state):
+    # Addressing Mechanisms (Sec 3.3)
+
+    def _prev_read_vector_list_initial_value():
+      return [
+          self._expand(
+              math_ops.tanh(
+                  array_ops.squeeze(
+                      math_ops.matmul(
+                          array_ops.ones([1, 1]), self._init_read_vectors[i]))),
+              dim=0,
+              N=x.shape[0].value or array_ops.shape(x)[0])
+          for i in range(self.read_head_num)
+      ]
+
+    prev_read_vector_list = control_flow_ops.cond(
+        math_ops.equal(prev_state.time,
+                       0), _prev_read_vector_list_initial_value, lambda:
+        prev_state.read_vector_list)
+    if self.read_head_num == 1:
+      prev_read_vector_list = [prev_read_vector_list]
+
+    controller_input = array_ops.concat([x] + prev_read_vector_list, axis=1)
+    controller_output, controller_state = self.controller(
+        controller_input, prev_state.controller_state)
+
+    parameters = math_ops.matmul(controller_output, self._params_kernel)
+    parameters = nn_ops.bias_add(parameters, self._params_bias)
+    parameters = clip_ops.clip_by_value(parameters, -self.clip_value,
+                                        self.clip_value)
+    head_parameter_list = array_ops.split(
+        parameters[:, :self.num_parameters_per_head * self.num_heads],
+        self.num_heads,
+        axis=1)
+    erase_add_list = array_ops.split(
+        parameters[:, self.num_parameters_per_head * self.num_heads:],
+        2 * self.write_head_num,
+        axis=1)
+
+    def _prev_w_list_initial_value():
+      return [
+          self._expand(
+              nn_ops.softmax(
+                  array_ops.squeeze(
+                      math_ops.matmul(
+                          array_ops.ones([1, 1]),
+                          self._init_address_weights[i]))),
+              dim=0,
+              N=x.shape[0].value or array_ops.shape(x)[0])
+          for i in range(self.read_head_num + self.write_head_num)
+      ]
+
+    prev_w_list = control_flow_ops.cond(
+        math_ops.equal(prev_state.time, 0),
+        _prev_w_list_initial_value, lambda: prev_state.w_list)
+    if (self.read_head_num + self.write_head_num) == 1:
+      prev_w_list = [prev_w_list]
+
+    prev_M = control_flow_ops.cond(
+        math_ops.equal(prev_state.time, 0), lambda: self._expand(
+            self._M, dim=0, N=x.shape[0].value or array_ops.shape(x)[0]),
+        lambda: prev_state.M)
+
+    w_list = []
+    for i, head_parameter in enumerate(head_parameter_list):
+      k = math_ops.tanh(head_parameter[:, 0:self.memory_vector_dim])
+      beta = nn_ops.softplus(head_parameter[:, self.memory_vector_dim])
+      g = math_ops.sigmoid(head_parameter[:, self.memory_vector_dim + 1])
+      s = nn_ops.softmax(head_parameter[:, self.memory_vector_dim +
+                                        2:(self.memory_vector_dim + 2 +
+                                           (self.shift_range * 2 + 1))])
+      gamma = nn_ops.softplus(head_parameter[:, -1]) + 1
+      w = self._addressing(k, beta, g, s, gamma, prev_M, prev_w_list[i])
+      w_list.append(w)
+
+    # Reading (Sec 3.1)
+
+    read_w_list = w_list[:self.read_head_num]
+    read_vector_list = []
+    for i in range(self.read_head_num):
+      read_vector = math_ops.reduce_sum(
+          array_ops.expand_dims(read_w_list[i], dim=2) * prev_M, axis=1)
+      read_vector_list.append(read_vector)
+
+    # Writing (Sec 3.2)
+
+    write_w_list = w_list[self.read_head_num:]
+    M = prev_M
+    for i in range(self.write_head_num):
+      w = array_ops.expand_dims(write_w_list[i], axis=2)
+      erase_vector = array_ops.expand_dims(
+          math_ops.sigmoid(erase_add_list[i * 2]), axis=1)
+      add_vector = array_ops.expand_dims(
+          math_ops.tanh(erase_add_list[i * 2 + 1]), axis=1)
+      erase_M = array_ops.ones_like(M) - math_ops.matmul(w, erase_vector)
+      M = M * erase_M + math_ops.matmul(w, add_vector)
+
+    output = math_ops.matmul(
+        array_ops.concat([controller_output] + read_vector_list, axis=1),
+        self._output_kernel)
+    output = nn_ops.bias_add(output, self._output_bias)
+    output = clip_ops.clip_by_value(output, -self.clip_value, self.clip_value)
+
+    return output, NTMControllerState(
+        controller_state=controller_state,
+        read_vector_list=read_vector_list,
+        w_list=w_list,
+        M=M,
+        time=prev_state.time + 1)
+
+  def _expand(self, x, dim, N):
+    return array_ops.concat([array_ops.expand_dims(x, dim) for _ in range(N)],
+                            axis=dim)
+
+  def _addressing(self, k, beta, g, s, gamma, prev_M, prev_w):
+    # Sec 3.3.1 Focusing by Content
+
+    k = array_ops.expand_dims(k, axis=2)
+    inner_product = math_ops.matmul(prev_M, k)
+    k_norm = math_ops.sqrt(
+        math_ops.reduce_sum(math_ops.square(k), axis=1, keepdims=True))
+    M_norm = math_ops.sqrt(
+        math_ops.reduce_sum(math_ops.square(prev_M), axis=2, keepdims=True))
+    norm_product = M_norm * k_norm
+
+    # eq (6)
+    K = array_ops.squeeze(inner_product / (norm_product + 1e-8))
+
+    K_amplified = math_ops.exp(array_ops.expand_dims(beta, axis=1) * K)
+
+    # eq (5)
+    w_c = K_amplified / math_ops.reduce_sum(K_amplified, axis=1, keepdims=True)
+
+    # Sec 3.3.2 Focusing by Location
+
+    g = array_ops.expand_dims(g, axis=1)
+
+    # eq (7)
+    w_g = g * w_c + (1 - g) * prev_w
+
+    s = array_ops.concat([
+        s[:, :self.shift_range + 1],
+        array_ops.zeros([
+            s.shape[0].value or array_ops.shape(s)[0], self.memory_size -
+            (self.shift_range * 2 + 1)
+        ]), s[:, -self.shift_range:]
+    ],
+                         axis=1)
+    t = array_ops.concat(
+        [array_ops.reverse(s, axis=[1]),
+         array_ops.reverse(s, axis=[1])],
+        axis=1)
+    s_matrix = array_ops.stack([
+        t[:, self.memory_size - i - 1:self.memory_size * 2 - i - 1]
+        for i in range(self.memory_size)
+    ],
+                               axis=1)
+
+    # eq (8)
+    w_ = math_ops.reduce_sum(
+        array_ops.expand_dims(w_g, axis=1) * s_matrix, axis=2)
+    w_sharpen = math_ops.pow(w_, array_ops.expand_dims(gamma, axis=1))
+
+    # eq (9)
+    w = w_sharpen / math_ops.reduce_sum(w_sharpen, axis=1, keepdims=True)
+
+    return w
+
+  def zero_state(self, batch_size, dtype):
+    read_vector_list = [
+        array_ops.zeros([batch_size, self.memory_vector_dim])
+        for _ in range(self.read_head_num)
+    ]
+
+    w_list = [
+        array_ops.zeros([batch_size, self.memory_size])
+        for _ in range(self.read_head_num + self.write_head_num)
+    ]
+
+    controller_init_state = self.controller.zero_state(batch_size, dtype)
+
+    M = array_ops.zeros([batch_size, self.memory_size, self.memory_vector_dim])
+
+    return NTMControllerState(
+        controller_state=controller_init_state,
+        read_vector_list=read_vector_list,
+        w_list=w_list,
+        M=M,
+        time=0)
+
+
 class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
   """MinimalRNN cell.
 
@@ -3421,7 +3772,7 @@ class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
    Propagation in Recurrent Neural Networks." ICML, 2018.
 
   A MinimalRNN cell first projects the input to the hidden space. The new
-  hidden state is then calcuated as a weighted sum of the projected input and
+  hidden state is then calculated as a weighted sum of the projected input and
   the previous hidden state, using a single update gate.
   """
 
@@ -3535,7 +3886,7 @@ class CFNCell(rnn_cell_impl.LayerRNNCell):
   "A recurrent neural network without chaos." ICLR, 2017.
 
   A CFN cell first projects the input to the hidden space. The hidden state
-  goes through a contractive mapping. The new hidden state is then calcuated
+  goes through a contractive mapping. The new hidden state is then calculated
   as a linear combination of the projected input and the contracted previous
   hidden state, using decoupled input and forget gates.
   """

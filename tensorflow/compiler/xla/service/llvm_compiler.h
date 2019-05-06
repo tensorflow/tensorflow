@@ -37,7 +37,7 @@ class LLVMCompiler : public Compiler {
   // A callback of this type can be run before and/or after IR-level
   // optimization to e.g. dump out the generated IR to disk or gather some
   // statistics.
-  using ModuleHook = std::function<Status(const llvm::Module&)>;
+  using ModuleHook = std::function<void(const llvm::Module&)>;
 
   void SetPreOptimizationHook(ModuleHook hook) {
     CHECK(!user_pre_optimization_hook_)

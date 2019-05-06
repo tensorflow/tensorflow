@@ -26,6 +26,7 @@ import collections
 
 
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -65,7 +66,8 @@ class SequenceFeatures(fc._BaseFeaturesLayer):
     columns = [rating, watches_embedding]
 
     sequence_input_layer = SequenceFeatures(columns)
-    features = tf.parse_example(..., features=make_parse_example_spec(columns))
+    features = tf.io.parse_example(...,
+                                   features=make_parse_example_spec(columns))
     sequence_input, sequence_length = sequence_input_layer(features)
     sequence_length_mask = tf.sequence_mask(sequence_length)
 
@@ -213,7 +215,7 @@ def sequence_categorical_column_with_identity(
   watches_embedding = embedding_column(watches, dimension=10)
   columns = [watches_embedding]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   sequence_feature_layer = SequenceFeatures(columns)
   sequence_input, sequence_length = sequence_feature_layer(features)
   sequence_length_mask = tf.sequence_mask(sequence_length)
@@ -262,7 +264,7 @@ def sequence_categorical_column_with_hash_bucket(
   tokens_embedding = embedding_column(tokens, dimension=10)
   columns = [tokens_embedding]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   sequence_feature_layer = SequenceFeatures(columns)
   sequence_input, sequence_length = sequence_feature_layer(features)
   sequence_length_mask = tf.sequence_mask(sequence_length)
@@ -310,7 +312,7 @@ def sequence_categorical_column_with_vocabulary_file(
   states_embedding = embedding_column(states, dimension=10)
   columns = [states_embedding]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   sequence_feature_layer = SequenceFeatures(columns)
   sequence_input, sequence_length = sequence_feature_layer(features)
   sequence_length_mask = tf.sequence_mask(sequence_length)
@@ -374,7 +376,7 @@ def sequence_categorical_column_with_vocabulary_list(
   colors_embedding = embedding_column(colors, dimension=3)
   columns = [colors_embedding]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   sequence_feature_layer = SequenceFeatures(columns)
   sequence_input, sequence_length = sequence_feature_layer(features)
   sequence_length_mask = tf.sequence_mask(sequence_length)
@@ -433,7 +435,7 @@ def sequence_numeric_column(
   temperature = sequence_numeric_column('temperature')
   columns = [temperature]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   sequence_feature_layer = SequenceFeatures(columns)
   sequence_input, sequence_length = sequence_feature_layer(features)
   sequence_length_mask = tf.sequence_mask(sequence_length)
@@ -564,7 +566,7 @@ class SequenceNumericColumn(
       num_elements = self.variable_shape.num_elements()
     else:
       num_elements = 1
-    seq_length = fc._sequence_length_from_sparse_tensor(
+    seq_length = fc_utils.sequence_length_from_sparse_tensor(
         sp_tensor, num_elements=num_elements)
 
     return fc.SequenceDenseColumn.TensorSequenceLengthPair(

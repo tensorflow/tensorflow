@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -90,6 +92,12 @@ Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
+  FunctionDefLibrary fdef_lib;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  opt_options.flib_def = &flib_def;
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  opt_options.session_options = &session_options;
   PartiallyDeclusterPass pass;
   return pass.Run(opt_options);
 }
@@ -457,6 +465,38 @@ TEST(PartiallyDeclusterPassTest, EliminatedUnusedNodes) {
   TF_ASSERT_OK(PartiallyDecluster(&graph));
   EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer0Name), nullptr);
   EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer1Name), nullptr);
+}
+
+TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
+  Output b = ops::Shape(in_cluster_and.WithOpName("b"), a);
+  Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
+  Output d = ops::Size(in_cluster_and.WithOpName("d"), c);
+  (void)ops::Shape(in_cluster_and.WithOpName("e"), d);
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), absl::nullopt);
+
+  Node* n_d = FindNodeByName(*graph, "d");
+  ASSERT_NE(n_d, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_d), absl::nullopt);
+
+  Node* n_e = FindNodeByName(*graph, "e");
+  ASSERT_NE(n_e, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_e), absl::nullopt);
 }
 
 }  // namespace

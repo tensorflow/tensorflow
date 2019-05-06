@@ -168,7 +168,9 @@ enum class OperatorType : uint8 {
   kGatherNd,
   kWhere,
   kElu,
-  kReverseSequence
+  kReverseSequence,
+  kMatrixDiag,
+  kMatrixSetDiag
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -969,9 +971,8 @@ struct TensorFlowIdentityOperator : Operator {
   TensorFlowIdentityOperator() : Operator(OperatorType::kIdentity) {}
 };
 
-// Batch matrix multiplication operator. This comes from the (deprecated)
-// tf.batch_matmul or a tf.matmul that has rank 3. dims(0) is the batch count
-// and it can be trivially unrolled into a series of matmuls on each element.
+// Batch matrix multiplication operator. This comes from a tf.matmul where one
+// of the operands has rank 3 or more.
 //
 // Inputs:
 //   inputs[0]: required: the left-hand side matrix
@@ -2073,6 +2074,24 @@ struct UnidirectionalSequenceRnnOperator : Operator {
 //  TensorFlow equivalent: Where
 struct WhereOperator : Operator {
   WhereOperator() : Operator(OperatorType::kWhere) {}
+};
+
+// Matrix Diag Operator:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Inputs: A tensor of values that will be on the diagonal of the returned
+//         tensor.
+struct MatrixDiagOperator : Operator {
+  MatrixDiagOperator() : Operator(OperatorType::kMatrixDiag) {}
+};
+
+// Matrix Set Diag Operator:
+// Construct a batched diagonal tensor with given input and diagonal values.
+// Input is a rank (k+1) tensor of values.
+// diagonal is a rank (k) tensor of values that will be on the diagonal
+// of the returned output. Output is rank k+1.
+//         tensor.
+struct MatrixSetDiagOperator : Operator {
+  MatrixSetDiagOperator() : Operator(OperatorType::kMatrixSetDiag) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

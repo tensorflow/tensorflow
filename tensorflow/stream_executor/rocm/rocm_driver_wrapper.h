@@ -20,11 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+
+#include "rocm/include/hip/hip_runtime.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-#include "rocm/include/hip/hip_runtime.h"
 
 namespace tensorflow {
 namespace wrap {

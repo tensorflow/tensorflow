@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
@@ -64,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -1280,8 +1284,8 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  condition_variable no_deferred_ops_cv_;
   int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
+  bool finish_when_deferred_ops_done_ GUARDED_BY(num_deferred_ops_mu_) = false;
 
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -1360,8 +1364,6 @@ class ExecutorState {
 
   // Clean up when this executor is done.
   void Finish();
-  // Schedule Finish() on a separate thread if it needs to wait for deferred
-  // async ops to complete; otherwise run it on the current thread.
   void ScheduleFinish();
 
   // A standalone routine for this expression so that we can express
@@ -1588,11 +1590,11 @@ bool MightTrace(const NodeItem& item,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `tracing::ScopedActivity`,
-  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
-  // these properties internally in their constructors, the cost of passing the
-  // necessary arguments to them can be significant, so we avoid constructing
-  // them in the common case (when we know they will not be used).
+  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // `tracing::ScopedRegion` check subsets of these properties internally in
+  // their constructors, the cost of passing the necessary arguments to them can
+  // be significant, so we avoid constructing them in the common case (when we
+  // know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
@@ -1600,12 +1602,10 @@ bool MightTrace(const NodeItem& item,
   if (trace_collector) {
     if (using_annotations) {
       return trace_collector->IsEnabledForAnnotations();
-    } else {
-      return trace_collector->IsEnabledForActivities(
-          item.kernel->IsExpensive());
     }
   }
-  return false;
+  return profiler::TraceMeRecorder::Active(
+      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
@@ -1646,11 +1646,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     num_deferred_ops_++;
   };
   params.dec_num_deferred_ops_function = [this]() {
-    mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops_--;
-    if (num_deferred_ops_ == 0) {
-      no_deferred_ops_cv_.notify_all();
+    bool finish_when_deferred_ops_done = false;
+    {
+      mutex_lock lock(num_deferred_ops_mu_);
+      num_deferred_ops_--;
+      if (num_deferred_ops_ == 0) {
+        finish_when_deferred_ops_done = finish_when_deferred_ops_done_;
+      }
     }
+    // Invoke Finish if the graph processing has completed. Finish is always
+    // called exactly once per ExecutorState, either here if there are any
+    // deferred ops, or in ScheduleFinish if there aren't any deferred ops.
+    if (finish_when_deferred_ops_done) Finish();
   };
 
   Status s;
@@ -1797,24 +1804,23 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (TF_PREDICT_FALSE(
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
+          const string kernel_label = strings::StrCat(
+              op_name, ":", op_kernel->type_string(), "#id=", step_id_, "#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
-            // The OpKernel may create child activities (such as GPU kernel
-            // launches), so use a `ScopedAnnotation` to relate these activities
-            // in the trace.
-            tracing::ScopedAnnotation activity(
-                op_name, strings::StrCat(op_kernel->type_string(),
-                                         "#id=", step_id_, "#"));
+            // 'TraceMe' will trace the OpKernel scheduling time.
+            profiler::TraceMe activity(absl::string_view(kernel_label),
+                                       profiler::TraceMeLevel::kInfo);
+            // 'ScopedAnnotation' will trace the OpKernel execution time.
+            tracing::ScopedAnnotation annotation(kernel_label);
             device->Compute(op_kernel, &ctx);
           } else {
-            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // Use the cheaper `TraceMe` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(
-                op_name,
-                strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
-                                "#"),
-                item.kernel->IsExpensive());
+            profiler::TraceMe activity(
+                absl::string_view(kernel_label),
+                profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
             device->Compute(op_kernel, &ctx);
           }
         } else {
@@ -2083,23 +2089,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
-  auto activity_handle =
-      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
-    auto* trace_collector = tracing::GetTraceCollector();
-    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
-                         trace_collector->IsEnabledForActivities(
-                             false /* is_expensive */))) {
-      const string& op_name = item->kernel->name();
-      // Intentionally using ExecutorPropagateOutputs as the first key so that
-      // users are aware that it's not the op invocation.
-      return trace_collector->CreateActivityHandle(
-          "ExecutorPropagateOutputs",
-          strings::StrCat(op_name, "#id=", step_id_, "#"),
-          false /* is_expensive */);
-    } else {
-      return nullptr;
-    }
-  }();
+  auto activity_handle = absl::make_unique<profiler::TraceMe>(
+      [&]() {
+        return strings::StrCat("ExecutorPropagateOutputs:",
+                               item->kernel->name(), "#id=", step_id_, "#");
+      },
+      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
@@ -2429,22 +2424,22 @@ void ExecutorState::DumpState() {
 }
 
 void ExecutorState::ScheduleFinish() {
-  int num_deferred_ops;
+  // Checks condition to decide if needs to invoke Finish(). If there are
+  // in-flight deffered ops, wait for `num_deferred_ops_` reaches 0 to invoke
+  // Finish(). Otherwise, invoke Finish() directly.
+  // Note that it is critical that the ScheduleFinish / Finish codepath does not
+  // block, otherwise we might deadlock.  See b/124523000 for details.
   {
     mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops = num_deferred_ops_;
+    if (num_deferred_ops_ > 0) {
+      finish_when_deferred_ops_done_ = true;
+      return;
+    }
   }
-  if (num_deferred_ops > 0) {
-    // Finish() may be blocked waiting for deferred async ops to complete. The
-    // execution of deferred async ops may be waiting for non-enqueued ops of
-    // other executors to complete. So running Finish() on the current thread
-    // (inter-op threadpool thread) may lead to a deadlock due to threadpool
-    // exhaustion. Instead, we run it on a separate thread to unblock the
-    // threadpool thread.
-    Env::Default()->SchedClosure([this]() { Finish(); });
-  } else {
-    Finish();
-  }
+  // Finish is always called exactly once per ExecutorState, either here if
+  // there aren't any deferred ops, or in the dec_num_deferred_ops_function if
+  // there are deferred ops.
+  Finish();
 }
 
 void ExecutorState::Finish() {
@@ -2472,17 +2467,6 @@ void ExecutorState::Finish() {
   // therefore an XlaDevice) can only go from OK to not-OK, never the opposite,
   // which means we will at worst report errors when there isn't any, never the
   // opposite.
-
-  // If inc_num_deferred_ops_function has ever been called, ExecutorState must
-  // wait for all corresponding dec_num_deferred_ops_function calls to happen
-  // regardless of status. This ensures that dec_num_deferred_ops_function can
-  // safely use ExecutorState's resources.
-  {
-    mutex_lock lock(num_deferred_ops_mu_);
-    while (num_deferred_ops_ > 0) {
-      no_deferred_ops_cv_.wait(lock);
-    }
-  }
 
   // An early exit for devices don't allow sync on completion. Ops that run on
   // these devices should have used num_deferred_ops correctly to ensure the

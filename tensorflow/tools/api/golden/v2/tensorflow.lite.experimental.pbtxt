@@ -1,7 +1,0 @@
-path: "tensorflow.lite.experimental"
-tf_module {
-  member {
-    name: "nn"
-    mtype: "<type \'module\'>"
-  }
-}

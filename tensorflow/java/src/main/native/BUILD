@@ -33,13 +33,13 @@ tf_cuda_library(
         "//tensorflow:android": [],
         "//conditions:default": ["."],
     }),
-    deps = [
-        "//tensorflow/c:c_api",
-    ] + select({
+    deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
+            "//tensorflow/c/eager:c_api",
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",
@@ -68,7 +68,7 @@ genrule(
     name = "copy_jni_md_h",
     srcs = select({
         "//tensorflow:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
-        "//tensorflow:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//tensorflow:macos": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
     outs = ["jni_md.h"],

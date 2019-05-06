@@ -41,12 +41,21 @@ config_setting(
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
+    "-Wno-extern-c-compat",
 ])
 
 cc_library(
-    name = "schema_fbs_version",
+    name = "version",
     hdrs = ["version.h"],
     copts = TFLITE_DEFAULT_COPTS,
+    # Note that we only use the header defines from :version_lib.
+    deps = ["//tensorflow/core:version_lib"],
+)
+
+# TODO(b/128420794): Migrate clients to use :version directly.
+alias(
+    name = "schema_fbs_version",
+    actual = ":version",
 )
 
 cc_library(
@@ -62,10 +71,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/core:tflite_portable_logging",
@@ -180,10 +192,10 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
-        ":schema_fbs_version",
         ":simple_memory_arena",
         ":string",
         ":util",
+        ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/nnapi:nnapi_implementation",
@@ -212,6 +224,7 @@ cc_test(
     name = "string_util_test",
     size = "small",
     srcs = ["string_util_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -229,6 +242,7 @@ cc_test(
     name = "interpreter_test",
     size = "small",
     srcs = ["interpreter_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -250,6 +264,7 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -265,6 +280,7 @@ cc_test(
     name = "simple_memory_arena_test",
     size = "small",
     srcs = ["simple_memory_arena_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -329,6 +345,7 @@ cc_test(
     name = "mutable_op_resolver_test",
     size = "small",
     srcs = ["mutable_op_resolver_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -353,6 +370,7 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -384,7 +402,9 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(
@@ -406,7 +426,7 @@ cc_test(
 tflite_cc_shared_object(
     name = "libtensorflowlite.so",
     linkopts = select({
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],

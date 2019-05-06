@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
@@ -81,7 +81,8 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
                                             TfGpuId tf_gpu_id,
                                             size_t total_bytes) {
   CHECK(process_state_);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
@@ -146,7 +147,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     }
     allocator_parts = {std::unique_ptr<Allocator>(gpu_allocator),
                        std::unique_ptr<SharedCounter>(timing_counter),
-                       sub_allocator,
+                       gpu_bfc_allocator, sub_allocator,
                        std::unique_ptr<Allocator>(recording_allocator)};
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
@@ -155,28 +156,37 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     return allocator_parts.allocator.get();
   }
 #else
-  LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda or --config=rocm.";
+  LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda or "
+                "--config=rocm.";
   return nullptr;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 SharedCounter* GPUProcessState::GPUAllocatorCounter(TfGpuId tf_gpu_id) {
   DCHECK(process_state_);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
   mutex_lock l(mu_);
   if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    LOG(ERROR) << "Asked for counter for GPU allocator " << tf_gpu_id.value()
+               << " but only have " << gpu_allocators_.size();
     return nullptr;
   }
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
+  if (allocator_parts.counter.get() == nullptr) {
+    SharedCounter* timing_counter = new SharedCounter;
+    allocator_parts.bfc_allocator->SetTimingCounter(timing_counter);
+    allocator_parts.counter.reset(timing_counter);
+  }
   return allocator_parts.counter.get();
 #else
   return nullptr;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
+Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
@@ -187,7 +197,7 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
   }
   {
     // Here we optimize the most common use case where gpu_host_allocators_
-    // and gpu_host_al_ have already been populated and since we're only reading
+    // have already been populated and since we're only reading
     // these vectors, we can get by with a shared lock. In the slower case,
     // we take a unique lock and populate these vectors.
     tf_shared_lock lock(mu_);
@@ -227,18 +237,19 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
     while (gpu_host_free_visitors_.size() <= numa_node) {
       gpu_host_free_visitors_.push_back({});
     }
-    SubAllocator* sub_allocator = new GPUHostAllocator(
-        se, numa_node, gpu_host_alloc_visitors_[numa_node],
-        gpu_host_free_visitors_[numa_node]);
+    SubAllocator* sub_allocator =
+        new GpuHostAllocator(se, numa_node, gpu_host_alloc_visitors_[numa_node],
+                             gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
     int64 gpu_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                         1LL << 16 /*64GB max by default*/,
                                         &gpu_host_mem_limit_in_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetGPUHostAllocator: " << status.error_message();
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
     }
     int64 gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
+
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,
                          true /*allow_growth*/, "gpu_host_bfc" /*name*/);
@@ -250,7 +261,7 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
     }
     gpu_host_allocators_.push_back({std::unique_ptr<Allocator>(allocator),
                                     std::unique_ptr<SharedCounter>(nullptr),
-                                    sub_allocator,
+                                    nullptr, sub_allocator,
                                     std::unique_ptr<Allocator>(nullptr)});
     AllocatorParts& allocator_parts = gpu_host_allocators_.back();
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
@@ -274,7 +285,8 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
 
 void GPUProcessState::AddGPUAllocVisitor(int bus_id,
                                          const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_allocators_.empty())  // Crash OK
       << "AddGPUAllocVisitor must be called before "
@@ -287,13 +299,14 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-void GPUProcessState::AddGPUHostAllocVisitor(
+void GPUProcessState::AddGpuHostAllocVisitor(
     int numa_node, const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_host_allocators_.empty())  // Crash OK
-      << "AddGPUHostAllocVisitor must be called before "
-         "first call to GetGPUHostAllocator.";
+      << "AddGpuHostAllocVisitor must be called before "
+         "first call to GetGpuHostAllocator.";
   while (numa_node >= static_cast<int64>(gpu_host_alloc_visitors_.size())) {
     gpu_host_alloc_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
@@ -301,13 +314,14 @@ void GPUProcessState::AddGPUHostAllocVisitor(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-void GPUProcessState::AddGPUHostFreeVisitor(
+void GPUProcessState::AddGpuHostFreeVisitor(
     int numa_node, const SubAllocator::Visitor& visitor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
   CHECK(gpu_host_allocators_.empty())  // Crash OK
-      << "AddGPUHostFreeVisitor must be called before "
-         "first call to GetGPUHostAllocator.";
+      << "AddGpuHostFreeVisitor must be called before "
+         "first call to GetGpuHostAllocator.";
   while (numa_node >= static_cast<int64>(gpu_host_free_visitors_.size())) {
     gpu_host_free_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }

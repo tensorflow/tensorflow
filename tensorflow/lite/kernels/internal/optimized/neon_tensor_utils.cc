@@ -12,8 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
@@ -41,6 +47,49 @@ void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
   return offset == 0
              ? *freeing_buffer
              : ((char*)*freeing_buffer + (alignment - offset));  // NOLINT
+}
+
+// Use /proc/cpuinfo to test whether we have the right processor.
+bool HasSdotInstruction() {
+  // TODO(strohman): Replace this with a proper API call once we are running
+  // on kernels that can tell us about this instruction: (b/119112014)
+  // Note that the C++ spec ensures that this variable will be initialized
+  // exactly once.
+  static bool has_sdot = []() -> bool {
+    char text[1024];
+    int fd = open("/proc/cpuinfo", O_RDONLY);
+    if (fd < 0) {
+      return false;
+    }
+
+    bool found = false;
+    int buffer = 0;
+    const char kSM8150[] = "Qualcomm Technologies, Inc SM8150";
+    while (true) {
+      int count = read(fd, text + buffer, sizeof(text) - buffer);
+      if (count <= 0) {
+        break;
+      }
+      int text_end = buffer + count;
+
+      if (memmem(text, text_end, kSM8150, sizeof(kSM8150) - 1) != nullptr) {
+        found = true;
+        break;
+      }
+
+      // Keep up to some bytes of the previous buffer state so that we
+      // can find a string match even if it occurs on a buffer boundary.
+      buffer = text_end;
+      if (text_end > sizeof(kSM8150)) {
+        buffer = sizeof(kSM8150);
+      }
+
+      memmove(text, text + text_end - buffer, buffer);
+    }
+    close(fd);
+    return found;
+  }();
+  return has_sdot;
 }
 
 }  // namespace
@@ -84,10 +133,266 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
   }
 }
 
+#ifdef __aarch64__
+
+// We interleave vector data to make the dot product logic more efficient.
+// Suppose that vectors is:
+//     a0 a1 a2 a3 a4 a5 ...
+//     b0 b1 b2 b3 b4 b5 ...
+//     c0 c1 c2 c3 c4 c5 ...
+//     d0 d1 d2 d3 d4 d5 ...
+//     e0 e1 e2 e3 e4 e5 ...
+// This code interleaves them like this:
+//     a0 a1 a2 a3 b0 b1 b2 b3 c0 c1 c2 c3 d0 d1 d2 d3 a4 a5 a6 a7 b4 ...
+//     e0 e1 e2 e3 f0 f1 f2 f3 ...
+// Once the data is interleaved, each 16-byte read from the vectors pointer
+// contains 4 bytes from each of 4 vectors.
+const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
+                             const int m_cols, void** shuffled_vectors_free) {
+  const int kWeightsPerUint32 = 4;
+
+  int8* shuffled_vectors = reinterpret_cast<int8*>(aligned_alloc(
+      kWeightsPerUint32, n_batch * m_cols, shuffled_vectors_free));
+
+  for (int i = 0; i < n_batch; i += 4) {
+    int8* shuffled_vectors_ptr = shuffled_vectors + (i * m_cols);
+    const int8* unshuffled_vec0_ptr =
+        reinterpret_cast<const int8*>(vectors) + (i * m_cols);
+    const int8* unshuffled_vec1_ptr =
+        reinterpret_cast<const int8*>(vectors) + ((i + 1) * m_cols);
+    const int8* unshuffled_vec2_ptr =
+        reinterpret_cast<const int8*>(vectors) + ((i + 2) * m_cols);
+    const int8* unshuffled_vec3_ptr =
+        reinterpret_cast<const int8*>(vectors) + ((i + 3) * m_cols);
+    const int8* const end_vec0_ptr = unshuffled_vec1_ptr;
+
+    while (unshuffled_vec0_ptr != end_vec0_ptr) {
+      asm volatile(
+          // This code path requires that (n_cols % 16) == 0 so we can safely
+          // read in 16-byte chunks from each row.
+          "ld1 {v0.16b}, [%[unshuffled_vec0_ptr]], #16\n"
+          "ld1 {v1.16b}, [%[unshuffled_vec1_ptr]], #16\n"
+          "ld1 {v2.16b}, [%[unshuffled_vec2_ptr]], #16\n"
+          "ld1 {v3.16b}, [%[unshuffled_vec3_ptr]], #16\n"
+
+          "st4 {v0.s, v1.s, v2.s, v3.s}[0], [%[shuffled_vectors_ptr]], #16\n"
+          "st4 {v0.s, v1.s, v2.s, v3.s}[1], [%[shuffled_vectors_ptr]], #16\n"
+          "st4 {v0.s, v1.s, v2.s, v3.s}[2], [%[shuffled_vectors_ptr]], #16\n"
+          "st4 {v0.s, v1.s, v2.s, v3.s}[3], [%[shuffled_vectors_ptr]], #16\n"
+
+          : [ unshuffled_vec0_ptr ] "+r"(unshuffled_vec0_ptr),
+            [ unshuffled_vec1_ptr ] "+r"(unshuffled_vec1_ptr),
+            [ unshuffled_vec2_ptr ] "+r"(unshuffled_vec2_ptr),
+            [ unshuffled_vec3_ptr ] "+r"(unshuffled_vec3_ptr),
+            [ shuffled_vectors_ptr ] "+r"(shuffled_vectors_ptr)
+          :
+          : "v0", "v1", "v2", "v3", "cc", "memory");
+    }
+  }
+
+  return reinterpret_cast<const int8_t*>(shuffled_vectors);
+}
+
+static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* vectors, const float* scaling_factors, int n_batch,
+    float* __restrict__ result) {
+  void* shuffled_vectors_free;
+
+  const int8_t* shuffled_vectors =
+      ShuffleVectors(vectors, n_batch, m_cols, &shuffled_vectors_free);
+
+  for (int row = 0; row < m_rows; row += 2) {
+    for (int batch = 0; batch < n_batch; batch += 4) {
+      float* result_ptr = result + (batch * m_rows) + row;
+      const int8* mat_ptr0 = matrix + (row * m_cols);
+      const int8* mat_ptr1 = matrix + ((row + 1) * m_cols);
+      const int8* mat_ptr0_end = mat_ptr1;
+      const int8* vec_ptr = shuffled_vectors + (batch * m_cols);
+      const float* scaling_factors_ptr = scaling_factors + batch;
+      const uint64_t wide_rows = m_rows * sizeof(float);
+
+      asm volatile(
+          // Zero out the accumulator registers.
+          "dup v0.4s, wzr\n"
+          "dup v1.4s, wzr\n"
+          "dup v2.4s, wzr\n"
+          "dup v3.4s, wzr\n"
+
+          "1:\n"  // batch_cols_loop
+
+          // Read 16 more bytes from a pair of matrix rows.
+          "ld1 {v12.16b}, [%[mat_ptr0]], #16\n"
+
+          // Read from input vectors 4 times; 64 bytes total.
+          // Each 16-byte register contains parts of 4 vectors; see the
+          // shuffle logic above.
+
+          // From Benoit, places to look in the future:
+          // - Move load instructions further from sdot
+          // - Switch loop use-then-reload
+          // - Do partial unrolling to use register space better
+          "ld1 {v8.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4f8ce100  // sdot v0.4s, v8.16b, v12.4b[0]\n"
+          "ld1 {v9.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4face121  // sdot v1.4s, v9.16b, v12.4b[1]\n"
+          "ld1 {v10.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4f8ce940  // sdot v0.4s, v10.16b, v12.4b[2]\n"
+          "ld1 {v11.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4face961  // sdot v1.4s, v11.16b, v12.4b[3]\n"
+
+          // Re-use those vectors for the next row as well.
+          "ld1 {v13.16b}, [%[mat_ptr1]], #16\n"
+          ".word 0x4f8de102  // sdot v2.4s, v8.16b, v13.4b[0]\n"
+          ".word 0x4fade123  // sdot v3.4s, v9.16b, v13.4b[1]\n"
+          ".word 0x4f8de942  // sdot v2.4s, v10.16b, v13.4b[2]\n"
+          ".word 0x4fade963  // sdot v3.4s, v11.16b, v13.4b[3]\n"
+
+          // If we're not done with these rows, continue.
+          "cmp %[mat_ptr0], %[mat_ptr0_end]\n"
+          "bne 1b\n"  // batch_cols_loop
+
+          // Done with the rows, sum the results.
+          "add v0.4s, v0.4s, v1.4s\n"
+          "add v2.4s, v2.4s, v3.4s\n"
+
+          // Convert the per-vector sums to floating point.
+          "scvtf v0.4s, v0.4s\n"
+          "scvtf v1.4s, v2.4s\n"
+
+          // Fetch scale factors.
+          "ld1 {v4.4s}, [%[scaling_factors_ptr]]\n"
+
+          // Multiply scale factors times sums.
+          "fmul v0.4s, v4.4s, v0.4s\n"
+          "fmul v1.4s, v4.4s, v1.4s\n"
+
+          // Load previous result values.
+          // The result position is:
+          //   result[batch * m_rows + row]
+          // Here that is factored into:
+          //   result_ptr = result + row
+          //   *result_ptr = res[0]
+          //   (uint8*)result_ptr += (m_rows * sizeof(float))
+          //   *result_ptr = res[1]
+          //   ...
+          // Since we're reading two rows at a time, though, we read both
+          //   result[batch * m_rows + row]
+          // and
+          //   result[batch * m_rows + row + 1]
+          "ld2 {v9.s, v10.s}[0], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
+
+          // Go back to the starting position (subtract wide_rows * 4).
+          "sub %[result_ptr], %[result_ptr], %[wide_rows], lsl #2\n"
+
+          // Add previous result values.
+          "fadd v9.4s, v9.4s, v0.4s\n"
+          "fadd v10.4s, v10.4s, v1.4s\n"
+
+          // Store results.
+          "st2 {v9.s, v10.s}[0], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
+          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
+            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr)
+          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
+            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
+            [ wide_rows ] "r"(wide_rows)
+          : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
+            "v10", "v11", "v12", "v13", "cc", "memory");
+    }
+  }
+
+  free(shuffled_vectors_free);
+}
+
+static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
+    const int m_cols, const int8_t* __restrict__ vectors,
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    int result_stride) {
+  const uint8_t* ledger_ptr = ledger;
+  const int8* mat_ptr = matrix;
+
+  for (int row = 0; row < m_rows; row++) {
+    int num_nonzero_chunks = *ledger_ptr;
+    ledger_ptr++;
+    const uint8* ledger_start = ledger_ptr;
+    const uint8* ledger_end = ledger_ptr + num_nonzero_chunks;
+    const int8* mat_start = mat_ptr;
+
+    for (int batch = 0; batch < n_batch; batch++) {
+      const int8* vec_ptr = vectors + (batch * m_cols);
+      int64_t row_sum = 0;
+
+      mat_ptr = mat_start;
+      ledger_ptr = ledger_start;
+
+      if (ledger_ptr != ledger_end) {
+        asm volatile(
+            "dup v0.4s, wzr\n"
+            "dup v1.4s, wzr\n"
+            "dup v8.4s, wzr\n"
+            "mov x7, 0\n"
+
+            "1:\n"  // chunks_loop
+
+            // Single matrix chunk, 16 bytes
+            "ld1 {v8.16b}, [%[mat_ptr]], #16\n"
+
+            // Read the next ledger index and increment.
+            "ldrb w7, [%[ledger_ptr]], #1\n"
+
+            // Read 16 bytes of vector data from (vec_ptr + (ledger_index * 16))
+            "add x8, %[vec_ptr], x7, lsl #4\n"
+            "ld1 {v9.16b}, [x8]\n"
+
+            // Dot product of matrix row and vector.
+            ".word 0x4e889520  // sdot v0.4s, v9.16b, v8.16b\n"
+
+            "cmp %[ledger_ptr], %[ledger_end]\n"
+            "blt 1b\n"  // chunks_loop
+
+            // Sum the 4 vector components into a 32-bit value.
+            "addv s1, v0.4s\n"
+            // row_sum is 64-bit, so we copy 64 bits of v1 into it.
+            // We have to be careful to cast this value to 32 bits in order
+            // to interpret the sign bit properly.
+            "mov %[row_sum], v1.d[0]\n"
+            : [ row_sum ] "=r"(row_sum), [ ledger_ptr ] "+r"(ledger_ptr),
+              [ mat_ptr ] "+r"(mat_ptr), [ vec_ptr ] "+r"(vec_ptr)
+            : [ ledger_end ] "r"(ledger_end)
+            : "x0", "x1", "x7", "x8", "v0", "v1", "v8", "v9", "cc", "memory");
+      }
+      result[(batch * m_rows + row) * result_stride] +=
+          static_cast<int32>(row_sum) * scaling_factors[batch];
+    }
+  }
+}
+
+#endif  // __aarch64__
+
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride) {
+#ifdef __aarch64__
+  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+      m_rows >= n_batch) {
+    if (n_batch % 4 == 0 && result_stride == 1) {
+      // Benchmarks suggest that it's always better to use the batch code
+      // when we can, even on small matrices.
+      DotprodMatrixBatchFourVectorMultiplyAccumulate(
+          matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
+      return;
+    }
+  }
+#endif  // __aarch64__
+
   const int kWeightsPerUint32 = 4;
   const int kWeightsPerNeonLane = 16;
   // Assuming *matrix is kWeightsPerUint32-byte aligned,
@@ -250,6 +555,15 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const int m_cols, const int8_t* __restrict__ vectors,
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride) {
+#ifdef __aarch64__
+  if (HasSdotInstruction() && m_cols % 16 == 0) {
+    DotprodSparseMatrixBatchVectorMultiplyAccumulate(
+        matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch,
+        result, result_stride);
+    return;
+  }
+#endif  // __aarch64__
+
   const int kWeightsPerUint32 = 4;
   const int kWeightsPerNeonLane = 16;
   const int kBlockSize = kWeightsPerNeonLane;

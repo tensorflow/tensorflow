@@ -101,6 +101,10 @@ tf_py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
     ],
+    tags = [
+        "no_rocm",
+        "no_cuda",
+    ],
 )
 
 tf_py_test(
@@ -176,6 +180,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -195,6 +200,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:session",
     ],
 )
@@ -370,6 +376,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -414,6 +421,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
     ],
@@ -442,6 +450,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -457,6 +466,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -478,6 +488,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(

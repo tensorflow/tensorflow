@@ -18,6 +18,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -33,44 +34,40 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
-                          shared_mem, stream, ...) \
-  kernel<<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
+                          stream, ...)                                        \
+  TF_CHECK_OK(CudaLaunchKernel(kernel, block_count, threads_per_block,        \
+                               shared_mem, stream, __VA_ARGS__));
 #elif TENSORFLOW_USE_ROCM
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
-                          shared_mem, stream, ...) \
-  hipLaunchKernelGGL(kernel, \
-    block_count, threads_per_block, shared_mem, stream, \
-    __VA_ARGS__);
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
+                          stream, ...)                                        \
+  hipLaunchKernelGGL(kernel, block_count, threads_per_block, shared_mem,      \
+                     stream, __VA_ARGS__);
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
 #define GPU_1D_KERNEL_LOOP(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+#define CUDA_1D_KERNEL_LOOP(i, n) \
+  for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+
 // Deprecated, use 'for(int i : GpuGridRange?(n))' instead.
 #define GPU_AXIS_KERNEL_LOOP(i, n, axis) \
+  for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
+#define CUDA_AXIS_KERNEL_LOOP(i, n, axis) \
   for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
-#define GPUGETERRORSTRING(error) cudaGetErrorString(error)
+#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
-#define GPUGETLASTERROR() cudaGetLastError()
 using gpuError_t = cudaError_t;
-#define GPUSUCCESSS cudaSuccess
+
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
-#define GPUGETERRORSTRING(error) hipGetErrorString(error)
+#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
-#define GPUGETLASTERROR() hipGetLastError()
 using gpuError_t = hipError_t;
-#define GPUSUCCESSS hipSuccess
-#endif
-
-#if GOOGLE_CUDA
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-#elif TENSORFLOW_USE_ROCM
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
 #endif
 
 namespace tensorflow {
@@ -80,6 +77,7 @@ __host__ __device__ inline tensorflow::bfloat16 GpuLdg(
   return_value.value = GpuLdg(reinterpret_cast<const uint16_t*>(address));
   return return_value;
 }
+// Already aliased in gpu_device_functions.h
 
 template <typename T>
 __host__ __device__ inline T ldg(const T* ptr) {
@@ -124,12 +122,14 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleUpSync(
   return Eigen::half(
       GpuShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
 }
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GpuShuffleUpSync, CudaShuffleUpSync);
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleDownSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
       GpuShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
 }
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GpuShuffleDownSync, CudaShuffleDownSync);
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
     unsigned mask, Eigen::half value, int lane_mask, int width = warpSize) {
@@ -178,8 +178,8 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
 
   return first - orig;
 }
-
 }  // namespace gpu_helper
+namespace cuda_helper = gpu_helper;
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

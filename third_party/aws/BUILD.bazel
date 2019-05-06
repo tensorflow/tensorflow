@@ -15,7 +15,7 @@ cc_library(
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
-        "@org_tensorflow//tensorflow:darwin": glob([
+        "@org_tensorflow//tensorflow:macos": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "@org_tensorflow//tensorflow:linux_ppc64le": glob([
@@ -65,7 +65,7 @@ cc_library(
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "PLATFORM_APPLE",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",

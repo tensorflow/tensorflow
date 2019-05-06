@@ -33,6 +33,7 @@ API_ATTRS_V1 = tf_export.API_ATTRS_V1
 
 _API_VERSIONS = [1, 2]
 _COMPAT_MODULE_TEMPLATE = 'compat.v%d'
+_COMPAT_MODULE_PREFIX = 'compat.v'
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
 _SYMBOLS_TO_SKIP_EXPLICITLY = {
@@ -49,6 +50,14 @@ from __future__ import print_function as _print_function
 
 """
 _GENERATED_FILE_FOOTER = '\n\ndel _print_function\n'
+_DEPRECATION_FOOTER = """
+import sys as _sys
+from tensorflow.python.util import deprecation_wrapper as _deprecation_wrapper
+
+if not isinstance(_sys.modules[__name__], _deprecation_wrapper.DeprecationWrapper):
+  _sys.modules[__name__] = _deprecation_wrapper.DeprecationWrapper(
+      _sys.modules[__name__], "%s")
+"""
 
 
 class SymbolExposedTwiceError(Exception):
@@ -83,13 +92,25 @@ def format_import(source_module_name, source_name, dest_name):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package):
+  def __init__(self, output_package, api_version):
     self._output_package = output_package
     self._module_imports = collections.defaultdict(
+        lambda: collections.defaultdict(set))
+    self._deprecated_module_imports = collections.defaultdict(
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
     self._underscore_names_in_root = []
+    self._api_version = api_version
+
+  def _check_already_imported(self, symbol_id, api_name):
+    if (api_name in self._dest_import_to_id and
+        symbol_id != self._dest_import_to_id[api_name] and
+        symbol_id != -1):
+      raise SymbolExposedTwiceError(
+          'Trying to export multiple symbols with same name: %s.' %
+          api_name)
+    self._dest_import_to_id[api_name] = symbol_id
 
   def add_import(
       self, symbol_id, dest_module_name, source_module_name, source_name,
@@ -113,13 +134,7 @@ class _ModuleInitCodeBuilder(object):
     full_api_name = dest_name
     if dest_module_name:
       full_api_name = dest_module_name + '.' + full_api_name
-    if (full_api_name in self._dest_import_to_id and
-        symbol_id != self._dest_import_to_id[full_api_name] and
-        symbol_id != -1):
-      raise SymbolExposedTwiceError(
-          'Trying to export multiple symbols with same name: %s.' %
-          full_api_name)
-    self._dest_import_to_id[full_api_name] = symbol_id
+    self._check_already_imported(symbol_id, full_api_name)
 
     if not dest_module_name and dest_name.startswith('_'):
       self._underscore_names_in_root.append(dest_name)
@@ -135,6 +150,8 @@ class _ModuleInitCodeBuilder(object):
     # For e.g. if we import 'foo.bar.Value'. Then, we also
     # import 'bar' in 'foo'.
     imported_modules = set(self._module_imports.keys())
+    imported_modules = imported_modules.union(
+        set(self._deprecated_module_imports.keys()))
     for module in imported_modules:
       if not module:
         continue
@@ -163,6 +180,7 @@ class _ModuleInitCodeBuilder(object):
     """
     self._import_submodules()
     module_text_map = {}
+    footer_text_map = {}
     for dest_module, dest_name_to_imports in self._module_imports.items():
       # Sort all possible imports for a symbol and pick the first one.
       imports_list = [
@@ -183,7 +201,13 @@ __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
 ''' % underscore_names_str
 
-    return module_text_map
+    if self._api_version == 1:  # Add 1.* deprecations.
+      for dest_module, _ in self._module_imports.items():
+        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+          footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+              dest_module)
+
+    return module_text_map, footer_text_map
 
 
 def _get_name_and_module(full_name):
@@ -254,6 +278,8 @@ def add_imports_for_symbol(
 
   # If symbol has _tf_api_names attribute, then add import for it.
   if (hasattr(symbol, '__dict__') and names_attr in symbol.__dict__):
+
+    # Generate import statements for symbols.
     for export in getattr(symbol, names_attr):  # pylint: disable=protected-access
       dest_module, dest_name = _get_name_and_module(export)
       dest_module = _join_modules(output_module_prefix, dest_module)
@@ -286,7 +312,7 @@ def get_api_init_text(packages,
   """
   if compat_api_versions is None:
     compat_api_versions = []
-  module_code_builder = _ModuleInitCodeBuilder(output_package)
+  module_code_builder = _ModuleInitCodeBuilder(output_package, api_version)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -421,8 +447,9 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map = get_api_init_text(packages, output_package, api_name,
-                                      api_version, compat_api_versions)
+  module_text_map, deprecation_footer_map = get_api_init_text(
+      packages, output_package, api_name,
+      api_version, compat_api_versions)
 
   # Add imports to output files.
   missing_output_files = []
@@ -456,6 +483,8 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       contents = (
           _GENERATED_FILE_HEADER % get_module_docstring(
               module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
+    if module in deprecation_footer_map:
+      contents += deprecation_footer_map[module]
     with open(module_name_to_file_path[module], 'w') as fp:
       fp.write(contents)
 

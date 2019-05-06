@@ -67,17 +67,43 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
     case HloOpcode::kPad: {
       return inst->mutable_operand(1);
     }
+
+    case HloOpcode::kSelectAndScatter: {
+      return inst->mutable_operand(2);
+    }
     case HloOpcode::kParameter:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kSlice:
       return nullptr;
     default:
-      return UnimplementedStrCat("Unimplimented padding for instruction: ",
+      return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
   }
+}
+
+bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
+                            int64 dimension) {
+  if ((inst->opcode() == HloOpcode::kReduceWindow ||
+       inst->opcode() == HloOpcode::kSelectAndScatter) &&
+      operand_num == 0 && inst->window().dimensions(dimension).size() == 1) {
+    return true;
+  }
+
+  if (operand_num == 0 && inst->opcode() == HloOpcode::kConvolution &&
+      inst->convolution_dimension_numbers().input_batch_dimension() ==
+          dimension) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -105,6 +131,11 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           }
           VLOG(1) << "Has dynamic dimension of operand" << operand_num << " @"
                   << dim;
+
+          if (ShouldSkipPadOnOperand(inst, operand_num, dim)) {
+            continue;
+          }
+
           TF_ASSIGN_OR_RETURN(HloInstruction * identity_value,
                               ChooseIdentityValue(inst));
           if (identity_value == nullptr) {
@@ -133,9 +164,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           HloInstruction* broadcasted_effective_size =
               computation->AddInstruction(HloInstruction::CreateBroadcast(
                   mask_shape, dynamic_size, {}));
-          HloInstruction* pred = computation->AddInstruction(
-              HloInstruction::CreateBinary(pred_shape, HloOpcode::kLt, iota,
-                                           broadcasted_effective_size));
+          HloInstruction* pred =
+              computation->AddInstruction(HloInstruction::CreateCompare(
+                  pred_shape, iota, broadcasted_effective_size,
+                  ComparisonDirection::kLt));
 
           HloInstruction* broadcasted_identity_value =
               computation->AddInstruction(HloInstruction::CreateBroadcast(

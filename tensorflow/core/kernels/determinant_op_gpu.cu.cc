@@ -17,12 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/determinant_op.h"
-
 #include <complex>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/determinant_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -129,12 +129,13 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
     const int64 num_matrices = output.size();
     const int64 n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
-    GPU_LAUNCH_KERNEL(
-        DeterminantFromPivotedLUKernel<Scalar,
-                                       /*compute_log_abs_det=*/false>,
+
+
+    TF_CHECK_OK(CudaLaunchKernel(
+        DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>,
         config.block_count, config.thread_per_block, 0, device.stream(),
         config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
-        output.data());
+        output.data()));
   }
 };
 
@@ -152,11 +153,11 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
     const int64 num_matrices = sign.size();
     const int64 n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
-    GPU_LAUNCH_KERNEL(
+    TF_CHECK_OK(CudaLaunchKernel(
         DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>,
         config.block_count, config.thread_per_block, 0, device.stream(),
         config.virtual_thread_count, n, lu_factor.data(), pivots, sign.data(),
-        log_abs_det.data());
+        log_abs_det.data()));
   }
 };
 

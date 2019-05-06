@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import bfloat16
@@ -33,6 +34,7 @@ class BFloat16ScopeTest(test.TestCase):
     with bfloat16.bfloat16_scope() as bf:
       self.assertEqual(bf.name, "")
 
+  @test_util.run_deprecated_v1
   def testRequestedDType(self):
     """Test if requested dtype is honored in the getter.
     """

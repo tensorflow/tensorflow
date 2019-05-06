@@ -63,8 +63,7 @@ TEST(TocoTest, BadOutputArray) {
 
   EXPECT_DEATH(Convert(input, toco_flags, model_flags, &output).ok(),
                "Specified output array .output1. is not produced by any op "
-               "in this graph. Is it a typo. To silence this message, pass "
-               "this flag:  allow_nonexistent_arrays");
+               "in this graph. Is it a typo");
 }
 
 TEST(TocoTest, BadOutputFormat) {

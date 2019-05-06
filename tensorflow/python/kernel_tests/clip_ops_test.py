@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -149,6 +148,40 @@ class ClipTest(test.TestCase):
       tf_ans = self.evaluate(ans)
 
     self.assertAllClose(np_ans, tf_ans)
+
+  def _testClipIndexedSlicesByValue(self, values, indices, shape,
+                                    clip_value_min, clip_value_max, expected):
+    with self.session(use_gpu=True) as sess:
+      values = constant_op.constant(values)
+      indices = constant_op.constant(indices)
+      shape = constant_op.constant(shape)
+      # IndexedSlices mode
+      indixed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_value(indixed_slices, clip_value_min,
+                                       clip_value_max)
+      # clipped should be IndexedSlices
+      self.assertIsInstance(clipped, ops.IndexedSlices)
+
+    self.assertAllClose(clipped.values, expected)
+
+  def testClipByValueWithIndexedSlicesClipped(self):
+    values = [[[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]],
+              [[0.0, 2.0, 0.0], [0.0, 0.0, -1.0]]]
+    indices = [2, 6]
+    shape = [10, 2, 3]
+    # [-2.0, 2.0]
+    self._testClipIndexedSlicesByValue(values, indices, shape, -2.0, 2.0,
+                                       [[[-2.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                                        [[0.0, 2.0, 0.0], [0.0, 0.0, -1.0]]])
+    # [1.0, 2.0]
+    self._testClipIndexedSlicesByValue(values, indices, shape, 1.0, 2.0,
+                                       [[[1.0, 1.0, 1.0], [2.0, 1.0, 1.0]],
+                                        [[1.0, 2.0, 1.0], [1.0, 1.0, 1.0]]])
+    # [-2.0, -1.0]
+    self._testClipIndexedSlicesByValue(
+        values, indices, shape, -2.0, -1.0,
+        [[[-2.0, -1.0, -1.0], [-1.0, -1.0, -1.0]],
+         [[-1.0, -1.0, -1.0], [-1.0, -1.0, -1.0]]])
 
   # ClipByNorm tests
   def testClipByNormClipped(self):
@@ -388,6 +421,7 @@ class ClipTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testClipByGlobalNormInf(self):
+    # Expect all NaNs when global norm is inf.
     with self.session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, np.inf, 4.0, 0.0, 0.0],
                                 shape=[2, 3])
@@ -395,12 +429,12 @@ class ClipTest(test.TestCase):
       clip_norm = 6.0
 
       ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
-        self.evaluate(norm)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
-        ans[0].eval()
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
-        ans[1].eval()
+      tf_ans_1 = ans[0].eval()
+      tf_ans_2 = ans[1].eval()
+      tf_norm = self.evaluate(norm)
+      self.assertAllEqual(tf_norm, float('inf'))
+      self.assertAllEqual(tf_ans_1, np.full([2, 3], float('nan')))
+      self.assertAllEqual(tf_ans_2, np.full([2], float('nan')))
 
   def testClipByAverageNormClipped(self):
     # Norm clipping when average clip_norm < 0.83333333
@@ -452,7 +486,7 @@ class ClipTest(test.TestCase):
 
   def testClipByAverageNormReplacedWithClipByNorm(self):
     # Check clip_by_average_norm(t) is the same as
-    # clip_by_norm(t, clip_norm * tf.to_float(tf.size(t)))
+    # clip_by_norm(t, clip_norm * tf.compat.v1.to_float(tf.size(t)))
     with self.session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
@@ -460,7 +494,7 @@ class ClipTest(test.TestCase):
       clip_norm = constant_op.constant(0.8)
       with_norm = clip_ops.clip_by_average_norm(x, clip_norm)
       without_norm = clip_ops.clip_by_norm(
-          x, clip_norm * math_ops.to_float(array_ops.size(x)))
+          x, clip_norm * math_ops.cast(array_ops.size(x), dtypes.float32))
       clip_by_average_norm_ans = self.evaluate(with_norm)
       clip_by_norm_ans = self.evaluate(without_norm)
       self.assertAllClose(clip_by_average_norm_ans, clip_by_norm_ans)

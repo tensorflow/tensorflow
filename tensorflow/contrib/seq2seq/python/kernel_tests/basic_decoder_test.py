@@ -13,31 +13,30 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for contrib.seq2seq.python.seq2seq.basic_decoder."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# pylint: enable=unused-import
 
 import numpy as np
 
-from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
+from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-# pylint: enable=g-import-not-at-top
 
 
+@test_util.run_v1_only("contrib code not supported in TF2.0")
 class BasicDecoderTest(test.TestCase):
 
   def _testStepWithTrainingHelper(self, use_output_layer):

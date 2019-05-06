@@ -116,6 +116,7 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -144,7 +145,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
-    tags = ["optonly"],  # Too slow in non-opt mode
+    shard_count = 5,
+    tags = ["optonly", "no_rocm"],  # Too slow in non-opt mode
     xla_enable_strict_auto_jit = True,
 )
 

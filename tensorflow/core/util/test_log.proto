@@ -2,6 +2,7 @@
 syntax = "proto3";
 
 import "google/protobuf/any.proto";
+import "google/protobuf/wrappers.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "TestLogProtos";
@@ -16,6 +17,20 @@ message EntryValue {
     string string_value = 2;
   }
 };
+
+message MetricEntry {
+  // Metric name
+  string name = 1;
+
+  // Metric value
+  double value = 2;
+
+  // The minimum acceptable value for the metric if specified
+  google.protobuf.DoubleValue min_value = 3;
+
+  // The maximum acceptable value for the metric if specified
+  google.protobuf.DoubleValue max_value = 4;
+}
 
 // Each unit test or benchmark in a test or benchmark run provides
 // some set of information.  Here we provide some reasonable keys
@@ -43,6 +58,10 @@ message BenchmarkEntry {
 
   // Generic map from result key to value.
   map<string, EntryValue> extras = 6;
+
+  // Metric name, value and expected range. This can include accuracy metrics
+  // typically used to determine whether the accuracy test has passed
+  repeated MetricEntry metrics = 7;
 };
 
 message BenchmarkEntries {

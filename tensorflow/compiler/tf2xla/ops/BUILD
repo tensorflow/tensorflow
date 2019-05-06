@@ -1,5 +1,5 @@
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    default_visibility = ["//tensorflow:internal"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -17,6 +17,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

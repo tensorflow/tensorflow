@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -603,22 +604,31 @@ class SymbolicShapeRefiner {
           " was not previously added to SymbolicShapeRefiner.");
     }
 
+    const absl::optional<GrapplerFunctionItem>& maybe_grappler_function_item =
+        it->second;
+    if (!maybe_grappler_function_item.has_value()) {
+      VLOG(3) << "Skip failed to instantiate function call: function_name="
+              << function_node->op();
+
+      auto* ctx = GetNodeContext(function_node);
+      auto* ic = ctx->inference_context.get();
+      for (int i = 0; i < ic->num_outputs(); ++i) {
+        TF_RETURN_IF_ERROR(SetUnknownShape(function_node, i));
+      }
+
+      return Status::OK();
+    }
+
     // Copy (not reference) so that changes we make here (e.g., replacing
-    // Placeholder with Const) don't affect one in
+    // _Arg with Const and _Retval with Identity) don't affect one in
     // fun_to_grappler_function_item_.
-    GrapplerFunctionItem grappler_function_item = it->second;
+    GrapplerFunctionItem grappler_function_item = *maybe_grappler_function_item;
     MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
     for (int i = 0; i < grappler_function_item.inputs().size(); ++i) {
       auto& fun_input = grappler_function_item.input(i);
-      if (fun_input.placeholders.size() > 1) {
-        // TODO(jmdecker): Handle case with multiple input placeholders
-        return errors::Unimplemented(
-            "Input arguments with multiple placeholders are not yet "
-            "supported.");
-      }
-      NodeDef* fun_node = gv.GetNode(fun_input.input_name);
+      NodeDef* fun_node = gv.GetNode(fun_input.node_name);
       const TensorId input_tensor = ParseTensorName(function_node->input(i));
 
       if (IsControlInput(input_tensor)) {
@@ -649,11 +659,18 @@ class SymbolicShapeRefiner {
           proto.mutable_dim(i)->set_size(-1);
         }
       }
+
+      // Turn _Arg node into a Placeholder. _Arg node is a system op without a
+      // valid shape function.
       *attr_output_shape.mutable_shape() = proto;
+      fun_node->set_op("Placeholder");
+      (*fun_node->mutable_attr())["dtype"] = (*fun_node->mutable_attr())["T"];
+      (*fun_node->mutable_attr()).erase("index");
+      (*fun_node->mutable_attr()).erase("T");
       (*fun_node->mutable_attr())["shape"] = attr_output_shape;
     }
 
-    // Replace input Placeholders with Consts, if values are known. Note that
+    // Replace input nodes with Consts, if values are known. Note that
     // we don't check exceptions here as it's done in the above loop.
     auto* ctx = GetNodeContext(function_node);
     auto* ic = ctx->inference_context.get();
@@ -684,9 +701,18 @@ class SymbolicShapeRefiner {
       }
     }
 
+    // Replace output _Retval nodes with Identity nodes. _Retval is a system op
+    // without outputs and registered shape function.
+    for (const auto& output_arg : grappler_function_item.outputs()) {
+      NodeDef* output_node = gv.GetNode(output_arg.node_name);
+      DCHECK_EQ(output_node->op(), "_Retval");
+      output_node->set_op("Identity");
+      output_node->mutable_attr()->erase("index");
+    }
+
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
 
     // Add return nodes for output shapes.
     int output = 0;
@@ -694,16 +720,9 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
-      if (out_arg.output_nodes.size() > 1) {
-        // TODO(jmdecker): Handle case of multiple output tensors
-        return errors::Unimplemented(
-            "Output arguments with multiple output tensors are not yet "
-            "supported.");
-      }
-
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
+      TensorId out_tensor = ParseTensorName(out_arg.node_name);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
@@ -979,6 +998,41 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  // Return true if the annotated shape is compatible with shape inference
+  // result. Examples:
+  // Inferred shape: ?, annotated shape: [10, 10] -> true;
+  // Inferred shape: [-1, 10], annotated shape: [10, 10] -> true;
+  // Inferred shape: [-1, 100], annotated shape: [10, 10] -> false;
+  // Inferred shape: [-1, 10, 10], annotated shape: [10, 10] -> false.
+  bool CompatibleShapes(ShapeHandle inferred_shape,
+                        ShapeHandle annotated_shape) const {
+    if (inferred_shape.SameHandle(annotated_shape)) {
+      return true;
+    }
+    if (!InferenceContext::RankKnown(inferred_shape)) {
+      return true;
+    }
+    if (InferenceContext::Rank(inferred_shape) !=
+        InferenceContext::Rank(annotated_shape)) {
+      return false;
+    }
+    const int rank = InferenceContext::Rank(inferred_shape);
+    for (int i = 0; i < rank; ++i) {
+      if (!InferenceContext::DimKnownRank(inferred_shape, i)
+               .SameHandle(
+                   InferenceContext::DimKnownRank(annotated_shape, i))) {
+        int64 val1 = InferenceContext::Value(
+            InferenceContext::DimKnownRank(inferred_shape, i));
+        int64 val2 = InferenceContext::Value(
+            InferenceContext::DimKnownRank(annotated_shape, i));
+        if (val1 >= 0 && val1 != val2) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   bool EquivalentShapesAndTypes(const std::vector<ShapeAndType>& st1,
                                 const std::vector<ShapeAndType>& st2) const {
     if (st1.size() != st2.size()) {
@@ -1007,9 +1061,18 @@ class SymbolicShapeRefiner {
         CHECK_NOTNULL(function_library_.Find(function_node->op()));
 
     GrapplerFunctionItem grappler_function_item;
-    TF_RETURN_IF_ERROR(
+    Status function_instantiated =
         MakeGrapplerFunctionItem(*function_def, function_library_,
-                                 graph_def_version_, &grappler_function_item));
+                                 graph_def_version_, &grappler_function_item);
+
+    // If function instantiation failed we will skip it during shape inference.
+    if (!function_instantiated.ok()) {
+      VLOG(3) << "Failed to instantiate a function. Error: "
+              << function_instantiated.error_message();
+      fun_to_grappler_function_item_[function_def->signature().name()] =
+          absl::nullopt;
+      return Status::OK();
+    }
 
     if (grappler_function_item.inputs().size() > function_node->input_size()) {
       return errors::FailedPrecondition(
@@ -1139,9 +1202,9 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  // Returns true if we want to update output values with running EvaluateNode()
-  // for this op, based on op type, data type, and size.
-  bool ShouldUpdateOutputValues(NodeContext* c, int64 max_size) {
+  // Returns true if we want to update output shapes and values with running
+  // EvaluateNode() for this op, based on op type, data type, and size.
+  bool ShouldUpdateOutputShapesAndValues(NodeContext* c, int64 max_size) {
     InferenceContext* ic = c->inference_context.get();
 
     // Due to the cost of running EvaluateNode(), we limit only to white listed
@@ -1209,11 +1272,11 @@ class SymbolicShapeRefiner {
         const DataType& data_type = c->input_types[i];
         int32 rank = ic->Rank(shape_handle);
         if (rank < 1) {
-          input_tensor_vector->emplace_back(Tensor(data_type, {}));
+          input_tensor_vector->at(i) = Tensor(data_type, {});
         } else {
-          input_tensor_vector->emplace_back(Tensor(data_type, {rank}));
+          input_tensor_vector->at(i) = Tensor(data_type, {rank});
         }
-        auto* tensor = &input_tensor_vector->back();
+        auto* tensor = &input_tensor_vector->at(i);
         if (data_type == DT_INT32) {
           auto flat = tensor->flat<int32>();
           for (int j = 0; j < rank; j++) {
@@ -1232,8 +1295,9 @@ class SymbolicShapeRefiner {
     }
   }
 
-  // Run a node to infer output values, and add it to the NodeContext.
-  Status UpdateOutputValues(const NodeDef& node, NodeContext* c) {
+  // Run a node to infer output shapes and values, and add it to the
+  // NodeContext.
+  Status UpdateOutputShapesAndValues(const NodeDef& node, NodeContext* c) {
     InferenceContext* ic = c->inference_context.get();
 
     // Input to EvaluateNode()
@@ -1264,7 +1328,7 @@ class SymbolicShapeRefiner {
           ic->MakeShapeFromTensorShape(t->shape(), &output_shape));
       if (ic->FullyDefined(ic->output(k)) &&
           !EquivalentShapes(ic->output(k), output_shape)) {
-        LOG(WARNING) << "UpdateOutputValues() -- node: " << node.name()
+        LOG(WARNING) << "UpdateOutputShapesAndValues() -- node: " << node.name()
                      << ", inferred output shape "
                      << "doesn't match for k=" << k << ": "
                      << "ic->output(k): " << ic->DebugString(ic->output(k))
@@ -1281,6 +1345,54 @@ class SymbolicShapeRefiner {
       const_tensors_to_propagate_.push_back(tensor_proto);
       c->output_tensor_protos[k] = &const_tensors_to_propagate_.back();
     }
+    return Status::OK();
+  }
+
+  // Update output shapes with annotated information.
+  // Currently only handle nodes with static shapes, i.e. shapes do not change
+  // during execution.
+  // TODO(andiryxu): Use annotated shapes in Enter/Merge etc as well.
+  Status UpdateOutputShapesUsingAnnotatedInformation(const NodeDef& node,
+                                                     NodeContext* c) const {
+    const auto& attr = node.attr();
+    if (attr.count(kOutputSame) == 0 || !attr.at(kOutputSame).b() ||
+        attr.count(kOutputShapes) == 0)
+      return Status::OK();
+
+    InferenceContext* ic = c->inference_context.get();
+    int output_size = attr.at(kOutputShapes).list().shape_size();
+
+    for (int i = 0; i < ic->num_outputs(); i++) {
+      // Annotated Switch node has only one output. Propagate the shape to all
+      // the outputs.
+      int shape_index = IsSwitch(node) ? 0 : i;
+      if (shape_index >= output_size) {
+        LOG(WARNING)
+            << "UpdateOutputShapesUsingAnnotatedInformation() -- node: "
+            << node.name() << ", inferred output shape size "
+            << ic->num_outputs() << ", annotated output shape size "
+            << output_size;
+        break;
+      }
+
+      const TensorShapeProto& shape =
+          attr.at(kOutputShapes).list().shape(shape_index);
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &output_shape));
+
+      // Only use annotated shapes if the inference shape is unknown and
+      // compatible with annotated shapes.
+      if (!ic->FullyDefined(ic->output(i)) &&
+          CompatibleShapes(ic->output(i), output_shape)) {
+        VLOG(3) << "UpdateOutputShapesUsingAnnotatedInformation() -- node: "
+                << node.name() << ", inferred output shape " << i << ": "
+                << "ic->output(i): " << ic->DebugString(ic->output(i))
+                << ", annotated output shape: " << ic->DebugString(output_shape)
+                << " -- " << node.ShortDebugString();
+        ic->set_output(i, output_shape);
+      }
+    }
+
     return Status::OK();
   }
 
@@ -1476,16 +1588,19 @@ class SymbolicShapeRefiner {
     }
 
     if (aggressive_shape_inference_) {
+      // Update output shapes with annotated information. This is optional.
+      UpdateOutputShapesUsingAnnotatedInformation(node, c).IgnoreError();
+
       // Update output tensor values using EvaluateNode() if we can.
       // Due to the cost of EvaluateNode(), we run it only for certain op types
       // (white listed) and small integer tensors.
 
       const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
-          !ShouldUpdateOutputValues(c, max_element_size)) {
+          !ShouldUpdateOutputShapesAndValues(c, max_element_size)) {
         return Status::OK();
       }
-      UpdateOutputValues(node, c).IgnoreError();  // This is optional.
+      UpdateOutputShapesAndValues(node, c).IgnoreError();  // This is optional.
     }
     return Status::OK();
   }
@@ -1493,14 +1608,14 @@ class SymbolicShapeRefiner {
   Status InferShapes(const NodeDef& node, NodeContext* c) {
     // Infer the shapes of output tensors.
     if (!c->op_data || c->op_data->shape_inference_fn == nullptr) {
-      // There is nothing more we can infer, annotate outputs with unknown
-      // shapes
-      return c->inference_context->Run(shape_inference::UnknownShape);
+      // Annotate outputs with unknown shapes. Update output shapes with
+      // annotated information later on if available.
+      TF_RETURN_IF_ERROR(
+          c->inference_context->Run(shape_inference::UnknownShape));
+    } else {
+      TF_RETURN_IF_ERROR(
+          c->inference_context->Run(c->op_data->shape_inference_fn));
     }
-
-    TF_RETURN_IF_ERROR(
-        c->inference_context->Run(c->op_data->shape_inference_fn));
-
     Status status = Status::OK();
     auto it = fed_ports_.find(node.name());
     const bool is_fed = it != fed_ports_.end();
@@ -1604,7 +1719,9 @@ class SymbolicShapeRefiner {
   std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
   std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
   std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
-  std::unordered_map<string, GrapplerFunctionItem>
+  // Store function instantiations only for valid function. If function
+  // instantiation failed it will have an `absl::nullopt`.
+  std::unordered_map<string, absl::optional<GrapplerFunctionItem>>
       fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
   const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
@@ -1797,6 +1914,7 @@ Status GraphProperties::UpdateShapes(
     // UpdateNode calls UpdateFunction if a function node is detected.
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
+
   return Status::OK();
 }
 

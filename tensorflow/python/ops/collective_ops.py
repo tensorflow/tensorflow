@@ -78,13 +78,12 @@ def all_gather(t, group_size, group_key, instance_key):
     raise ValueError('Device assignment required for collective ops')
   if group_size <= 1:
     raise ValueError('Parameter group_size to all_gather must be at least 2.')
-  dims = t.shape.as_list()
-  output_shape = [dims[0] * group_size] + dims[1:]
-  return gen_collective_ops.collective_gather(t,
-                                              shape=output_shape,
-                                              group_size=group_size,
-                                              group_key=group_key,
-                                              instance_key=instance_key)
+  return gen_collective_ops.collective_gather(
+      t,
+      shape=[0],
+      group_size=group_size,
+      group_key=group_key,
+      instance_key=instance_key)
 
 
 def broadcast_send(t, shape, dtype, group_size, group_key, instance_key):

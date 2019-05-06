@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <thread>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/error.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace stream_executor {
 namespace host {
@@ -40,6 +40,11 @@ int HostPlatform::VisibleDeviceCount() const {
 }
 
 const string& HostPlatform::Name() const { return name_; }
+
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+HostPlatform::DescriptionForDevice(int ordinal) const {
+  return HostExecutor::CreateDeviceDescription(ordinal);
+}
 
 port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
@@ -72,7 +77,7 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   if (!init_status.ok()) {
     return port::Status(
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
             config.ordinal, init_status.ToString().c_str()));
   }

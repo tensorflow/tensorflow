@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -26,8 +27,8 @@ from tensorflow.python.training import queue_runner
 
 
 def _which_queue(dynamic_pad):
-  return (data_flow_ops.PaddingFIFOQueue if dynamic_pad
-          else data_flow_ops.FIFOQueue)
+  return (data_flow_ops.PaddingFIFOQueue
+          if dynamic_pad else data_flow_ops.FIFOQueue)
 
 
 def prefetch_queue(tensors,
@@ -43,10 +44,12 @@ def prefetch_queue(tensors,
 
   Example:
   This is for example useful to pre-assemble input batches read with
-  `tf.train.batch()` and enqueue the pre-assembled batches.  Ops that dequeue
+  `tf.compat.v1.train.batch()` and enqueue the pre-assembled batches.  Ops that
+  dequeue
   from the pre-assembled queue will not pay the cost of assembling the batch.
 
-  images, labels = tf.train.batch([image, label], batch_size=32, num_threads=4)
+  images, labels = tf.compat.v1.train.batch([image, label], batch_size=32,
+  num_threads=4)
   batch_queue = prefetch_queue([images, labels])
   images, labels = batch_queue.dequeue()
   logits = Net(images)
@@ -86,6 +89,7 @@ def prefetch_queue(tensors,
     enqueue_op = queue.enqueue(tensors)
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(queue, [enqueue_op] * num_threads))
-    summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.to_float(queue.size()) * (1. / capacity))
+    summary.scalar(
+        "fraction_of_%d_full" % capacity,
+        math_ops.cast(queue.size(), _dtypes.float32) * (1. / capacity))
     return queue

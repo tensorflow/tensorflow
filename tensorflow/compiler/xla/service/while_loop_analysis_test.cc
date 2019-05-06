@@ -40,7 +40,7 @@ TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
       p_cond = (f32[2], s32[]) parameter(0)
       gte = s32[] get-tuple-element(p_cond), index=1
       const = s32[] constant(42)
-      ROOT result = pred[] equal-to(gte, const)
+      ROOT result = pred[] compare(gte, const), direction=EQ
     }
 
     ENTRY entry {
@@ -71,7 +71,7 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
       p_cond = (f32[2], s32[]) parameter(0)
       gte = s32[] get-tuple-element(p_cond), index=1
       const = s32[] constant(42)
-      ROOT result = pred[] equal-to(gte, const)
+      ROOT result = pred[] compare(gte, const), direction=EQ
     }
 
     ENTRY entry {
@@ -104,7 +104,7 @@ TEST_F(WhileLoopAnalysisTest, ExactBound) {
       p_cond = (f32[2], s32[]) parameter(0)
       gte = s32[] get-tuple-element(p_cond), index=1
       const = s32[] constant(42)
-      ROOT result = pred[] less-than(gte, const)
+      ROOT result = pred[] compare(gte, const), direction=LT
     }
 
     ENTRY entry {

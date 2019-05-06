@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,14 +45,17 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// Convert a std::string (used by LLVM's interfaces) to string.
-string AsString(const std::string& str);
+inline string AsString(const std::string& str) {
+  return string(str.data(), str.length());
+}
 
 // Convert a absl::string_view to a llvm::StringRef. Note: both
 // absl::string_view and llvm::StringRef are non-owning pointers into a
 // string in memory. This method is used to feed strings to LLVM
 // & Clang APIs that expect llvm::StringRef.
-llvm::StringRef AsStringRef(absl::string_view str);
+inline llvm::StringRef AsStringRef(absl::string_view str) {
+  return llvm::StringRef(str.data(), str.size());
+}
 
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
@@ -72,7 +74,7 @@ string DumpToString(const T& entity) {
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 // Dump the given LLVM module to a string. This requires a function distinct
@@ -106,15 +108,6 @@ string SanitizeFunctionName(string function_name);
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
-
-// Emits a call to the specified target intrinsic with the given operands. Overloaded
-// intrinsics (for example, "minnum") must include a type in overloaded_types
-// for each overloaded type. Typically, overloaded intrinsics have only a single
-// overloaded type.
-llvm::CallInst* EmitCallToTargetIntrinsic(
-    TargetIntrinsicEnum intrinsic_enum, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types,
-    LLVMTargetIRBuilder& llvm_target_IR_Builder);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
@@ -166,9 +159,9 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module);
 
 // Allocates a tile of shared memory.
-llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
-                                               llvm::Type* tile_type,
-                                               absl::string_view name);
+llvm::GlobalVariable* AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* tile_type, absl::string_view name,
+    unsigned int shared_memory_address_space);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -274,12 +267,7 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled);
-
-// Sets values in the given TargetOptions struct according to the given
-// compilation options.
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options);
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 
 // Computes a conservative union of the metadata in "a" and "b".  For
 // aliasing-related metadata, this means the result can be applied to
@@ -289,19 +277,19 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b);
 
-// Dumps out `llvm_module` to a file in the directory named `directory_name`,
-// creating the directory if necessary.  A sanitized version of
-// `hlo_module_name` is incorporated into the file name.  If `optimized` is true
-// then a suffix of "-with-opt.ll" is used, else a suffix of "-no-opt.ll" is
-// used.
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized);
+// Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
+// enabled for the given HLO module.
+//
+// A sanitized version of `hlo_module_name` is incorporated into the file name.
+// If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
+// of "-no-opt.ll" is used.
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized);
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               absl::string_view name, llvm::Module* module);
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name, llvm::Module* module);
 
 // Extracts the xla_backend_extra_options from `config` and passes those that
 // don't start with xla_ to LLVM.
@@ -320,17 +308,17 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
 // state passed between RNG calls implemented with Philox algorithm. If not,
 // creates such a variable. Returns the global variable.
 llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b);
+    llvm::Module* module, llvm::IRBuilder<>* b, 
+    unsigned int global_address_space = 0);
 
 // Adds a value to the global state variable each time when a RNG hlo is
 // executed. The value of this global state variable is added to the seed
 // of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
 // should rarely produce the same result.
 void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* b);
+                                        llvm::IRBuilder<>* b, 
+                                        unsigned int global_address_space = 0);
 
-constexpr int kAMDGPUGlobalMemoryAddrSpace = 1;
-constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
 }  // namespace llvm_ir
 }  // namespace xla
 

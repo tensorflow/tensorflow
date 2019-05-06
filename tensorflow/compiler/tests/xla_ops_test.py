@@ -142,6 +142,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters(*PRECISION_VALUES)
   def testDotGeneral(self, precision):
+
     for dtype in self.float_types:
 
       def dot_fn(lhs, rhs):

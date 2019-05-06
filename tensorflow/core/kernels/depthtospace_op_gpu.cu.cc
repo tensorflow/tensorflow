@@ -17,9 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/depthtospace_op.h"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/depthtospace_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -162,7 +161,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
       return;
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(D2S_NHWC,
+    GPU_LAUNCH_KERNEL(D2S_NHWC<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, batch_size,
         input_height, input_width, input_depth, output_height, output_width,
@@ -227,7 +226,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       return;
     }
     auto config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(D2S_NCHW,
+    GPU_LAUNCH_KERNEL(D2S_NCHW<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, input_width,
         output_depth * input_height, output.data());

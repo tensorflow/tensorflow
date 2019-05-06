@@ -78,6 +78,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
                  << " have incompatible allow_variant_types settings.";
     return false;
   }
+  if (x.allow_string_type != y.allow_string_type) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible allow_string_type settings.";
+    return false;
+  }
   if (!x.has_device_whitelist && !y.has_device_whitelist) {
     LOG(WARNING) << "Duplicate registrations of " << x.name
                  << "with no device whitelists.";
@@ -137,6 +142,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   static void* registration_init = [&registry]() {
     MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+    VLOG(2) << "tf_xla_cpu_global_jit = " << cpu_global_jit;
 
     mutex_lock lock(registry.mutex_);
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {
@@ -147,7 +153,6 @@ XlaOpRegistry::~XlaOpRegistry() = default;
           cpu_global_jit
               ? XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally
               : XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested;
-      registration.compile_resource_ops = false;
     }
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_GPU)).ok()) {
       DeviceRegistration& registration =
@@ -155,7 +160,6 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
       registration.autoclustering_policy =
           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
-      registration.compile_resource_ops = false;
     }
     return nullptr;
   }();
@@ -296,6 +300,9 @@ void XlaOpRegistry::RegisterCompilationKernels() {
           }
           if (op_registration->allow_variant_types) {
             allowed_values->add_type(DT_VARIANT);
+          }
+          if (op_registration->allow_string_type) {
+            allowed_values->add_type(DT_STRING);
           }
           // Don't build KernelDefs that have unsatisfiable type constraints.
           if (allowed_values->type().empty()) {
@@ -495,6 +502,11 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowResourceTypes() {
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowVariantTypes() {
   registration_->allow_variant_types = true;
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowStringType() {
+  registration_->allow_string_type = true;
   return *this;
 }
 

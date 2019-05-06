@@ -48,6 +48,12 @@ tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/BUI
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda9.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda9.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/tensorrt5/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos7/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/gcc7-nvcc-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/py3/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/cuda10.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/generate/workspace.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
@@ -56,16 +62,16 @@ tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py3/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos6/gcc7-nvcc-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/tensorrt5/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos6/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/py3/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/build_defs.bzl
-tensorflow/third_party/toolchains/gpus/cuda/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/cuda/cuda_config.h
-tensorflow/third_party/toolchains/gpus/crosstool/BUILD
-tensorflow/third_party/toolchains/gpus/crosstool/CROSSTOOL
-tensorflow/third_party/toolchains/gpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
@@ -96,6 +102,7 @@ tensorflow/third_party/gpus/rocm/BUILD
 tensorflow/third_party/gpus/rocm/BUILD.tpl
 tensorflow/third_party/gpus/rocm/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
+tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/cython.BUILD
@@ -202,6 +209,7 @@ tensorflow/third_party/tflite_smartreply.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/pcre.BUILD
+tensorflow/third_party/pybind11.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/sqlite.BUILD
 tensorflow/third_party/common.bzl
@@ -209,6 +217,7 @@ tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/pprof.BUILD
 tensorflow/third_party/BUILD
 tensorflow/third_party/tflite_mobilenet_quant.BUILD
+tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/lmdb.BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/BUILD
@@ -240,6 +249,7 @@ tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/jsoncpp.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
+tensorflow/third_party/__init__.py
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/third_party/eigen.BUILD

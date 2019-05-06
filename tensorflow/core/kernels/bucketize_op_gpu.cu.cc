@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -90,7 +89,7 @@ struct BucketizeFunctor<GPUDevice, T> {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     GpuDeviceArrayOnHost<float> boundaries_array(context,
-                                                  boundaries_vector.size());
+                                                 boundaries_vector.size());
     TF_RETURN_IF_ERROR(boundaries_array.Init());
     for (int i = 0; i < boundaries_vector.size(); ++i) {
       boundaries_array.Set(i, boundaries_vector[i]);

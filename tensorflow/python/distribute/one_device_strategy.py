@@ -34,25 +34,36 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
+# TODO(josh11b): Do we wrap values in types to generate errors if you are
+# doing something that won't work with other DistributionStrategy
+# implementations?
 
-@tf_export("distribute.OneDeviceStrategy")
-class OneDeviceStrategy(distribute_lib.DistributionStrategy):
+
+@tf_export("distribute.OneDeviceStrategy", v1=[])
+class OneDeviceStrategy(distribute_lib.Strategy):
   """A distribution strategy for running on a single device."""
-  # TODO(josh11b): Do we wrap values in types to generate errors if you are
-  # doing something that won't work with other DistributionStrategy
-  # implementations?
 
   def __init__(self, device):
     super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
 
 
-class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
+@tf_export(v1=["distribute.OneDeviceStrategy"])
+class OneDeviceStrategyV1(distribute_lib.StrategyV1):
+  """A distribution strategy for running on a single device."""
+
+  def __init__(self, device):
+    super(OneDeviceStrategyV1, self).__init__(OneDeviceExtended(self, device))
+
+
+# TODO(josh11b): Switch to V2 after callers have been updated to only V2 APIs.
+class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of OneDeviceStrategy."""
 
   def __init__(self, container_strategy, device):
     super(OneDeviceExtended, self).__init__(container_strategy)
-    self._device = device
-    self._input_device = device_util.canonicalize("/device:CPU:0")
+    self._device = device_util.canonicalize(device)
+    suffix_loc = self._device.rfind("/")
+    self._input_device = self._device[:suffix_loc] + "/device:CPU:0"
     worker_device_pairs = [(self._input_device, [self._device])]
     device_map = values.SingleDeviceMap(device)
     self._input_workers = input_lib.InputWorkers(
@@ -93,6 +104,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   def _broadcast_to(self, tensor, destinations):
     del destinations
     return tensor
+
+  def _experimental_distribute_dataset(self, dataset):
+    # Note that split_batch_by argument is not passed because it is always 1 in
+    # this strategy, and adding it adds unnecessary overhead to the dataset.
+    return input_lib.get_distributed_dataset(dataset, self._input_workers)
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -159,13 +175,13 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
     return array_ops.identity(replica_local_var)
 
-  def _unwrap(self, value):
+  def _local_results(self, value):
     return (value,)
 
   def value_container(self, value):

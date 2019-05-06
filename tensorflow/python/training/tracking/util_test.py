@@ -406,7 +406,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    root_trackable.save_counter  # pylint: disable=pointless-statement
+    self.assertFalse(root_trackable.save_counter.trainable)
     self.evaluate(trackable_utils.gather_initializers(
         root_trackable))
     self.evaluate(train_op)
@@ -497,7 +497,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.Adam(0.001)
-          root = trackable_utils.Checkpoint(
+          root = trackable_utils.CheckpointV1(
               optimizer=optimizer, model=model)
           input_value = constant_op.constant([[3.]])
           with backprop.GradientTape() as tape:
@@ -577,7 +577,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       saver = trackable_utils.frozen_saver(checkpoint)
       with ops.device("cpu:0"):
         prefix_tensor = constant_op.constant(prefix)
-      save_path = self.evaluate(saver.save(prefix_tensor))
+      self.evaluate(saver.save(prefix_tensor))
       self.evaluate(v.assign(10))
       # Use the frozen saver to restore the same object graph
       self.evaluate(saver.restore(prefix_tensor))
@@ -594,7 +594,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       # Restore as an object-based checkpoint
       del v, checkpoint, saver
       checkpoint = trackable_utils.Checkpoint()
-      status = checkpoint.restore(save_path)
+      status = checkpoint.restore(prefix)
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
       if context.executing_eagerly():
         self.assertEqual(12, self.evaluate(checkpoint.save_counter))
@@ -1055,12 +1055,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     expected_filenames = ["checkpoint"]
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
 
   @test_util.run_in_graph_and_eager_modes
   def testCheckpointStateChangingVarList(self):
@@ -1082,12 +1079,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # be consistent. Nothing gets deleted.
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
     self.assertEqual(
         checkpoint_prefix + "-10",
         checkpoint_management.latest_checkpoint(checkpoint_directory))
@@ -1477,12 +1471,9 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         self._check_sentinels(root)
       if context.executing_eagerly():
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_nontrivial_match()
+        status.assert_consumed()
+        status.assert_existing_objects_matched()
+        status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
@@ -1497,6 +1488,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
       status.initialize_or_restore()
+      status.assert_nontrivial_match()
       self._check_sentinels(root)
       # Check that there is no error when keys are missing from the name-based
       # checkpoint.
@@ -1511,9 +1503,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)

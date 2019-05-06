@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
+
 #include <cfloat>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -54,6 +55,8 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool IsGreaterThan(dtype a, dtype b) {
 //         int form, keeping track of the flattened index of the input item that
 //         produces the max output. If a nullptr is passed in for mask, no mask
 //         will be produced.
+//     include_batch_in_index: whether to include batch dimension in flattened
+//         index of `argmax`.
 //
 // To call the forward and backward functions, use e.g.:
 // const int kThreadsPerBlock = 1024
@@ -61,14 +64,12 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool IsGreaterThan(dtype a, dtype b) {
 // MaxPoolForwardNCHW<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
 //                      kThreadsPerBlock, 0, cuda_stream>>>(...);
 template <bool propagate_nans, typename dtype>
-__global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
-                                   const int channels, const int height,
-                                   const int width, const int pooled_height,
-                                   const int pooled_width, const int kernel_h,
-                                   const int kernel_w, const int stride_h,
-                                   const int stride_w, const int pad_t,
-                                   const int pad_l, dtype* top_data,
-                                   int64* mask) {
+__global__ void MaxPoolForwardNCHW(
+    const int nthreads, const dtype* bottom_data, const int channels,
+    const int height, const int width, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    dtype* top_data, int64* mask, const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -82,12 +83,13 @@ __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
     wstart = max(wstart, 0);
     dtype maxval = Eigen::NumTraits<dtype>::lowest();
     int maxidx = -1;
-    const dtype* bottom_data_n = bottom_data + n * channels * height * width;
+    const int offset = n * channels * height * width;
+    const dtype* bottom_data_n = bottom_data + offset;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = c * height * width + h * width + w;
         if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
-          maxidx = idx;
+          maxidx = include_batch_in_index ? idx + offset : idx;
           maxval = bottom_data_n[idx];
         }
       }
@@ -129,7 +131,7 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
       for (int w = wstart; w < wend; ++w) {
         int idx = (c * height + h) * width + w;
 #if GOOGLE_CUDA
-        maxval = __vmaxs4(maxval, bottom_data_n[idx]);
+         maxval = __vmaxs4(maxval, bottom_data_n[idx]);
 #elif TENSORFLOW_USE_ROCM
         // ROCM TODO properly implement this function with corresponding GCN
         // instruction
@@ -142,14 +144,12 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
 }
 
 template <bool propagate_nans, typename dtype>
-__global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
-                                   const int height, const int width,
-                                   const int channels, const int pooled_height,
-                                   const int pooled_width, const int kernel_h,
-                                   const int kernel_w, const int stride_h,
-                                   const int stride_w, const int pad_t,
-                                   const int pad_l, dtype* top_data,
-                                   int64* mask) {
+__global__ void MaxPoolForwardNHWC(
+    const int nthreads, const dtype* bottom_data, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    dtype* top_data, int64* mask, const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -164,12 +164,13 @@ __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
     wstart = max(wstart, 0);
     dtype maxval = Eigen::NumTraits<dtype>::lowest();
     int maxidx = -1;
-    const dtype* bottom_data_n = bottom_data + n * height * width * channels;
+    const int offset = n * height * width * channels;
+    const dtype* bottom_data_n = bottom_data + offset;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (h * width + w) * channels + c;
         if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
-          maxidx = idx;
+          maxidx = include_batch_in_index ? idx + offset : idx;
           maxval = bottom_data_n[idx];
         }
       }
@@ -237,17 +238,20 @@ __global__ void MaxPoolBackwardNoMaskNHWC(
 //     bottom_offset: the pre-computed per-image offset of the maxpool input.
 //         This is equal to H*W*C.
 //     bottom_diff: the gradient with respect to the input.
+//     include_batch_in_index: whether to include batch dimension in flattened
+//         index of `argmax`.
 // This function relies on GpuAtomicAdd to avoid race conditions. Also, before
 // the kernel is run, you will need to make sure that bottom_diff is filled with
 // zero first.
 template <typename dtype>
 __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
                                 const int64* mask, const int top_offset,
-                                const int bottom_offset, dtype* bottom_diff) {
+                                const int bottom_offset, dtype* bottom_diff,
+                                const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / top_offset);
-    GpuAtomicAdd(bottom_diff + image_id * bottom_offset + mask[index],
-                  top_diff[index]);
+    const int offset =
+        include_batch_in_index ? 0 : (index / top_offset) * bottom_offset;
+    GpuAtomicAdd(bottom_diff + offset + mask[index], top_diff[index]);
   }
 }
 
@@ -364,14 +368,17 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     bottom_offset: the pre-computed per-image offset of the maxpool output.
 //         This is equal to Hout*Wout*C.
 //     bottom_diff: the gradient of the gradient w.r.t. output.
+//     include_batch_in_index: whether to include batch dimension in flattened
+//         index of `argmax`.
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
-                                    const int bottom_offset,
-                                    dtype* bottom_diff) {
+                                    const int bottom_offset, dtype* bottom_diff,
+                                    const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / bottom_offset);
-    bottom_diff[index] = top_diff[image_id * top_offset + mask[index]];
+    const int offset =
+        include_batch_in_index ? 0 : (index / bottom_offset) * top_offset;
+    bottom_diff[index] = top_diff[offset + mask[index]];
   }
 }
 
@@ -406,24 +413,25 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     const int channels, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
     const int stride_w, const int pad_t, const int pad_l, T* top_data,
-    int64* mask, const Eigen::GpuDevice& d, bool propagate_nans) {
+    int64* mask, const Eigen::GpuDevice& d, bool propagate_nans,
+    const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
   if (output_size == 0) return true;
   if (propagate_nans) {
-    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<true>,
+    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<true, T>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
-            output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask);
+        output_size, bottom_data, height, width, channels, pooled_height,
+        pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+        top_data, mask, include_batch_in_index);
   } else {
-    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<false>,
+    GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<false, T>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
-            output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask);
+        output_size, bottom_data, height, width, channels, pooled_height,
+        pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+        top_data, mask, include_batch_in_index);
   }
   return d.ok();
 }
@@ -439,13 +447,13 @@ bool MaxPoolBackwardNoMask<T>::operator()(
 
   const int bottom_size = batch * channels * height * width;
   if (bottom_size == 0) return true;
-  GPU_LAUNCH_KERNEL(SetZero,
+    GPU_LAUNCH_KERNEL(SetZero<T>,
       dim3((bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       bottom_size, bottom_diff);
 
   const int top_size = batch * channels * pooled_height * pooled_width;
-  GPU_LAUNCH_KERNEL(MaxPoolBackwardNoMaskNHWC,
+  GPU_LAUNCH_KERNEL(MaxPoolBackwardNoMaskNHWC<T>,
       dim3((top_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       top_size, bottom_data, height, width, channels, pooled_height,
@@ -458,17 +466,19 @@ template <typename T>
 bool MaxPoolBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
-    T* bottom_diff, const Eigen::GpuDevice& d) {
+    T* bottom_diff, const Eigen::GpuDevice& d,
+    const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
   if (input_size == 0) return true;
-  GPU_LAUNCH_KERNEL(SetZero,
+  GPU_LAUNCH_KERNEL(SetZero<T>,
       dim3((input_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
       input_size, bottom_diff);
-  GPU_LAUNCH_KERNEL(MaxPoolBackward,
+  GPU_LAUNCH_KERNEL(MaxPoolBackward<T>,
       dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
       dim3(kThreadsPerBlock), 0, d.stream(),
-      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff,
+      include_batch_in_index);
   return d.ok();
 }
 
@@ -485,17 +495,17 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
   GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
-    GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNHWC,
+    GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNHWC<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         num_kernels, bottom_data, output_data, pooled_height, pooled_width,
         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
         pad_l, top_diff, bottom_diff);
   } else {
-    GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNCHW,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        num_kernels, bottom_data, output_data, pooled_height, pooled_width,
-        channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
-        pad_l, top_diff, bottom_diff);
+      GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNCHW<T>, dim3(config.block_count),
+         dim3(config.thread_per_block), 0, d.stream(), num_kernels,
+         bottom_data, output_data, pooled_height, pooled_width,
+         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
+         pad_l, top_diff, bottom_diff);
   }
   return d.ok();
 }
@@ -504,12 +514,14 @@ template <typename T>
 bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
-    T* bottom_diff, const Eigen::GpuDevice& d) {
+    T* bottom_diff, const Eigen::GpuDevice& d,
+    const bool include_batch_in_index) {
   if (input_size == 0) return true;
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-  GPU_LAUNCH_KERNEL(MaxPoolGradBackward,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+  GPU_LAUNCH_KERNEL(MaxPoolGradBackward<T>, dim3(config.block_count),
+        dim3(config.thread_per_block), 0, d.stream(), output_size, top_diff,
+        mask, top_offset, bottom_offset, bottom_diff,
+        include_batch_in_index);
   return d.ok();
 }
 

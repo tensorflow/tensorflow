@@ -410,20 +410,17 @@ def _ReluGrad(op, grad):
 @ops.RegisterGradient("EluGrad")
 def _EluGradGrad(op, grad):
   elu_x = op.inputs[1]
-  return (gen_nn_ops.elu_grad(grad, op.outputs[0]),
+  return (gen_nn_ops.elu_grad(grad, elu_x),
           array_ops.where(
-              elu_x < 0, grad * op.inputs[0],
-              array_ops.zeros(shape=array_ops.shape(elu_x), dtype=elu_x.dtype)))
+              elu_x < 0, grad * op.inputs[0], array_ops.zeros_like(elu_x)))
 
 
 @ops.RegisterGradient("SeluGrad")
 def _SeluGradGrad(op, grad):
-  x = op.inputs[1]
-  scale_alpha = 1.7580993408473768599402175208123
-  return (gen_nn_ops.elu_grad(grad, op.outputs[0]),
+  selu_x = op.inputs[1]
+  return (gen_nn_ops.selu_grad(grad, selu_x),
           array_ops.where(
-              x < 0., gen_nn_ops.elu_grad(grad, op.outputs[0] + scale_alpha),
-              array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype)))
+              selu_x < 0., grad * op.inputs[0], array_ops.zeros_like(selu_x)))
 
 
 @ops.RegisterGradient("Relu6")
@@ -465,7 +462,7 @@ def _SeluGrad(op, grad):
 
 @ops.RegisterGradient("Softplus")
 def _SoftplusGrad(op, grad):
-  return gen_nn_ops.softplus_grad(grad, op.inputs[0])
+  return grad * math_ops.sigmoid(op.inputs[0])
 
 
 @ops.RegisterGradient("SoftplusGrad")
@@ -698,13 +695,15 @@ def _MaxPoolGradV2(op, grad):
 
 @ops.RegisterGradient("MaxPoolWithArgmax")
 def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
+  del unused_argmax_grad
   return gen_nn_ops.max_pool_grad_with_argmax(
       op.inputs[0],
       grad,
       op.outputs[1],
       op.get_attr("ksize"),
       op.get_attr("strides"),
-      padding=op.get_attr("padding"))
+      padding=op.get_attr("padding"),
+      include_batch_in_index=op.get_attr("include_batch_in_index"))
 
 
 @ops.RegisterGradient("MaxPoolGrad")

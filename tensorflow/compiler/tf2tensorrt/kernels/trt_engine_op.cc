@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
@@ -105,7 +105,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
 
-  // Name of the function for TF native execution of the segment.
+  // Name of the function for TF native execution of the segment. If empty, it
+  // means TF native execution is not allowed, and if TRT engine fails to run
+  // an error will be returned.
   string funcdef_name_;
 
   // GraphDef representation of the segment.
@@ -169,7 +171,6 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
                             " can't be found in function library");
   }
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
-  inst_ops.overlay_lib = nullptr;
   inst_ops.state_handle = "";
   inst_ops.target = ctx->device()->name();
   native_func_ = 0;
@@ -197,7 +198,11 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
           errors::InvalidArgument("Failed to parse segment graphdef!"));
       return;
     }
-    serialized_segment_.resize(0);
+    VLOG(1) << "Size of serialized GraphDef: "
+            << serialized_segment_.capacity();
+    string tmp;
+    // Swap with temporary empty string to deallocate the CPU memory.
+    serialized_segment_.swap(tmp);
   }
   VLOG(1) << "Constructing " << name();
   string precision_string;
@@ -236,6 +241,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
+  if (funcdef_name_.empty()) {
+    const string err_msg = StrCat("Fallback path is disabled, for ", name());
+    LOG(WARNING) << err_msg;
+    ctx->SetStatus(errors::Internal(err_msg));
+    return;
+  }
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {
@@ -271,8 +282,6 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
-             test::AddTestValue(StrCat(this->name(), ":ExecuteNativeSegment"),
-                                "done");
              delete outputs;
            });
 }
@@ -282,17 +291,17 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
-  auto res_mgr = ctx->resource_manager();
   TRTCalibrationResource* calib_res = nullptr;
   OP_REQUIRES_OK(ctx,
-                 res_mgr->LookupOrCreate(
-                     "TF_TRT_Calibration", name(),
+                 ctx->resource_manager()->LookupOrCreate(
+                     "TF-TRT-Calibration", name(),
                      reinterpret_cast<SerializableResourceBase**>(&calib_res),
                      {[ctx, this](SerializableResourceBase** cr) -> Status {
                        return this->AllocateCalibrationResources(ctx, cr);
                      }}));
   core::ScopedUnref calib_sc(calib_res);
   int num_inputs = ctx->num_inputs();
+  // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
   for (int i = 0; i < num_inputs; i++) {
@@ -317,7 +326,6 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   calib_res->calibrator_->setBatch(input_data, *stream);
-  test::AddTestValue(StrCat(name(), ":ExecuteCalibration"), "done");
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
@@ -368,9 +376,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   EngineContext* engine_context = GetEngine(input_shapes, ctx);
   if (!engine_context->cuda_engine) {
-    LOG(WARNING) << "Engine retrieval for input shapes: "
-                 << TensorShapeUtils::ShapeListString(input_shapes)
-                 << " failed. Running native segment for " << name();
+    VLOG(1) << "Engine retrieval for input shapes: "
+            << TensorShapeUtils::ShapeListString(input_shapes)
+            << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -397,8 +405,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     const string input_name = StrCat(kInputPHName, i);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
-      LOG(ERROR) << "Input node not found, at " << input_name;
-      return kRetry;
+      const string msg =
+          StrCat("Input node ", input_name, " not found, at ", name());
+      LOG(ERROR) << msg;
+      ctx->SetStatus(errors::NotFound(msg));
+      return !kRetry;
     }
 
     const Tensor& input_tensor = ctx->input(i);
@@ -415,8 +426,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(ERROR) << "FP16 inputs are not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
@@ -449,8 +461,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         return kRetry;
       }
     } else {
-      LOG(ERROR) << "Output node not found, at " << output_name;
-      return kRetry;
+      const string msg =
+          StrCat("Ouput node ", output_name, " not found, at ", name());
+      LOG(ERROR) << msg;
+      ctx->SetStatus(errors::NotFound(msg));
+      return !kRetry;
     }
     auto status = ctx->allocate_output(i, output_shape, &output_tensor);
     if (!status.ok()) {
@@ -467,8 +482,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(WARNING) << "half size is not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
@@ -498,7 +514,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
     return kRetry;
   }
-  test::AddTestValue(StrCat(name(), ":ExecuteTrtEngine"), "done");
   // Synchronization will be done by TF.
   return !kRetry;
 }
@@ -510,10 +525,22 @@ EngineContext* TRTEngineOp::GetEngine(
   // TODO(tmorris): using first input to get batch size - is this reliable?
   const int batch_size = input_shapes[0].dim_size(0);
 
-  // Get engine cache
+  // Canonicalize the op name by removing the scopes if any. This is mainly
+  // because in TFv2, the function graph can be instantiated in various ways and
+  // it'll insert scope names to the name of the TRTEngineOps, which will result
+  // in many different engine caches if we use the instantiated op name
+  // directly, but we still want all of them share the same cache (if they were
+  // representing the same subgraph).
+  absl::string_view resource_name = name();
+  size_t last_slash = resource_name.find_last_of('/');
+  if (last_slash != absl::string_view::npos) {
+    resource_name.remove_prefix(last_slash + 1);
+  }
+
+  // Get engine cache.
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      "TRTEngineCache", funcdef_name_, &cache_res,
+      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
@@ -564,7 +591,11 @@ EngineContext* TRTEngineOp::GetEngine(
                       TrtUniquePtrType<nvinfer1::IExecutionContext>(
                           raw_static_engine->createExecutionContext())));
     // Runtime is safe to delete after engine creation
-    serialized_segment_.clear();
+    VLOG(1) << "Size of serialized TRT engine: "
+            << serialized_segment_.capacity();
+    string tmp;
+    // Swap with temporary empty string to deallocate the CPU memory.
+    serialized_segment_.swap(tmp);
     if (max_batch_size < batch_size) {
       return &empty_context;
     }
@@ -608,22 +639,21 @@ EngineContext* TRTEngineOp::GetEngine(
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, &convert_successfully);
     if (!status.ok()) {
-      if (convert_successfully) {
-        // This means it fail to build the engine even when the network is built
-        // successfully, probably due to internal issues. In this case we don't
-        // retry in the future.
-        cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
-      }
-      LOG(WARNING) << "Engine creation for batch size " << batch_size
-                   << " failed " << status;
+      LOG(WARNING) << "Engine creation for " << name() << " failed. "
+                   << "The native segment will be used instead. "
+                   << "Reason: " << status;
+      // Store an empty engine in the cache for these input shapes so we don't
+      // try to build the same failing engine again.
+      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
       return &empty_context;
     }
-    VLOG(1) << "Conversion is done";
     TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
         engine->createExecutionContext());
     cache.emplace(engine_input_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));
+    VLOG(1) << "Added new engine to cache of " << name()
+            << ". Cache size: " << cache.size();
   }
   return cache.at(engine_input_shapes).get();
 }

@@ -100,7 +100,8 @@ def _Update(struct_acc, struct_x, t):
   to_skip_update = set()
   acc_lst = nest.flatten(struct_acc)
   x_lst = nest.flatten(struct_x)
-  t = math_ops.to_int32([t])  # tf.to_int32 casts on-device tensors.
+  t = math_ops.cast(
+      [t], dtypes.int32)  # tf.compat.v1.to_int32 casts on-device tensors.
   lst = []
   for acc, x in zip(acc_lst, x_lst):
     if acc in to_skip_update:
@@ -429,7 +430,8 @@ class _Recurrent(object):
       acc_extras = _EmptyAcc(slen_dim, extras)
 
       t = slen_dim - max_input_length if self._aligned_end else 0
-      dev_t = math_ops.to_int32(t) if use_tpu else math_ops.to_int64(t)
+      dev_t = math_ops.cast(t, dtypes.int32) if use_tpu else math_ops.cast(
+          t, dtypes.int64)
       run = functional_ops.For(
           start=t,
           limit=slen_dim if self._aligned_end else max_input_length,
@@ -568,7 +570,8 @@ class _Recurrent(object):
       # Loop backwards. Note the loop's limit is open-ended, so goes through
       # t=0.
       t = slen_dim - 1 if self._aligned_end else max_input_length - 1
-      dev_t = math_ops.to_int32(t) if use_tpu else math_ops.to_int64(t)
+      dev_t = math_ops.cast(t, dtypes.int32) if use_tpu else math_ops.cast(
+          t, dtypes.int64)
       limit = slen_dim - max_input_length - 1 if self._aligned_end else -1
       run = functional_ops.For(
           start=t,

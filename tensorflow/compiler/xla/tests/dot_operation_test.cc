@@ -47,6 +47,13 @@ using TypesF16F32 = ::testing::Types<float>;
 using TypesF16F32F64 = ::testing::Types<float>;
 using TypesF16F32F64CF64 = ::testing::Types<float>;
 #elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
+    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) && \
+    defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
+using TypesF16F32 = ::testing::Types<Eigen::half, float>;
+using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
+using TypesF16F32F64CF64 =
+    ::testing::Types<Eigen::half, float, double>;
+#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
     !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
@@ -395,6 +402,8 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
   ParametricDotTestWithoutLayoutAssignment() {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "layout-assignment");
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "tiling-assignment");
     // Disable algebraic simplification because the pass may replace a dot
     // instruction with a layout-changing multiplication instruction.
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
@@ -499,7 +508,7 @@ XLA_TYPED_TEST(NonsquareMatrixDot, TestFT) { this->TestImpl(false, true); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTF) { this->TestImpl(true, false); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTT) { this->TestImpl(true, true); }
 
-XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
+XLA_TEST_F(DotOperationTest, DISABLED_ON_GPU_ROCM(MatrixVectorC64)) {
   auto lhs_handle =
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
@@ -1198,12 +1207,52 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{16, 34}, v{16, 34}, "ab,ab->ab"},
       p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
       p{v{5, 19}, v{}, "ab,->ab"},
+      p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf->bhqk"},
   };
   return test_cases;
 }
 
-INSTANTIATE_TEST_CASE_P(Einsum, EinsumTest,
-                        ::testing::ValuesIn(GetEinsumTestCases()));
+INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
+                         ::testing::ValuesIn(GetEinsumTestCases()));
+
+using BatchDotParamType =
+    std::tuple<std::vector<int64>, std::vector<int64>, std::vector<int64>>;
+class BatchDotTest : public DotOperationTest,
+                     public ::testing::WithParamInterface<BatchDotParamType> {};
+XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
+  XlaBuilder builder(TestName());
+  auto x = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto y = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto batch_dot = BatchDot(x, y);
+  auto output_shape = builder.GetShape(batch_dot).ValueOrDie();
+  EXPECT_EQ(output_shape.dimensions(), std::get<2>(GetParam()));
+  ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
+}
+
+std::vector<BatchDotParamType> GetBatchDotTestCases() {
+  using v = std::vector<int64>;
+  using p = BatchDotParamType;
+  std::vector<p> test_cases = {
+      p{v{5, 6}, v{6, 7}, v{5, 7}},
+      p{v{5, 6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{5, 6, 11}, v{11, 7}, v{5, 6, 7}},
+      p{v{5, 6, 11}, v{1, 11, 7}, v{5, 6, 7}},
+      p{v{6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{1, 6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{8, 1, 2, 3}, v{8, 3, 4}, v{8, 8, 2, 4}},
+      p{v{8, 8, 2, 3}, v{8, 1, 3, 2}, v{8, 8, 2, 2}},
+  };
+  return test_cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
+                         ::testing::ValuesIn(GetBatchDotTestCases()));
 
 class DotOperationTextTest : public HloTestBase {};
 
@@ -1344,7 +1393,7 @@ ENTRY TransposeOutput {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(MatrixVectorComplex)) {
   absl::string_view hlo_string =
       R"(
 HloModule MatrixVectorComplex

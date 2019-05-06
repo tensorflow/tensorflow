@@ -20,7 +20,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 // Return a tensor handle containing a float scalar
-TFE_TensorHandle* TestScalarTensorHandle();
+TFE_TensorHandle* TestScalarTensorHandle(float value);
+
+// Return a tensor handle containing a int scalar
+TFE_TensorHandle* TestScalarTensorHandle(int value);
+
+// Return a tensor handle containing a bool scalar
+TFE_TensorHandle* TestScalarTensorHandle(bool value);
 
 // Return a tensor handle containing a 2x2 matrix of doubles
 TFE_TensorHandle* DoubleTestMatrixTensorHandle();

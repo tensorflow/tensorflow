@@ -17,11 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/eye_functor.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -53,7 +52,7 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int m = matrix_batch.dimension(1);
     const int n = matrix_batch.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
-    GPU_LAUNCH_KERNEL(EyeKernel,
+    GPU_LAUNCH_KERNEL(EyeKernel<Scalar>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         device.stream(),
         config.virtual_thread_count, batch_size, m, n, matrix_batch.data());

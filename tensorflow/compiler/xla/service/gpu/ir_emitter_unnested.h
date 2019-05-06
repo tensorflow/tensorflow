@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 
 namespace xla {
 namespace gpu {
@@ -146,8 +145,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     const HloComputation* hlo_computation,
-                    IrEmitterContext* ir_emitter_context,
-                    llvm_ir::LLVMTargetFeatures* llvm_target_ir_builder);
+                    IrEmitterContext* ir_emitter_context);
+
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
 
@@ -211,13 +210,15 @@ class IrEmitterUnnested : public IrEmitter {
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
+      bool use_linear_index,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionToVector(*unnested_hlo)`
-  Status EmitReductionToVector(HloInstruction* unnested_hlo);
+  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  Status EmitReductionFromOrToContiguousDimensions(
+      HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -322,6 +323,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
+  // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
+  std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
+
   // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
   std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
 
@@ -358,9 +362,9 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
 
-  // Returns a ConditionalThunk that executes the thunk sequence for
-  // 'true_computation' or 'false_computation' depending on the value of the
-  // predicate in the given conditional instruction.
+  // Returns a ConditionalThunk which executes the thunk sequence for the
+  // 'branch_computation' corresponding to the predicate/branch_index of the
+  // given conditional instruction.
   std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;

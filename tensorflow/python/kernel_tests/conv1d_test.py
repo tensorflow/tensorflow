@@ -31,7 +31,11 @@ class Conv1DTest(test.TestCase):
 
   def testBasic(self):
     """Test that argument passing to conv1d is handled properly."""
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+    dtypes_to_test = [dtypes.float16, dtypes.float32]
+    if not test.is_built_with_rocm():
+      dtypes_to_test += [dtypes.float64]
+
+    for dtype in dtypes_to_test:
       x = constant_op.constant([1, 2, 3, 4], dtype=dtype)
       x = array_ops.expand_dims(x, 0)  # Add batch dimension
       x = array_ops.expand_dims(x, 2)  # And depth dimension

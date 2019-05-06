@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cmath>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
@@ -401,9 +402,9 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  TF_CHECK_OK(CudaLaunchKernel(TopKKernel<T>, batch_size, num_shards,
+  GPU_LAUNCH_KERNEL(TopKKernel<T>, batch_size, num_shards,
                                shared_memory_size, stream, input, length, k,
-                               sorted, output, indices));
+                               sorted, output, indices);
   return cudaGetLastError();
 }
 
@@ -435,7 +436,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
                         typename TTypes<T, 2>::Tensor values,
                         TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-  const cudaStream_t& cu_stream = GetGpuStream(ctx);
+  const cudaStream_t& cu_stream = GetCudaStream(ctx);
   size_t temp_storage_bytes = -1;
 
   // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
@@ -549,7 +550,7 @@ struct TopKFunctor<GPUDevice, T> {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
                                     k, values, indices);
     } else {
-      const cudaStream_t& cu_stream = GetGpuStream(context);
+      const cudaStream_t& cu_stream = GetCudaStream(context);
       auto err = impl::LaunchTopKKernel(cu_stream, /* num_shards */ 0,
                                         input.data(), num_rows, num_cols, k,
                                         sorted, values.data(), indices.data());

@@ -47,6 +47,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -396,101 +397,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
-  @test_util.run_v1_only("b/121264236")
-  def testSkipEagerCaptureConstantsWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.cached_session(config=config):
-      with ops.device("/device:CPU:0"):
-        a = constant_op.constant(3.0)
-      with ops.device("/device:CPU:1"):
-        b = constant_op.constant(5.0)
-
-      def func(_):
-        return math_ops.add(a, b)
-
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
-      expected_output = [8.0] * 10
-      self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
-  @test_util.run_v1_only("b/121264236")
-  def testSkipEagerRefVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.cached_session(config=config):
-
-      def func(_):
-        with ops.device("/device:CPU:0"):
-          a = variables.VariableV1(3.0)
-        with ops.device("/device:CPU:1"):
-          b = variables.VariableV1(5.0)
-        return math_ops.add(a, b)
-
-      # Use the legacy function implementation as eager function will convert
-      # RefVariables to ResourceVariables.
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
-      dataset = dataset.map_with_legacy_function(func)
-      self.evaluate(variables.global_variables_initializer())
-      expected_output = [8.0] * 10
-      self.assertDatasetProduces(
-          dataset,
-          expected_output=expected_output,
-          requires_initialization=True)
-
-  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
-  @test_util.run_v1_only("b/121264236")
-  def testSkipEagerResourceVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.cached_session(config=config):
-
-      def func(_):
-        with ops.device("/device:CPU:0"):
-          a = variables.Variable(3.0)
-        with ops.device("/device:CPU:1"):
-          b = variables.Variable(5.0)
-        return math_ops.add(a, b)
-
-      # The MapDataset node ends up with two ResourceVariable inputs, one on
-      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
-      # this as it cannot place the MapDatasetOp on both devices.
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
-      expected_error = (
-          errors.InvalidArgumentError,
-          "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible assigned devices")
-      self.assertDatasetProduces(
-          dataset, expected_error=expected_error, requires_initialization=True)
-
-  def testCaptureVariable(self):
-    counter_var = variable_scope.get_variable(
-        "counter", (), dtypes.int32, use_resource=True)
-    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
-        10).map(lambda _: counter_var.assign_add(1))
-    get_next = self.getNext(dataset, requires_initialization=True)
-
-    self.evaluate(counter_var.initializer)
-
-    for i in range(10):
-      self.assertEqual(i, self.evaluate(counter_var))
-      self.assertEqual(i + 1, self.evaluate(get_next()))
-    self.assertEqual(10, self.evaluate(counter_var))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
-    self.assertEqual(10, self.evaluate(counter_var))
-
-  # TODO(b/117581999): error not captured for eager mode, debug.
-  @test_util.run_v1_only("b/120545219")
-  def testSkipEagerCaptureUninitializedVariableError(self):
-    counter_var = variable_scope.get_variable(
-        "counter", (), dtypes.int32, use_resource=True)
-    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
-        10).map(lambda _: counter_var.assign_add(1))
-
-    get_next = self.getNext(dataset, requires_initialization=True)
-
-    with self.assertRaises(errors.NotFoundError):
-      self.evaluate(get_next())
-
   def testSeededStatefulOperatorIsProperlyStateful(self):
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(
         10).map(lambda _: random_ops.random_uniform((), seed=11)).batch(2)
@@ -823,6 +729,36 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  def testTensorArray(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array)
+    self.assertDatasetProduces(
+        dataset, expected_output=[list(range(i)) for i in range(10)])
+
+  def testTensorArrayChain(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    def _check(x):
+      self.assertIsInstance(x, tensor_array_ops.TensorArray)
+      return x.identity()
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array).map(_check)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[list(range(i)) for i in range(10)])
+
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
@@ -847,7 +783,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testWarnOnLookupTable(self):
     def collecting_function(x):
       _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
       return x
 
     warnings.simplefilter("always")
@@ -858,11 +794,92 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertGreaterEqual(len(w), 1)
     found_warning = False
     for warning in w:
-      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+      if ("Creating resources inside a function passed to Dataset.map() is "
           "not supported." in str(warning)):
         found_warning = True
         break
     self.assertTrue(found_warning)
+
+  @test_util.run_v1_only("map_with_legacy_function v1 only")
+  def testWarnOnLookupTableLegacyFunction(self):
+
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map_with_legacy_function(
+          collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating resources inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  def testWarnOnSeedFromOuterGraph(self):
+    with ops.Graph().as_default() as g:
+      g.seed = 10
+      warnings.simplefilter("always")
+
+      # map_fun doesn't use seed, so no warning is generated.
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(math_ops.square)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      def random_func(x):
+        x = math_ops.add(x, 1)
+        random_ops.random_shuffle([x, math_ops.square(x)])
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(random_func)
+      self.assertGreaterEqual(len(w), 1)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertTrue(found_warning)
+
+      def random_func_seeded(x):
+        ops.get_default_graph().seed = None
+        random_ops.random_shuffle(x)
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(2).map(random_func_seeded)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(
+            2).map(lambda x: random_ops.random_shuffle(x, seed=37))
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
 
   def testNestedDatasetMap(self):
     # TODO(b/110122868): When iterators can yield a `tf.data.Dataset`, remove
@@ -1045,6 +1062,178 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensors(constant_op.constant(1.0))
     dataset.map(func)
+
+# TODO(shivaniagarwal): separate out `map` and `map_with_legacy_function` tests
+# as later would not work in v2.
+@test_util.run_all_in_graph_and_eager_modes
+class MapWithCapturedVariableTests(test_base.DatasetTestBase,
+                                   parameterized.TestCase):
+
+  # TODO(b/126553094): map doesnt work with variable defined inside function in
+  # eager mode, possible Graph tensors leak out of the function building context
+  # from function graph in eager mode as variables are created in init_scope.
+  @test_util.run_v1_only("b/126553094")
+  def testSkipEagerCreateVariableInsideFunctionWithGetter(self):
+
+    def func(_):
+      with variable_scope.variable_scope(
+          "variable", reuse=variable_scope.AUTO_REUSE):
+        counter_var = variable_scope.get_variable(
+            "counter", (), dtypes.int32, use_resource=True)
+      return counter_var.assign_add(1)
+
+    # NOTE: In the legacy function, resource is captured by value for variable
+    # getter.
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+    with self.assertRaisesWithPredicateMatch(
+        AttributeError, "'Tensor' object has no attribute 'assign_add'"):
+      dataset.map_with_legacy_function(func)
+
+    dataset = dataset.map(func)
+    self.evaluate(variables.global_variables_initializer())
+
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    for i in range(10):
+      self.assertEqual(i + 1, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  @parameterized.named_parameters(
+      ("MapLegacyFunction",
+       lambda dataset, func: dataset.map_with_legacy_function(func)),
+      ("Map", lambda dataset, func: dataset.map(func)),
+  )
+  @test_util.run_v1_only("map_with_legacy_function is only available in v1.")
+  def testCaptureVariable(self, transformation_function):
+    counter_var = variable_scope.get_variable(
+        "counter", (), dtypes.int32, use_resource=True)
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+    dataset = transformation_function(
+        dataset, lambda _: counter_var.assign_add(1))
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    self.evaluate(counter_var.initializer)
+
+    for i in range(10):
+      self.assertEqual(i, self.evaluate(counter_var))
+      self.assertEqual(i + 1, self.evaluate(get_next()))
+    self.assertEqual(10, self.evaluate(counter_var))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    self.assertEqual(10, self.evaluate(counter_var))
+
+  # NOTE: no need to explicitly initialize variables in eager mode.
+  @parameterized.named_parameters(
+      ("MapLegacyFunction",
+       lambda dataset, func: dataset.map_with_legacy_function(func)),
+      ("Map", lambda dataset, func: dataset.map(func)),
+  )
+  @test_util.run_v1_only("this test is meant to run in graph mode only.")
+  def testSkipEagerCaptureUninitializedVariableError(self,
+                                                     transformation_function):
+    counter_var = variable_scope.get_variable(
+        "counter", (), dtypes.int32, use_resource=True)
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+    dataset = transformation_function(
+        dataset, lambda _: counter_var.assign_add(1))
+
+    get_next = self.getNext(dataset, requires_initialization=True)
+    with self.assertRaises(errors.NotFoundError):
+      self.evaluate(get_next())
+
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
+  @parameterized.named_parameters(
+      ("MapLegacyFunction",
+       lambda dataset, func: dataset.map_with_legacy_function(func)),
+      ("Map", lambda dataset, func: dataset.map(func)),
+  )
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerCaptureConstantsWithConflictingDevices(
+      self, transformation_function):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.cached_session(config=config):
+      with ops.device("/device:CPU:0"):
+        a = constant_op.constant(3.0)
+      with ops.device("/device:CPU:1"):
+        b = constant_op.constant(5.0)
+
+      def func(_):
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = transformation_function(dataset, func)
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerRefVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.VariableV1(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.VariableV1(5.0)
+        return math_ops.add(a, b)
+
+      # NOTE: Use the legacy function implementation as eager function will
+      # convert RefVariables to ResourceVariables.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = dataset.map_with_legacy_function(func)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+
+    def func(_):
+      with variable_scope.variable_scope(
+          "variable", reuse=variable_scope.AUTO_REUSE):
+        with ops.device("/device:CPU:0"):
+          a = variable_scope.get_variable(
+              "a", (), dtypes.int32, use_resource=True)
+          a = math_ops.add(a, 1)
+        with ops.device("/device:CPU:1"):
+          b = variable_scope.get_variable(
+              "b", (), dtypes.int32, use_resource=True)
+      return math_ops.add(a, b)
+
+    g_1 = ops.Graph()
+    with self.session(config=config, graph=g_1):
+      # The MapDataset node ends up with two ResourceVariable inputs, one on
+      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
+      # this as it cannot place the MapDatasetOp on both devices.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = dataset.map(func)
+      expected_error = (
+          errors.InvalidArgumentError,
+          "Cannot place the graph because a reference or resource edge "
+          "connects colocation groups with incompatible resource devices")
+      self.assertDatasetProduces(
+          dataset, expected_error=expected_error, requires_initialization=True)
+
+    g_2 = ops.Graph()
+    with self.session(config=config, graph=g_2):
+      # In old-Defun variable is captured as value, hence there is no colocation
+      # error.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = dataset.map_with_legacy_function(func)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1] * 10
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
 
 if __name__ == "__main__":
   test.main()

@@ -15,7 +15,7 @@ tf_cuda_library(
     deps = [
         ":dump_tpu_profile",
         "//tensorflow:grpc++",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
@@ -43,7 +44,7 @@ cc_library(
     hdrs = ["trace_events_to_json.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core:protos_all_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -54,6 +55,7 @@ tf_cc_test(
     deps = [
         ":trace_events_to_json",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler:protos_all_cc",

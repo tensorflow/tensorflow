@@ -22,10 +22,8 @@ import tensorflow as tf
 from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.tools import optimize_for_inference_lib
 
 FLAGS = flags.FLAGS
 
@@ -60,12 +58,25 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
 
   def buildRnnLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
+    return tf.keras.layers.StackedRNNCells([
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])
 
   def buildModel(self, rnn_layer, is_dynamic_rnn):
+    """Build Mnist recognition model.
+
+    Args:
+      rnn_layer: The rnn layer either a single rnn cell or a multi rnn cell.
+      is_dynamic_rnn: Use dynamic_rnn or not.
+
+    Returns:
+     A tuple containing:
+
+     - Input tensor of the model.
+     - Prediction tensor of the model.
+     - Output class tensor of the model.
+    """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units, self.n_classes]))
@@ -94,6 +105,14 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class
 
   def trainModel(self, x, prediction, output_class, sess):
+    """Train the model.
+
+    Args:
+      x: The input tensor.
+      prediction: The prediction class tensor.
+      output_class: The output tensor.
+      sess: The graph session.
+    """
     # input label placeholder
     y = tf.placeholder("float", [None, self.n_classes])
     # Loss function
@@ -119,7 +138,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     Args:
       rnn_layer: The rnn layer either a single rnn cell or a multi rnn cell.
       sess: Old session.
-      saver: saver created by tf.train.Saver()
+      saver: saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: use dynamic_rnn or not.
 
     Returns:
@@ -144,30 +163,45 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class, new_sess
 
   def getInferenceResult(self, x, output_class, sess):
+    """Get inference result given input tensor and output tensor.
+
+    Args:
+      x: The input tensor.
+      output_class: The output tensor.
+      sess: Current session.
+
+    Returns:
+     A tuple containing:
+
+      - Input of the next batch, batch size is 1.
+      - Expected output.
+
+    """
     b1, _ = self.mnist.train.next_batch(batch_size=1)
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
-    frozen_graph = tf.graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, [output_class.op.name])
-    return sample_input, expected_output, frozen_graph
+    return sample_input, expected_output
 
-  def tfliteInvoke(self, graph, test_inputs, outputs):
-    tf.reset_default_graph()
-    # Turn the input into placeholder of shape 1
-    tflite_input = tf.placeholder(
-        "float", [1, self.time_steps, self.n_input], name="INPUT_IMAGE_LITE")
-    tf.import_graph_def(graph, name="", input_map={"INPUT_IMAGE": tflite_input})
-    with tf.Session() as sess:
-      curr = sess.graph_def
-      curr = convert_op_hints_to_stubs(graph_def=curr)
+  def tfliteInvoke(self, sess, test_inputs, input_tensor, output_tensor):
+    """Get tflite inference result.
 
-    curr = optimize_for_inference_lib.optimize_for_inference(
-        curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
-        [tf.float32.as_datatype_enum])
+    This method will convert tensorflow from session to tflite model then based
+    on the inputs, run tflite inference and return the results.
 
-    converter = tf.lite.TFLiteConverter(curr, [tflite_input], [outputs])
+    Args:
+      sess: Current tensorflow session.
+      test_inputs: The test inputs for tflite.
+      input_tensor: The input tensor of tensorflow graph.
+      output_tensor: The output tensor of tensorflow graph.
+
+    Returns:
+      The tflite inference result.
+    """
+    converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
+                                                     [output_tensor])
     tflite = converter.convert()
+
     interpreter = tf.lite.Interpreter(model_content=tflite)
     interpreter.allocate_tensors()
 
@@ -191,10 +225,10 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildRnnLayer(), sess, saver, is_dynamic_rnn=False)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   @test_util.enable_control_flow_v2
@@ -210,10 +244,10 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildRnnLayer(), sess, saver, is_dynamic_rnn=True)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 

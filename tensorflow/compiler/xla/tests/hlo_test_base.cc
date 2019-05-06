@@ -207,13 +207,28 @@ Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    int64 num_replicas) {
+    int64 num_replicas, bool use_threads) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   for (auto argument : arguments) {
     options.arguments.push_back(argument);
   }
-  return test_runner_.ExecuteReplicated(std::move(module), options);
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        use_threads);
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, DeviceAssignment* device_assignment,
+    bool run_hlo_passes, bool use_threads) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        device_assignment, use_threads);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(

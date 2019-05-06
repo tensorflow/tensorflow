@@ -67,7 +67,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
          type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
-         type == OperatorType::kReduceMin;
+         type == OperatorType::kReduceMin ||
+         type == OperatorType::kTransposeConv ||
+         type == OperatorType::kMatrixSetDiag ||
+         type == OperatorType::kMatrixDiag;
 }
 
 // The quantized op allows output arrays of type float using
@@ -106,7 +109,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // We always want [min, max] to contain 0.
     float min = 0.f;
     float max = 0.f;
-    for (auto val : data) {
+    for (const auto& val : data) {
       min = std::min(min, val);
       max = std::max(max, val);
     }
@@ -121,7 +124,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // weights arrays for which fake-quantization would make sense, rather
     // they tend to be hardcoded arrays of zeros or ones used in some graphs.
     bool is_quantization_trivially_exact = true;
-    for (auto val : data) {
+    for (const auto& val : data) {
       is_quantization_trivially_exact &= (val == min || val == max);
     }
     if (!is_quantization_trivially_exact) {
@@ -617,7 +620,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   if (SupportOutputTypeFloatInQuantizedOp(op)) {
     LOG(WARNING)
         << HelpfulOperatorTypeName(op) << " is a quantized op"
-        << "but it has a model flag that sets the output arrays to float.";
+        << " but it has a model flag that sets the output arrays to float.";
   } else {
     for (std::size_t output_index = 0; output_index < op.outputs.size();
          output_index++) {

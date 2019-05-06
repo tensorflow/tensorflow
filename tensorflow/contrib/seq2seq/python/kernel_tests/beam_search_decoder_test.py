@@ -187,14 +187,23 @@ class TestArrayShapeChecks(test.TestCase):
         shape=dynamic_shape)
 
     batch_size = array_ops.constant(batch_size)
-    check_op = beam_search_decoder._check_batch_beam(t, batch_size, beam_width)  # pylint: disable=protected-access
 
-    with self.cached_session() as sess:
-      if is_valid:
-        sess.run(check_op)
+    def _test_body():
+      # pylint: disable=protected-access
+      if context.executing_eagerly():
+        beam_search_decoder._check_batch_beam(t, batch_size, beam_width)
       else:
-        with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(check_op)
+        with self.cached_session():
+          check_op = beam_search_decoder._check_batch_beam(
+              t, batch_size, beam_width)
+          self.evaluate(check_op)
+      # pylint: enable=protected-access
+
+    if is_valid:
+      _test_body()
+    else:
+      with self.assertRaises(errors.InvalidArgumentError):
+        _test_body()
 
   def test_array_shape_dynamic_checks(self):
     self._test_array_shape_dynamic_checks(
@@ -463,6 +472,7 @@ class TestLargeBeamStep(test.TestCase):
     self.assertAllEqual(next_state_.lengths[:, -3:], [[0, 0, 0], [0, 0, 0]])
 
 
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention,

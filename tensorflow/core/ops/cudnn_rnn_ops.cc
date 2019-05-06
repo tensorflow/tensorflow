@@ -167,6 +167,7 @@ REGISTER_OP("CudnnRNNV3")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("is_training: bool = true")
+    .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
@@ -292,6 +293,7 @@ REGISTER_OP("CudnnRNNBackpropV3")
     .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);

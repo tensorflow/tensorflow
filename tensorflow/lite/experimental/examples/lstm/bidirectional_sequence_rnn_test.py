@@ -23,11 +23,8 @@ from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.lite.experimental.examples.lstm.rnn import bidirectional_dynamic_rnn
-from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
-from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.tools import optimize_for_inference_lib
 
 FLAGS = flags.FLAGS
 
@@ -62,27 +59,58 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
 
   def buildRnnLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
+    return tf.keras.layers.StackedRNNCells([
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])
 
-  def buildModel(self, fw_rnn_layer, bw_rnn_layer, is_dynamic_rnn):
+  def buildModel(self,
+                 fw_rnn_layer,
+                 bw_rnn_layer,
+                 is_dynamic_rnn,
+                 is_inference,
+                 use_sequence_length=False):
+    """Build Mnist recognition model.
+
+    Args:
+      fw_rnn_layer: The forward rnn layer either a single rnn cell or a multi
+        rnn cell.
+      bw_rnn_layer: The backward rnn layer either a single rnn cell or a multi
+        rnn cell.
+      is_dynamic_rnn: Use dynamic_rnn or not.
+      use_sequence_length: Whether to use sequence length or not. Default to
+        False.
+
+    Returns:
+     A tuple containing:
+
+     - Input tensor of the model.
+     - Prediction tensor of the model.
+     - Output class tensor of the model.
+    """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units * 2, self.n_classes]))
     out_bias = tf.Variable(tf.random_normal([self.n_classes]))
 
+    batch_size = self.batch_size
+    if is_inference:
+      batch_size = 1
     # input image placeholder
     x = tf.placeholder(
-        "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
+        "float", [batch_size, self.time_steps, self.n_input],
+        name="INPUT_IMAGE")
 
+    sequence_length = None
+    if use_sequence_length:
+      sequence_length = [self.time_steps] * batch_size
     if is_dynamic_rnn:
       rnn_inputs = tf.transpose(x, [1, 0, 2])
       outputs, _ = bidirectional_dynamic_rnn(
           fw_rnn_layer,
           bw_rnn_layer,
           rnn_inputs,
+          sequence_length,
           dtype="float32",
           time_major=True)
       fw_outputs, bw_outputs = outputs
@@ -91,8 +119,17 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       output = output[-1]
     else:
       rnn_inputs = tf.unstack(x, self.time_steps, 1)
+      # Sequence length is not supported for static since we don't have a
+      # wrapper for it. At training phase, we can still have sequence_length,
+      # but inference phase, we change it to None.
+      if is_inference:
+        sequence_length = None
       outputs, _, _ = tf.nn.static_bidirectional_rnn(
-          fw_rnn_layer, bw_rnn_layer, rnn_inputs, dtype="float32")
+          fw_rnn_layer,
+          bw_rnn_layer,
+          rnn_inputs,
+          dtype="float32",
+          sequence_length=sequence_length)
       output = outputs[-1]
 
     # Compute logits by multiplying output of shape [batch_size,num_units*2]
@@ -104,6 +141,14 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class
 
   def trainModel(self, x, prediction, output_class, sess):
+    """Train the model.
+
+    Args:
+      x: The input tensor.
+      prediction: The prediction class tensor.
+      output_class: The output tensor.
+      sess: The graph session.
+    """
     # input label placeholder
     y = tf.placeholder("float", [None, self.n_classes])
     # Loss function
@@ -124,15 +169,42 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
 
-  def saveAndRestoreModel(self, fw_rnn_layer, bw_rnn_layer, sess, saver,
-                          is_dynamic_rnn):
+  def saveAndRestoreModel(self,
+                          fw_rnn_layer,
+                          bw_rnn_layer,
+                          sess,
+                          saver,
+                          is_dynamic_rnn,
+                          use_sequence_length=False):
+    """Saves and restores the model to mimic the most common use case.
+
+    Args:
+      fw_rnn_layer: The forward rnn layer either a single rnn cell or a multi
+        rnn cell.
+      bw_rnn_layer: The backward rnn layer either a single rnn cell or a multi
+        rnn cell.
+      sess: Old session.
+      saver: Saver created by tf.compat.v1.train.Saver()
+      is_dynamic_rnn: Use dynamic_rnn or not.
+      use_sequence_length: Whether to use sequence length or not. Default to
+        False.
+
+    Returns:
+      A tuple containing:
+
+      - Input tensor of the restored model.
+      - Prediction tensor of the restored model.
+      - Output tensor, which is the softwmax result of the prediction tensor.
+      - new session of the restored model.
+
+    """
     model_dir = tempfile.mkdtemp(dir=FLAGS.test_tmpdir)
     saver.save(sess, model_dir)
 
     # Reset the graph.
     tf.reset_default_graph()
-    x, prediction, output_class = self.buildModel(fw_rnn_layer, bw_rnn_layer,
-                                                  is_dynamic_rnn)
+    x, prediction, output_class = self.buildModel(
+        fw_rnn_layer, bw_rnn_layer, is_dynamic_rnn, True, use_sequence_length)
 
     new_sess = tf.Session(config=CONFIG)
     saver = tf.train.Saver()
@@ -140,32 +212,43 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return x, prediction, output_class, new_sess
 
   def getInferenceResult(self, x, output_class, sess):
+    """Get inference result given input tensor and output tensor.
+
+    Args:
+      x: The input tensor.
+      output_class: The output tensor.
+      sess: Current session.
+
+    Returns:
+     A tuple containing:
+
+      - Input of the next batch, batch size is 1.
+      - Expected output.
+
+    """
     b1, _ = self.mnist.train.next_batch(batch_size=1)
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
-    # It is important to keep all the ophint output nodes.
-    hinted_outputs_nodes = find_all_hinted_output_nodes(sess)
-    hinted_outputs_nodes.append(output_class.op.name)
-    frozen_graph = tf.graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, hinted_outputs_nodes)
-    return sample_input, expected_output, frozen_graph
+    return sample_input, expected_output
 
-  def tfliteInvoke(self, graph, test_inputs, outputs):
-    tf.reset_default_graph()
-    # Turn the input into placeholder of shape 1
-    tflite_input = tf.placeholder(
-        "float", [1, self.time_steps, self.n_input], name="INPUT_IMAGE_LITE")
-    tf.import_graph_def(graph, name="", input_map={"INPUT_IMAGE": tflite_input})
-    with tf.Session() as sess:
-      curr = sess.graph_def
-      curr = convert_op_hints_to_stubs(graph_def=curr)
+  def tfliteInvoke(self, sess, test_inputs, input_tensor, output_tensor):
+    """Get tflite inference result.
 
-    curr = optimize_for_inference_lib.optimize_for_inference(
-        curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
-        [tf.float32.as_datatype_enum])
+    This method will convert tensorflow from session to tflite model then based
+    on the inputs, run tflite inference and return the results.
 
-    converter = tf.lite.TFLiteConverter(curr, [tflite_input], [outputs])
+    Args:
+      sess: Current tensorflow session.
+      test_inputs: The test inputs for tflite.
+      input_tensor: The input tensor of tensorflow graph.
+      output_tensor: The output tensor of tensorflow graph.
+
+    Returns:
+      The tflite inference result.
+    """
+    converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
+                                                     [output_tensor])
     tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
@@ -184,26 +267,52 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
   def testStaticRnnMultiRnnCell(self):
     sess = tf.Session(config=CONFIG)
 
-    x, prediction, output_class = self.buildModel(self.buildRnnLayer(),
-                                                  self.buildRnnLayer(), False)
+    x, prediction, output_class = self.buildModel(
+        self.buildRnnLayer(), self.buildRnnLayer(), False, is_inference=False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildRnnLayer(), self.buildRnnLayer(), sess, saver, False)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+  def testStaticRnnMultiRnnCellWithSequenceLength(self):
+    sess = tf.Session(config=CONFIG)
+
+    x, prediction, output_class = self.buildModel(
+        self.buildRnnLayer(),
+        self.buildRnnLayer(),
+        False,
+        is_inference=False,
+        use_sequence_length=True)
+    self.trainModel(x, prediction, output_class, sess)
+
+    saver = tf.train.Saver()
+    x, prediction, output_class, new_sess = self.saveAndRestoreModel(
+        self.buildRnnLayer(),
+        self.buildRnnLayer(),
+        sess,
+        saver,
+        False,
+        use_sequence_length=True)
+
+    test_inputs, expected_output = self.getInferenceResult(
+        x, output_class, new_sess)
+
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.Session(config=CONFIG)
 
-    x, prediction, output_class = self.buildModel(self.buildRnnLayer(),
-                                                  self.buildRnnLayer(), True)
+    x, prediction, output_class = self.buildModel(
+        self.buildRnnLayer(), self.buildRnnLayer(), True, is_inference=False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
@@ -214,10 +323,37 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
         saver,
         is_dynamic_rnn=True)
 
-    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+    test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+  @test_util.enable_control_flow_v2
+  def testDynamicRnnMultiRnnCellWithSequenceLength(self):
+    sess = tf.Session(config=CONFIG)
+
+    x, prediction, output_class = self.buildModel(
+        self.buildRnnLayer(),
+        self.buildRnnLayer(),
+        True,
+        is_inference=False,
+        use_sequence_length=True)
+    self.trainModel(x, prediction, output_class, sess)
+
+    saver = tf.train.Saver()
+    x, prediction, output_class, new_sess = self.saveAndRestoreModel(
+        self.buildRnnLayer(),
+        self.buildRnnLayer(),
+        sess,
+        saver,
+        is_dynamic_rnn=True,
+        use_sequence_length=True)
+
+    test_inputs, expected_output = self.getInferenceResult(
+        x, output_class, new_sess)
+
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 

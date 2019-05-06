@@ -18,18 +18,18 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_blas.h"
 
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include <assert.h>
+
 #include <complex>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -1476,11 +1476,11 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
 
 bool ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
-                          float alpha, const DeviceMemory<Eigen::half>& a,
-                          int lda, const DeviceMemory<Eigen::half>& b, int ldb,
-                          float beta, DeviceMemory<Eigen::half>* c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing rocBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
+                          float alpha, const DeviceMemory<Eigen::half> &a,
+                          int lda, const DeviceMemory<Eigen::half> &b, int ldb,
+                          float beta, DeviceMemory<Eigen::half> *c, int ldc) {
+  VLOG(1) << absl::StreamFormat(
+      "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
@@ -1524,8 +1524,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing rocBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
+  VLOG(1) << absl::StreamFormat(
+      "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
@@ -1887,22 +1887,22 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     }
   }
 
-  assert(!(ldc < m || bsc < ldc * n));
-
-  if (ROCMBlasTranspose(transa) == rocblas_operation_none)
-    assert(!(lda < m || bsa < lda * k));
-  else
-    assert(!(lda < k || bsa < lda * m));
-
-  if (ROCMBlasTranspose(transb) == rocblas_operation_none)
-    assert(!(ldb < k || bsb < ldb * n));
-  else
-    assert(!(ldb < n || bsc < ldc * k));
-
-  MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
-  MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
-
   if (bsa_is_constant && bsb_is_constant && bsc_is_constant) {
+    assert(!(ldc < m || bsc < ldc * n));
+
+    if (ROCMBlasTranspose(transa) == rocblas_operation_none)
+      assert(!(lda < m || bsa < lda * k));
+    else
+      assert(!(lda < k || bsa < lda * m));
+
+    if (ROCMBlasTranspose(transb) == rocblas_operation_none)
+      assert(!(ldb < k || bsb < ldb * n));
+    else
+      assert(!(ldb < n || bsb < ldb * k));
+
+    MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
+    MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
+
     bool ok = DoBlasInternal(
         rocblas_func, stream, true /* = pointer_mode_host */,
         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
@@ -1912,6 +1912,9 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     if (ok) {
       return port::Status::OK();
     }
+  } else {
+    LOG(ERROR) << "rocBLAS does not currently support broadcasting for GEMMBatched operation.";
+    assert(false);
   }
 
   return port::Status(port::error::INTERNAL,
@@ -2292,21 +2295,33 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
     int64 stride_c, int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"Eigen::half\" dataype";
-  return false;
+  const Eigen::half alpha_half(alpha);
+  const Eigen::half beta_half(beta);
+
+  return DoBlasInternal(
+      wrap::rocblas_hgemm_strided_batched, stream,
+      false, /* pointer_mode_host */
+      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+      reinterpret_cast<const rocblas_half*>(&alpha_half),
+      reinterpret_cast<const rocblas_half*>(GpuMemory(a)), lda, stride_a,
+      reinterpret_cast<const rocblas_half*>(GpuMemory(b)), ldb, stride_b,
+      reinterpret_cast<const rocblas_half*>(&beta_half),
+      reinterpret_cast<rocblas_half*>(GpuMemoryMutable(c)), ldc, stride_c,
+      batch_count);
 }
+
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<float>& a, int lda,
     int64 stride_a, const DeviceMemory<float>& b, int ldb, int64 stride_b,
     float beta, DeviceMemory<float>* c, int ldc, int64 stride_c,
     int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"float\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_sgemm_strided_batched, stream,
+                        false, /* pointer_mode_host */
+                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
+                        n, k, &alpha, GpuMemory(a), lda, stride_a, GpuMemory(b),
+                        ldb, stride_b, &beta, GpuMemoryMutable(c), ldc,
+                        stride_c, batch_count);
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2314,10 +2329,12 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_a, const DeviceMemory<double>& b, int ldb, int64 stride_b,
     double beta, DeviceMemory<double>* c, int ldc, int64 stride_c,
     int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"double\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_dgemm_strided_batched, stream,
+                        false, /* pointer_mode_host */
+                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
+                        n, k, &alpha, GpuMemory(a), lda, stride_a, GpuMemory(b),
+                        ldb, stride_b, &beta, GpuMemoryMutable(c), ldc,
+                        stride_c, batch_count);
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64 m,

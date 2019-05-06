@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -132,11 +131,46 @@ extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
+// Returns true if `hlo` will be implemented as a call to a cuSolver routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCusolver... constants, but returns *false* for HLOs with
+// say, a kCholesky opcode.
+bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Cholesky decomposition. Takes a (batched) matrix as input, and returns a
+// tuple of (result, workspace, info), where result is the result of the
+// Cholesky decomposition, workspace is scratch space for cuSolver, and info
+// is a success/failure code per batch element.
+extern const char* const kCusolverCholeskyCallTarget;
+
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
-bool IsReductionToVector(const HloInstruction& reduce);
+// Returns true if either the dimensions being reduced or the dimensions being
+// kept are contiguous in the input of the reduce instruction.
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+
+// Given the input shape and dimensions to reduce for a reduction, returns
+// <is_row_reduction, DimensionVector>:
+// is_row_reduction:  indicates whether the reduction is a row reduction or a
+//   column reduction.
+// DimensionVector: contains the size of the three contiguous components for the
+//   reduction [depth, height, width]. For row reduction, height is the size of
+//   the dimensions to keep, depth is the size of the dimensions to reduce that
+//   are more major than the dimensions to keep, and width is the size of the
+//   dimensions to reduce that are more minor than the dimensions to keep. For
+//   column reduction, height is the size of dimensions to reduce, depth is the
+//   the size of the dimensions to keep that are more major than the dimensions
+//   to reduce, and width is the size of the dimensions to keep that are more
+//   minor than the dimensions to reduce.
+//
+// Prerequisite: the reduction instruction passes the check
+// IsReductionFromOrToContiguousDimensions, which guarantees either the
+// dimensions to reduce or the dimensions to keep are consecutive.
+std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
+    const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -153,15 +187,12 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // can't correctly do so on both Volta and earlier GPUs.
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset,
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder,
-    llvm::Module* module);
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* b);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder);
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

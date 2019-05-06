@@ -1,4 +1,5 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 201ed
+:/Emit The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +16,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -53,28 +54,6 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
   }
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   dimensions);
-}
-
-// Given an index for a shape, return the equivalent new index if the shape is
-// reshaped to another shape.
-IrArray::Index GetReshapedIndex(const IrArray::Index& index, const Shape& shape,
-                                const Shape& reshaped_shape,
-                                llvm::IRBuilder<>* b) {
-  auto bounds = shape.dimensions();
-  auto minor_to_major = shape.layout().minor_to_major();
-  llvm::Value* linear_index = index.GetConstantWithIndexType(0);
-  int64 multiplier = 1;
-  for (int i = 0; i < index.size(); ++i) {
-    int64 dim = minor_to_major[i];
-    llvm::Value* addend = b->CreateMul(
-        index[dim], index.GetConstantWithIndexType(multiplier), "linearizing",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = b->CreateAdd(linear_index, addend, "",
-                                /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= bounds[dim];
-  }
-
-  return IrArray::Index(linear_index, reshaped_shape, b);
 }
 
 }  // namespace
@@ -152,16 +131,15 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
     const IrArray::Index& normalized_shape_index,
     const Shape& unnormalized_shape) {
   DCHECK_EQ(normalized_shape_index.size(), dims_in_elems_.size());
-  Shape output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      unnormalized_shape.element_type(), GetDimensionsInElements());
-  return GetReshapedIndex(normalized_shape_index, output_shape,
-                          unnormalized_shape, b_);
+  llvm::Value* linear =
+      normalized_shape_index.Linearize(GetDimensionsInElements(), b_);
+  return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
-IrArray::Index KernelMappingScheme::EmitBlockIndex(
-    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
-  llvm::Value* block_id = llvm_ir::EmitCallToTargetIntrinsic(
-      kBLOCK_ID_X, {}, {}, llvm_target_ir_builder);
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  llvm::Value* block_id = gpu::EmitCallToTargetFunction(
+      gpu::TargetFunctionID::kBlockIdx, {}, {}, 
+      PRIMITIVE_TYPE_INVALID, {}, {},  b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -183,20 +161,20 @@ IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
         llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
         "block_origin." + std::to_string(i)));
   }
-  return IrArray::Index(multidim, block_index[0]->getType());
+  return IrArray::Index(multidim, dims_in_tiles_, block_index.GetType());
 }
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
     const IrArray::Index& tile_index) {
-  IrArray::Index elem_index = tile_index;
+  std::vector<llvm::Value*> elem_multi_index = tile_index.multidim();
   for (int i = DimY; i < DimTot; ++i) {
-    elem_index[i] =
+    elem_multi_index[i] =
         b_->CreateMul(tile_index[i],
                       llvm::ConstantInt::get(tile_index[i]->getType(),
                                              GetTileSizeForDimension(i)),
                       "tile_origin." + std::to_string(i));
   }
-  return elem_index;
+  return IrArray::Index(elem_multi_index, dims_in_elems_, tile_index.GetType());
 }
 
 llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
@@ -213,18 +191,21 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
   llvm::Type* buffer_type = llvm::ArrayType::get(
       llvm::ArrayType::get(elem_ty, GetTileSizeForDimension(DimX) + 1),
       GetTileSizeForDimension(DimY));
-  return llvm_ir::AllocateSharedMemoryTile(b_->GetInsertBlock()->getModule(),
-                                           buffer_type, buffer_name);
+  llvm::Module* module = b_->GetInsertBlock()->getModule();
+  unsigned shared_memory_address_space = gpu::GetSharedMemoryAddressSpace(module);
+  return llvm_ir::AllocateSharedMemoryTile(module,
+                                           buffer_type, buffer_name,
+                                           shared_memory_address_space);
 }
 
 std::tuple<llvm::Value*, llvm::Value*>
-KernelMappingScheme::EmitThreadYXCoordinate(
-    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
-  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToTargetIntrinsic(
-      kTHREAD_ID_X, {}, {}, llvm_target_ir_builder);
-  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
+  llvm::Value* thread_id_raw = gpu::EmitCallToTargetFunction(
+      gpu::TargetFunctionID::kThreadIdx, {}, {}, 
+      PRIMITIVE_TYPE_INVALID, {}, {},  b_);
+  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), llvm::cast<llvm::Instruction>(thread_id_raw));
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,
                         /*isSigned=*/true, "thread.id.x");

@@ -17,12 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/searchsorted_op.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/searchsorted_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -68,7 +67,7 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(UpperBoundKernel<T>,
+    GPU_LAUNCH_KERNEL(UpperBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,
@@ -89,7 +88,7 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(LowerBoundKernel<T>,
+    GPU_LAUNCH_KERNEL(LowerBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,

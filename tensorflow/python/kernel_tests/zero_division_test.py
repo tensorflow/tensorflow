@@ -51,6 +51,8 @@ class ZeroDivisionTest(test.TestCase):
             # means 32 bits set, so we allow 0xffffffff as well.  This isn't
             # very portable, so we may need to expand this list if other GPUs
             # do different things.
+            #
+            # XLA constant folds integer division by zero to 1.
             self.assertTrue(test.is_gpu_available())
             if not test.is_built_with_rocm():
               self.assertIn(result, (-1, 0xff, 0xffffffff))

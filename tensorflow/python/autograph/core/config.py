@@ -53,9 +53,8 @@ DEFAULT_UNCOMPILED_MODULES = set((
     # TODO(mdan): Remove once the conversion process is optimized.
     ('tensorflow_probability',),
     (_internal_name('tensorflow_probability'),),
+    # TODO(b/130313089): Remove.
+    ('numpy',),
+    # TODO(mdan): Might need to add "thread" as well?
+    ('threading',),
 ))
-
-
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
-)

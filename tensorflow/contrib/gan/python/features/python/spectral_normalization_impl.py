@@ -53,7 +53,7 @@ def compute_spectral_norm(w_tensor, power_iteration_rounds=1, name=None):
   Args:
     w_tensor: The weight matrix whose spectral norm should be computed.
     power_iteration_rounds: The number of iterations of the power method to
-      perform. A higher number yeilds a better approximation.
+      perform. A higher number yields a better approximation.
     name: An optional scope name.
 
   Returns:
@@ -105,7 +105,7 @@ def spectral_normalize(w, power_iteration_rounds=1, name=None):
   Args:
     w: The weight matrix to be normalized.
     power_iteration_rounds: The number of iterations of the power method to
-      perform. A higher number yeilds a better approximation.
+      perform. A higher number yields a better approximation.
     name: An optional scope name.
 
   Returns:
@@ -126,7 +126,7 @@ def spectral_norm_regularizer(scale, power_iteration_rounds=1, scope=None):
   Args:
     scale: A scalar multiplier. 0.0 disables the regularizer.
     power_iteration_rounds: The number of iterations of the power method to
-      perform. A higher number yeilds a better approximation.
+      perform. A higher number yields a better approximation.
     scope: An optional scope name.
 
   Returns:
@@ -191,9 +191,9 @@ def spectral_normalization_custom_getter(name_filter=_default_name_filter,
   of output channels.
 
   Apply this to layers by supplying this as the `custom_getter` of a
-  `tf.variable_scope`. For example:
+  `tf.compat.v1.variable_scope`. For example:
 
-    with tf.variable_scope('discriminator',
+    with tf.compat.v1.variable_scope('discriminator',
                            custom_getter=spectral_norm_getter()):
       net = discriminator_fn(net)
 
@@ -221,7 +221,7 @@ def spectral_normalization_custom_getter(name_filter=_default_name_filter,
     name_filter: Optionally, a method that takes a Variable name as input and
       returns whether this Variable should be normalized.
     power_iteration_rounds: The number of iterations of the power method to
-      perform per step. A higher number yeilds a better approximation of the
+      perform per step. A higher number yields a better approximation of the
       true spectral norm.
 
   Returns:
@@ -294,7 +294,7 @@ def keras_spectral_normalization(name_filter=_default_name_filter,
     name_filter: Optionally, a method that takes a Variable name as input and
       returns whether this Variable should be normalized.
     power_iteration_rounds: The number of iterations of the power method to
-      perform per step. A higher number yeilds a better approximation of the
+      perform per step. A higher number yields a better approximation of the
       true spectral norm.
 
   Yields:

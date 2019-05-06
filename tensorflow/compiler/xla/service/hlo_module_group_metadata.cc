@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -45,11 +46,8 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
     case ComputationKind::kWhileBody:
       repr += ":WHILE_BODY";
       break;
-    case ComputationKind::kConditionalTrue:
-      repr += ":CONDITIONAL_TRUE";
-      break;
-    case ComputationKind::kConditionalFalse:
-      repr += ":CONDITIONAL_FALSE";
+    case ComputationKind::kConditionalBranch:
+      repr += absl::StrCat(":CONDITIONAL_BRANCH_", index_);
       break;
     case ComputationKind::kCallFunction:
       repr += ":CALL";
@@ -125,8 +123,9 @@ Status HloModuleGroupMetadata::Build() {
   // Visit the computations in postorder so that the companion information grows
   // from inner computations to outer ones.
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
@@ -307,10 +306,10 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->while_body()] =
           TrackedInstruction(hlo, ComputationKind::kWhileBody);
     } else if (hlo->opcode() == HloOpcode::kConditional) {
-      tracked_instructions_[hlo->true_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
-      tracked_instructions_[hlo->false_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+      for (int b = 0; b < hlo->branch_count(); ++b) {
+        tracked_instructions_[hlo->branch_computation(b)] =
+            TrackedInstruction(hlo, ComputationKind::kConditionalBranch, b);
+      }
     } else if (hlo->opcode() == HloOpcode::kCall) {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
@@ -373,8 +372,9 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   };
 
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (auto* computation : module->computations()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   VLOG(2) << "Created " << channels_.size() << " channels";

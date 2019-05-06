@@ -23,12 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
-
-#include "tensorflow/core/util/gpu_kernel_helper.h"
-
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 #if GOOGLE_CUDA
 namespace gpuprim = ::cub;
@@ -150,7 +148,7 @@ class SoftmaxOpGPU : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in_.shape(), &softmax_out));
 
-    const gpuStream_t& cu_stream = GetGPUStream(context);
+    const gpuStream_t& cu_stream = GetGpuStream(context);
     if (logits_in_.NumElements() > 0) {
       Tensor max_logits;
       Tensor sum_probs;

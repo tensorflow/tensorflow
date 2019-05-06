@@ -16,7 +16,7 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
-To use, at program startup, call `tf.enable_eager_execution()`.
+To use, at program startup, call `tf.compat.v1.enable_eager_execution()`.
 
 @@metrics
 
@@ -138,7 +138,7 @@ from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
 from tensorflow.python.training.tracking.tracking import AutoTrackable as Checkpointable
-from tensorflow.python.training.tracking.util import Checkpoint
+from tensorflow.python.training.tracking.util import CheckpointV1 as Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func

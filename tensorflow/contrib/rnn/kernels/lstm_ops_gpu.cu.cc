@@ -17,9 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/contrib/rnn/kernels/lstm_ops.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/contrib/rnn/kernels/lstm_ops.h"
 #include "tensorflow/core/kernels/eigen_activations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -232,7 +231,7 @@ void LSTMBlockCellFpropWithCUDA(
     typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
     typename TTypes<T>::Matrix h, int batch_size, int cell_size,
     int input_size) {
-  const cudaStream_t& cu_stream = GetGpuStream(ctx);
+  const cudaStream_t& cu_stream = GetCudaStream(ctx);
 
   // Concatenate xh = [x, h].
   //
@@ -371,7 +370,7 @@ void LSTMBlockCellBpropWithCUDA(
     typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,
     typename TTypes<T>::Vec wco_grad, const int batch_size, const int cell_size,
     const bool use_peephole) {
-  const cudaStream_t& cu_stream = GetGpuStream(ctx);
+  const cudaStream_t& cu_stream = GetCudaStream(ctx);
 
   dim3 block_dim_2d(std::min(batch_size, 8), 32);
   dim3 grid_dim_2d(Eigen::divup(batch_size, static_cast<int>(block_dim_2d.x)),

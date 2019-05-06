@@ -76,6 +76,7 @@ py_library(
         ":base",
         ":layer_utils",
         "//tensorflow/python/saved_model:revived_types",
+        "@wrapt",
     ],
 )
 
@@ -94,8 +95,8 @@ tf_py_test(
         "//tensorflow/python/keras:layers",
     ],
     tags = [
-        "nomac" +
         "no_windows",
+        "nomac",
     ],
 )
 
@@ -199,7 +200,7 @@ tf_xla_py_test(
     srcs = ["util_xla_test.py"],
     tags = [
         "no_pip",
-        "no_rocm",
+        "no_cuda",
         "nomac",
         "notsan",  # b/74395663
     ],
@@ -273,6 +274,7 @@ tf_py_test(
     additional_deps = [
         ":base",
         ":util",
+        "//tensorflow/python/module",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

@@ -26,7 +26,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.python.util import tf_decorator
@@ -59,7 +59,7 @@ def make_feature_extractor(l2_strength, dropout_rate):
   net = tf.keras.layers.MaxPooling2D(pool_size=(2, 2), name='pool1')(net)
   net = tf.keras.layers.Dropout(dropout_rate, name='dropout1')(net)
   net = tf.keras.layers.Flatten(name='flatten')(net)
-  net = tf.keras.layers.Dense(128, activation='relu', name='dense1',
+  net = tf.keras.layers.Dense(10, activation='relu', name='dense1',
                               kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
 
@@ -185,5 +185,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
   app.run(main)

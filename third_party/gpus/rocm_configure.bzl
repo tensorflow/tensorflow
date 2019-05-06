@@ -171,6 +171,11 @@ def _rocm_include_path(repository_ctx, rocm_config):
     # Add HIP headers
     inc_dirs.append("/opt/rocm/include/hip")
     inc_dirs.append("/opt/rocm/include/hip/hcc_detail")
+    inc_dirs.append("/opt/rocm/hip/include")
+
+    # Add HIP-Clang headers
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/8.0/include")
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/9.0.0/include")
 
     # Add rocrand and hiprand headers
     inc_dirs.append("/opt/rocm/rocrand/include")
@@ -194,7 +199,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/8.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/8.0.0/include")
 
-    # Support hcc based off clang 9.0.0.
+    # Support hcc based off clang 9.0.0, included in ROCm2.2
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/9.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/9.0.0/include")
 
@@ -254,6 +259,31 @@ def _hipcc_env(repository_ctx):
             hipcc_env = (hipcc_env + " " + name + "=\"" +
                          repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
+
+def _hipcc_is_hipclang(repository_ctx):
+    """Returns if hipcc is based on hip-clang toolchain.
+
+    Args:
+        repository_ctx: The repository context.
+
+    Returns:
+        A string "True" if hipcc is based on hip-clang toolchain.
+        The functions returns "False" if not (ie: based on HIP/HCC toolchain).
+    """
+    #  check user-defined hip-clang environment variables
+    for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
+        if name in repository_ctx.os.environ:
+            return "True"
+    # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
+    grep_result = _execute(
+        repository_ctx,
+        ["grep", "HIP_COMPILER=clang", "/opt/rocm/hip/lib/.hipInfo"],
+        empty_stdout_fine = True,
+    )
+    result = grep_result.stdout
+    if result == "HIP_COMPILER=clang":
+        return "True"
+    return "False"
 
 def _crosstool_verbose(repository_ctx):
     """Returns the environment variable value CROSSTOOL_VERBOSE.
@@ -693,6 +723,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{cpu_compiler}": str(cc),
             "%{hipcc_path}": "/opt/rocm/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
+            "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx),
             "%{rocr_runtime_path}": "/opt/rocm/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": "/opt/rocm/hip/lib",

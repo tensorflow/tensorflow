@@ -27,7 +27,7 @@ filegroup(
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
 )
 
 cc_library(
@@ -35,6 +35,7 @@ cc_library(
     testonly = True,
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",

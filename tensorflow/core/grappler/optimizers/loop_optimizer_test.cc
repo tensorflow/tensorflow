@@ -636,7 +636,7 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
   Scope scope = Scope::NewRootScope();
-  Output v_in = ops::Variable(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  Output v_in = ops::Const<float>(scope.WithOpName("v_in"), {123.0}, {});
 
   Output ctrl1 = ops::Const(scope.WithOpName("ctrl1"), false, TensorShape({}));
   ops::Switch s1(scope.WithOpName("switch1"), v_in, ctrl1);
@@ -694,7 +694,6 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
     EXPECT_NE(node.name(), "Square1");
     EXPECT_NE(node.name(), "Sqrt2");
     EXPECT_NE(node.name(), "m5");
-    EXPECT_NE(node.name(), "m7");
 
     if (node.name() == "m1") {
       // sqrt1 is dead
@@ -725,6 +724,12 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
       EXPECT_EQ(node.input(0), "v_in");
       EXPECT_EQ(node.input(1), "square1");
       EXPECT_EQ(node.input(2), "^sqrt2");
+    } else if (node.name() == "m7") {
+      // removed control input from dead sqrt1
+      EXPECT_EQ(node.op(), "Merge");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "square1");
     } else if (node.name() == "m8") {
       // The node is to be preserved because of a fetch
       EXPECT_EQ(node.op(), "Merge");
@@ -739,6 +744,15 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
       EXPECT_EQ(node.input(1), "id4");
     }
   }
+
+  auto tensors_expected = EvaluateNodes(item.graph, {"m7", "m8", "m9"});
+  ASSERT_EQ(tensors_expected.size(), 3);
+
+  auto tensors = EvaluateNodes(output, {"m7", "m8", "m9"});
+  ASSERT_EQ(tensors.size(), 3);
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-6);
 }
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesFullyRemoveDeadBranches) {

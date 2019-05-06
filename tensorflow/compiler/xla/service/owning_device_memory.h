@@ -100,8 +100,14 @@ class OwningDeviceMemory {
   // !is_null() is sufficient but not necessary to imply `this` is active.
   bool is_null() const { return mem_.is_null(); }
 
-  se::DeviceMemoryBase AsDeviceMemoryBase() {
-    return se::DeviceMemoryBase(opaque(), size(), /*is_sub_buffer=*/false);
+  se::DeviceMemoryBase AsDeviceMemoryBase() const {
+    // This const_cast is necessary because DeviceMemoryBase's constructor
+    // doesn't accept a const void*.  This isn't ideal, but it's better than the
+    // alternative of making a AsDeviceMemoryBase non-const member function.
+    //
+    // This is safe (i.e. not UB) because the casted pointer is derived from a
+    // non-const pointer, namely mem_.opaque().
+    return se::DeviceMemoryBase(const_cast<void*>(opaque()), size());
   }
 
   // Returns the wrapped DeviceMemoryBase without freeing it, and deactivates
