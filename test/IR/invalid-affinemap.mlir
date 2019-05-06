@@ -14,7 +14,7 @@
 #hello_world = (i, j) -> (, j) // expected-error {{expected affine expression}}
 
 // -----
-#hello_world (i, j) [s0] -> (i, j) // expected-error {{expected '=' in affine map outlined definition}}
+#hello_world (i, j) [s0] -> (i, j) // expected-error {{expected '=' in attribute alias definition}}
 
 // -----
 #hello_world = (i, j) [s0] -> (2*i*, 3*j*i*2 + 5) // expected-error {{missing right operand of binary op}}
@@ -118,4 +118,4 @@
 
 // -----
 #ABC = (i,j) -> (i+j)
-#ABC = (i,j) -> (i+j)  // expected-error {{redefinition of affine map id 'ABC'}}
+#ABC = (i,j) -> (i+j)  // expected-error {{redefinition of attribute alias id 'ABC'}}

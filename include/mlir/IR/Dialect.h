@@ -95,15 +95,18 @@ public:
   /// Registered hooks for getting identifier aliases for symbols. The
   /// identifier is used in place of the symbol when printing textual IR.
   ///
-  /// Hook for defining AffineMap aliases.
-  virtual void getAffineMapAliases(
-      SmallVectorImpl<std::pair<StringRef, AffineMap>> &aliases) {}
-  /// Hook for defining IntegerSet aliases.
-  virtual void getIntegerSetAliases(
-      SmallVectorImpl<std::pair<StringRef, IntegerSet>> &aliases) {}
+  /// Hook for defining Attribute kind aliases. This will generate an alias for
+  /// all attributes of the given kind in the form : <alias>[0-9]+. These
+  /// aliases must not contain `.`.
+  virtual void getAttributeKindAliases(
+      SmallVectorImpl<std::pair<unsigned, StringRef>> &aliases) {}
+  /// Hook for defining Attribute aliases. These aliases must not contain `.` or
+  /// end with a numeric digit([0-9]+).
+  virtual void getAttributeAliases(
+      SmallVectorImpl<std::pair<Attribute, StringRef>> &aliases) {}
   /// Hook for defining Type aliases.
   virtual void
-  getTypeAliases(SmallVectorImpl<std::pair<StringRef, Type>> &aliases) {}
+  getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) {}
 
   /// Verify an attribute from this dialect on the given function. Returns
   /// failure if the verification failed, success otherwise.

@@ -244,7 +244,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   switch (*tokStart) {
   case '#':
     kind = Token::hash_identifier;
-    errorKind = "invalid affine map name";
+    errorKind = "invalid attribute name";
     break;
   case '%':
     kind = Token::percent_identifier;

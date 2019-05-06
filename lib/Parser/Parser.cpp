@@ -68,11 +68,8 @@ public:
     functionForwardRefs.clear();
   }
 
-  // A map from affine map identifier to AffineMap.
-  llvm::StringMap<AffineMap> affineMapDefinitions;
-
-  // A map from integer set identifier to IntegerSet.
-  llvm::StringMap<IntegerSet> integerSetDefinitions;
+  // A map from attribute alias identifier to Attribute.
+  llvm::StringMap<Attribute> attributeAliasDefinitions;
 
   // A map from type alias identifier to Type.
   llvm::StringMap<Type> typeAliasDefinitions;
@@ -204,8 +201,6 @@ public:
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
   // Polyhedral structures.
-  AffineMap parseAffineMapReference();
-  IntegerSet parseIntegerSetReference();
   ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                   IntegerSet &set);
   DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType type);
@@ -761,10 +756,15 @@ Type Parser::parseMemRefType() {
       // Parse affine map.
       if (parsedMemorySpace)
         return emitError("affine map after memory space in memref type");
-      auto affineMap = parseAffineMapReference();
+      auto affineMap = parseAttribute();
       if (!affineMap)
         return ParseFailure;
-      affineMapComposition.push_back(affineMap);
+
+      // Verify that the parsed attribute is an affine map.
+      if (auto affineMapAttr = affineMap.dyn_cast<AffineMapAttr>())
+        affineMapComposition.push_back(affineMapAttr.getValue());
+      else
+        return emitError("expected affine map in memref type");
     }
     return ParseSuccess;
   };
@@ -1033,6 +1033,25 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                      (tensor-type | vector-type) `,` hex-string-literal `>`
 ///
 Attribute Parser::parseAttribute(Type type) {
+  // If this is a hash_identifier, we are parsing an attribute alias.
+  if (getToken().is(Token::hash_identifier)) {
+    StringRef id = getTokenSpelling().drop_front();
+    consumeToken(Token::hash_identifier);
+
+    // Check for an alias for this attribute.
+    auto aliasIt = state.attributeAliasDefinitions.find(id);
+    if (aliasIt == state.attributeAliasDefinitions.end())
+      return (emitError("undefined attribute alias id '" + id + "'"), nullptr);
+
+    // Ensure that the attribute alias has the same type as requested.
+    if (type && aliasIt->second.getType() != type) {
+      emitError("requested attribute type different then alias attribute type");
+      return nullptr;
+    }
+
+    return aliasIt->second;
+  }
+
   switch (getToken().getKind()) {
   case Token::kw_unit:
     consumeToken(Token::kw_unit);
@@ -1162,7 +1181,6 @@ Attribute Parser::parseAttribute(Type type) {
       return nullptr;
     return builder.getArrayAttr(elements);
   }
-  case Token::hash_identifier:
   case Token::l_paren: {
     // Try to parse an affine map or an integer set reference.
     AffineMap map;
@@ -2071,8 +2089,8 @@ AffineParser::parseDimAndOptionalSymbolIdList(unsigned &numDims,
 
 /// Parses an affine map definition inline.
 ///
-///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-///                        (`size` `(` dim-size (`,` dim-size)* `)`)?
+///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
+///                 (`size` `(` dim-size (`,` dim-size)* `)`)?
 ///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
@@ -2095,9 +2113,7 @@ AffineMap AffineParser::parseAffineMapInline() {
 
 /// Parses an integer set definition inline.
 ///
-///  integer-set-inline
-///                ::= dim-and-symbol-id-lists `:`
-///                affine-constraint-conjunction
+///  integer-set ::= dim-and-symbol-id-lists `:` affine-constraint-conjunction
 ///  affine-constraint-conjunction ::= /*empty*/
 ///                                 | affine-constraint (`,`
 ///                                 affine-constraint)*
@@ -2149,8 +2165,8 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
 
 /// Parse the range and sizes affine map definition inline.
 ///
-///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-///                        (`size` `(` dim-size (`,` dim-size)* `)`)?
+///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
+///                 (`size` `(` dim-size (`,` dim-size)* `)`)?
 ///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
@@ -2212,77 +2228,10 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   return builder.getAffineMap(numDims, numSymbols, exprs, rangeSizes);
 }
 
-/// Parse a reference to an integer set.
-///  integer-set ::= integer-set-id | integer-set-inline
-///  integer-set-id ::= `#` suffix-id
-///
-IntegerSet Parser::parseIntegerSetReference() {
-  if (getToken().isNot(Token::hash_identifier)) {
-    // Try to parse inline integer set.
-    return AffineParser(state).parseIntegerSetInline();
-  }
-
-  // Parse integer set identifier and verify that it exists.
-  StringRef id = getTokenSpelling().drop_front();
-  if (getState().integerSetDefinitions.count(id) > 0) {
-    consumeToken(Token::hash_identifier);
-    return getState().integerSetDefinitions[id];
-  }
-
-  // The id isn't among any of the recorded definitions.
-  emitError("undefined integer set id '" + id + "'");
-  return IntegerSet();
-}
-
-/// Parse a reference to an affine map.
-///  affine-map ::= affine-map-id | affine-map-inline
-///  affine-map-id ::= `#` suffix-id
-///
-AffineMap Parser::parseAffineMapReference() {
-  if (getToken().isNot(Token::hash_identifier)) {
-    // Try to parse inline affine map.
-    return AffineParser(state).parseAffineMapInline();
-  }
-
-  // Parse affine map identifier and verify that it exists.
-  StringRef id = getTokenSpelling().drop_front();
-  if (getState().affineMapDefinitions.count(id) > 0) {
-    consumeToken(Token::hash_identifier);
-    return getState().affineMapDefinitions[id];
-  }
-
-  // The id isn't among any of the recorded definitions.
-  emitError("undefined affine map id '" + id + "'");
-  return AffineMap();
-}
-
 /// Parse an ambiguous reference to either and affine map or an integer set.
 ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                         IntegerSet &set) {
-  if (getToken().isNot(Token::hash_identifier)) {
-    // Try to parse inline affine map.
-    return AffineParser(state).parseAffineMapOrIntegerSetInline(map, set);
-  }
-
-  // Parse affine map / integer set identifier and verify that it exists.
-  // Note that an id can't be in both affineMapDefinitions and
-  // integerSetDefinitions since they use the same sigil '#'.
-  StringRef id = getTokenSpelling().drop_front();
-  if (getState().affineMapDefinitions.count(id) > 0) {
-    consumeToken(Token::hash_identifier);
-    map = getState().affineMapDefinitions[id];
-    return ParseSuccess;
-  }
-  if (getState().integerSetDefinitions.count(id) > 0) {
-    consumeToken(Token::hash_identifier);
-    set = getState().integerSetDefinitions[id];
-    return ParseSuccess;
-  }
-
-  // The id isn't among any of the recorded definitions.
-  emitError("undefined affine map or integer set id '" + id + "'");
-
-  return ParseFailure;
+  return AffineParser(state).parseAffineMapOrIntegerSetInline(map, set);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3601,7 +3550,7 @@ public:
 private:
   ParseResult finalizeModule();
 
-  ParseResult parseAffineStructureDef();
+  ParseResult parseAttributeAliasDef();
 
   ParseResult parseTypeAliasDef();
 
@@ -3617,48 +3566,31 @@ private:
 };
 } // end anonymous namespace
 
-/// Parses either an affine map declaration or an integer set declaration.
+/// Parses an attribute alias declaration.
 ///
-/// Affine map declaration.
+///   attribute-alias-def ::= '#' alias-name `=` attribute-value
 ///
-///   affine-map-def ::= affine-map-id `=` affine-map-inline
-///
-/// Integer set declaration.
-///
-///  integer-set-decl ::= integer-set-id `=` integer-set-inline
-///
-ParseResult ModuleParser::parseAffineStructureDef() {
+ParseResult ModuleParser::parseAttributeAliasDef() {
   assert(getToken().is(Token::hash_identifier));
 
-  StringRef affineStructureId = getTokenSpelling().drop_front();
+  StringRef attrId = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().affineMapDefinitions.count(affineStructureId) > 0)
-    return emitError("redefinition of affine map id '" + affineStructureId +
-                     "'");
-  if (getState().integerSetDefinitions.count(affineStructureId) > 0)
-    return emitError("redefinition of integer set id '" + affineStructureId +
-                     "'");
+  if (getState().attributeAliasDefinitions.count(attrId) > 0)
+    return emitError("redefinition of attribute alias id '" + attrId + "'");
 
   consumeToken(Token::hash_identifier);
 
   // Parse the '='
-  if (parseToken(Token::equal,
-                 "expected '=' in affine map outlined definition"))
+  if (parseToken(Token::equal, "expected '=' in attribute alias definition"))
     return ParseFailure;
 
-  AffineMap map;
-  IntegerSet set;
-  if (AffineParser(getState()).parseAffineMapOrIntegerSetInline(map, set))
+  // Parse the attribute value.
+  Attribute attr = parseAttribute();
+  if (!attr)
     return ParseFailure;
 
-  if (map) {
-    getState().affineMapDefinitions[affineStructureId] = map;
-    return ParseSuccess;
-  }
-
-  assert(set);
-  getState().integerSetDefinitions[affineStructureId] = set;
+  getState().attributeAliasDefinitions[attrId] = attr;
   return ParseSuccess;
 }
 
@@ -3853,7 +3785,6 @@ ParseResult ModuleParser::parseFunc() {
 /// Finish the end of module parsing - when the result is valid, do final
 /// checking.
 ParseResult ModuleParser::finalizeModule() {
-
   // Resolve all forward references, building a remapping table of attributes.
   DenseMap<Attribute, FunctionAttr> remappingTable;
   for (auto forwardRef : getState().functionForwardRefs) {
@@ -3906,7 +3837,7 @@ ParseResult ModuleParser::parseModule() {
       return ParseFailure;
 
     case Token::hash_identifier:
-      if (parseAffineStructureDef())
+      if (parseAttributeAliasDef())
         return ParseFailure;
       break;
 

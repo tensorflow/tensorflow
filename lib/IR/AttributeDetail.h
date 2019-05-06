@@ -200,7 +200,8 @@ struct ArrayAttributeStorage : public AttributeStorage {
 struct AffineMapAttributeStorage : public AttributeStorage {
   using KeyTy = AffineMap;
 
-  AffineMapAttributeStorage(AffineMap value) : value(value) {}
+  AffineMapAttributeStorage(AffineMap value)
+      : AttributeStorage(IndexType::get(value.getContext())), value(value) {}
 
   /// Key equality function.
   bool operator==(const KeyTy &key) const { return key == value; }

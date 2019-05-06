@@ -34,17 +34,17 @@ func @memrefs(memref<2x4xi8, >) // expected-error {{expected list element}}
 
 // -----
 // Test non-existent map in memref type.
-func @memrefs(memref<2x4xi8, #map7>) // expected-error {{undefined affine map id 'map7'}}
+func @memrefs(memref<2x4xi8, #map7>) // expected-error {{undefined attribute alias id 'map7'}}
 
 // -----
-// Test non hash identifier in memref type.
-func @memrefs(memref<2x4xi8, %map7>) // expected-error {{expected '(' at start of dimensional identifiers list}}
+// Test non affine map in memref type.
+func @memrefs(memref<2x4xi8, i8>) // expected-error {{expected affine map in memref type}}
 
 // -----
 // Test non-existent map in map composition of memref type.
 #map0 = (d0, d1) -> (d0, d1)
 
-func @memrefs(memref<2x4xi8, #map0, #map8>) // expected-error {{undefined affine map id 'map8'}}
+func @memrefs(memref<2x4xi8, #map0, #map8>) // expected-error {{undefined attribute alias id 'map8'}}
 
 // -----
 // Test multiple memory space error.
