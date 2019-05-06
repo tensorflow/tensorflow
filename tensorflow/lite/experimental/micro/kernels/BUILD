@@ -54,6 +54,7 @@ cc_library(
         "fully_connected.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
+        "conv.cc",
         "softmax.cc",
     ],
     hdrs = [
