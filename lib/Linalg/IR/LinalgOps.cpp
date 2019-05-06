@@ -167,24 +167,24 @@ LogicalResult mlir::SliceOp::verify() {
     return emitOpError("first operand must come from a ViewOp");
   unsigned rank = getBaseViewRank();
   if (llvm::size(getIndexings()) != rank) {
-    return emitOpError("requires at least a view operand followed by " +
-                       Twine(rank) + " indexings");
+    return emitOpError("requires at least a view operand followed by ")
+           << rank << " indexings";
   }
   unsigned index = 0;
   for (auto indexing : getIndexings()) {
     if (!indexing->getType().isa<RangeType>() &&
         !indexing->getType().isa<IndexType>()) {
-      return emitOpError(Twine(index) +
-                         "^th index must be of range or index type");
+      return emitOpError() << index
+                           << "^th index must be of range or index type";
     }
     if (indexing->getType().isa<IndexType>())
       --rank;
     ++index;
   }
   if (getRank() != rank) {
-    return emitOpError("the rank of the view must be the number of its range "
-                       "indices (" +
-                       Twine(rank) + ") but got: " + Twine(getRank()));
+    return emitOpError()
+           << "the rank of the view must be the number of its range indices ("
+           << rank << ") but got: " << getRank();
   }
   return success();
 }
@@ -296,13 +296,13 @@ LogicalResult mlir::ViewOp::verify() {
   unsigned index = 0;
   for (auto indexing : getIndexings()) {
     if (!indexing->getType().isa<RangeType>()) {
-      return emitOpError(Twine(index) + "^th index must be of range type");
+      return emitOpError() << index << "^th index must be of range type";
     }
     ++index;
   }
   if (getViewType().getRank() != index)
-    return emitOpError(
-        "the rank of the view must be the number of its indexings");
+    return emitOpError()
+           << "the rank of the view must be the number of its indexings";
   return success();
 }
 

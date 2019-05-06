@@ -44,6 +44,9 @@ Type DiagnosticArgument::getAsType() const {
 /// Outputs this argument to a stream.
 void DiagnosticArgument::print(raw_ostream &os) const {
   switch (kind) {
+  case DiagnosticArgumentKind::Double:
+    os << getAsDouble();
+    break;
   case DiagnosticArgumentKind::Integer:
     os << getAsInteger();
     break;

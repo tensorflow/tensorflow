@@ -195,9 +195,9 @@ LogicalResult VectorTransferReadOp::verify() {
                                  (optionalPaddingValue ? 1 : 0);
   // Checks on the actual operands and their types.
   if (getNumOperands() != expectedNumOperands) {
-    return emitOpError("expects " + Twine(expectedNumOperands) + " operands " +
-                       "(of which " + Twine(memrefType.getRank()) +
-                       " indices)");
+    return emitOpError("expects ")
+           << expectedNumOperands << " operands (of which "
+           << memrefType.getRank() << " indices)";
   }
   // Consistency of padding value with vector type.
   if (optionalPaddingValue) {
@@ -221,8 +221,8 @@ LogicalResult VectorTransferReadOp::verify() {
     ++numIndices;
   }
   if (numIndices != memrefType.getRank()) {
-    return emitOpError("requires at least a memref operand followed by " +
-                       Twine(memrefType.getRank()) + " indices");
+    return emitOpError("requires at least a memref operand followed by ")
+           << memrefType.getRank() << " indices";
   }
 
   // Consistency of AffineMap attribute.
@@ -242,9 +242,8 @@ LogicalResult VectorTransferReadOp::verify() {
   }
   if (permutationMap.getNumResults() != vectorType.getRank()) {
     return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type (" +
-                       Twine(permutationMap.getNumResults()) + " vs " +
-                       Twine(vectorType.getRank()));
+                       "same rank as the vector type (")
+           << permutationMap.getNumResults() << " vs " << vectorType.getRank();
   }
   return verifyPermutationMap(permutationMap,
                               [this](Twine t) { return emitOpError(t); });
@@ -340,9 +339,9 @@ LogicalResult VectorTransferWriteOp::verify() {
       Offsets::FirstIndexOffset + memrefType.getRank();
   // Checks on the actual operands and their types.
   if (getNumOperands() != expectedNumOperands) {
-    return emitOpError("expects " + Twine(expectedNumOperands) + " operands " +
-                       "(of which " + Twine(memrefType.getRank()) +
-                       " indices)");
+    return emitOpError() << "expects " << expectedNumOperands
+                         << " operands (of which " << memrefType.getRank()
+                         << " indices)";
   }
   // Consistency of indices types.
   unsigned numIndices = 0;
@@ -354,8 +353,8 @@ LogicalResult VectorTransferWriteOp::verify() {
     numIndices++;
   }
   if (numIndices != memrefType.getRank()) {
-    return emitOpError("requires at least a memref operand followed by " +
-                       Twine(memrefType.getRank()) + " indices");
+    return emitOpError("requires at least a memref operand followed by ")
+           << memrefType.getRank() << " indices";
   }
 
   // Consistency of AffineMap attribute.
@@ -375,9 +374,8 @@ LogicalResult VectorTransferWriteOp::verify() {
   }
   if (permutationMap.getNumResults() != vectorType.getRank()) {
     return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type (" +
-                       Twine(permutationMap.getNumResults()) + " vs " +
-                       Twine(vectorType.getRank()));
+                       "same rank as the vector type (")
+           << permutationMap.getNumResults() << " vs " << vectorType.getRank();
   }
   return verifyPermutationMap(permutationMap,
                               [this](Twine t) { return emitOpError(t); });

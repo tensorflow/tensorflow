@@ -203,10 +203,10 @@ LogicalResult OpTrait::impl::verifyCompatibleOperandBroadcast(Operation *op) {
                           retType.isa<UnrankedTensorType>() ||
                           isSameShapedVectorOrTensor(retType, broadcastedType);
   if (!hasCompatRetType)
-    return op->emitOpError(
-        llvm::formatv("result type '{0}' does not have the same shape as the "
-                      "broadcasted type '{1}' computed from the operand types",
-                      retType, broadcastedType));
+    return op->emitOpError()
+           << "result type '" << retType
+           << "' does not have the same shape as the broadcasted type '"
+           << broadcastedType << "' computed from the operand types";
 
   return success();
 }

@@ -1133,11 +1133,8 @@ Type LLVMLowering::convertType(Type t) {
     return result;
 
   auto *mlirContext = llvmDialect->getContext();
-  std::string message;
-  llvm::raw_string_ostream os(message);
-  os << "unsupported type: ";
-  t.print(os);
-  mlirContext->emitError(UnknownLoc::get(mlirContext), os.str());
+  mlirContext->emitError(UnknownLoc::get(mlirContext))
+      << "unsupported type: " << t;
   return {};
 }
 

@@ -902,8 +902,8 @@ LogicalResult LLVMDialect::verifyFunctionArgAttribute(Function *func,
                                                       NamedAttribute argAttr) {
   // Check that llvm.noalias is a boolean attribute.
   if (argAttr.first == "llvm.noalias" && !argAttr.second.isa<BoolAttr>())
-    return func->emitError(
-        "llvm.noalias argument attribute of non boolean type");
+    return func->emitError()
+           << "llvm.noalias argument attribute of non boolean type";
   return success();
 }
 

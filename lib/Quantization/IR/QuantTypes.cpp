@@ -50,8 +50,7 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
   // Verify storage width.
   if (integralWidth == 0 || integralWidth > MaxStorageBits) {
     if (loc) {
-      context->emitError(*loc,
-                         "illegal storage type size: " + Twine(integralWidth));
+      context->emitError(*loc, "illegal storage type size: ") << integralWidth;
     }
     return failure();
   }
@@ -67,9 +66,8 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
       storageTypeMin < defaultIntegerMin ||
       storageTypeMax > defaultIntegerMax) {
     if (loc) {
-      context->emitError(*loc, "illegal storage min and storage max: (" +
-                                   Twine(storageTypeMin) + ":" +
-                                   Twine(storageTypeMax) + ")");
+      context->emitError(*loc, "illegal storage min and storage max: (")
+          << storageTypeMin << ":" << storageTypeMax << ")";
     }
     return failure();
   }
@@ -313,8 +311,7 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   // Verify scale.
   if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
     if (loc) {
-      context->emitError(*loc,
-                         "illegal scale: " + Twine(std::to_string(scale)));
+      context->emitError(*loc) << "illegal scale: " << scale;
     }
     return failure();
   }
@@ -383,9 +380,8 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   // Ensure that the number of scales and zeroPoints match.
   if (scales.size() != zeroPoints.size()) {
     if (loc) {
-      context->emitError(*loc, "illegal number of scales and zeroPoints: " +
-                                   Twine(scales.size()) + ", " +
-                                   Twine(zeroPoints.size()));
+      context->emitError(*loc, "illegal number of scales and zeroPoints: ")
+          << scales.size() << ", " << zeroPoints.size();
     }
     return failure();
   }
@@ -394,8 +390,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   for (double scale : scales) {
     if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
       if (loc) {
-        context->emitError(*loc,
-                           "illegal scale: " + Twine(std::to_string(scale)));
+        context->emitError(*loc) << "illegal scale: " << scale;
       }
       return failure();
     }

@@ -56,6 +56,7 @@ public:
   /// Enum that represents the different kinds of diagnostic arguments
   /// supported.
   enum class DiagnosticArgumentKind {
+    Double,
     Integer,
     String,
     Type,
@@ -68,16 +69,22 @@ public:
   /// Returns the kind of this argument.
   DiagnosticArgumentKind getKind() const { return kind; }
 
-  /// Returns this argument as a string.
-  StringRef getAsString() const {
-    assert(getKind() == DiagnosticArgumentKind::String);
-    return stringVal;
+  /// Returns this argument as a double.
+  double getAsDouble() const {
+    assert(getKind() == DiagnosticArgumentKind::Double);
+    return doubleVal;
   }
 
   /// Returns this argument as a signed integer.
   int64_t getAsInteger() const {
     assert(getKind() == DiagnosticArgumentKind::Integer);
     return static_cast<int64_t>(opaqueVal);
+  }
+
+  /// Returns this argument as a string.
+  StringRef getAsString() const {
+    assert(getKind() == DiagnosticArgumentKind::String);
+    return stringVal;
   }
 
   /// Returns this argument as a Type.
@@ -91,6 +98,11 @@ public:
 
 private:
   friend class Diagnostic;
+
+  // Construct from a floating point number.
+  explicit DiagnosticArgument(double val)
+      : kind(DiagnosticArgumentKind::Double), doubleVal(val) {}
+  explicit DiagnosticArgument(float val) : DiagnosticArgument(double(val)) {}
 
   // Construct from a signed integer.
   explicit DiagnosticArgument(int64_t val)
@@ -115,6 +127,7 @@ private:
 
   /// The value of this argument.
   union {
+    double doubleVal;
     intptr_t opaqueVal;
     StringRef stringVal;
   };

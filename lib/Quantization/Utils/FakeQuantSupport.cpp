@@ -44,8 +44,7 @@ UniformQuantizedType mlir::quant::fakeQuantAttrsToType(Location loc,
     qmin = -32768;
     qmax = 32767;
   } else {
-    ctx->emitError(loc,
-                   "unsupported FakeQuant number of bits: " + Twine(numBits));
+    ctx->emitError(loc, "unsupported FakeQuant number of bits: ") << numBits;
     return nullptr;
   }
 
@@ -56,9 +55,8 @@ UniformQuantizedType mlir::quant::fakeQuantAttrsToType(Location loc,
 
   // Range must straddle zero.
   if (rmin > 0.0 || rmax < 0.0) {
-    return (ctx->emitError(loc, "FakeQuant range must straddle zero: [" +
-                                    Twine(std::to_string(rmin)) + "," +
-                                    Twine(std::to_string(rmax)) + "]"),
+    return (ctx->emitError(loc, "FakeQuant range must straddle zero: [")
+                << rmin << "," << rmax << "]",
             nullptr);
   }
 
