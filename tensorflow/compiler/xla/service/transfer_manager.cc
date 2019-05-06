@@ -178,7 +178,8 @@ void TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
     const TransferMetadata* transfer_metadata) {
-  if (!ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape)) {
+  if (!Shape::Equal().MinorToMajorOnlyInLayout()(HostShapeToDeviceShape(shape),
+                                                 shape)) {
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));

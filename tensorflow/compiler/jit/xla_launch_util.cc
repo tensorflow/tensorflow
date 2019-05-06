@@ -244,7 +244,8 @@ void XlaComputationLaunchContext::PopulateInputs(
       CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
       arg_ptrs_[i] = const_cast<ShapedBuffer*>(&xla_tensor->shaped_buffer());
     } else {
-      CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
+      CHECK(xla::Shape::Equal().MinorToMajorOnlyInLayout()(shape,
+                                                           on_device_shape))
           << "On-device shape "
           << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
           << " not the same as on-host shape "
