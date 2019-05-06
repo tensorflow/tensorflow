@@ -18,4 +18,4 @@
 #include "mlir/GPU/GPUDialect.h"
 
 // Static initialization for GPU dialect registration.
-static mlir::DialectRegistration<mlir::GPUDialect> kernelDialect;
+static mlir::DialectRegistration<mlir::gpu::GPUDialect> kernelDialect;

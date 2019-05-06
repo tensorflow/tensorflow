@@ -52,3 +52,21 @@ func @nested_isolation(%sz : index) {
   }
   return
 }
+
+func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
+    attributes { nvvm.kernel: true } {
+  return
+}
+
+func @foo() {
+  %0 = "op"() : () -> (f32)
+  %1 = "op"() : () -> (!llvm<"float*">)
+// CHECK: %c8 = constant 8
+  %cst = constant 8 : index
+
+// CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()} : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1)
+      {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()}
+      : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+  return
+}

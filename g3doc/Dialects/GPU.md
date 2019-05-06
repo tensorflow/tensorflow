@@ -84,3 +84,41 @@ understanding that a value has additional semantics (e.g., we will need to know
 what value corresponds to threadIdx.x for coalescing). We can recover these
 properties by analyzing the operations producing values, but it is easier just
 to have that information by construction.
+
+### `gpu.launch_func`
+
+Launch a kernel given as a function on the specified grid of thread blocks.
+`gpu.launch` operations are lowered to `gpu.launch_func` operations by outlining
+the kernel body into a function, which is closer to the NVVM model. The
+`gpu.launch_func` operation has a function attribute namend `kernel` to specify
+the kernel function to launch. The kernel function itself has a `nvvm.kernel`
+attribute.
+
+The operation takes at least six operands, with the first three operands being
+grid sizes along x,y,z dimensions and the following three being block sizes
+along x,y,z dimensions. When a lower-dimensional kernel is required, unused
+sizes must be explicitly set to `1`. The remaining operands are passed as
+arguments to the kernel function.
+
+A custom syntax for this operation is currently not available.
+
+Example:
+
+```mlir {.mlir}
+func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
+    attributes { nvvm.kernel: true } {
+
+  // Operations that produce block/thread IDs and sizes will be injected when
+  // outlining the `gpu.launch` body to a function called by `gpu.launch_func`.
+  // TODO(tjoerg): Update this example when outlining is implemented.
+
+  "some_op"(%bx, %tx) : (index, index) -> ()
+  %42 = load %arg1[%bx] : memref<?xf32, 1>
+}
+
+"gpu.launch_func"(%cst, %cst, %cst,  // Grid sizes.
+                  %cst, %cst, %cst,  // Block sizes.
+                  %arg0, %arg1)      // Arguments passed to the kernel function.
+      {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()}  // Kernel function.
+      : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+```

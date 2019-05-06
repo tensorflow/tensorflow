@@ -25,12 +25,13 @@
 #include "mlir/IR/StandardTypes.h"
 
 using namespace mlir;
+using namespace mlir::gpu;
 
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchOp>();
+  addOperations<LaunchOp, LaunchFuncOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -256,4 +257,44 @@ bool LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   Region *body = result->addRegion();
   return parser->parseRegion(*body, regionArgs, dataTypes) ||
          parser->parseOptionalAttributeDict(result->attributes);
+}
+
+
+//===----------------------------------------------------------------------===//
+// LaunchFuncOp
+//===----------------------------------------------------------------------===//
+Function *LaunchFuncOp::kernel() {
+  return this->getAttr("kernel").dyn_cast<FunctionAttr>().getValue();
+}
+
+unsigned LaunchFuncOp::getNumKernelOperands() {
+  return getNumOperands() - kNumConfigOperands;
+}
+
+Value *LaunchFuncOp::getKernelOperand(unsigned i) {
+  return getOperation()->getOperand(i + kNumConfigOperands);
+}
+
+LogicalResult LaunchFuncOp::verify() {
+  auto kernelAttr = this->getAttr("kernel");
+  if (!kernelAttr) {
+    return emitOpError("attribute 'kernel' must be specified");
+  } else if (!kernelAttr.isa<FunctionAttr>()) {
+    return emitOpError("attribute 'kernel' must be a function");
+  }
+  Function *kernelFunc = this->kernel();
+  unsigned numKernelFuncArgs = kernelFunc->getNumArguments();
+  if (getNumKernelOperands() != numKernelFuncArgs) {
+    return emitOpError("got " + Twine(getNumKernelOperands()) +
+                       " kernel operands but expected " +
+                       Twine(numKernelFuncArgs));
+  }
+  for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
+    if (getKernelOperand(i)->getType() !=
+        kernelFunc->getArgument(i)->getType()) {
+      return emitOpError("type of function argument " + Twine(i) +
+                         " does not match");
+    }
+  }
+  return success();
 }

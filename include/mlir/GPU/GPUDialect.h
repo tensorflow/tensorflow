@@ -27,6 +27,7 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
+namespace gpu {
 
 /// The dialect containing GPU kernel launching operations and related
 /// facilities.
@@ -97,6 +98,29 @@ private:
   static constexpr unsigned kNumConfigRegionAttributes = 12;
 };
 
+/// Operation to launch a kernel given as outlined function.
+class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
+                               OpTrait::ZeroResult> {
+public:
+  using Op::Op;
+
+  /// The kernel function specified by the operation's `kernel` attribute.
+  Function *kernel();
+  /// The number of operands passed to the kernel function.
+  unsigned getNumKernelOperands();
+  /// The i-th operand passed to the kernel function.
+  Value *getKernelOperand(unsigned i);
+
+  LogicalResult verify();
+
+  static StringRef getOperationName() { return "gpu.launch_func"; }
+
+  /// The number of launch configuration operands, placed at the leading
+  /// positions of the operand list.
+  static constexpr unsigned kNumConfigOperands = 6;
+};
+
+} // end namespace gpu
 } // end namespace mlir
 
 #endif // MLIR_GPUKERNEL_GPUDIALECT_H
