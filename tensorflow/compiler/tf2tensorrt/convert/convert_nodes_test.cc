@@ -2561,7 +2561,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
   ops_to_test.push_back("Relu6");
   ops_to_test.push_back("LeakyRelu");
   // Ok.
-  for (string op_name : ops_to_test) {
+  for (const string& op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -4093,7 +4093,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
   // Add other unary ops to test.
   ops_to_test.push_back("Rsqrt");
   // Ok.
-  for (string op_name : ops_to_test) {
+  for (const string& op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_unary_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
