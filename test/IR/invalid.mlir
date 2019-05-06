@@ -882,7 +882,7 @@ func @negative_in_tensor_size() -> tensor<1x-1xi32>
 // -----
 
 func @invalid_nested_dominance() {
-  "foo.region"() : () -> () {
+  "foo.region"() ({
     // expected-error @+1 {{operand #0 does not dominate this use}}
     "foo.use" (%1) : (i32) -> ()
     br ^bb2
@@ -891,7 +891,7 @@ func @invalid_nested_dominance() {
     // expected-note @+1 {{operand defined here}}
     %1 = constant 0 : i32
     "foo.yield" () : () -> ()
-  }
+  }) : () -> ()
   return
 }
 
@@ -925,13 +925,13 @@ func @invalid_tuple_missing_greater(tuple<i32)
 // Should not crash because of deletion order here.
 func @invalid_region_dominance() {
   "foo.use" (%1) : (i32) -> ()
-  "foo.region"() : () -> () {
+  "foo.region"() ({
     %1 = constant 0 : i32  // This value is used outside of the region.
     "foo.yield" () : () -> ()
-  } {
+  }, {
     // expected-error @+1 {{expected operation name in quotes}}
     %2 = constant 1 i32  // Syntax error causes region deletion.
-  }
+  }) : () -> ()
   return
 }
 
@@ -942,13 +942,13 @@ func @invalid_region_block() {
   "foo.branch"()[^bb2] : () -> ()  // Attempt to jump into the region.
 
 ^bb1:
-  "foo.region"() : () -> () {
+  "foo.region"() ({
     ^bb2:
       "foo.yield"() : () -> ()
-  } {
+  }, {
     // expected-error @+1 {{expected operation name in quotes}}
     %2 = constant 1 i32  // Syntax error causes region deletion.
-  }
+  }) : () -> ()
 }
 
 // -----
@@ -956,16 +956,23 @@ func @invalid_region_block() {
 // Should not crash because of deletion order here.
 func @invalid_region_dominance() {
   "foo.use" (%1) : (i32) -> ()
-  "foo.region"() : () -> () {
-    "foo.region"() : () -> () {
+  "foo.region"() ({
+    "foo.region"() ({
       %1 = constant 0 : i32  // This value is used outside of the region.
       "foo.yield" () : () -> ()
-    }
-  } {
+    }) : () -> ()
+  }, {
     // expected-error @+1 {{expected operation name in quotes}}
     %2 = constant 1 i32  // Syntax error causes region deletion.
-  }
+  }) : () -> ()
   return
+}
+
+// -----
+
+func @unfinished_region_list() {
+  // expected-error@+1 {{expected ')' to end region list}}
+  "region"() ({},{},{} : () -> ()
 }
 
 // -----

@@ -3083,6 +3083,20 @@ Operation *FunctionParser::parseGenericOperation() {
       return nullptr;
   }
 
+  // Parse the region list.
+  CleanupOpStateRegions guard{result};
+  if (consumeIf(Token::l_paren)) {
+    do {
+      // Create temporary regions with function as parent.
+      result.regions.emplace_back(new Region(function));
+      if (parseOperationRegion(*result.regions.back(),
+                               /*entryArguments*/ {}))
+        return nullptr;
+    } while (consumeIf(Token::comma));
+    if (parseToken(Token::r_paren, "expected ')' to end region list"))
+      return nullptr;
+  }
+
   if (getToken().is(Token::l_brace)) {
     if (parseAttributeDict(result.attributes))
       return nullptr;
@@ -3123,16 +3137,6 @@ Operation *FunctionParser::parseGenericOperation() {
     Block *successor = std::get<0>(succ);
     const SmallVector<Value *, 4> &operands = std::get<1>(succ);
     result.addSuccessor(successor, operands);
-  }
-
-  // Parse the optional regions for this operation.
-  CleanupOpStateRegions guard{result};
-  while (getToken().is(Token::l_brace)) {
-    // Create temporary regions with function as parent.
-    result.regions.emplace_back(new Region(function));
-    if (parseOperationRegion(*result.regions.back(),
-                             /*entryArguments=*/llvm::None))
-      return nullptr;
   }
 
   return builder.createOperation(result);

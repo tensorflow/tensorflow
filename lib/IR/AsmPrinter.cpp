@@ -1582,6 +1582,16 @@ void FunctionPrinter::printGenericOp(Operation *op) {
     os << ']';
   }
 
+  // Print regions.
+  if (op->getNumRegions() != 0) {
+    os << " (";
+    interleaveComma(op->getRegions(), [&](Region &region) {
+      printRegion(region, /*printEntryBlockArgs=*/true,
+                  /*printBlockTerminators=*/true);
+    });
+    os << ')';
+  }
+
   auto attrs = op->getAttrs();
   printOptionalAttrDict(attrs);
 
@@ -1600,11 +1610,6 @@ void FunctionPrinter::printGenericOp(Operation *op) {
                     [&](Value *result) { printType(result->getType()); });
     os << ')';
   }
-
-  // Print any trailing regions.
-  for (auto &region : op->getRegions())
-    printRegion(region, /*printEntryBlockArgs=*/true,
-                /*printBlockTerminators=*/true);
 }
 
 void FunctionPrinter::printSuccessorAndUseList(Operation *term,

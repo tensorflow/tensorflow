@@ -193,7 +193,7 @@ func @up_propagate() -> i32 {
 // CHECK-LABEL: func @up_propagate_region
 func @up_propagate_region() -> i32 {
   // CHECK-NEXT: %0 = "foo.region"
-  %0 = "foo.region"() : () -> (i32) {
+  %0 = "foo.region"() ({
     // CHECK-NEXT:  %c0_i32 = constant 0 : i32
     // CHECK-NEXT: %true = constant 1 : i1
     // CHECK-NEXT: cond_br
@@ -217,6 +217,6 @@ func @up_propagate_region() -> i32 {
     %c1_i32_0 = constant 1 : i32
     %2 = addi %arg, %c1_i32_0 : i32
     "foo.yield" (%2) : (i32) -> ()
-  }
+  }) : () -> (i32)
   return %0 : i32
 }

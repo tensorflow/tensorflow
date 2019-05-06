@@ -1413,9 +1413,11 @@ Syntax:
 
 ``` {.ebnf}
 operation ::= op-result? string-literal `(` ssa-use-list? `)`
-              (`[` successor-list `]`)? attribute-dict? `:` function-type
+              (`[` successor-list `]`)? (`(` region-list `)`)?
+              attribute-dict? `:` function-type
 op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
 successor-list ::= successor (`,` successor)*
+region-list    ::= region (`,` region)*
 ```
 
 MLIR represents computations within functions with a uniform concept called
@@ -1428,7 +1430,8 @@ operations), and have application-specific semantics. For example, MLIR supports
 The internal representation of an operation is simple: an operation is
 identified by a unique string (e.g. `dim`, `tf.Conv2d`, `x86.repmovsb`,
 `ppc.eieio`, etc), can return zero or more results, take zero or more SSA
-operands, and may have zero or more attributes. When parsed or printed in the
+operands, may have zero or more attributes, may have zero or more successors,
+and zero or more enclosed [regions](#regions). When parsed or printed in the
 _generic assembly form_, these are all printed literally, and a function type is
 used to indicate the types of the results and operands.
 

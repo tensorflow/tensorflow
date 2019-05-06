@@ -800,16 +800,27 @@ func @verbose_if(%N: index) {
   %c = constant 200 : index
 
   // CHECK: affine.if #set{{.*}}(%c200)[%arg0, %c200] {
-  "affine.if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
+  "affine.if"(%c, %N, %c) ({
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
     "affine.terminator"() : () -> ()
     // CHECK-NEXT: } else {
-  } { // The else region.
+  }, { // The else region.
     // CHECK-NEXT: "add"
     %z = "add"(%c, %c) : (index, index) -> index
     "affine.terminator"() : () -> ()
-  }
+  })
+  { condition: #set0 } : (index, index, index) -> ()
+  return
+}
+
+// CHECK-LABEL: func @terminator_with_regions
+func @terminator_with_regions() {
+  // Combine successors and regions in the same operation.
+  // CHECK: "region"()[^bb1] ( {
+  // CHECK: }) : () -> ()
+  "region"()[^bb2] ({}) : () -> ()
+^bb2:
   return
 }
 
