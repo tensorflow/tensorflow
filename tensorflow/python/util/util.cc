@@ -420,17 +420,15 @@ class SequenceValueIterator : public ValueIterator {
   Py_ssize_t index_;
 };
 
-// Just return itself as a single item.
-class SparseTensorValueIterator : public ValueIterator {
+// Iterator that just returns a single python object.
+class SingleValueIterator : public ValueIterator {
  public:
-  explicit SparseTensorValueIterator(PyObject* tensor) : tensor_(tensor) {
-    Py_INCREF(tensor);
-  }
+  explicit SingleValueIterator(PyObject* x) : x_(x) { Py_INCREF(x); }
 
-  Safe_PyObjectPtr next() override { return std::move(tensor_); }
+  Safe_PyObjectPtr next() override { return std::move(x_); }
 
  private:
-  Safe_PyObjectPtr tensor_;
+  Safe_PyObjectPtr x_;
 };
 
 // Returns nullptr (to raise an exception) when next() is called.  Caller
@@ -538,7 +536,7 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
-    return absl::make_unique<SparseTensorValueIterator>(nested);
+    return absl::make_unique<SingleValueIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -552,6 +550,7 @@ ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
     if (PyErr_Occurred() || nested == nullptr) {
       return absl::make_unique<ErrorValueIterator>();
     }
+    return absl::make_unique<SingleValueIterator>(nested);
   }
   return GetValueIterator(nested);
 }

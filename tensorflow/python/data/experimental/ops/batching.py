@@ -437,10 +437,7 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
                          "different batch sizes.")
     self._input_dataset = input_dataset
 
-    self._structure = structure.convert_legacy_structure(
-        dataset_ops.get_legacy_output_types(input_dataset),
-        nest.map_structure(lambda s: s[1:], input_shapes),
-        dataset_ops.get_legacy_output_classes(input_dataset))
+    self._structure = dataset_ops.get_structure(input_dataset)._unbatch()  # pylint: disable=protected-access
 
     variant_tensor = ged_ops.experimental_unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access

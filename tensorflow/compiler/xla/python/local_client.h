@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_CLIENT_H_
 
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -40,35 +41,165 @@ namespace xla {
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
 
+// Class that manages destruction of Python objects.
+//
+// We must not destroy Python objects without holding the GIL. However, we
+// frequently want to hold references to Python objects for the duration of
+// an asynchronous transfer on a Stream, and release our reference when the
+// transfer completes.
+//
+// This class holds references to Python objects outside a GIL scope, that can
+// be collected later when the GIL is held by calling CollectGarbage().
+class PythonRefManager {
+ public:
+  PythonRefManager() = default;
+
+  // Creates a managed std::shared_ptr to an object. When the shared_ptr is
+  // destroyed, the reference to 'object' will be added to python_garbage_,
+  // and collected next time CollectGarbage() is called.
+  std::shared_ptr<pybind11::object> ManageReference(
+      const pybind11::object& object);
+
+  // Releases the contents of python_garbage_. Requires that the GIL is held.
+  // The client calls this method during API entry points where the GIL is held
+  // to free any garbage that has accumulated.
+  void CollectGarbage();
+
+ private:
+  absl::Mutex mu_;
+  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
+};
+
+// Class that encapsulates state relating to a device (e.g., a GPU) on which we
+// can perform computation and transfers.
+class Device {
+ public:
+  // If use_multiple_streams is true, we allocate separate streams for compute
+  // and transfers. If it is false, we share a single stream for compute and
+  // transfers. The CPU device does not support multiple streams, and this is
+  // a workaround until it does.
+  //
+  // If synchronous_deallocation is true, the host must not free buffers until
+  // compute/transfers that use those buffers have completed. For example, this
+  // typically is the case for the "platform" where compute/transfers are
+  // operations that take place on another thread.
+  //
+  // If asynchronous is false, the host will synchronize to the device after
+  // each execution or transfer. This is intended for debugging only.
+  Device(se::StreamExecutor* executor, bool use_multiple_streams,
+         bool synchronous_deallocation, bool asynchronous);
+  ~Device();
+
+  bool use_multiple_streams() const { return use_multiple_streams_; }
+  bool synchronous_deallocation() const { return synchronous_deallocation_; }
+  bool asynchronous() const { return asynchronous_; }
+  se::Stream* compute_stream() const { return compute_stream_.get(); }
+  se::Stream* host_to_device_stream() const {
+    return host_to_device_stream_.get();
+  }
+  se::Stream* device_to_host_stream() const {
+    return device_to_host_stream_.get();
+  }
+
+  // A worker thread, used for replicated computation launches and callbacks.
+  WorkerThread* worker_thread() const { return worker_thread_.get(); }
+
+  // Enqueues a host callback on 'stream', to be executed by worker_thread_.
+  // ThenDoHostCallback is often constrained in what it can do, in particular,
+  // on GPU the callback runs on a thread belonging to the GPU runtime and
+  // cannot perform GPU operations itself.
+  void ThenExecuteOnWorkerThread(se::Stream* stream,
+                                 std::function<void()> callback) const;
+
+  // Helper for releasing values from a callback at the tail of a stream.
+  // This is only permitted if object's destructor will not free any device
+  // objects, since the callback may be called from a device thread pool on
+  // GPU.
+  template <typename T>
+  void ThenRelease(se::Stream* stream, std::shared_ptr<T> object) const {
+    if (callback_stream_.get() != stream) {
+      callback_stream_->ThenWaitFor(stream);
+    }
+    callback_stream_->ThenDoHostCallback([object]() { /* releases object */ });
+  }
+
+  // Helpers for releasing values on a worker thread at the tail of a stream on
+  // a worker thread.
+  template <typename T>
+  void ThenReleaseOnWorkerThread(se::Stream* stream,
+                                 std::shared_ptr<T> object) const {
+    // We use a non-smart pointer here because we want to ensure that the worker
+    // thread is the only callee of the shared_ptr destructor, and if we passed
+    // object by lambda capture we have a race where the worker thread might
+    // run and release its reference first.
+    auto* ref = new std::shared_ptr<T>(std::move(object));
+    if (callback_stream_.get() != stream) {
+      callback_stream_->ThenWaitFor(stream);
+    }
+    ThenExecuteOnWorkerThread(callback_stream_.get(), [ref]() { delete ref; });
+  }
+  template <typename T>
+  void ThenReleaseOnWorkerThread(se::Stream* stream,
+                                 std::vector<std::shared_ptr<T>> object) const {
+    auto* ref = new std::vector<std::shared_ptr<T>>(std::move(object));
+    if (callback_stream_.get() != stream) {
+      callback_stream_->ThenWaitFor(stream);
+    }
+    ThenExecuteOnWorkerThread(callback_stream_.get(), [ref]() { delete ref; });
+  }
+
+ private:
+  bool use_multiple_streams_;
+  bool synchronous_deallocation_;
+  bool asynchronous_;
+  std::shared_ptr<se::Stream> compute_stream_;
+  std::shared_ptr<se::Stream> host_to_device_stream_;
+  std::shared_ptr<se::Stream> device_to_host_stream_;
+
+  // Callback stream is used for running short host-side callbacks after device
+  // side events, without preventing the device-side stream from doing useful
+  // work.
+  std::shared_ptr<se::Stream> callback_stream_;
+
+  std::unique_ptr<WorkerThread> worker_thread_;
+};
+
+// Encapsulates the state of Python session with XLA.
 class PyLocalClient {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.
   static StatusOr<std::unique_ptr<PyLocalClient>> Get(
-      const std::string& platform_name);
+      const std::string& platform_name, const std::string& xla_platform_id,
+      bool asynchronous);
 
-  explicit PyLocalClient(LocalClient* client);
+  explicit PyLocalClient(std::string platform_name, LocalClient* client,
+                         bool asynchronous);
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
   StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
                                                  int device_ordinal);
 
   int device_count() const { return client_->device_count(); }
+  const Device& device(int device_ordinal) const {
+    return *devices_.at(device_ordinal);
+  }
   LocalClient* client() const { return client_; }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
   }
-  const std::vector<std::unique_ptr<WorkerThread>>& execute_threads() {
-    return execute_threads_;
-  }
+
+  PythonRefManager& py_ref_manager() { return py_ref_manager_; }
 
  private:
+  std::string platform_name_;
   LocalClient* client_;
+  std::vector<std::unique_ptr<Device>> devices_;
+
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
-  // We use a single worker thread per device, both for simplicity and because
-  // it avoids a deadlock in tensorflow::thread::ThreadPool (b/130761212).
-  std::vector<std::unique_ptr<WorkerThread>> execute_threads_;
+
+  PythonRefManager py_ref_manager_;
 };
 
 // Holds a reference from Python to one or more device buffers.
@@ -125,7 +256,7 @@ class PyLocalExecutable {
       const XlaComputation& computation, std::vector<Shape> argument_layouts,
       const ExecutableBuildOptions* build_options, PyLocalClient* client);
 
-  PyLocalExecutable(std::unique_ptr<LocalExecutable> executable,
+  PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
                     DeviceAssignment device_assignment, PyLocalClient* client);
 
   int num_replicas() const {
@@ -151,7 +282,10 @@ class PyLocalExecutable {
   void Delete() { executable_ = nullptr; }
 
  private:
-  std::unique_ptr<LocalExecutable> executable_;
+  StatusOr<PyLocalBuffer> ExecuteHelper(
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica);
+
+  std::shared_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
   PyLocalClient* const client_;
 };

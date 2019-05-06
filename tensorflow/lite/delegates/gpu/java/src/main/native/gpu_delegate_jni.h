@@ -25,10 +25,11 @@ extern "C" {
 /*
  * Class:     org_tensorflow_lite_gpu_GpuDelegate
  * Method:    createDelegate
- * Signature: ()J
+ * Signature: (ZZI)J
  */
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
-    JNIEnv* env, jclass clazz);
+    JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
+    jboolean dynamic_batch_enabled, jint preferred_gl_object_type);
 
 /*
  * Class:     org_tensorflow_lite_gpu_GpuDelegate

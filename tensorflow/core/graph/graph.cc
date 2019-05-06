@@ -447,8 +447,6 @@ void Graph::RemoveNode(Node* node) {
   DCHECK(!node->IsSink());
 
   // Remove any edges involving this node.
-  free_edges_.reserve(free_edges_.size() + node->in_edges_.size() +
-                      node->out_edges_.size());
   for (const Edge* e : node->in_edges_) {
     CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
     edges_[e->id_] = nullptr;

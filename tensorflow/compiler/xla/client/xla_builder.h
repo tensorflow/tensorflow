@@ -955,6 +955,10 @@ class XlaBuilder {
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
+  friend XlaOp ConditionalImpl(
+      const XlaOp& branch_index,
+      absl::Span<const XlaComputation* const> branch_computations,
+      absl::Span<const XlaOp> branch_operands);
   friend XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
                                const int mantissa_bits);
   friend XlaOp Gather(XlaOp input, XlaOp start_indices,
@@ -993,6 +997,12 @@ class XlaBuilder {
   friend XlaOp AddDependency(const XlaOp& operand, const XlaOp& token);
 
   friend XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
+
+ private:
+  XlaOp ConditionalImpl(
+      const XlaOp& branch_index,
+      absl::Span<const XlaComputation* const> branch_computations,
+      absl::Span<const XlaOp> branch_operands);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

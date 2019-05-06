@@ -295,7 +295,7 @@ TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
   SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 1), size_param);
-  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 0), nullptr);
 }

@@ -1181,12 +1181,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
           DataType type;
           TF_CHECK_OK(GetNodeAttr(perm_node->def(), "dtype", &type));
-          if (type != DT_INT32 && type != DT_INT64) return false;
 
           Tensor tensor;
-          DCHECK(tensor.FromProto(*proto))
-              << "Could not construct Tensor from TensorProto in node: "
-              << node->name();
+          if (!tensor.FromProto(*proto)) {
+            TF_CHECK_OK(errors::InvalidArgument(
+                "Could not construct Tensor from TensorProto in node: ",
+                node->name()));
+            return false;
+          }
           DCHECK_EQ(tensor.dims(), 1);
           DCHECK_EQ(tensor.dim_size(0), perm.size());
           if (type == DT_INT32) {

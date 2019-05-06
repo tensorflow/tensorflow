@@ -121,7 +121,7 @@ class EagerContext : public core::RefCounted {
   }
 
   // Clears the kernel caches.
-  Status ClearCaches();
+  void ClearCaches();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);

@@ -102,7 +102,7 @@ class CompositeTensor(object):
     """Returns True if this tensor's components belong to a TF graph."""
     raise NotImplementedError("CompositeTensor._is_symbolic_tensor")
 
-  def consumers(self):
+  def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.
 
     Returns:

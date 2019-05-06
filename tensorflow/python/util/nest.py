@@ -110,8 +110,8 @@ def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
   Args:
-    instance: an instance of `tuple`, `list`, `namedtuple`, `dict`, or
-        `collections.OrderedDict`.
+    instance: an instance of `tuple`, `list`, `namedtuple`, `dict`,
+        `collections.OrderedDict`, or `composite_tensor.Composite_Tensor`.
     args: elements to be converted to the `instance` type.
 
   Returns:
@@ -128,8 +128,9 @@ def _sequence_like(instance, args):
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
+    assert len(args) == 1
     metadata = instance._component_metadata()  # pylint: disable=protected-access
-    return type(instance)._from_components(args, metadata)  # pylint: disable=protected-access
+    return type(instance)._from_components(args[0], metadata)  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
   else:
@@ -172,8 +173,7 @@ def _yield_sorted_items(iterable):
     for field in iterable._fields:
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
-    for item in enumerate(iterable._to_components()):  # pylint: disable=protected-access
-      yield item
+    yield type(iterable).__name__, iterable._to_components()  # pylint: disable=protected-access
   else:
     for item in enumerate(iterable):
       yield item
@@ -686,15 +686,16 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True,
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
 
-    while _is_composite_tensor(shallow_tree):
-      shallow_tree = shallow_tree._to_components()  # pylint: disable=protected-access
-    while _is_composite_tensor(input_tree):
-      input_tree = input_tree._to_components()  # pylint: disable=protected-access
-
-    if len(input_tree) < len(shallow_tree):
-      raise ValueError(_INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
-          input_size=len(input_tree),
-          shallow_size=len(shallow_tree)))
+    if _is_composite_tensor(shallow_tree):
+      if not _is_composite_tensor(input_tree):
+        raise TypeError("If shallow structure is a CompositeTensor, input "
+                        "must also be a CompositeTensor.  Input has type: %s." %
+                        type(input_tree))
+    else:
+      if len(input_tree) < len(shallow_tree):
+        raise ValueError(
+            _INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
+                input_size=len(input_tree), shallow_size=len(shallow_tree)))
 
     if isinstance(shallow_tree, _collections.Mapping):
       absent_keys = set(shallow_tree) - set(input_tree)

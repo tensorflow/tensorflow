@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -69,6 +68,18 @@ bool IsQuantized(TfLiteType type) {
       return true;
     default:
       // kTfLiteInt16 isn't supported as quantized type yet.
+      return false;
+  }
+}
+
+bool IsScalarInputSupported(int builtin_code) {
+  switch (builtin_code) {
+    case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinSub:
+    case kTfLiteBuiltinDiv:
+      return true;
+    default:
       return false;
   }
 }
@@ -297,8 +308,10 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
-  TfLiteStatus AddTensorInput(int tensor_index, bool hybrid_op) {
-    return AddTensor(tensor_index, hybrid_op, &augmented_inputs_);
+  TfLiteStatus AddTensorInput(int tensor_index, bool hybrid_op,
+                              bool scalar_as_tensor = false) {
+    return AddTensor(tensor_index, hybrid_op, &augmented_inputs_,
+                     scalar_as_tensor);
   }
 
   TfLiteStatus AddTensorOutput(int tensor_index) {
@@ -428,7 +441,8 @@ class NNAPIOpBuilder {
   // If another caller previously created a NN API tensor for `tensor_index`
   // then the existing one is returned.
   TfLiteStatus AddTensor(int tensor_index, bool hybrid_op,
-                         std::vector<uint32_t>* indices) {
+                         std::vector<uint32_t>* indices,
+                         bool scalar_as_tensor = false) {
     int ann_tensor_index = operand_mapping_->lite_index_to_ann(tensor_index);
     if (ann_tensor_index != -1) {
       indices->push_back(ann_tensor_index);
@@ -479,10 +493,16 @@ class NNAPIOpBuilder {
         context_->ReportError(context_, "Logic error in NN API Delegate.\n");
         return kTfLiteError;
     }
+    uint32_t tensor_rank = static_cast<uint32_t>(tensor->dims->size);
+    uint32_t* tensor_dims = reinterpret_cast<uint32_t*>(tensor->dims->data);
+    if (scalar_as_tensor && tensor_rank == 0) {
+      // Use rank 1, shape {1} operand for TFLite scalar tensors.
+      tensor_rank = 1;
+      tensor_dims = &tensor_rank;
+    }
 
-    ANeuralNetworksOperandType operand_type{
-        nn_type, static_cast<uint32_t>(tensor->dims->size),
-        reinterpret_cast<uint32_t*>(tensor->dims->data), scale, zeroPoint};
+    ANeuralNetworksOperandType operand_type{nn_type, tensor_rank, tensor_dims,
+                                            scale, zeroPoint};
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context_,
         nnapi_->ANeuralNetworksModel_addOperand(nn_model_, &operand_type));
@@ -1156,6 +1176,21 @@ class NNAPIDelegateKernel {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context, nnapi_->ANeuralNetworksCompilation_create(nn_model_.get(),
                                                              &compilation));
+
+      auto preference = StatefulNnApiDelegate::GetOptions(params->delegate)
+                            .execution_preference;
+      if (preference !=
+          StatefulNnApiDelegate::Options::ExecutionPreference::kUndefined) {
+        const int preference_result =
+            nnapi_->ANeuralNetworksCompilation_setPreference(compilation,
+                                                             preference);
+        if (preference_result != ANEURALNETWORKS_NO_ERROR) {
+          nnapi_->ANeuralNetworksCompilation_free(compilation);
+          compilation = nullptr;
+        }
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(context, preference_result);
+      }
+
       const int finish_result =
           nnapi_->ANeuralNetworksCompilation_finish(compilation);
       if (finish_result != ANEURALNETWORKS_NO_ERROR) {
@@ -1349,6 +1384,7 @@ class NNAPIDelegateKernel {
           context->GetNodeAndRegistration(context, node_index, &node, &reg));
 
       const bool hybrid_op = IsHybridOperator(context, reg->builtin_code, node);
+      const bool scalar_as_tensor = IsScalarInputSupported(reg->builtin_code);
 
       // Map inputs to NN API tensor indices.
       int num_added_inputs = 0;
@@ -1378,7 +1414,8 @@ class NNAPIDelegateKernel {
                 builder.AddTensorInput(input_index, hybrid_op));
           }
         } else {
-          TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op));
+          TF_LITE_ENSURE_STATUS(
+              builder.AddTensorInput(input_index, hybrid_op, scalar_as_tensor));
         }
         ++num_added_inputs;
       }

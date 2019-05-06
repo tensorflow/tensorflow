@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -1788,13 +1789,39 @@ XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
                               const XlaComputation& false_computation) {
-  // The index of true_computation must be 0 and that of false computation
-  // must be 1.
-  return Conditional(predicate, {&true_computation, &false_computation},
-                     {true_operand, false_operand});
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, GetShape(predicate));
+
+    if (!ShapeUtil::IsScalar(shape) || shape.element_type() != PRED) {
+      return InvalidArgument(
+          "Argument to predicated-Conditional is not a scalar of PRED type "
+          "(%s).",
+          ShapeUtil::HumanString(shape));
+    }
+    // The index of true_computation must be 0 and that of false computation
+    // must be 1.
+    return ConditionalImpl(predicate, {&true_computation, &false_computation},
+                           {true_operand, false_operand});
+  });
 }
 
 XlaOp XlaBuilder::Conditional(
+    const XlaOp& branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, GetShape(branch_index));
+
+    if (!ShapeUtil::IsScalar(shape) || shape.element_type() != S32) {
+      return InvalidArgument(
+          "Argument to indexed-Conditional is not a scalar of S32 type (%s).",
+          ShapeUtil::HumanString(shape));
+    }
+    return ConditionalImpl(branch_index, branch_computations, branch_operands);
+  });
+}
+
+XlaOp XlaBuilder::ConditionalImpl(
     const XlaOp& branch_index,
     absl::Span<const XlaComputation* const> branch_computations,
     absl::Span<const XlaOp> branch_operands) {

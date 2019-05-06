@@ -231,14 +231,5 @@ TraceMeRecorder::Events TraceMeRecorder::Stop() {
   return Clear();
 }
 
-TraceMeRecorder::Events TraceMeRecorder::Collect() {
-  mutex_lock lock(GetTraceMeContext()->global_lock);
-  if (internal::g_trace_level.load(std::memory_order_acquire) ==
-      kTracingDisabled) {
-    return {};
-  }
-  return Clear();
-}
-
 }  // namespace profiler
 }  // namespace tensorflow

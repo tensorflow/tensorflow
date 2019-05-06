@@ -877,6 +877,14 @@ class TPUMirroredVariable(variables_lib.Variable):
         "numpy() is only available when eager execution is enabled.")
 
   @property
+  def initialized_value(self):
+    return self.primary.initialized_value()
+
+  @property
+  def initial_value(self):
+    return self.primary.initial_value
+
+  @property
   def primary(self):
     """Returns a representative component."""
     return self._values[0]
@@ -1589,6 +1597,14 @@ class AggregatingVariable(variables_lib.Variable):
   @property
   def initializer(self):
     return self._v.initializer
+
+  @property
+  def initialized_value(self):
+    return self._v.initialized_value()
+
+  @property
+  def initial_value(self):
+    return self._v.initial_value
 
   @property
   def op(self):

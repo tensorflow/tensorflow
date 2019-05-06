@@ -16,7 +16,6 @@ Pod::Spec.new do |s|
                        DESC
 
   s.ios.deployment_target = '9.0'
-  s.swift_version = '4.2'
 
   s.module_name = 'TensorFlowLite'
   s.static_framework = true

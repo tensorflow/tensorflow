@@ -1331,6 +1331,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
 
+  def test_partial_with_input_signature(self, cycles):
+
+    def full_function(a, b, c=3.0):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=4)
+    self.assertAllEqual((1, 2.0, 4), partial(2.0))
+
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
+    func = def_function.function(partial, input_signature=signature)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    a, b, c = root.f(2.0)
+    self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 2.0, 4))
+
+    root = self.cycle(root, cycles)
+    a, b, c = root.f(3.0)
+    self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 3.0, 4))
+
   def test_convert_to_input_signature(self, cycles):
 
     @def_function.function(

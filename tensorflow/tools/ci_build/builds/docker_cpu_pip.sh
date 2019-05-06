@@ -17,6 +17,7 @@ set -x
 
 cd bazel_pip
 pip --version
+pip install portpicker
 pip install *.whl
 
 # Use default configuration

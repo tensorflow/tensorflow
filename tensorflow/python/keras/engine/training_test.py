@@ -2920,7 +2920,7 @@ class BareUpdateLayer(keras.layers.Layer):
     return math_ops.cast(self.counter, inputs.dtype) * inputs
 
 
-class AddUpdateLayer(keras.layers.Layer):
+class LambdaUpdateLayer(keras.layers.Layer):
 
   def build(self, input_shape):
     self.counter = self.add_weight(
@@ -2932,7 +2932,7 @@ class AddUpdateLayer(keras.layers.Layer):
 
   def call(self, inputs):
     # Make sure update isn't run twice.
-    self.add_update(state_ops.assign_add(self.counter, 1))
+    self.add_update(lambda: state_ops.assign_add(self.counter, 1))
     return math_ops.cast(self.counter, inputs.dtype) * inputs
 
 
@@ -2950,12 +2950,31 @@ class NestedUpdateLayer(keras.layers.Layer):
     return self.layer(inputs)
 
 
+class SubgraphUpdateLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.counter = self.add_weight(
+        'counter',
+        dtype='int32',
+        shape=(),
+        initializer='zeros',
+        trainable=False)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = keras.backend.learning_phase()
+
+    if training:
+      self.counter.assign(self.counter + 1)
+    return inputs
+
+
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestAutoUpdates(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('add_update', AddUpdateLayer()),
+                                  ('lambda_update', LambdaUpdateLayer()),
                                   ('nested_update', NestedUpdateLayer()))
   def test_updates_in_model(self, layer):
     x, y = np.ones((10, 10)), np.ones((10, 1))
@@ -2963,16 +2982,34 @@ class TestAutoUpdates(keras_parameterized.TestCase):
         [layer, keras.layers.Dense(1)], input_shape=(10,))
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, batch_size=2, epochs=1)
-    if not testing_utils.should_run_eagerly():
-      # Check that `trainable=False` disables updates.
-      layer.trainable = False
-      model.compile(
-          'sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, batch_size=2, epochs=1)
+    self.assertEqual(self.evaluate(layer.counter), 5)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_lambda_updates_trainable_false(self):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    layer = LambdaUpdateLayer()
+    model = testing_utils.get_model_from_layers(
+        [layer, keras.layers.Dense(1)], input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
+    self.assertEqual(self.evaluate(layer.counter), 5)
+    layer.trainable = False
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
+    self.assertEqual(self.evaluate(layer.counter), 5)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_subgraph_updates_in_model(self):
+    layer = SubgraphUpdateLayer()
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_model_from_layers(
+        [layer, keras.layers.Dense(1)], input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
   @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('add_update', AddUpdateLayer()),
+                                  ('lambda_update', LambdaUpdateLayer()),
                                   ('nested_update', NestedUpdateLayer()))
   def test_updates_standalone_layer(self, layer):
     y = layer(np.ones((10, 10)))
@@ -2980,23 +3017,23 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     self.evaluate(y)
     self.assertEqual(self.evaluate(layer.counter), 1)
 
-  def test_trainable_false(self):
-    x = keras.backend.placeholder(shape=(10, 10), dtype='float32')
-    layer = NestedUpdateLayer()
+  def test_trainable_false_standalone_layer(self):
+    layer = LambdaUpdateLayer()
+    y = layer(np.ones((10, 10)))
+    self.evaluate(layer.counter.initializer)
+    self.evaluate(y)
+    self.assertEqual(self.evaluate(layer.counter), 1)
     layer.trainable = False
-    y = layer(x)
-    func = keras.backend.function([x], [y])
-    x_val = np.ones((10, 10))
-    func(x_val)
-    counter = keras.backend.get_value(layer.counter)
-    self.assertEqual(counter, 0)
+    y = layer(np.ones((10, 10)))
+    self.evaluate(y)
+    self.assertEqual(self.evaluate(layer.counter), 1)
 
   @keras_parameterized.run_with_all_model_types
   def test_batchnorm_trainable_false(self):
     bn = keras.layers.BatchNormalization()
-    bn.trainable = False
     model = testing_utils.get_model_from_layers([bn, keras.layers.Dense(1)],
                                                 input_shape=(10,))
+    bn.trainable = False
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model.fit(x, y, batch_size=2, epochs=1)

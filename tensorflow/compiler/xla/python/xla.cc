@@ -211,7 +211,9 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  py::class_<PyLocalClient>(m, "LocalClient")
+  // The LocalClient object allows dynamic attributes to allow external backends
+  // (e.g., TPU) to stash private data in the client.
+  py::class_<PyLocalClient>(m, "LocalClient", py::dynamic_attr())
       .def_static("Get", &PyLocalClient::Get)
       .def("DeviceCount", &PyLocalClient::device_count)
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
