@@ -335,6 +335,25 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
 }
 }  // namespace
 
+unsigned int GetGlobalMemoryAddressSpace(llvm::Module* module) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn){
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
+unsigned int GetSharedMemoryAddressSpace(llvm::Module* module) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::nvptx ||
+      target_triple.getArch() == llvm::Triple::nvptx64) {
+    return kNVPTXSharedMemoryAddrSpace;
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    return kAMDGPUSharedMemoryAddrSpace;
+  }
+  return 0;
+}
+
 llvm::Value* EmitCallToTargetFunction(
     TargetFunctionID function_id, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
