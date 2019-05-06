@@ -1398,7 +1398,7 @@ def import_meta_graph(meta_graph_or_file,
   # Saving contents and operations.
   v1 = tf.compat.v1.placeholder(tf.float32, name="v1")
   v2 = tf.compat.v1.placeholder(tf.float32, name="v2")
-  v3 = tf.multiply(v1, v2)
+  v3 = tf.math.multiply(v1, v2)
   vx = tf.Variable(10.0, name="vx")
   v4 = tf.add(v3, vx, name="v4")
   saver = tf.compat.v1.train.Saver([vx])
