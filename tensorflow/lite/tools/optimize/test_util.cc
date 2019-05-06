@@ -33,6 +33,8 @@ const char* kSingleAvgPoolModelMinMinus5MaxPlus5 =
 
 const char* kLeakyReluModel = "Leakyrelu.bin";
 
+const char* kRelu6Model = "Relu6.bin";
+
 const char* kModelWithSharedWeights = "weight_shared_between_convs.bin";
 const char* kMultiInputAddWithReshape = "multi_input_add_reshape.bin";
 const char* kQuantizedWithGather = "quantized_with_gather.bin";

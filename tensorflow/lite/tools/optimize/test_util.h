@@ -58,6 +58,8 @@ extern const char* kConstInputAddModel;
 
 extern const char* kLeakyReluModel;
 
+extern const char* kRelu6Model;
+
 // A float test model with concat that has [0, 5] and [0, 10] for inputs and [0,
 // 10] as output.
 extern const char* kFloatConcatMax5Max10Max10;

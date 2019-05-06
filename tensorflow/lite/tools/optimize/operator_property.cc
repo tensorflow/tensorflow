@@ -125,6 +125,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.output_indexes = {0};
       property.version = 1;
       break;
+    case BuiltinOperator_RELU6:
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 1;
+      break;
     case BuiltinOperator_MAXIMUM:
       property.input_indexes = {0};
       property.output_indexes = {0};
