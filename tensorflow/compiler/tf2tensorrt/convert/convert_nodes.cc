@@ -2898,8 +2898,8 @@ Status ConvertClipByValue(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params,
       {{"t", false}, {"clip_value_min", true}, {"clip_value_max", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
   TFAttrs attrs(node_def);
@@ -2916,11 +2916,6 @@ Status ConvertClipByValue(OpConverterParams* params) {
         inputs.at(1).weights().GetSpan<Eigen::half>()[0]);
     clip_value_max = Eigen::half_impl::half_to_float(
         inputs.at(2).weights().GetSpan<Eigen::half>()[0]);
-  } else if (dtype == DataType::DT_INT32) {
-    clip_value_min =
-        static_cast<float>(inputs.at(1).weights().GetSpan<int>()[0]);
-    clip_value_max =
-        static_cast<float>(inputs.at(2).weights().GetSpan<int>()[0]);
   }
 
   nvinfer1::IActivationLayer* layer =
