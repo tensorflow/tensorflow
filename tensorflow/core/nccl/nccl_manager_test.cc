@@ -71,6 +71,8 @@ class NcclManagerTest : public ::testing::Test {
     LOG(INFO) << "Running test with " << devices_->size() << " gpus";
   }
 
+  void SetUp() override { ASSERT_GT(devices_->size(), 0) << "No GPUs found"; }
+
   static int32 NumGPUs() { return static_cast<int32>(devices_->size()); }
 
   static void TearDownTestCase() { delete devices_; }
