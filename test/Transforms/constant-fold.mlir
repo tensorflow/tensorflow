@@ -1,4 +1,6 @@
-// RUN: mlir-opt %s -test-constant-fold | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -test-constant-fold | FileCheck %s
+
+// -----
 
 // CHECK-LABEL: @test(%arg0: memref<f32>) {
 func @test(%p : memref<f32>) {
@@ -17,6 +19,8 @@ func @test(%p : memref<f32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_addf
 func @simple_addf() -> f32 {
   %0 = constant 4.5 : f32
@@ -28,6 +32,8 @@ func @simple_addf() -> f32 {
   // CHECK-NEXT: return %cst
   return %2 : f32
 }
+
+// -----
 
 // CHECK-LABEL: func @addf_splat_tensor
 func @addf_splat_tensor() -> tensor<4xf32> {
@@ -41,6 +47,8 @@ func @addf_splat_tensor() -> tensor<4xf32> {
   return %2 : tensor<4xf32>
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_addi
 func @simple_addi() -> i32 {
   %0 = constant 1 : i32
@@ -52,6 +60,8 @@ func @simple_addi() -> i32 {
   // CHECK-NEXT: return %c6_i32
   return %2 : i32
 }
+
+// -----
 
 // CHECK-LABEL: func @addi_splat_vector
 func @addi_splat_vector() -> vector<8xi32> {
@@ -65,6 +75,8 @@ func @addi_splat_vector() -> vector<8xi32> {
   return %2 : vector<8xi32>
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_subf
 func @simple_subf() -> f32 {
   %0 = constant 4.5 : f32
@@ -76,6 +88,8 @@ func @simple_subf() -> f32 {
   // CHECK-NEXT: return %cst
   return %2 : f32
 }
+
+// -----
 
 // CHECK-LABEL: func @subf_splat_vector
 func @subf_splat_vector() -> vector<4xf32> {
@@ -89,6 +103,8 @@ func @subf_splat_vector() -> vector<4xf32> {
   return %2 : vector<4xf32>
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_subi
 func @simple_subi() -> i32 {
   %0 = constant 4 : i32
@@ -101,6 +117,8 @@ func @simple_subi() -> i32 {
   return %2 : i32
 }
 
+// -----
+
 // CHECK-LABEL: func @subi_splat_tensor
 func @subi_splat_tensor() -> tensor<4xi32> {
   %0 = constant splat<tensor<4xi32>, 4> : tensor<4xi32>
@@ -112,6 +130,8 @@ func @subi_splat_tensor() -> tensor<4xi32> {
   // CHECK-NEXT: return %cst
   return %2 : tensor<4xi32>
 }
+
+// -----
 
 // CHECK-LABEL: func @affine_apply
 func @affine_apply(%variable : index) -> (index, index, index) {
@@ -133,6 +153,8 @@ func @affine_apply(%variable : index) -> (index, index, index) {
   return %x0, %x1, %y : index, index, index
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_mulf
 func @simple_mulf() -> f32 {
   %0 = constant 4.5 : f32
@@ -145,6 +167,8 @@ func @simple_mulf() -> f32 {
   return %2 : f32
 }
 
+// -----
+
 // CHECK-LABEL: func @mulf_splat_tensor
 func @mulf_splat_tensor() -> tensor<4xf32> {
   %0 = constant splat<tensor<4xf32>, 4.5> : tensor<4xf32>
@@ -156,6 +180,8 @@ func @mulf_splat_tensor() -> tensor<4xf32> {
   // CHECK-NEXT: return %cst
   return %2 : tensor<4xf32>
 }
+
+// -----
 
 // CHECK-LABEL: func @simple_divis
 func @simple_divis() -> (i32, i32) {
@@ -173,6 +199,8 @@ func @simple_divis() -> (i32, i32) {
   // CHECK-NEXT: return %c3_i32, %c-3_i32 : i32, i32
   return %2, %4 : i32, i32
 }
+
+// -----
 
 // CHECK-LABEL: func @simple_diviu
 func @simple_diviu() -> (i32, i32) {
@@ -192,6 +220,8 @@ func @simple_diviu() -> (i32, i32) {
   return %2, %4 : i32, i32
 }
 
+// -----
+
 // CHECK-LABEL: func @simple_remis
 func @simple_remis(%a : i32) -> (i32, i32, i32) {
   %0 = constant 5 : i32
@@ -208,6 +238,8 @@ func @simple_remis(%a : i32) -> (i32, i32, i32) {
   // CHECK-NEXT: return %c1_i32, %c1_i32, %c0_i32 : i32, i32, i32
   return %4, %5, %6 : i32, i32, i32
 }
+
+// -----
 
 // CHECK-LABEL: func @simple_remiu
 func @simple_remiu(%a : i32) -> (i32, i32, i32) {
@@ -227,6 +259,8 @@ func @simple_remiu(%a : i32) -> (i32, i32, i32) {
   return %4, %5, %6 : i32, i32, i32
 }
 
+// -----
+
 // CHECK-LABEL: func @muli
 func @muli() -> i32 {
   %0 = constant 4 : i32
@@ -238,6 +272,8 @@ func @muli() -> i32 {
   // CHECK-NEXT: return %c8_i32
   return %2 : i32
 }
+
+// -----
 
 // CHECK-LABEL: func @muli_splat_vector
 func @muli_splat_vector() -> vector<4xi32> {
@@ -261,34 +297,38 @@ func @dim(%x : tensor<8x4xf32>) -> index {
   return %0 : index
 }
 
+// -----
+
 // CHECK-LABEL: func @cmpi
 func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
   %c42 = constant 42 : i32
   %cm1 = constant -1 : i32
-// CHECK-DAG: %false = constant 0 : i1
-// CHECK-DAG: %true = constant 1 : i1
-// CHECK-NEXT: return %false,
+  // CHECK-DAG: %false = constant 0 : i1
+  // CHECK-DAG: %true = constant 1 : i1
+  // CHECK-NEXT: return %false,
   %0 = cmpi "eq", %c42, %cm1 : i32
-// CHECK-SAME: %true,
+  // CHECK-SAME: %true,
   %1 = cmpi "ne", %c42, %cm1 : i32
-// CHECK-SAME: %false,
+  // CHECK-SAME: %false,
   %2 = cmpi "slt", %c42, %cm1 : i32
-// CHECK-SAME: %false,
+  // CHECK-SAME: %false,
   %3 = cmpi "sle", %c42, %cm1 : i32
-// CHECK-SAME: %true,
+  // CHECK-SAME: %true,
   %4 = cmpi "sgt", %c42, %cm1 : i32
-// CHECK-SAME: %true,
+  // CHECK-SAME: %true,
   %5 = cmpi "sge", %c42, %cm1 : i32
-// CHECK-SAME: %true,
+  // CHECK-SAME: %true,
   %6 = cmpi "ult", %c42, %cm1 : i32
-// CHECK-SAME: %true,
+  // CHECK-SAME: %true,
   %7 = cmpi "ule", %c42, %cm1 : i32
-// CHECK-SAME: %false,
+  // CHECK-SAME: %false,
   %8 = cmpi "ugt", %c42, %cm1 : i32
-// CHECK-SAME: %false
+  // CHECK-SAME: %false
   %9 = cmpi "uge", %c42, %cm1 : i32
   return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
 }
+
+// -----
 
 // CHECK-LABEL: func @fold_extract_element
 func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
