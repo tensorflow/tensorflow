@@ -5351,8 +5351,6 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
 
   TestConvertClipByValue<DT_FLOAT>(this);
   TestConvertClipByValue<DT_HALF>(this);
-  // TRT does not support INT32 for this layer.
-  // TestConvertClipByValue<DT_INT32>(this);
 }
 #endif // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
