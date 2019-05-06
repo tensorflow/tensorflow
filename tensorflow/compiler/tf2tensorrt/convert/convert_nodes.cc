@@ -3134,19 +3134,23 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   }
 }
 
-template <typename Bounds, typename Input>
-inline bool IsIntegerInBounds(const Input& inp) {
+template <typename Input>
+inline bool IsIntegerInInt32Bounds(const Input& inp) {
   static_assert(std::is_integral<Input>::value,
                 "This function is only implemented for integral types.");
-  // If Input is always within the range of Bounds, return true.
-  if (std::numeric_limits<Input>::lowest() >=
-          std::numeric_limits<Bounds>::lowest() &&
-      std::numeric_limits<Input>::max() <= std::numeric_limits<Bounds>::max()) {
+  // If Input is always within the range of int32, return true.
+  if (sizeof(Input) < sizeof(int32) || std::is_same<Input, int32>::value) {
     return true;
   }
-  // Otherwise, we need to check the value of the input.
-  return (inp >= static_cast<Input>(std::numeric_limits<Bounds>::lowest()) &&
-          inp <= static_cast<Input>(std::numeric_limits<Bounds>::max()));
+  // Otherwise, we need to check the value of the input. If the input is
+  // unsigned, we only check the upper bound.
+  if (!std::numeric_limits<Input>::is_signed) {
+    return inp <= static_cast<Input>(std::numeric_limits<int32>::max());
+  }
+  // We can safely cast lowest() here since we now know that Input is signed and
+  // sizeof(Input) >= sizeof(int32)
+  return (inp >= static_cast<Input>(std::numeric_limits<int32>::lowest()) &&
+          inp <= static_cast<Input>(std::numeric_limits<int32>::max()));
 }
 
 template <DataType dtype>
@@ -3155,13 +3159,13 @@ Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
   const CType* src = tensor.flat<CType>().data();
   for (int i = 0; i < tensor.NumElements(); ++i) {
     // This becomes a no-op if CType is within bounds of int32
-    if (!IsIntegerInBounds<int32>(src[i])) {
+    if (!IsIntegerInInt32Bounds(src[i])) {
       return errors::InvalidArgument("Value at index ", i,
                                      " is outside the range of int32");
     }
-    dst[i] = static_cast<int32>(src[i]);
   }
-  std::copy(src, src + tensor.NumElements(), dst);
+  std::transform(src, src + tensor.NumElements(), dst,
+                 [](const CType& val) { return static_cast<int32>(val); });
   return Status::OK();
 }
 
@@ -3174,13 +3178,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   // TODO(aaroey): FP16 will remain in half format and is not converted to
   // FP32, but the converter currently uses all float weights as FP32. Fix
   // this.
-  DataType converted_dtype = dtype;
-  if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
-      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16 ||
-      dtype == DataType::DT_UINT32 || dtype == DataType::DT_INT64 ||
-      dtype == DataType::DT_UINT64) {
-    converted_dtype = DT_INT32;
-  }
+  DataType converted_dtype = DataTypeIsInteger(dtype) ? DT_INT32 : dtype;
 
   // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
   nvinfer1::DataType trt_dtype;
