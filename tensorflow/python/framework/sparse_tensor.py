@@ -175,7 +175,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   @property
   def op(self):
     """The `Operation` that produces `values` as an output."""
-    return self.values.op
+    return self._values.op
 
   @property
   def dtype(self):
