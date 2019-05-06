@@ -130,6 +130,10 @@ class FilterByLastComponentDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
+          if (out_tensors->back().NumElements() != 1) {
+            return errors::InvalidArgument(
+                "Last component must be a tensor with only one element.");
+          }
           matched = out_tensors->back().scalar<bool>()();
           out_tensors->pop_back();
           if (!matched) {
