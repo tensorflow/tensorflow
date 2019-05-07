@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -211,8 +212,11 @@ void XrtTfContext::ReportError(absl::Span<const OperationId> op_ids,
   while (!stack.empty()) {
     Operation* op = stack.top();
     stack.pop();
+    VLOG(10) << "Reporting error for " << op->id;
     for (const std::shared_ptr<XrtRecvTensorFuture>& future :
          op->tensor_futures) {
+      VLOG(10) << "Reporting error for " << op->id << " future";
+      future->call_options_.StartCancel();
       future->Notify(status);
     }
     for (OperationId consumer_id : op->consumers) {
@@ -242,14 +246,14 @@ XrtTfContext::Operation* XrtTfContext::LookupOperation(OperationId id) {
 std::vector<XrtTensorHandle> XrtTfContext::EnqueueOp(
     absl::string_view name, absl::Span<const XrtTensorHandle* const> inputs,
     int output_arity, protobuf::Map<std::string, AttrValue> attrs,
-    int device_id) {
+    int device_id, std::shared_ptr<XrtRecvTensorFuture> future) {
   std::vector<XrtTensorHandle> outputs;
   absl::MutexLock lock(&mu_);
   Operation* op = AddOperation();
 
   eager::Operation* proto = enqueue_request_->add_queue()->mutable_operation();
   proto->set_id(op->id);
-  proto->set_name(name);
+  proto->set_name(static_cast<std::string>(name));
   for (const XrtTensorHandle* input : inputs) {
     input->Serialize(proto->add_inputs());
   }
@@ -260,6 +264,9 @@ std::vector<XrtTensorHandle> XrtTfContext::EnqueueOp(
   for (int i = 0; i < output_arity; ++i) {
     outputs.push_back(
         XrtTensorHandle(shared_from_this(), device_id, TensorId{op->id, i}));
+  }
+  if (future) {
+    op->tensor_futures.push_back(future);
   }
 
   return outputs;
@@ -285,16 +292,24 @@ XrtTensorHandle XrtTfContext::SendTensor(
   request.set_device_name(devices_.at(rpc_device_id).name());
   auto response = std::make_shared<eager::SendTensorResponse>();
   auto context_ptr = shared_from_this();
-  eager_client_->SendTensorAsync(&request, response.get(),
-                                 [context_ptr, op_id, response](Status status) {
-                                   absl::MutexLock lock(&context_ptr->mu_);
-                                   if (!status.ok()) {
-                                     context_ptr->ReportError({op_id}, status);
-                                   } else {
-                                     context_ptr->DeleteOperation(op_id);
-                                   }
-                                 });
+  absl::Notification done;
+  eager_client_->SendTensorAsync(
+      &request, response.get(),
+      [context_ptr, op_id, response, &done](Status status) {
+        absl::MutexLock lock(&context_ptr->mu_);
+        if (!status.ok()) {
+          context_ptr->ReportError({op_id}, status);
+        } else {
+          context_ptr->DeleteOperation(op_id);
+        }
+        done.Notify();
+      });
   XrtTensorHandle handle(context_ptr, rpc_device_id, TensorId{op_id, 0});
+
+  // TODO(phawkins): we block here to avoid a race. We must not
+  // enqueue any dependent operations until the SendTensor has been
+  // acknowledged.
+  done.WaitForNotification();
 
   // TODO(phawkins): EagerService.SendTensor could use a host_memory option.
   if (!transfer_via_cpu_device) {
@@ -310,7 +325,7 @@ XrtTensorHandle XrtTfContext::SendTensor(
 // worker has other clients that it is servicing, we don't have any collision.
 std::string XrtGetUniqueWireID() {
   static uint64 random_seed = random::New64();
-  static std::atomic<int64> wireid = 0;
+  static std::atomic<int64> wireid(0);
   return absl::StrCat(random_seed, "_", ++wireid);
 }
 
@@ -334,11 +349,13 @@ static std::string GetRendezvousKey(absl::string_view send_device,
 
 std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
     const XrtTensorHandle& tensor, DataType dtype, bool host_memory) {
+  auto response = std::make_shared<XrtRecvTensorFuture>();
+
   int device_id = tensor.device_id();
 
   std::string wire_id = XrtGetUniqueWireID();
   EnqueueSend(this, tensor, dtype, /*recv_device_id=*/-1, wire_id,
-              /*host_memory=*/false);
+              /*host_memory=*/host_memory, /*future=*/response);
 
   const DeviceAttributes& device = devices().at(device_id);
   RecvTensorRequest request;
@@ -346,13 +363,18 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
   request.set_rendezvous_key(GetRendezvousKey(device.name(),
                                               GetReceiverDevice(this, -1),
                                               device.incarnation(), wire_id));
+  request.set_request_id(GetUniqueRequestId());
+  // TODO(phawkins): verify uniqueness of request ID. Random IDs won't collide
+  // with high probability, but we should probably add code to guard against
+  // collisions nonetheless.
 
-  auto response = std::make_shared<XrtRecvTensorFuture>();
-  eager_client_->RecvTensorAsync(&request, &response->value_,
-                                 [response](Status status) {
-                                   VLOG(10) << "RecvTensor complete\n";
-                                   response->Notify(status);
-                                 });
+  eager_client_->RecvTensorAsync(
+      &request, &response->value_,
+      [response, wire_id](Status status) {
+        VLOG(10) << "RecvTensor complete for " << wire_id;
+        response->Notify(status);
+      },
+      &response->call_options_);
   return response;
 }
 
@@ -419,9 +441,9 @@ void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_output_num(tensor_id_.second);
 }
 
-AttrValue MakeAttrValue(absl::string_view s) {
+AttrValue MakeAttrValue(std::string s) {
   AttrValue a;
-  a.set_s(s);
+  a.set_s(std::move(s));
   return a;
 }
 
@@ -460,7 +482,8 @@ AttrValue MakeAttrValue(absl::Span<const DataType> dtypes) {
 
 void EnqueueSend(XrtTfContext* context, const XrtTensorHandle& tensor,
                  DataType dtype, int recv_device_id, std::string wire_id,
-                 bool host_memory) {
+                 bool host_memory,
+                 std::shared_ptr<XrtRecvTensorFuture> future) {
   protobuf::Map<std::string, AttrValue> attrs;
   const DeviceAttributes& device = context->devices().at(tensor.device_id());
   attrs["tensor_name"] = MakeAttrValue(wire_id);
@@ -472,7 +495,8 @@ void EnqueueSend(XrtTfContext* context, const XrtTensorHandle& tensor,
   attrs["T"] = MakeAttrValue(dtype);
 
   context->EnqueueOp(host_memory ? "_HostSend" : "_Send", {&tensor},
-                     /*output_arity=*/0, std::move(attrs), tensor.device_id());
+                     /*output_arity=*/0, std::move(attrs), tensor.device_id(),
+                     future);
 }
 
 XrtTensorHandle EnqueueRecv(XrtTfContext* context, DataType dtype,

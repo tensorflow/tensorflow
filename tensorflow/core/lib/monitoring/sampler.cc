@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
 // Do nothing.
 #else

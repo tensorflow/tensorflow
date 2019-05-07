@@ -98,6 +98,13 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to fuse filter transformations. If None, defaults to False.")
 
+  filter_with_random_uniform_fusion = options.create_option(
+      name="filter_with_random_uniform_fusion",
+      ty=bool,
+      docstring=
+      "Whether to fuse filter dataset that predicts random_uniform < rate into "
+      "a sampling dataset. If None, defaults to False.")
+
   hoist_random_uniform = options.create_option(
       name="hoist_random_uniform",
       ty=bool,
@@ -146,6 +153,12 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to eliminate no-op transformations. If None, defaults to True.")
 
+  parallel_batch = options.create_option(
+      name="parallel_batch",
+      ty=bool,
+      docstring="Whether to parallelize copying of batch elements. If None, "
+      "defaults to False.")
+
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
       ty=bool,
@@ -157,12 +170,14 @@ class OptimizationOptions(options.OptionsBase):
     result = set()
     all_optimizations = [
         "filter_fusion",
+        "filter_with_random_uniform_fusion",
         "hoist_random_uniform",
         "map_and_batch_fusion",
         "map_and_filter_fusion",
         "map_parallelization",
         "map_fusion",
         "noop_elimination",
+        "parallel_batch",
         "shuffle_and_repeat_fusion",
     ]
     for optimization in all_optimizations:
@@ -170,8 +185,8 @@ class OptimizationOptions(options.OptionsBase):
         result.add(optimization)
 
     if self.apply_default_optimizations is not False:
-      # The following optimizations are turned on by default, unless the
-      # user explicitly disables them.
+      # The following optimizations are turned on by default, unless the user
+      # explicitly disables them.
       optimizations_to_disable = [
           "map_and_batch_fusion",
           "noop_elimination",

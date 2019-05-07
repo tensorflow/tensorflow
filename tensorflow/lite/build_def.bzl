@@ -261,6 +261,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "identity",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",
@@ -329,6 +330,7 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
         "unique",
@@ -345,7 +347,6 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
-            "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
@@ -402,7 +403,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_flex"
+        flags = "--ignore_converter_errors --run_with_flex"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

@@ -19,7 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <string>
 
-#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -66,7 +66,7 @@ class XlaCompiledCpuFunction {
     RawFunction raw_function_;
 
     // Contains information about the buffers used by the XLA computation.
-    const cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
     size_t num_buffers_ = 0;
 
     // Entry parameter i is described by
@@ -105,7 +105,7 @@ class XlaCompiledCpuFunction {
   // AllocMode controls the buffer allocation mode.
   enum class AllocMode {
     // Allocate all buffers - args, results, profile and temps.
-    ARGS_RESULTS_PROFILES_AND_TEMPS,
+    ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS,
 
     // Only allocate result, profile and temp buffers.
     // Use set_arg_data to set argument buffers before Run is called.
@@ -114,7 +114,8 @@ class XlaCompiledCpuFunction {
 
   explicit XlaCompiledCpuFunction(
       const StaticData& static_data,
-      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
+      AllocMode alloc_mode =
+          AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
@@ -166,7 +167,8 @@ class XlaCompiledCpuFunction {
   //
   // Allocated memory must be aligned to the size specified by
   // tensorflow::tfcompile::runtime::kAlign. If possible, use the functions in
-  // tensorflow/compiler/aot/runtime.h to ensure correct alignment.
+  // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
+  // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
@@ -259,7 +261,7 @@ class XlaCompiledCpuFunction {
 
   static void set_static_data_buffer_infos(
       StaticData* static_data,
-      const cpu_function_runtime::BufferInfo* buffer_infos) {
+      const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
     static_data->buffer_infos_ = buffer_infos;
   }
 
@@ -323,7 +325,7 @@ class XlaCompiledCpuFunction {
   void** const buffer_table_;
 
   // Describes the buffers used by the XLA computation.
-  const cpu_function_runtime::BufferInfo* const buffer_infos_;
+  const xla::cpu_function_runtime::BufferInfo* const buffer_infos_;
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.

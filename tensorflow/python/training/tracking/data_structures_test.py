@@ -17,15 +17,19 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import json
 import os
 
 import numpy
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import normalization
@@ -37,6 +41,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
+from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 
 
 class HasList(training.Model):
@@ -105,6 +111,78 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.variables)
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
+    self.assertIn(model.layer_list[0].trainable_weights[0],
+                  model.trainable_weights)
+
+  def testSubModelTracking(self):
+    model = training.Model()
+    model.v = variables.Variable(1.)
+    self.assertIn(model.v, model.trainable_weights)
+    model2 = training.Model()
+    model2.m = [model]
+    self.assertIn(model.v, model2.trainable_weights)
+
+  def testSubSequentialTracking(self):
+
+    class _Subclassed(training.Model):
+
+      def __init__(self, wrapped):
+        super(_Subclassed, self).__init__()
+        self._wrapped = wrapped
+
+      def call(self, x):
+        return self._wrapped(x)
+
+    model = sequential.Sequential()
+    layer = core.Dense(1)
+    model.add(layer)
+    model2 = _Subclassed(model)
+    model2(array_ops.ones([1, 2]))
+    model2.m = [model]
+    self.assertIn(layer.kernel, model2.trainable_weights)
+
+  def testLayerTrackedThroughSequential(self):
+    class AttrDict(dict):
+
+      def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+    def ffnet(layer_sizes, name):
+      ff = sequential.Sequential(name=name)
+      for i, width in enumerate(layer_sizes):
+        ff.add(core.Dense(
+            width,
+            activation=("relu" if i < len(layer_sizes)-1 else None)))
+      return ff
+
+    class MyModel2(training.Model):
+
+      def __init__(self, config, name="my_model_2"):
+        super(MyModel2, self).__init__(name=name)
+        self._num_tokens = config.num_tokens
+
+        # list of sub-models
+        self._ffnet = [ffnet(config.module_layers + (self._num_tokens,), "ff")]
+
+      def null_input(self):
+        return array_ops.zeros([1, self._num_tokens], dtype=dtypes.float32)
+
+      def call(self, input_, module_index=None):
+        return self._ffnet[0](input_)
+
+    m2 = MyModel2(AttrDict(
+        num_tokens=5,
+        module_layers=(50, 30)))
+
+    # Construct
+    m2(m2.null_input())
+    self.assertLen(m2.trainable_variables, 6)
+
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.l = [1]
+    json.dumps(obj.l, default=serialization.get_json_type)
 
   @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
@@ -284,6 +362,20 @@ class ListWrapperTest(test.TestCase):
     if not_overridden:
       self.fail("_ListWrapper does not override %s" % (not_overridden))
 
+  def testSameStructure(self):
+    l = [1]
+    nest.assert_same_structure(l, data_structures._ListWrapper(copy.copy(l)))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(list_input):
+      return list_input[0] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function([constant_op.constant(2.)])
+    second_trace = f.get_concrete_function(
+        data_structures._ListWrapper([constant_op.constant(3.)]))
+    self.assertIs(first_trace, second_trace)
+
   def testListWrapperBasic(self):
     # _ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
@@ -385,6 +477,26 @@ class ListWrapperTest(test.TestCase):
     l[2:] = 1, 2, 3, 4
     self.assertEqual(l, [1, 2, 1, 2, 3, 4])
 
+  def testIMulNegative(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l *= -1
+    self.assertEqual(l, [1, 2, 3, 4] * -1)
+    self.assertUnableToSave(l, "Unable to save")
+
+  def testIMulPositive(self):
+    v = variables.Variable(1.)
+    l = data_structures._ListWrapper([1, 2, 3, 4, v])
+    self.assertEqual([("4", v)], l._checkpoint_dependencies)
+    root = util.Checkpoint(l=l)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    path = root.save(prefix)
+    v.assign(5.)
+    l *= 2
+    self.assertEqual(l, [1, 2, 3, 4, v, 1, 2, 3, 4, v])
+    self.assertEqual([("4", v), ("9", v)], l._checkpoint_dependencies)
+    root.restore(path)
+    self.assertAllClose(1., v.numpy())
+
   def testSort(self):
     l = data_structures._ListWrapper([1, 2, 3, 4])
     l.sort()
@@ -445,6 +557,11 @@ class MappingTests(test.TestCase):
     model.load_weights(save_path)
     self.assertAllEqual(numpy.ones([6, 7]),
                         self.evaluate(test_var))
+
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.d = {"a": 2}
+    json.dumps(obj.d, default=serialization.get_json_type)
 
   def testNoOverwrite(self):
     mapping = data_structures.Mapping()
@@ -561,7 +678,7 @@ class MappingTests(test.TestCase):
     model.d["a"] = []
     model.d.pop("a")
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+    with self.assertRaisesRegexp(ValueError, "Unable to save"):
       model.save_weights(save_path)
 
   def testExternalModificationNoSave(self):
@@ -640,6 +757,11 @@ class MappingTests(test.TestCase):
     self.assertIsNot(root.a, copied)
     self.assertIs(root.a["a"], copied["a"])
 
+    copied = root.a.copy()
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
     # Dirtiness should be inherited
     util.list_objects(root.a)
     orig_dict["b"] = []
@@ -684,7 +806,9 @@ class MappingTests(test.TestCase):
     original_sub = tracking.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
+    self.assertIsInstance(original.b, dict)
     deep_copied = copy.deepcopy(original)
+    self.assertIsInstance(deep_copied.b, dict)
     self.assertIsNot(original, deep_copied)
     self.assertIsNot(original_sub, deep_copied.b["a"])
     self.assertEqual([[1.]], deep_copied.a)
@@ -710,6 +834,20 @@ class MappingTests(test.TestCase):
     self.assertEqual([1., 2.],
                      [1.]
                      + data_structures._ListWrapper([2.]))
+
+  def testSameStructure(self):
+    d = {1: "a"}
+    nest.assert_same_structure(d, data_structures._DictWrapper(d.copy()))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(dict_input):
+      return dict_input["x"] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function({"x": constant_op.constant(2.)})
+    second_trace = f.get_concrete_function(
+        data_structures._DictWrapper({"x": constant_op.constant(3.)}))
+    self.assertIs(first_trace, second_trace)
 
 
 if __name__ == "__main__":

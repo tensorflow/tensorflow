@@ -56,10 +56,8 @@ TEST(RoundOpTest, SingleDim) {
 TEST(RoundOpTest, MultiDims) {
   RoundOpModel model({2, 1, 1, 6}, TensorType_FLOAT32);
   model.PopulateTensor<float>(
-      model.input(), {
-                         0.0001, 8.0001, 0.9999, 9.9999, 0.5, -0.0001, -8.0001,
-                         -0.9999, -9.9999, -0.5, -2.5, 1.5
-                     });
+      model.input(), {0.0001, 8.0001, 0.9999, 9.9999, 0.5, -0.0001, -8.0001,
+                      -0.9999, -9.9999, -0.5, -2.5, 1.5});
   model.Invoke();
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({0, 8, 1, 10, 0, 0, -8, -1, -10, -0, -2, 2}));

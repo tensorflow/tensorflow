@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <string.h>
+
 #include <map>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <string>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -96,6 +98,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -113,7 +116,7 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-using BufferInfo = ::tensorflow::cpu_function_runtime::BufferInfo;
+using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,
@@ -251,6 +254,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
+
+  // Remove zero-sized HLO from the input so that other passes don't have to
+  // handle it.
+  pipeline.AddPass<ZeroSizedHloElimination>();
+
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
@@ -268,7 +276,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // pass.
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
-  pipeline.AddPass<DotDecomposer>(/*decompose_batch_dot=*/false);
+  pipeline.AddPass<DotDecomposer>();
+  // After canonicalization, there may be more batch dots that can be
+  // simplified.
+  pipeline.AddPass<BatchDotSimplification>();
   auto cost_model = [](HloInstruction* conv) {
     // We need a cost model for CPUs. Currently, do nothing.
     return false;
@@ -305,6 +316,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
+    pass.AddPass<SliceSinker>();
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -415,9 +427,9 @@ llvm::TargetOptions CompilerTargetOptions(
   if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     target_options.UnsafeFPMath = true;
     target_options.NoInfsFPMath =
-        module_config.debug_options().xla_cpu_fast_math_honor_infs();
+        !module_config.debug_options().xla_cpu_fast_math_honor_infs();
     target_options.NoNaNsFPMath =
-        module_config.debug_options().xla_cpu_fast_math_honor_nans();
+        !module_config.debug_options().xla_cpu_fast_math_honor_nans();
     target_options.NoSignedZerosFPMath = true;
   } else {
     target_options.UnsafeFPMath = false;
@@ -609,7 +621,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
-      module->config().debug_options().xla_cpu_enable_fast_math(),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
       pre_optimization_ir_hook, post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
@@ -649,12 +660,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
-  // BufferAssignment::ToString() includes a header, so no need for us to
-  // print one ourselves.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "buffer_assignment",
-                            assignment->ToString());
-  }
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
   // Each computation is a single function.  Emit all embedded computations
@@ -740,15 +745,29 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
-  // flag that needs to be consistent is fast-math.
-  const bool fast_math_enabled =
-      modules[0]->config().debug_options().xla_cpu_enable_fast_math();
-  for (const auto& module : modules) {
-    if (module->config().debug_options().xla_cpu_enable_fast_math() !=
-        fast_math_enabled) {
-      return InvalidArgument(
-          "All HLO module configs must have the same value for "
-          "xla_enable_fast_math.");
+  // flags that need to be consistent are for fast-math.
+  for (const auto& fn_and_name :
+       {std::make_pair(&DebugOptions::xla_cpu_enable_fast_math,
+                       "xla_cpu_enable_fast_math"),
+        std::make_pair(&DebugOptions::xla_cpu_fast_math_honor_infs,
+                       "xla_cpu_fast_math_honor_infs"),
+        std::make_pair(&DebugOptions::xla_cpu_fast_math_honor_nans,
+                       "xla_cpu_fast_math_honor_nans")}) {
+    // This only works because each of the method pointers above returns a bool.
+    // Otherwise we'd have to do some template magic.
+    const auto& field_method_ptr = fn_and_name.first;
+    const auto& field_name = fn_and_name.second;
+    bool first_module_val =
+        (modules[0]->config().debug_options().*field_method_ptr)();
+    for (int64 i = 0; i < modules.size(); ++i) {
+      bool cur_module_val =
+          (modules[i]->config().debug_options().*field_method_ptr)();
+      if (first_module_val != cur_module_val) {
+        return InvalidArgument(
+            "All HLO module configs must have the same value for %s, but "
+            "module 0 and %d have different values (%d vs %d).",
+            field_name, i, first_module_val, cur_module_val);
+      }
     }
   }
 
@@ -918,7 +937,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     CompilerFunctor compiler_functor(
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
-        module->config().debug_options().xla_cpu_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =

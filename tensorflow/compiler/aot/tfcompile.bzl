@@ -163,7 +163,10 @@ def tf_library(
     header_file = name + ".h"
     metadata_object_file = name + "_tfcompile_metadata.o"
     function_object_file = name + "_tfcompile_function.o"
-    ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
+
+    # The XLA backends morph kernal name prefix __ that is not in the form of
+    # __xla_.
+    ep = ("__xla_" + native.package_name() + "__" + name).replace("/", "_")
     if type(tfcompile_flags) == type(""):
         flags = tfcompile_flags
     else:
@@ -171,6 +174,20 @@ def tf_library(
             "'" + arg.replace("'", "'\\''") + "'"
             for arg in (tfcompile_flags or [])
         ])
+
+    # Do this before we append the `select` into `flags`, because doing so
+    # transforms `flags` into a variable of type `select`, and we can't call
+    # `find` on such an object.
+    need_xla_data_proto = flags and flags.find("--gen_program_shape") != -1
+
+    # Pass --target_cpu=haswell to tfcompile if compiling for Haswell (bazel
+    # build --cpu=haswell).  We put it at the beginning of the flags list so
+    # that tfcompile_flags can override if if desired.
+    flags = select({
+        "//tools/target_cpu:haswell": "--target_cpu=haswell ",
+        "//conditions:default": "",
+    }) + flags
+
     if enable_xla_hlo_profiling:
         profiling_flag = "--xla_hlo_profile"
     else:
@@ -248,7 +265,6 @@ def tf_library(
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
-    need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
     native.cc_library(
         name = name,
         srcs = [function_object_file, metadata_object_file],

@@ -74,7 +74,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
     use_gpu = True
     if a_np_.dtype is np.float16 and (
-        not test_util.CudaSupportsHalfMatMulAndConv()):
+        not test_util.GpuSupportsHalfMatMulAndConv()):
       use_gpu = False
       print("Built without fp16 matmul support for Cuda, running test on CPU.")
 
@@ -99,8 +99,8 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     self.assertAllCloseAccordingToType(
         tf_val,
         np_val,
-        float_rtol=2e-5,
-        float_atol=2e-5,
+        float_rtol=3e-5,
+        float_atol=3e-5,
         half_rtol=0.2,
         half_atol=0.2)
 

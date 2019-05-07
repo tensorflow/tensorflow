@@ -1223,7 +1223,7 @@ TEST_F(LayoutOptimizerTest, DevicePlacement) {
   auto i = ops::Identity(s.WithOpName("i"), shape);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  VirtualPlacer virtual_placer(virtual_cluster_.get());
+  VirtualPlacer virtual_placer(virtual_cluster_->GetDevices());
   for (auto& node : *item.graph.mutable_node()) {
     string device = virtual_placer.get_canonical_device_name(node);
     node.set_device(device);

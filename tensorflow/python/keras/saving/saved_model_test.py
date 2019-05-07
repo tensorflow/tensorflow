@@ -492,23 +492,20 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
   def testSaveSequentialModelWithoutInputShapes(self):
     model = sequential_model_without_input_shape(True)
     # A Sequential model that hasn't been built should raise an error.
-    with self.assertRaisesRegexp(ValueError, 'Please build the model'):
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for sequential model have not yet been created'):
       keras_saved_model.export_saved_model(model, '')
 
-    saved_model_dir = self._save_model_dir()
-    keras_saved_model.export_saved_model(
-        model,
-        saved_model_dir,
-        input_signature=tensor_spec.TensorSpec(
-            shape=(10, 11, 12, 13, 14), dtype=dtypes.float32,
-            name='spec_input'))
-
-    with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs, _ = load_model(sess, saved_model_dir,
-                                      mode_keys.ModeKeys.PREDICT)
-      self.assertEqual(5, inputs[next(iter(inputs.keys()))].shape.ndims)
-      self.assertEqual(5, outputs[next(iter(outputs.keys()))].shape.ndims)
-      self.assertEqual(3, outputs[next(iter(outputs.keys()))].shape[-1])
+    # Even with input_signature, the model's weights has not been created.
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for sequential model have not yet been created'):
+      saved_model_dir = self._save_model_dir()
+      keras_saved_model.export_saved_model(
+          model,
+          saved_model_dir,
+          input_signature=tensor_spec.TensorSpec(
+              shape=(10, 11, 12, 13, 14), dtype=dtypes.float32,
+              name='spec_input'))
 
   @parameterized.parameters(
       {

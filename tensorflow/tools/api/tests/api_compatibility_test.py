@@ -38,8 +38,8 @@ import tensorflow as tf
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -89,6 +89,13 @@ def _KeyToFilePath(key, api_version):
   """From a given key, construct a filepath.
 
   Filepath will be inside golden folder for api_version.
+
+  Args:
+    key: a string used to determine the file path
+    api_version: a number indicating the tensorflow API version, e.g. 1 or 2.
+
+  Returns:
+    A string of file path to the pbtxt file which describes the public API
   """
 
   def _ReplaceCapsWithDash(matchobj):
@@ -373,8 +380,10 @@ class ApiCompatibilityTest(test.TestCase):
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self._checkBackwardsCompatibility(tf.compat.v1, golden_file_pattern,
-                                      api_version)
+    self._checkBackwardsCompatibility(
+        tf.compat.v1, golden_file_pattern, api_version,
+        additional_private_map={'tf': ['pywrap_tensorflow']},
+        omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2

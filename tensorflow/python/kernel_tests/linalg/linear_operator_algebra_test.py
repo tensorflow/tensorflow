@@ -23,6 +23,7 @@ from tensorflow.python.ops.linalg import cholesky_registrations  # pylint: disab
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import matmul_registrations  # pylint: disable=unused-import
+from tensorflow.python.ops.linalg import solve_registrations  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
@@ -34,6 +35,8 @@ _INVERSES = linear_operator_algebra._INVERSES
 _registered_inverse = linear_operator_algebra._registered_inverse
 _MATMUL = linear_operator_algebra._MATMUL
 _registered_matmul = linear_operator_algebra._registered_matmul
+_SOLVE = linear_operator_algebra._SOLVE
+_registered_solve = linear_operator_algebra._registered_solve
 # pylint: enable=protected-access
 
 
@@ -173,6 +176,55 @@ class MatmulTest(test.TestCase):
   def testExactMatmulRegistrationsAllMatch(self):
     for (k, v) in _MATMUL.items():
       self.assertEqual(v, _registered_matmul(k[0], k[1]))
+
+
+class SolveTest(test.TestCase):
+
+  def testRegistration(self):
+
+    class CustomLinOp(linear_operator.LinearOperator):
+
+      def _matmul(self, a):
+        pass
+
+      def _solve(self, a):
+        pass
+
+      def _shape(self):
+        return tensor_shape.TensorShape([1, 1])
+
+      def _shape_tensor(self):
+        pass
+
+    # Register Solve to a lambda that spits out the name parameter
+    @linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)
+    def _solve(a, b):  # pylint: disable=unused-argument,unused-variable
+      return "OK"
+
+    custom_linop = CustomLinOp(
+        dtype=None, is_self_adjoint=True, is_positive_definite=True)
+    self.assertEqual("OK", custom_linop.solve(custom_linop))
+
+  def testRegistrationFailures(self):
+
+    class CustomLinOp(linear_operator.LinearOperator):
+      pass
+
+    with self.assertRaisesRegexp(TypeError, "must be callable"):
+      linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)("blah")
+
+    # First registration is OK
+    linear_operator_algebra.RegisterSolve(
+        CustomLinOp, CustomLinOp)(lambda a: None)
+
+    # Second registration fails
+    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+      linear_operator_algebra.RegisterSolve(
+          CustomLinOp, CustomLinOp)(lambda a: None)
+
+  def testExactSolveRegistrationsAllMatch(self):
+    for (k, v) in _SOLVE.items():
+      self.assertEqual(v, _registered_solve(k[0], k[1]))
 
 
 class InverseTest(test.TestCase):

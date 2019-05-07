@@ -17,6 +17,7 @@ py_test(
     name = "data_test",
     size = "small",
     srcs = ["data_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":data",

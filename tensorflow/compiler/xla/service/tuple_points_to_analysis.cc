@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -598,8 +599,7 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // GetTupleElement instructions only access the top-level buffer of their
     // operand.
     return true;
-  } else if (user->opcode() == HloOpcode::kFusion &&
-             user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  } else if (user->IsLoopFusion()) {
     // Find fusion parameter associated with 'operand'.
     auto it = absl::c_find_if(
         user->fused_parameters(), [&](HloInstruction* fused_param) {
@@ -717,8 +717,7 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     return false;
   }
   if (user->opcode() == HloOpcode::kFusion) {
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
+    if (user->IsLoopFusion() || user->IsInputFusion()) {
       if (user->fused_expression_root()->opcode() ==
           HloOpcode::kDynamicUpdateSlice) {
         // Loop fusion with kDynamicUpdateSlice fused root.
@@ -733,7 +732,7 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
         return HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
             fusion_param);
       }
-    } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+    } else if (user->IsOutputFusion() &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 
@@ -756,6 +755,14 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
                                           other_add_operand_index);
+    } else if (user->IsCustomFusion()) {
+      std::vector<int64> operand_indices = user->OperandIndices(operand);
+      return operand_indices.size() == 1 && operand_indices[0] == 0 &&
+             absl::c_any_of(
+                 user->fused_instructions_computation()->instructions(),
+                 [](const HloInstruction* hlo) {
+                   return hlo->opcode() == HloOpcode::kScatter;
+                 });
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||

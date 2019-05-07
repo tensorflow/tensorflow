@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -80,6 +80,18 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
       d.stream(), dist, state_size, output_size, state_data, output_data));
 }
 
+// Precondition: there is only 1 block and 1 thread.
+__global__ void SkipKernel(int64 delta, StateElementType* state_data) {
+  auto philox = GetPhiloxRandomFromMem(state_data);
+  UpdateMemWithPhiloxRandom(philox, delta, state_data);
+}
+
+void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
+                                           Tensor* state_tensor) {
+  SkipKernel<<<1, 1, 0, d.stream()>>>(
+      delta, state_tensor->flat<StateElementType>().data());
+}
+
 // Explicit instantiation of the GPU distributions functors.
 
 // clang-format off
@@ -87,11 +99,27 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct UpdateVariableAndFill_Philox<
-    GPUDevice, random::NormalDistribution<random::PhiloxRandom, bfloat16> >;
-template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
 template struct UpdateVariableAndFill_Philox<

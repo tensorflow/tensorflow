@@ -31,11 +31,17 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
-class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
+class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
+                    ragged_test_util.RaggedTensorTestCase):
 
   # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
   # will be executed before the (eager- or graph-mode) test environment has been
@@ -44,9 +50,14 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.parameters(
       (lambda: constant_op.constant(37.0), structure.TensorStructure,
        [dtypes.float32], [[]]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       structure.TensorArrayStructure, [dtypes.variant], [None, 3]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        structure.SparseTensorStructure, [dtypes.variant], [None]),
+      (lambda: ragged_factory_ops.constant([[1, 2], [], [4]]),
+       structure.RaggedTensorStructure, [dtypes.variant], [None]),
       (lambda: (constant_op.constant(37.0), constant_op.constant([1, 2, 3])),
        structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]),
       (lambda: {
@@ -79,6 +90,20 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           variables.Variable(100.0), 42.0,
           np.array(42.0, dtype=np.float32)
       ], lambda: [constant_op.constant([1.0, 2.0]), constant_op.constant(37)]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=10)
+       ],
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.int32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(), size=0)
+       ]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        lambda: [
@@ -97,6 +122,15 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
            sparse_tensor.SparseTensor(
                indices=[[3, 4]], values=[-1.0], dense_shape=[4, 5])
        ]),
+      (lambda: ragged_factory_ops.constant([[1, 2], [], [3]]), lambda: [
+          ragged_factory_ops.constant([[1, 2], [3, 4], []]),
+          ragged_factory_ops.constant([[1], [2, 3, 4], [5]]),
+      ], lambda: [
+          ragged_factory_ops.constant(1),
+          ragged_factory_ops.constant([1, 2]),
+          ragged_factory_ops.constant([[1], [2]]),
+          ragged_factory_ops.constant([["a", "b"]]),
+      ]),
       (lambda: {
           "a": constant_op.constant(37.0),
           "b": constant_op.constant([1, 2, 3])
@@ -137,6 +171,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       (lambda: constant_op.constant(37.0),),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(), size=1).write(0, 7)),
+      (lambda: ragged_factory_ops.constant([[1, 2], [], [3]]),),
       (lambda: {"a": constant_op.constant(37.0),
                 "b": constant_op.constant([1, 2, 3])},),
       (lambda: {"a": constant_op.constant(37.0),
@@ -149,8 +186,15 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testRoundTripConversion(self, value_fn):
     value = value_fn()
     s = structure.Structure.from_value(value)
-    before = self.evaluate(value)
-    after = self.evaluate(s._from_tensor_list(s._to_tensor_list(value)))
+    def maybe_stack_ta(v):
+      if isinstance(v, tensor_array_ops.TensorArray):
+        return v.stack()
+      else:
+        return v
+
+    before = self.evaluate(maybe_stack_ta(value))
+    after = self.evaluate(
+        maybe_stack_ta(s._from_tensor_list(s._to_tensor_list(value))))
 
     flat_before = nest.flatten(before)
     flat_after = nest.flatten(after)
@@ -159,6 +203,10 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertAllEqual(b.indices, a.indices)
         self.assertAllEqual(b.values, a.values)
         self.assertAllEqual(b.dense_shape, a.dense_shape)
+      elif isinstance(
+          b,
+          (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
+        self.assertRaggedEqual(b, a)
       else:
         self.assertAllEqual(b, a)
   # pylint: enable=g-long-lambda
@@ -241,7 +289,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     # that:
     # 1. Using one structure to flatten a value with an incompatible structure
     #    fails.
-    # 2. Using one structure to restructre a flattened value with an
+    # 2. Using one structure to restructure a flattened value with an
     #    incompatible structure fails.
 
     value_0 = {
@@ -343,6 +391,21 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("SparseTensor", dtypes.int32, tensor_shape.matrix(2, 2),
        sparse_tensor.SparseTensor,
        structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+      ("TensorArray0", dtypes.int32, tensor_shape.as_shape([None, True, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=None, infer_shape=True)),
+      ("TensorArray1", dtypes.int32, tensor_shape.as_shape([True, None, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=None)),
+      ("TensorArray2", dtypes.int32, tensor_shape.as_shape([True, False, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=False)),
+      ("RaggedTensor", dtypes.int32, tensor_shape.matrix(2, 2),
+       structure.RaggedTensorStructure(dtypes.int32, [2, 2], 1),
+       structure.RaggedTensorStructure(dtypes.int32, [2, 2], 1)),
       ("Nest",
        {"a": dtypes.float32, "b": (dtypes.int32, dtypes.string)},
        {"a": tensor_shape.scalar(),
@@ -402,6 +465,12 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("SparseTensorUnknown",
        structure.SparseTensorStructure(dtypes.float32, [4]), None,
        structure.SparseTensorStructure(dtypes.float32, [None, 4])),
+      ("RaggedTensor",
+       structure.RaggedTensorStructure(dtypes.float32, [2, None], 1), 32,
+       structure.RaggedTensorStructure(dtypes.float32, [32, 2, None], 2)),
+      ("RaggedTensorUnknown",
+       structure.RaggedTensorStructure(dtypes.float32, [4, None], 1), None,
+       structure.RaggedTensorStructure(dtypes.float32, [None, 4, None], 2)),
       ("Nest", structure.NestedStructure({
           "a": structure.TensorStructure(dtypes.float32, []),
           "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
@@ -430,6 +499,12 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("SparseTensorUnknown",
        structure.SparseTensorStructure(dtypes.float32, [None, 4]),
        structure.SparseTensorStructure(dtypes.float32, [4])),
+      ("RaggedTensor",
+       structure.RaggedTensorStructure(dtypes.float32, [32, 4, None], 2),
+       structure.RaggedTensorStructure(dtypes.float32, [4, None], 1)),
+      ("RaggedTensorUnknown",
+       structure.RaggedTensorStructure(dtypes.float32, [None, None, 4], 2),
+       structure.RaggedTensorStructure(dtypes.float32, [None, 4], 1)),
       ("Nest", structure.NestedStructure({
           "a": structure.TensorStructure(dtypes.float32, [128]),
           "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
@@ -454,6 +529,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2]),
        lambda: sparse_tensor.SparseTensor(
            indices=[[0]], values=[13], dense_shape=[2])),
+      ("RaggedTensor",
+       lambda: ragged_factory_ops.constant([[[1]], [[2]]]),
+       lambda: ragged_factory_ops.constant([[1]])),
       ("Nest", lambda: (
           constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
           sparse_tensor.SparseTensor(
@@ -484,10 +562,13 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
         nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
       if sparse_tensor.is_sparse(expected):
         self.assertSparseValuesEqual(expected, actual)
+      elif ragged_tensor.is_ragged(expected):
+        self.assertRaggedEqual(expected, actual)
       else:
         self.assertAllEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
+
 
 if __name__ == "__main__":
   test.main()

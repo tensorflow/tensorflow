@@ -57,6 +57,32 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
+flags.DEFINE_bool(
+    'use_mirrored_strategy', False,
+    'Whether to use mirrored distribution strategy.')
+
+
+def make_feature_extractor(saved_model_path, trainable,
+                           regularization_loss_multiplier):
+  """Load a pre-trained feature extractor and wrap it for use in Keras."""
+  obj = tf.saved_model.load(saved_model_path)
+
+  # Optional: scale regularization losses to target problem.
+  if regularization_loss_multiplier:
+    def _scale_one_loss(l):  # Separate def avoids lambda capture of loop var.
+      f = tf.function(lambda: tf.multiply(regularization_loss_multiplier, l()))
+      _ = f.get_concrete_function()
+      return f
+    obj.regularization_losses = [_scale_one_loss(l)
+                                 for l in obj.regularization_losses]
+
+  arguments = {}
+  if FLAGS.dropout_rate is not None:
+    arguments['dropout_rate'] = FLAGS.dropout_rate
+
+  # CustomLayer mimics hub.KerasLayer because the tests are not able to depend
+  # on Hub at the moment.
+  return util.CustomLayer(obj, trainable=trainable, arguments=arguments)
 
 
 def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
@@ -70,40 +96,29 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
   return tf.keras.Model(inputs=inp, outputs=net)
 
 
-def scale_regularization_losses(obj, multiplier):
-  """Scales obj.regularization_losses by multiplier if not None."""
-  if multiplier is None: return
-  def _scale_one_loss(l):  # Separate def avoids lambda capture of loop var.
-    f = tf.function(lambda: tf.multiply(multiplier, l()))
-    _ = f.get_concrete_function()
-    return f
-  obj.regularization_losses = [_scale_one_loss(l)
-                               for l in obj.regularization_losses]
-
-
 def main(argv):
   del argv
 
-  # Load a pre-trained feature extractor and wrap it for use in Keras.
-  obj = tf.saved_model.load(FLAGS.export_dir)
-  scale_regularization_losses(obj, FLAGS.regularization_loss_multiplier)
-  arguments = {}
-  if FLAGS.dropout_rate is not None:
-    arguments['dropout_rate'] = FLAGS.dropout_rate
-  feature_extractor = util.CustomLayer(obj, output_shape=[10],
-                                       trainable=FLAGS.retrain,
-                                       arguments=arguments)
+  if FLAGS.use_mirrored_strategy:
+    strategy = tf.distribute.MirroredStrategy()
+  else:
+    strategy = tf.distribute.get_strategy()
 
-  # Build a classifier with it.
-  model = make_classifier(feature_extractor)
+  with strategy.scope():
+    feature_extractor = make_feature_extractor(
+        FLAGS.export_dir,
+        FLAGS.retrain,
+        FLAGS.regularization_loss_multiplier)
+    model = make_classifier(feature_extractor)
+
+    model.compile(loss=tf.keras.losses.categorical_crossentropy,
+                  optimizer=tf.keras.optimizers.SGD(),
+                  metrics=['accuracy'])
 
   # Train the classifier (possibly on a different dataset).
   (x_train, y_train), (x_test, y_test) = mnist_util.load_reshaped_data(
       use_fashion_mnist=FLAGS.use_fashion_mnist,
       fake_tiny_data=FLAGS.fast_test_mode)
-  model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.keras.optimizers.SGD(),
-                metrics=['accuracy'])
   print('Training on %s with %d trainable and %d untrainable variables.' %
         ('Fashion MNIST' if FLAGS.use_fashion_mnist else 'MNIST',
          len(model.trainable_variables), len(model.non_trainable_variables)))
@@ -115,5 +130,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  tf.enable_v2_behavior()
   app.run(main)

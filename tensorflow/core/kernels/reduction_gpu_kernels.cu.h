@@ -20,6 +20,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <sstream>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_reduce.cuh"
 #include "third_party/cub/device/device_segmented_reduce.cuh"
@@ -29,12 +31,10 @@ limitations under the License.
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
-
-#include <sstream>
 
 namespace tensorflow {
 namespace functor {
@@ -42,9 +42,9 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct Sqrt {
+struct SqrtOfReal {
   __host__ __device__ T operator()(const T& a) const {
-    return Eigen::numext::sqrt(a);
+    return T(Eigen::numext::sqrt(Eigen::numext::real(a)));
   }
 };
 
@@ -875,8 +875,8 @@ struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
                      const functor::EuclideanNormReducer<T>& reducer) {
     typedef cub::TransformInputIterator<T, Square<T>, T*> inputIterType;
     inputIterType input_itr((T*)in.data(), Square<T>());
-    typedef TransformOutputIterator<T, T, Sqrt<T>> outputIterType;
-    outputIterType output_itr((T*)out.data(), Sqrt<T>());
+    typedef TransformOutputIterator<T, T, SqrtOfReal<T>> outputIterType;
+    outputIterType output_itr((T*)out.data(), SqrtOfReal<T>());
     ReduceImpl<T, Sum<T>, outputIterType, inputIterType, ReductionAxes>(
         ctx, output_itr, input_itr, in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,

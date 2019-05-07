@@ -27,24 +27,9 @@ namespace {
 
 constexpr int kInputTensor = 0;
 
-// Op data for unpack op.
-struct OpData {
-  int num;
-  int axis;
-};
-
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* data = new OpData;
-  data->axis = 0;
-  return data;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
-}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  const OpData* data = reinterpret_cast<OpData*>(node->builtin_data);
+  const TfLiteUnpackParams* data =
+      reinterpret_cast<TfLiteUnpackParams*>(node->builtin_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), data->num);
@@ -100,7 +85,8 @@ void UnpackImpl(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const OpData* data = reinterpret_cast<OpData*>(node->builtin_data);
+  const TfLiteUnpackParams* data =
+      reinterpret_cast<TfLiteUnpackParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   switch (input->type) {
@@ -125,7 +111,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace unpack
 
 TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {unpack::Init, unpack::Free, unpack::Prepare,
+  static TfLiteRegistration r = {nullptr, nullptr, unpack::Prepare,
                                  unpack::Eval};
   return &r;
 }

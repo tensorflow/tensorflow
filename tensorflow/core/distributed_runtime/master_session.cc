@@ -507,17 +507,20 @@ class RunManyGraphs {
   Call* get(int index) { return &calls_[index]; }
 
   // When the index-th call is done, updates the overall status.
-  void WhenDone(int index, const Status& s) {
+  void WhenDone(int index, const std::string& worker_name, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
     auto resp = get(index)->resp.get();
     if (resp->status_code() != error::Code::OK) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
-      ReportBadStatus(
-          Status(resp->status_code(), resp->status_error_message()));
+      ReportBadStatus(Status(resp->status_code(),
+                             strings::StrCat("From ", worker_name, ":\n",
+                                             resp->status_error_message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
-      ReportBadStatus(s);
+      ReportBadStatus(Status(
+          s.code(),
+          strings::StrCat("From ", worker_name, ":\n", s.error_message())));
     }
     pending_.DecrementCount();
   }
@@ -531,7 +534,9 @@ class RunManyGraphs {
 
   Status status() const {
     mutex_lock l(mu_);
-    return status_group_.as_status();
+    // Concat status objects in this StatusGroup to get the aggregated status,
+    // as each status in status_group_ is already summarized status.
+    return status_group_.as_concatenated_status();
   }
 
  private:
@@ -540,10 +545,22 @@ class RunManyGraphs {
   BlockingCounter pending_;
   mutable mutex mu_;
   StatusGroup status_group_ GUARDED_BY(mu_);
+  bool cancel_issued_ GUARDED_BY(mu_) = false;
 
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // Start cancellation if we aren't already in an error state.
-    if (status_group_.ok()) {
+    // TODO(jingdong): Change the following log to VLOG once the distributed
+    // error aggregation is stable.
+    LOG(INFO) << "Master received error status " << s;
+    if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
+      // Only start cancelling other workers upon receiveing a non-derived
+      // error
+      cancel_issued_ = true;
+
+      // TODO(jingdong): Change the following log to VLOG once the distributed
+      // error aggregation feature is stable.
+      LOG(INFO)
+          << "Master received error report. Cancelling remaining workers.";
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
@@ -686,13 +703,17 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     const Part& part = partitions_[i];
     RunManyGraphs::Call* call = calls.get(i);
     TRACEPRINTF("Partition %d %s", i, part.name.c_str());
-    part.worker->RunGraphAsync(
-        &call->opts, call->req.get(), call->resp.get(),
-        std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));
+    part.worker->RunGraphAsync(&call->opts, call->req.get(), call->resp.get(),
+                               std::bind(&RunManyGraphs::WhenDone, &calls, i,
+                                         part.name, std::placeholders::_1));
   }
 
   // Waits for the RunGraph calls.
-  call_opts->SetCancelCallback([&calls]() { calls.StartCancel(); });
+  call_opts->SetCancelCallback([&calls]() {
+    LOG(INFO) << "Client requested cancellation for RunStep, cancelling "
+                  "worker operations.";
+    calls.StartCancel();
+  });
   auto token = cm->get_cancellation_token();
   const bool success =
       cm->RegisterCallback(token, [&calls]() { calls.StartCancel(); });
@@ -1293,6 +1314,15 @@ Status MasterSession::CreateWorkerSessions(
       // because the worker will use its local configuration.
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
+    }
+    if (session_opts_.config.experimental()
+            .share_session_state_in_clusterspec_propagation()) {
+      // In a dynamic cluster, the ClusterSpec info is usually propagated by
+      // master sessions. However, in data parallel training with multiple
+      // masters
+      // ("between-graph replication"), we need to disable isolation for
+      // different worker sessions to update the same variables in PS tasks.
+      workers[i].request.set_isolate_session_state(false);
     }
   }
 

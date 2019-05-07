@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/client/xrt_grpc_eager_client.h"
 
-#include "net/grpc/public/include/grpcpp/generic/generic_stub.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -33,10 +32,11 @@ XrtGrpcEagerClient::XrtGrpcEagerClient(const SharedGrpcChannelPtr& channel,
 #define EAGER_CLIENT_METHOD(method)                                       \
   void XrtGrpcEagerClient::method##Async(                                 \
       const eager::method##Request* request,                              \
-      eager::method##Response* response, StatusCallback done) {           \
+      eager::method##Response* response, StatusCallback done,             \
+      CallOptions* call_opts) {                                           \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr, nullptr);                     \
+        response, std::move(done), call_opts, nullptr);                   \
   }
 
 EAGER_CLIENT_METHOD(CreateContext);
@@ -49,12 +49,12 @@ EAGER_CLIENT_METHOD(SendTensor);
 #undef EAGER_CLIENT_METHOD
 
 #define WORKER_CLIENT_METHOD(method)                                           \
-  void XrtGrpcEagerClient::method##Async(const method##Request* request,       \
-                                         method##Response* response,           \
-                                         StatusCallback done) {                \
+  void XrtGrpcEagerClient::method##Async(                                      \
+      const method##Request* request, method##Response* response,              \
+      StatusCallback done, CallOptions* call_opts) {                           \
     new RPCState<protobuf::Message>(                                           \
         &stub_, cq_, "/tensorflow.WorkerService/" #method, *request, response, \
-        std::move(done), nullptr, nullptr);                                    \
+        std::move(done), call_opts, nullptr);                                  \
   }
 
 WORKER_CLIENT_METHOD(GetStatus);

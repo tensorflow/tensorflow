@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -132,7 +133,8 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
       // cluster because we would not handle variable updates correctly.  Any
       // locks we have already acquired will be released when the VariableInfo
       // objects are destroyed.
-      return errors::Internal("Duplicate variable passed to XLA cluster");
+      // TODO(b/128495870) Add support for passing aliased resource variables.
+      return errors::Unimplemented("Duplicate variable passed to XLA cluster");
     }
     VLOG(4) << "Acquiring lock for variable "
             << reinterpret_cast<void*>(variable);
@@ -242,7 +244,8 @@ void XlaComputationLaunchContext::PopulateInputs(
       CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
       arg_ptrs_[i] = const_cast<ShapedBuffer*>(&xla_tensor->shaped_buffer());
     } else {
-      CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
+      CHECK(xla::Shape::Equal().MinorToMajorOnlyInLayout()(shape,
+                                                           on_device_shape))
           << "On-device shape "
           << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
           << " not the same as on-host shape "
@@ -347,9 +350,11 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
               << DataTypeString(type);
       if (type == DT_RESOURCE) {
-        TF_RET_CHECK(kernel->outputs[i].input_index >= 0)
-            << "Invalid input for outputs " << i;
-        ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
+        int input_index =
+            kernel->outputs[i].input_index - missing_ctx_input_prefix;
+        TF_RET_CHECK(input_index >= 0 && input_index < ctx->num_inputs())
+            << "Invalid input for outputs " << i << ": " << input_index;
+        ctx->set_output(i, ctx->input(input_index));
       } else {
         se::DeviceMemoryBase buffer = output.buffer({output_num});
         if (allocate_xla_tensors_) {

@@ -44,10 +44,11 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 // need. Access to the external contexts is controled by one of the
 // corresponding support files.
 typedef enum {
-  kTfLiteEigenContext = 0,     // include eigen_support.h to use.
-  kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
-  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
-  kTfLiteMaxExternalContexts = 3
+  kTfLiteEigenContext = 0,       // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
+  kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 
 struct TfLiteContext;
@@ -255,7 +256,7 @@ typedef struct {
 
 // A union of pointers that points to memory for a given tensor.
 typedef union {
-  int* i32;
+  int32_t* i32;
   int64_t* i64;
   float* f;
   char* raw;

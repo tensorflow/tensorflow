@@ -751,6 +751,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
+      VLOG(2) << "Reading file: " << filenames_tensor->flat<string>()(i);
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 

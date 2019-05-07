@@ -129,8 +129,8 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See `tf.FIFOQueue` and
-  `tf.RandomShuffleQueue` for concrete
+  See `tf.queue.FIFOQueue` and
+  `tf.queue.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
   """
@@ -625,7 +625,7 @@ def _shared_name(shared_name):
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -674,7 +674,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        `tf.set_random_seed`
+        `tf.compat.v1.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -711,7 +711,7 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -774,7 +774,7 @@ class PaddingFIFOQueue(QueueBase):
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -847,7 +847,7 @@ class PaddingFIFOQueue(QueueBase):
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -1324,13 +1324,11 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
 
 
 @tf_export(
-    "sparse.SparseConditionalAccumulator",
     v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
-@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
-  Sparse gradients are represented by IndexedSlices.
+  Sparse gradients are represented by `IndexedSlices`.
 
   Up-to-date gradients (i.e., time step at which gradient was computed is
   equal to the accumulator's time step) are added to the accumulator.
@@ -1365,11 +1363,11 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   def apply_indexed_slices_grad(self, grad, local_step=0, name=None):
     """Attempts to apply a gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     Args:
-      grad: The gradient IndexedSlices to be applied.
+      grad: The gradient `IndexedSlices` to be applied.
       local_step: Time step at which the gradient was computed.
       name: Optional name for the operation.
 
@@ -1394,7 +1392,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
                  name=None):
     """Attempts to apply a sparse gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     A sparse gradient is represented by its indices, values and possibly empty
@@ -1405,7 +1403,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     None, must be consistent with the accumulator's shape (if also provided).
 
     Example:
-      A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+      A tensor [[0, 0], [0, 1], [2, 3]] can be represented
         indices: [1,2]
         values: [[0,1],[2,3]]
         shape: [3, 2]
@@ -1453,7 +1451,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       A tuple of indices, values, and shape representing the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
@@ -1474,10 +1472,10 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the operation
 
     Returns:
-      An IndexedSlices holding the value of the average gradient.
+      An `IndexedSlices` holding the value of the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)

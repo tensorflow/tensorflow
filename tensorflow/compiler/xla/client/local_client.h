@@ -43,6 +43,12 @@ class LocalExecutable {
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
+  // Similar to Run(), but need not block the host waiting for the computation
+  // to complete before returning.
+  StatusOr<ScopedShapedBuffer> RunAsync(
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutableRunOptions run_options);
+
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
 
@@ -86,6 +92,10 @@ class LocalExecutable {
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
+  StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutableRunOptions run_options);
+
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
   // Backend::devices_equivalent).
@@ -126,7 +136,7 @@ class LocalClient : public Client {
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
   StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
-      const Literal& literal, int device_ordinal,
+      const LiteralSlice& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
@@ -146,7 +156,7 @@ class LocalClient : public Client {
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferToInfeed.
-  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+  Status TransferToInfeedLocal(const LiteralSlice& literal, int device_ordinal);
 
   // Transfer and return a value of the given shape from the outfeed of the
   // given device.

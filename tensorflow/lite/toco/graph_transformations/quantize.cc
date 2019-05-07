@@ -62,8 +62,9 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
          type == OperatorType::kArgMax || type == OperatorType::kRelu ||
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
-         type == OperatorType::kShape || type == OperatorType::kExpandDims ||
-         type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
+         type == OperatorType::kLeakyRelu || type == OperatorType::kShape ||
+         type == OperatorType::kExpandDims || type == OperatorType::kPack ||
+         type == OperatorType::kTopK_V2 ||
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
          type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
@@ -620,7 +621,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   if (SupportOutputTypeFloatInQuantizedOp(op)) {
     LOG(WARNING)
         << HelpfulOperatorTypeName(op) << " is a quantized op"
-        << "but it has a model flag that sets the output arrays to float.";
+        << " but it has a model flag that sets the output arrays to float.";
   } else {
     for (std::size_t output_index = 0; output_index < op.outputs.size();
          output_index++) {

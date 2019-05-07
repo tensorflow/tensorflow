@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/c_api_internal.h"
-
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/strings/match.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -295,7 +295,8 @@ Status FillFunctionBody(
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in tensorflow/python/framework/function.py.
+// function graph_to_function_def(), which is located in
+// tensorflow/python/framework/graph_to_function_def.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,
@@ -352,6 +353,16 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     argdef->set_type(node->output_type(idx));
     const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
+    auto& arg_attrs = (*fdef->mutable_arg_attr())[i];
+    for (const auto& attr : node->attrs()) {
+      // Only copy internal attributes. These attributes will be applied to
+      // _Arg/Placeholder nodes when this FunctionDef is converted to graph, and
+      // normal attributes for nodes cannot be applied to those _Arg/Placeholder
+      // nodes.
+      if (absl::StartsWith(attr.first, "_")) {
+        arg_attrs.mutable_attr()->insert(attr);
+      }
+    }
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
   }
 
@@ -442,12 +453,21 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     } else {
       signature_name = control_outputs[i]->name();
     }
+    if (signature_name.empty()) {
+      return errors::InvalidArgument("Control output name must be not empty");
+    }
     if (!control_output_names_set.insert(signature_name).second) {
       return errors::InvalidArgument("Repeated control output name: ",
                                      signature_name);
     }
+    const string control_output_node =
+        node_names.Lookup(control_outputs[i]->name());
+    if (control_output_node.empty()) {
+      return errors::InvalidArgument(
+          "Control output node name must be not empty");
+    }
     fdef->mutable_signature()->add_control_output(signature_name);
-    (*fdef->mutable_control_ret())[signature_name] = control_outputs[i]->name();
+    (*fdef->mutable_control_ret())[signature_name] = control_output_node;
   }
 
   return Status::OK();
