@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
@@ -77,7 +78,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
 
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
     CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
-    TF_CHECK_OK(CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         TridiagonalMatMulKernel<Scalar>, cfg.block_count, cfg.thread_per_block,
         0, device.stream(), batch_size, m, n, superdiag.flat<Scalar>().data(),
         maindiag.flat<Scalar>().data(), subdiag.flat<Scalar>().data(),

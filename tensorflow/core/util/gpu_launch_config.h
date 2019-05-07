@@ -416,32 +416,6 @@ constexpr bool NoneIsReference() {
   return NoneTrue<(std::is_reference<Ts>::value)...>::value;
 }
 }  // namespace detail
-
-#if GOOGLE_CUDA
-// Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
-//
-// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
-template <typename... Ts, typename... Args>
-Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
-                        size_t shared_memory_size_bytes, cudaStream_t stream,
-                        Args... arguments) {
-  static_assert(detail::NoneIsReference<Ts...>(),
-                "Kernels with reference arguments have undefined behaviour.");
-  // Cast arguments and forward them as an array of pointers.
-  auto args_tuple = std::tuple<Ts...>(arguments...);
-  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
-  auto func_ptr = absl::bit_cast<const void*>(function);
-  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
-                                 shared_memory_size_bytes, stream);
-  if (result != cudaSuccess) {
-    return errors::Internal(cudaGetErrorString(result));
-  }
-  return Status::OK();
-}
-#endif  // GOOGLE_CUDA
-
 }  // namespace tensorflow
-
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #endif  // TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
