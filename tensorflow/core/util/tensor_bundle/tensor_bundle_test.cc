@@ -343,6 +343,28 @@ TEST(TensorBundleTest, SwapBytes) {
   TestByteSwap((const int64*)forward_64, (const int64*)swapped_64, arr_len_64);
   TestByteSwap((const double*)forward_64, (const double*)swapped_64,
                arr_len_64);
+
+  // Complex types.
+  // Logic for complex number handling is only in ByteSwapTensor, so don't test
+  // ByteSwapArray
+  const float* forward_float = (const float*)forward_32;
+  const float* swapped_float = (const float*)swapped_32;
+  const double* forward_double = (const double*)forward_64;
+  const double* swapped_double = (const double*)swapped_64;
+  Tensor forward_complex64 = Constant_2x3<complex64>(
+      std::complex<float>(forward_float[0], forward_float[1]));
+  Tensor swapped_complex64 = Constant_2x3<complex64>(
+      std::complex<float>(swapped_float[0], swapped_float[1]));
+  Tensor forward_complex128 = Constant_2x3<complex128>(
+      std::complex<double>(forward_double[0], forward_double[1]));
+  Tensor swapped_complex128 = Constant_2x3<complex128>(
+      std::complex<double>(swapped_double[0], swapped_double[1]));
+
+  TF_EXPECT_OK(ByteSwapTensor(&forward_complex64));
+  test::ExpectTensorEqual<complex64>(forward_complex64, swapped_complex64);
+
+  TF_EXPECT_OK(ByteSwapTensor(&forward_complex128));
+  test::ExpectTensorEqual<complex128>(forward_complex128, swapped_complex128);
 }
 
 // Basic test of alternate-endianness support. Generates a bundle in

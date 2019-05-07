@@ -18,41 +18,54 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/byte_order.h"
 
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.
-// Uses the glibc macros when available.  See bswap(3) for more info.
-// Beyond the use of glibc macros, the code here is written for portability,
-// not speed. If byte swapping becomes part of a fast path, then the function
-// ByteSwapArray() below should be rewritten to use architecture-
-// appropriate SIMD instructions that swap multiple words at once.
+// Note that the code here is written for portability, not speed. Byte swapping 
+// only happens when importing a checkpoint from one hardware architecture onto 
+// a different architecture. If these operations become part of a fast path, 
+// then the function ByteSwapArray() below should be rewritten to use 
+// architecture-appropriate SIMD instructions that swap multiple words at once.
 
-#ifdef __linux__
+#if defined(__linux__)
+
+// Use the Gnu byte swap macros when available.  See bswap(3) for more info.
 #include <byteswap.h>
-
 #define BYTE_SWAP_16(x) bswap_16 (x)
 #define BYTE_SWAP_32(x) bswap_32 (x)
 #define BYTE_SWAP_64(x) bswap_64 (x)
 
-#else // ifndef __linux__
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
-// Fall back on a non-optimized implementation on non-Glibc based targets.
-// This code swaps one byte at a time and is probably an order of magnitude
-// slower. Currently this performance difference is not important, because
-// byte swapping only happens when importing a checkpoint from one hardware
-// architecture onto a different architecture.
-
-#define BYTE_SWAP_16(x) (  \
-  (((x) & 0x00ff) << 8) \
-  | (((x) & 0xff00) >> 8) \
+// On non-Linux, but little-endian, environments, use htonl/s, which byte-swap 
+// when the host byte order is little-endian. POSIX doesn't define a 64-bit 
+// version of these library functions, so we roll our own.
+#include <arpa/inet.h>
+#define BYTE_SWAP_16(x) htons (x)
+#define BYTE_SWAP_32(x) htonl (x)
+#define BYTE_SWAP_64(x) ( \
+    (uint64_t(htonl((x) & 0x00000000ffffffffUL)) << 32) \
+    | (htonl(((x) & 0xffffffff00000000UL) >> 32)) \
 )
 
-#define BYTE_SWAP_32(x) (\
-  (((x) & 0x000000ffU) << 24) \
-  | (((x) & 0x0000ff00U) << 8) \
-  | (((x) & 0x00ff0000U) >> 8) \
-  | (((x) & 0xff000000U) >> 24) \
+#else // not defined(__linux__) and (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+
+// Fall back on a non-optimized implementation on other big-endian targets.
+// This code swaps one byte at a time and is probably an order of magnitude
+// slower.
+
+#define BYTE_SWAP_16(x) ( \
+    (((x) & 0x00ff) << 8) \
+    | (((x) & 0xff00) >> 8) \
+)
+
+#define BYTE_SWAP_32(x) ( \
+    (((x) & 0x000000ffU) << 24) \
+    | (((x) & 0x0000ff00U) << 8) \
+    | (((x) & 0x00ff0000U) >> 8) \
+    | (((x) & 0xff000000U) >> 24) \
 )
 
 #define BYTE_SWAP_64(x) (\
