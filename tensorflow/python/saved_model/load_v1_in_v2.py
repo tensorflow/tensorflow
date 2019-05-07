@@ -199,6 +199,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         meta_graph_def.meta_info_def.tensorflow_version)
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
+    root.graph = wrapped.graph
+    root.prune = wrapped.prune
     return root
 
 

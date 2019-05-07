@@ -307,8 +307,8 @@ class LoadTest(test.TestCase):
   def _no_signatures_model(self):
     export_graph = ops.Graph()
     with export_graph.as_default():
-      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
-
+      inp = array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+      array_ops.identity(inp + 1., name="out")
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
         b = builder_impl.SavedModelBuilder(path)
@@ -377,6 +377,13 @@ class LoadTest(test.TestCase):
         lift_to_graph.UnliftableError,
         "signature needs an input for each placeholder.*\n\nUnable to lift"):
       load.load(path)
+
+  def test_custom_pruning(self):
+    path = self._no_signatures_model()
+    root = load.load(path)
+    fn = root.prune("x:0", "out:0")
+    self.assertEqual(2., self.evaluate(fn(x=array_ops.ones([]))))
+    root.graph.as_graph_element("x:0")
 
 if __name__ == "__main__":
   test.main()

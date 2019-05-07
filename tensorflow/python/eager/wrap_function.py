@@ -186,6 +186,8 @@ class WrappedFunction(function.ConcreteFunction):
   def prune(self, feeds, fetches, name=None, input_signature=None):
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
+    feeds = nest.map_structure(self.graph.as_graph_element, feeds)
+    fetches = nest.map_structure(self.graph.as_graph_element, fetches)
     flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
