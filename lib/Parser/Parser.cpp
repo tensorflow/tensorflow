@@ -45,9 +45,16 @@ using llvm::MemoryBuffer;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-/// Simple enum to make code read better in cases that would otherwise return a
-/// bool value.  Failure is "true" in a boolean context.
-enum ParseResult { ParseSuccess, ParseFailure };
+/// Simple wrapper class around LogicalResult that allows for explicit
+/// conversion to bool. This allows for the parser to chain together parse rules
+/// without the clutter of "failed/succeeded".
+class ParseResult : public LogicalResult {
+public:
+  ParseResult(LogicalResult result = success()) : LogicalResult(result) {}
+
+  /// Failure is true in a boolean context.
+  explicit operator bool() const { return failed(*this); }
+};
 
 namespace {
 class Parser;
@@ -217,14 +224,14 @@ public:
   ParseResult parseOptionalTrailingLocation(Owner *owner) {
     // If there is a 'loc' we parse a trailing location.
     if (!getToken().is(Token::kw_loc))
-      return ParseSuccess;
+      return success();
 
     // Parse the location.
     llvm::Optional<Location> directLoc;
     if (parseLocation(&directLoc))
-      return ParseFailure;
+      return failure();
     owner->setLoc(*directLoc);
-    return ParseSuccess;
+    return success();
   }
 
   /// Parse an inline location.
@@ -248,10 +255,10 @@ ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
-    return ParseFailure;
+    return failure();
 
   getContext()->emitError(getEncodedSourceLocation(loc), message);
-  return ParseFailure;
+  return failure();
 }
 
 /// Consume the specified token if present and return success.  On failure,
@@ -259,7 +266,7 @@ ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
 ParseResult Parser::parseToken(Token::Kind expectedToken,
                                const Twine &message) {
   if (consumeIf(expectedToken))
-    return ParseSuccess;
+    return success();
   return emitError(message);
 }
 
@@ -269,14 +276,14 @@ ParseResult Parser::parseCommaSeparatedList(
     const std::function<ParseResult()> &parseElement) {
   // Non-empty case starts with an element.
   if (parseElement())
-    return ParseFailure;
+    return failure();
 
   // Otherwise we have a list of comma separated elements.
   while (consumeIf(Token::comma)) {
     if (parseElement())
-      return ParseFailure;
+      return failure();
   }
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a comma-separated list of elements, terminated with an arbitrary
@@ -293,15 +300,15 @@ ParseResult Parser::parseCommaSeparatedListUntil(
     if (!allowEmptyList)
       return emitError("expected list element");
     consumeToken(rightToken);
-    return ParseSuccess;
+    return success();
   }
 
   if (parseCommaSeparatedList(parseElement) ||
       parseToken(rightToken, "expected ',' or '" +
                                  Token::getTokenSpelling(rightToken) + "'"))
-    return ParseFailure;
+    return failure();
 
-  return ParseSuccess;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -431,7 +438,7 @@ ParseResult Parser::parseXInDimensionList() {
   // Consume the 'x'.
   consumeToken(Token::bare_identifier);
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a dimension list of a tensor or memref type.  This populates the
@@ -477,10 +484,10 @@ Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
 
     // Make sure we have an 'x' or something like 'xbf32'.
     if (parseXInDimensionList())
-      return ParseFailure;
+      return failure();
   }
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse the body of a pretty dialect type, which starts and ends with <>'s,
@@ -549,7 +556,7 @@ ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
   unsigned length = curPtr - prettyName.begin();
   prettyName = StringRef(prettyName.begin(), length);
   consumeToken();
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse an extended type.
@@ -758,7 +765,7 @@ Type Parser::parseMemRefType() {
         return emitError("affine map after memory space in memref type");
       auto affineMap = parseAttribute();
       if (!affineMap)
-        return ParseFailure;
+        return failure();
 
       // Verify that the parsed attribute is an affine map.
       if (auto affineMapAttr = affineMap.dyn_cast<AffineMapAttr>())
@@ -766,7 +773,7 @@ Type Parser::parseMemRefType() {
       else
         return emitError("expected affine map in memref type");
     }
-    return ParseSuccess;
+    return success();
   };
 
   // Parse a list of mappings and address space if present.
@@ -810,7 +817,7 @@ ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseType();
     elements.push_back(elt);
-    return elt ? ParseSuccess : ParseFailure;
+    return elt ? success() : failure();
   };
 
   return parseCommaSeparatedList(parseElt);
@@ -823,16 +830,16 @@ ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
 ///
 ParseResult Parser::parseTypeListParens(SmallVectorImpl<Type> &elements) {
   if (parseToken(Token::l_paren, "expected '('"))
-    return ParseFailure;
+    return failure();
 
   // Handle empty lists.
   if (getToken().is(Token::r_paren))
-    return consumeToken(), ParseSuccess;
+    return consumeToken(), success();
 
   if (parseTypeListNoParens(elements) ||
       parseToken(Token::r_paren, "expected ')'"))
-    return ParseFailure;
-  return ParseSuccess;
+    return failure();
+  return success();
 }
 
 /// Parse a function result type.
@@ -846,9 +853,9 @@ ParseResult Parser::parseFunctionResultTypes(SmallVectorImpl<Type> &elements) {
 
   Type t = parseNonFunctionType();
   if (!t)
-    return ParseFailure;
+    return failure();
   elements.push_back(t);
-  return ParseSuccess;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -900,7 +907,7 @@ ParseResult TensorLiteralParser::parseElement() {
   case Token::minus: {
     auto result = p.parseAttribute(eltTy);
     if (!result)
-      return ParseResult::ParseFailure;
+      return failure();
     // check result matches the element type.
     switch (eltTy.getKind()) {
     case StandardTypes::BF16:
@@ -940,7 +947,7 @@ ParseResult TensorLiteralParser::parseElement() {
   default:
     return p.emitError("expected element literal of primitive type");
   }
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a list of either lists or elements, returning the dimensions of the
@@ -953,10 +960,11 @@ ParseResult
 TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   p.consumeToken(Token::l_square);
 
-  auto checkDims = [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
-                       const llvm::SmallVectorImpl<int64_t> &newDims) {
+  auto checkDims =
+      [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
+          const llvm::SmallVectorImpl<int64_t> &newDims) -> ParseResult {
     if (prevDims == newDims)
-      return ParseSuccess;
+      return success();
     return p.emitError("tensor literal is invalid; ranks are not consistent "
                        "between elements");
   };
@@ -964,29 +972,29 @@ TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   bool first = true;
   llvm::SmallVector<int64_t, 4> newDims;
   unsigned size = 0;
-  auto parseCommaSeparatedList = [&]() {
+  auto parseCommaSeparatedList = [&]() -> ParseResult {
     llvm::SmallVector<int64_t, 4> thisDims;
     if (p.getToken().getKind() == Token::l_square) {
       if (parseList(thisDims))
-        return ParseFailure;
+        return failure();
     } else if (parseElement()) {
-      return ParseFailure;
+      return failure();
     }
     ++size;
     if (!first)
       return checkDims(newDims, thisDims);
     newDims = thisDims;
     first = false;
-    return ParseSuccess;
+    return success();
   };
   if (p.parseCommaSeparatedListUntil(Token::r_square, parseCommaSeparatedList))
-    return ParseFailure;
+    return failure();
 
   // Return the sublists' dimensions with 'size' prepended.
   dims.clear();
   dims.push_back(size);
   dims.append(newDims.begin(), newDims.end());
-  return ParseSuccess;
+  return success();
 }
 
 /// Given a parsed reference to a function name like @foo and a type that it
@@ -1174,7 +1182,7 @@ Attribute Parser::parseAttribute(Type type) {
 
     auto parseElt = [&]() -> ParseResult {
       elements.push_back(parseAttribute());
-      return elements.back() ? ParseSuccess : ParseFailure;
+      return elements.back() ? success() : failure();
     };
 
     if (parseCommaSeparatedListUntil(Token::r_square, parseElt))
@@ -1458,8 +1466,8 @@ ParseResult Parser::parseLocation(llvm::Optional<Location> *loc) {
   if (parseToken(Token::l_paren, "expected '(' in inline location") ||
       parseLocationInstance(loc) ||
       parseToken(Token::r_paren, "expected ')' in inline location"))
-    return ParseFailure;
-  return ParseSuccess;
+    return failure();
+  return success();
 }
 
 /// Specific location instances.
@@ -1497,7 +1505,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 
       // Parse the ':'.
       if (parseToken(Token::colon, "expected ':' in FileLineColLoc"))
-        return ParseFailure;
+        return failure();
 
       // Parse the column number.
       if (getToken().isNot(Token::integer))
@@ -1509,12 +1517,12 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 
       auto file = UniquedFilename::get(str, ctx);
       *loc = FileLineColLoc::get(file, line.getValue(), column.getValue(), ctx);
-      return ParseSuccess;
+      return success();
     }
 
     // Otherwise, this is a NameLoc.
     *loc = NameLoc::get(Identifier::get(str, ctx), ctx);
-    return ParseSuccess;
+    return success();
   }
 
   // Check for a 'unknown' for an unknown location.
@@ -1522,7 +1530,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
       getToken().getSpelling() == "unknown") {
     consumeToken(Token::bare_identifier);
     *loc = UnknownLoc::get(ctx);
-    return ParseSuccess;
+    return success();
   }
 
   // If the token is 'fused', then this is a fused location.
@@ -1539,19 +1547,19 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
       // Parse the '>' token.
       if (parseToken(Token::greater,
                      "expected '>' after fused location metadata"))
-        return ParseFailure;
+        return failure();
     }
 
     // Parse the '['.
     if (parseToken(Token::l_square, "expected '[' in fused location"))
-      return ParseFailure;
+      return failure();
 
     // Parse the internal locations.
     llvm::SmallVector<Location, 4> locations;
     do {
       llvm::Optional<Location> newLoc;
       if (parseLocationInstance(&newLoc))
-        return ParseFailure;
+        return failure();
       locations.push_back(*newLoc);
 
       // Parse the ','.
@@ -1559,14 +1567,14 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 
     // Parse the ']'.
     if (parseToken(Token::r_square, "expected ']' in fused location"))
-      return ParseFailure;
+      return failure();
 
     // Return the fused location.
     if (metadata)
       *loc = FusedLoc::get(locations, metadata, getContext());
     else
       *loc = FusedLoc::get(locations, ctx);
-    return ParseSuccess;
+    return success();
   }
 
   // Check for the 'callsite' signifying a callsite location.
@@ -1576,12 +1584,12 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 
     // Parse the '('.
     if (parseToken(Token::l_paren, "expected '(' in callsite location"))
-      return ParseFailure;
+      return failure();
 
     // Parse the callee location.
     llvm::Optional<Location> calleeLoc;
     if (parseLocationInstance(&calleeLoc))
-      return ParseFailure;
+      return failure();
 
     // Parse the 'at'.
     if (getToken().isNot(Token::bare_identifier) ||
@@ -1592,15 +1600,15 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
     // Parse the caller location.
     llvm::Optional<Location> callerLoc;
     if (parseLocationInstance(&callerLoc))
-      return ParseFailure;
+      return failure();
 
     // Parse the ')'.
     if (parseToken(Token::r_paren, "expected ')' in callsite location"))
-      return ParseFailure;
+      return failure();
 
     // Return the callsite location.
     *loc = CallSiteLoc::get(*calleeLoc, *callerLoc, ctx);
-    return ParseSuccess;
+    return success();
   }
 
   return emitError("expected location instance");
@@ -1615,7 +1623,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
   if (!consumeIf(Token::l_brace))
-    return ParseFailure;
+    return failure();
 
   auto parseElt = [&]() -> ParseResult {
     // We allow keywords as attribute names.
@@ -1629,21 +1637,21 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
     if (!consumeIf(Token::colon)) {
       // If there is no ':', we treat this as a unit attribute.
       attributes.push_back({nameId, builder.getUnitAttr()});
-      return ParseSuccess;
+      return success();
     }
 
     auto attr = parseAttribute();
     if (!attr)
-      return ParseFailure;
+      return failure();
 
     attributes.push_back({nameId, attr});
-    return ParseSuccess;
+    return success();
   };
 
   if (parseCommaSeparatedListUntil(Token::r_brace, parseElt))
-    return ParseFailure;
+    return failure();
 
-  return ParseSuccess;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2046,14 +2054,14 @@ ParseResult AffineParser::parseIdentifierDefinition(AffineExpr idExpr) {
   consumeToken(Token::bare_identifier);
 
   dimsAndSymbols.push_back({name, idExpr});
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse the list of dimensional identifiers to an affine map.
 ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
   if (parseToken(Token::l_paren,
                  "expected '(' at start of dimensional identifiers list")) {
-    return ParseFailure;
+    return failure();
   }
 
   auto parseElt = [&]() -> ParseResult {
@@ -2078,11 +2086,11 @@ ParseResult
 AffineParser::parseDimAndOptionalSymbolIdList(unsigned &numDims,
                                               unsigned &numSymbols) {
   if (parseDimIdList(numDims)) {
-    return ParseResult::ParseFailure;
+    return failure();
   }
   if (!getToken().is(Token::l_square)) {
     numSymbols = 0;
-    return ParseResult::ParseSuccess;
+    return success();
   }
   return parseSymbolIdList(numSymbols);
 }
@@ -2140,7 +2148,7 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
 
   // List of dimensional and optional symbol identifiers.
   if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
-    return ParseResult::ParseFailure;
+    return failure();
   }
 
   // This is needed for parsing attributes as we wouldn't know whether we would
@@ -2152,15 +2160,15 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
   } else if (isArrow) {
     parseToken(Token::arrow, "expected '->' or '['");
     map = parseAffineMapRange(numDims, numSymbols);
-    return map ? ParseSuccess : ParseFailure;
+    return map ? success() : failure();
   } else if (parseToken(Token::colon, "expected ':' or '['")) {
-    return ParseFailure;
+    return failure();
   }
 
   if ((set = parseIntegerSetConstraints(numDims, numSymbols)))
-    return ParseSuccess;
+    return success();
 
-  return ParseFailure;
+  return failure();
 }
 
 /// Parse the range and sizes affine map definition inline.
@@ -2177,7 +2185,7 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   SmallVector<AffineExpr, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseAffineExpr();
-    ParseResult res = elt ? ParseSuccess : ParseFailure;
+    ParseResult res = elt ? success() : failure();
     exprs.push_back(elt);
     return res;
   };
@@ -2204,14 +2212,14 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
       auto loc = getToken().getLoc();
       auto elt = parseAffineExpr();
       if (!elt)
-        return ParseFailure;
+        return failure();
 
       if (!elt.isSymbolicOrConstant())
         return emitError(loc,
                          "size expressions cannot refer to dimension values");
 
       rangeSizes.push_back(elt);
-      return ParseSuccess;
+      return success();
     };
 
     if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
@@ -2382,7 +2390,7 @@ private:
 ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
   auto braceLoc = getToken().getLoc();
   if (parseToken(Token::l_brace, "expected '{' in function"))
-    return ParseFailure;
+    return failure();
 
   // Make sure we have at least one block.
   if (getToken().is(Token::r_brace))
@@ -2399,11 +2407,11 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 
   // Parse the first block.
   if (parseBlock(firstBlock))
-    return ParseFailure;
+    return failure();
 
   // Parse the remaining list of blocks.
   if (parseRegionBody(function->getBody()))
-    return ParseFailure;
+    return failure();
 
   // Verify that all referenced blocks were defined.
   if (!forwardRef.empty()) {
@@ -2419,7 +2427,7 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
       auto loc = SMLoc::getFromPointer(entry.first);
       emitError(loc, "reference to an undefined block");
     }
-    return ParseFailure;
+    return failure();
   }
 
   return finalizeFunction(braceLoc);
@@ -2434,11 +2442,11 @@ ParseResult FunctionParser::parseOperationRegion(
     ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
   // Parse the '{'.
   if (parseToken(Token::l_brace, "expected '{' to begin a region"))
-    return ParseFailure;
+    return failure();
 
   // Check for an empty region.
   if (entryArguments.empty() && consumeIf(Token::r_brace))
-    return ParseSuccess;
+    return success();
   Block *currentBlock = builder.getInsertionBlock();
 
   // Parse the first block directly to allow for it to be unnamed.
@@ -2449,12 +2457,12 @@ ParseResult FunctionParser::parseOperationRegion(
     if (addDefinition(placeholderArgPair.first,
                       block->addArgument(placeholderArgPair.second))) {
       delete block;
-      return ParseFailure;
+      return failure();
     }
 
   if (parseBlock(block)) {
     delete block;
-    return ParseFailure;
+    return failure();
   }
 
   // Verify that no other arguments were parsed.
@@ -2467,11 +2475,11 @@ ParseResult FunctionParser::parseOperationRegion(
   // Parse the rest of the region.
   region.push_back(block);
   if (parseRegionBody(region))
-    return ParseFailure;
+    return failure();
 
   // Reset insertion point to the current block.
   builder.setInsertionPointToEnd(currentBlock);
-  return ParseSuccess;
+  return success();
 }
 
 /// Region.
@@ -2483,10 +2491,10 @@ ParseResult FunctionParser::parseRegionBody(Region &region) {
   while (!consumeIf(Token::r_brace)) {
     Block *newBlock = nullptr;
     if (parseBlock(newBlock))
-      return ParseFailure;
+      return failure();
     region.push_back(newBlock);
   }
-  return ParseSuccess;
+  return success();
 }
 
 /// Block declaration.
@@ -2507,7 +2515,7 @@ ParseResult FunctionParser::parseBlock(Block *&block) {
   SMLoc nameLoc = getToken().getLoc();
   auto name = getTokenSpelling();
   if (parseToken(Token::caret_identifier, "expected block name"))
-    return ParseFailure;
+    return failure();
 
   block = defineBlockNamed(name, nameLoc, block);
 
@@ -2520,11 +2528,11 @@ ParseResult FunctionParser::parseBlock(Block *&block) {
     SmallVector<BlockArgument *, 8> bbArgs;
     if (parseOptionalBlockArgList(bbArgs, block) ||
         parseToken(Token::r_paren, "expected ')' to end argument list"))
-      return ParseFailure;
+      return failure();
   }
 
   if (parseToken(Token::colon, "expected ':' after block name"))
-    return ParseFailure;
+    return failure();
 
   return parseBlockBody(block);
 }
@@ -2540,12 +2548,12 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
     switch (getToken().getKind()) {
     default:
       if (parseOperation())
-        return ParseFailure;
+        return failure();
       break;
     }
   }
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Create and remember a new placeholder for a forward reference.
@@ -2617,10 +2625,10 @@ ParseResult FunctionParser::finalizeFunction(SMLoc loc) {
       auto loc = SMLoc::getFromPointer(entry.first);
       emitError(loc, "use of undeclared SSA value name");
     }
-    return ParseFailure;
+    return failure();
   }
 
-  return ParseSuccess;
+  return success();
 }
 
 FunctionParser::~FunctionParser() {
@@ -2660,7 +2668,7 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
 
   entries[useInfo.number].first = value;
   entries[useInfo.number].second = useInfo.loc;
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a SSA operand for an operation.
@@ -2672,7 +2680,7 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
   result.number = 0;
   result.loc = getToken().getLoc();
   if (parseToken(Token::percent_identifier, "expected SSA operand"))
-    return ParseFailure;
+    return failure();
 
   // If we have an affine map ID, it is a result number.
   if (getToken().is(Token::hash_identifier)) {
@@ -2683,7 +2691,7 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
     consumeToken(Token::hash_identifier);
   }
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a (possibly empty) list of SSA operands.
@@ -2694,13 +2702,13 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
 ParseResult
 FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
   if (getToken().isNot(Token::percent_identifier))
-    return ParseSuccess;
+    return success();
   return parseCommaSeparatedList([&]() -> ParseResult {
     SSAUseInfo result;
     if (parseSSAUse(result))
-      return ParseFailure;
+      return failure();
     results.push_back(result);
-    return ParseSuccess;
+    return success();
   });
 }
 
@@ -2734,16 +2742,16 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
     SmallVectorImpl<ValueTy *> &results) {
   SmallVector<SSAUseInfo, 4> valueIDs;
   if (parseOptionalSSAUseList(valueIDs))
-    return ParseFailure;
+    return failure();
 
   // If there were no operands, then there is no colon or type lists.
   if (valueIDs.empty())
-    return ParseSuccess;
+    return success();
 
   SmallVector<Type, 4> types;
   if (parseToken(Token::colon, "expected ':' in operand list") ||
       parseTypeListNoParens(types))
-    return ParseFailure;
+    return failure();
 
   if (valueIDs.size() != types.size())
     return emitError("expected " + Twine(valueIDs.size()) +
@@ -2754,10 +2762,10 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
     if (auto *value = resolveSSAUse(valueIDs[i], types[i]))
       results.push_back(cast<ValueTy>(value));
     else
-      return ParseFailure;
+      return failure();
   }
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Get the block with the specified name, creating it if it doesn't already
@@ -2805,7 +2813,7 @@ bool FunctionParser::parseSuccessorAndUseList(
     Block *&dest, SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::caret_identifier))
-    return emitError("expected block name");
+    return emitError("expected block name"), true;
   dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
   consumeToken();
 
@@ -2827,7 +2835,7 @@ ParseResult FunctionParser::parseSuccessors(
     SmallVectorImpl<Block *> &destinations,
     SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
   if (parseToken(Token::l_square, "expected '['"))
-    return ParseFailure;
+    return failure();
 
   auto parseElt = [this, &destinations, &operands]() {
     Block *dest;
@@ -2835,7 +2843,7 @@ ParseResult FunctionParser::parseSuccessors(
     bool r = parseSuccessorAndUseList(dest, destOperands);
     destinations.push_back(dest);
     operands.push_back(destOperands);
-    return r ? ParseFailure : ParseSuccess;
+    return r ? failure() : success();
   };
   return parseCommaSeparatedListUntil(Token::r_square, parseElt,
                                       /*allowEmptyList=*/false);
@@ -2848,7 +2856,7 @@ ParseResult FunctionParser::parseSuccessors(
 ParseResult FunctionParser::parseOptionalBlockArgList(
     SmallVectorImpl<BlockArgument *> &results, Block *owner) {
   if (getToken().is(Token::r_brace))
-    return ParseSuccess;
+    return success();
 
   // If the block already has arguments, then we're handling the entry block.
   // Parse and register the names for the arguments, but do not add them.
@@ -2876,7 +2884,7 @@ ParseResult FunctionParser::parseOptionalBlockArgList(
             return {};
           return type;
         });
-    return type ? ParseSuccess : ParseFailure;
+    return type ? success() : failure();
   });
 }
 
@@ -2911,24 +2919,24 @@ ParseResult FunctionParser::parseOperation() {
     } else {
       // Otherwise, this is a comma separated list of result ids.
       if (consumeIf(Token::comma)) {
-        auto parseNextResult = [&] {
+        auto parseNextResult = [&]() -> ParseResult {
           // Parse the next result id.
           if (!getToken().is(Token::percent_identifier))
             return emitError("expected valid ssa identifier");
 
           resultIDs.emplace_back(getTokenSpelling(), getToken().getLoc());
           consumeToken(Token::percent_identifier);
-          return ParseSuccess;
+          return success();
         };
 
         if (parseCommaSeparatedList(parseNextResult))
-          return ParseFailure;
+          return failure();
       }
       numExpectedResults = resultIDs.size();
     }
 
     if (parseToken(Token::equal, "expected '=' after SSA name"))
-      return ParseFailure;
+      return failure();
   }
 
   Operation *op;
@@ -2941,7 +2949,7 @@ ParseResult FunctionParser::parseOperation() {
 
   // If parsing of the basic operation failed, then this whole thing fails.
   if (!op)
-    return ParseFailure;
+    return failure();
 
   // If the operation had a name, register it.
   if (!resultIDs.empty()) {
@@ -2958,21 +2966,21 @@ ParseResult FunctionParser::parseOperation() {
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
         if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
                           op->getResult(i)))
-          return ParseFailure;
+          return failure();
     } else {
       // Otherwise, we use the same name for all results.
       StringRef name = resultIDs.front().first;
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
         if (addDefinition({name, i, loc}, op->getResult(i)))
-          return ParseFailure;
+          return failure();
     }
   }
 
   // Try to parse the optional trailing location.
   if (parseOptionalTrailingLocation(op))
-    return ParseFailure;
+    return failure();
 
-  return ParseSuccess;
+  return success();
 }
 
 namespace {
@@ -3120,13 +3128,13 @@ public:
     return false;
   }
   bool parseComma() override {
-    return parser.parseToken(Token::comma, "expected ','");
+    return failed(parser.parseToken(Token::comma, "expected ','"));
   }
   bool parseColon() override {
-    return parser.parseToken(Token::colon, "expected ':'");
+    return failed(parser.parseToken(Token::colon, "expected ':'"));
   }
   bool parseEqual() override {
-    return parser.parseToken(Token::equal, "expected '='");
+    return failed(parser.parseToken(Token::equal, "expected '='"));
   }
 
   bool parseType(Type &result) override {
@@ -3206,7 +3214,7 @@ public:
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
       return false;
-    return parser.parseAttributeDict(result) == ParseFailure;
+    return failed(parser.parseAttributeDict(result));
   }
 
   /// Parse a function name like '@foo' and return the name in a form that can
@@ -3247,11 +3255,11 @@ public:
   }
 
   bool parseLParen() override {
-    return parser.parseToken(Token::l_paren, "expected '('");
+    return failed(parser.parseToken(Token::l_paren, "expected '('"));
   }
 
   bool parseRParen() override {
-    return parser.parseToken(Token::r_paren, "expected ')'");
+    return failed(parser.parseToken(Token::r_paren, "expected ')'"));
   }
 
   bool parseOperandList(SmallVectorImpl<OperandType> &result,
@@ -3355,7 +3363,7 @@ public:
       parsedRegionEntryArgumentPlaceholders.emplace_back(value);
     }
 
-    return parser.parseOperationRegion(region, regionArguments);
+    return failed(parser.parseOperationRegion(region, regionArguments));
   }
 
   /// Parse a region argument.  Region arguments define new values, so this also
@@ -3368,7 +3376,7 @@ public:
     if (auto defLoc = parser.getDefinitionLoc(argument.name, argument.number)) {
       parser.emitError(argument.location,
                        "redefinition of SSA value '" + argument.name + "'");
-      return parser.emitError(*defLoc, "previously defined here");
+      return parser.emitError(*defLoc, "previously defined here"), true;
     }
     return false;
   }
@@ -3511,7 +3519,7 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
   auto parseElt = [&]() -> ParseResult {
     bool isEq;
     auto elt = parseAffineConstraint(&isEq);
-    ParseResult res = elt ? ParseSuccess : ParseFailure;
+    ParseResult res = elt ? success() : failure();
     if (elt) {
       constraints.push_back(elt);
       isEqs.push_back(isEq);
@@ -3583,15 +3591,15 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
 
   // Parse the '='
   if (parseToken(Token::equal, "expected '=' in attribute alias definition"))
-    return ParseFailure;
+    return failure();
 
   // Parse the attribute value.
   Attribute attr = parseAttribute();
   if (!attr)
-    return ParseFailure;
+    return failure();
 
   getState().attributeAliasDefinitions[attrId] = attr;
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a type alias declaration.
@@ -3617,17 +3625,17 @@ ParseResult ModuleParser::parseTypeAliasDef() {
   // Parse the '=' and 'type'.
   if (parseToken(Token::equal, "expected '=' in type alias definition") ||
       parseToken(Token::kw_type, "expected 'type' in type alias definition"))
-    return ParseFailure;
+    return failure();
 
   // Parse the type.
   Type aliasedType = parseType();
   if (!aliasedType)
-    return ParseFailure;
+    return failure();
 
   // Register this alias with the parser state.
   getState().typeAliasDefinitions.try_emplace(aliasName, aliasedType);
 
-  return ParseSuccess;
+  return success();
 }
 
 /// Parse a (possibly empty) list of Function arguments with types.
@@ -3657,7 +3665,7 @@ ParseResult ModuleParser::parseArgumentList(
       argNames.push_back(name);
 
       if (parseToken(Token::colon, "expected ':'"))
-        return ParseFailure;
+        return failure();
     } else {
       // Reject this if the preceding argument had a name.
       if (!argNames.empty())
@@ -3667,17 +3675,17 @@ ParseResult ModuleParser::parseArgumentList(
     // Parse argument type
     auto elt = parseType();
     if (!elt)
-      return ParseFailure;
+      return failure();
     argTypes.push_back(elt);
 
     // Parse the attribute dict.
     SmallVector<NamedAttribute, 2> attrs;
     if (getToken().is(Token::l_brace)) {
       if (parseAttributeDict(attrs))
-        return ParseFailure;
+        return failure();
     }
     argAttrs.push_back(attrs);
-    return ParseSuccess;
+    return success();
   };
 
   return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
@@ -3703,16 +3711,16 @@ ParseResult ModuleParser::parseFunctionSignature(
 
   SmallVector<Type, 4> argTypes;
   if (parseArgumentList(argTypes, argNames, argAttrs))
-    return ParseFailure;
+    return failure();
 
   // Parse the return type if present.
   SmallVector<Type, 4> results;
   if (consumeIf(Token::arrow)) {
     if (parseFunctionResultTypes(results))
-      return ParseFailure;
+      return failure();
   }
   type = builder.getFunctionType(argTypes, results);
-  return ParseSuccess;
+  return success();
 }
 
 /// Function declarations.
@@ -3732,13 +3740,13 @@ ParseResult ModuleParser::parseFunc() {
 
   auto loc = getToken().getLoc();
   if (parseFunctionSignature(name, type, argNames, argAttrs))
-    return ParseFailure;
+    return failure();
 
   // If function attributes are present, parse them.
   SmallVector<NamedAttribute, 8> attrs;
   if (consumeIf(Token::kw_attributes)) {
     if (parseAttributeDict(attrs))
-      return ParseFailure;
+      return failure();
   }
 
   // Okay, the function signature was parsed correctly, create the function now.
@@ -3753,7 +3761,7 @@ ParseResult ModuleParser::parseFunc() {
 
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
-    return ParseFailure;
+    return failure();
 
   // Add the attributes to the function arguments.
   for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i)
@@ -3761,7 +3769,7 @@ ParseResult ModuleParser::parseFunc() {
 
   // External functions have no body.
   if (getToken().isNot(Token::l_brace))
-    return ParseSuccess;
+    return success();
 
   // Create the parser.
   auto parser = FunctionParser(getState(), function);
@@ -3775,7 +3783,7 @@ ParseResult ModuleParser::parseFunc() {
   if (hadNamedArguments) {
     for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
       if (parser.addDefinition({argNames[i], 0, loc}, function->getArgument(i)))
-        return ParseFailure;
+        return failure();
     }
   }
 
@@ -3795,7 +3803,7 @@ ParseResult ModuleParser::finalizeModule() {
     if (!resolvedFunction) {
       forwardRef.second->emitError("reference to undefined function '" +
                                    name.str() + "'");
-      return ParseFailure;
+      return failure();
     }
 
     remappingTable[builder.getFunctionAttr(forwardRef.second)] =
@@ -3804,7 +3812,7 @@ ParseResult ModuleParser::finalizeModule() {
 
   // If there was nothing to remap, then we're done.
   if (remappingTable.empty())
-    return ParseSuccess;
+    return success();
 
   // Otherwise, walk the entire module replacing uses of one attribute set
   // with the correct ones.
@@ -3815,7 +3823,7 @@ ParseResult ModuleParser::finalizeModule() {
   for (auto forwardRef : getState().functionForwardRefs)
     delete forwardRef.second;
   getState().functionForwardRefs.clear();
-  return ParseSuccess;
+  return success();
 }
 
 /// This is the top-level module parser.
@@ -3824,7 +3832,7 @@ ParseResult ModuleParser::parseModule() {
     switch (getToken().getKind()) {
     default:
       emitError("expected a top level entity");
-      return ParseFailure;
+      return failure();
 
       // If we got to the end of the file, then we're done.
     case Token::eof:
@@ -3834,21 +3842,21 @@ ParseResult ModuleParser::parseModule() {
     // stop.  Someday we could introduce error recovery if there was demand
     // for it.
     case Token::error:
-      return ParseFailure;
+      return failure();
 
     case Token::hash_identifier:
       if (parseAttributeAliasDef())
-        return ParseFailure;
+        return failure();
       break;
 
     case Token::exclamation_identifier:
       if (parseTypeAliasDef())
-        return ParseFailure;
+        return failure();
       break;
 
     case Token::kw_func:
       if (parseFunc())
-        return ParseFailure;
+        return failure();
       break;
     }
   }
