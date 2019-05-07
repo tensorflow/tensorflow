@@ -300,7 +300,7 @@ def get_data_files(data_sources):
     a list of data_files.
 
   Raises:
-    ValueError: if not data files are not found
+    ValueError: if data files are not found
 
   """
   if isinstance(data_sources, (list, tuple)):
