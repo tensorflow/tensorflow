@@ -120,6 +120,9 @@ public:
   static constexpr unsigned kNumConfigOperands = 6;
 };
 
+#define GET_OP_CLASSES
+#include "mlir/GPU/GPUOps.h.inc"
+
 } // end namespace gpu
 } // end namespace mlir
 

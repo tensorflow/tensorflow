@@ -14,6 +14,39 @@ dialect uses `gpu` as its canonical prefix.
 
 ## Operations
 
+### `gpu.block_dim`
+
+Returns the number of threads in the thread block (aka the block size) along the
+x, y, or z `dimension`.
+
+Example:
+
+```mlir {.mlir}
+  %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
+```
+
+### `gpu.block_id`
+
+Returns the block id, i.e. the index of the current block within the grid along
+the x, y, or z `dimension`.
+
+Example:
+
+```mlir {.mlir}
+  %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
+```
+
+### `gpu.grid_dim`
+
+Returns the number of thread blocks in the grid along the x, y, or z
+`dimension`.
+
+Example:
+
+```mlir {.mlir}
+  %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+```
+
 ### `gpu.launch`
 
 Launch a kernel on the specified grid of thread blocks. The body of the kernel
@@ -108,9 +141,25 @@ Example:
 func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
     attributes { nvvm.kernel: true } {
 
-  // Operations that produce block/thread IDs and sizes will be injected when
-  // outlining the `gpu.launch` body to a function called by `gpu.launch_func`.
-  // TODO(tjoerg): Update this example when outlining is implemented.
+  // Operations that produce block/thread IDs and dimensions will be injected
+  // when outlining the `gpu.launch` body to a function called by
+  // `gpu.launch_func`.
+  // TODO(tjoerg): Implement gpu.launch body outlining.
+  %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
+  %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
+  %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)
+
+  %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
+  %bDimY = "gpu.block_dim"() {dimension: "y"} : () -> (index)
+  %bDimZ = "gpu.block_dim"() {dimension: "z"} : () -> (index)
+
+  %bIdX = "gpu.block_id"() {dimension: "x"} : () -> (index)
+  %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
+  %bIdZ = "gpu.block_id"() {dimension: "z"} : () -> (index)
+
+  %gDimX = "gpu.grid_dim"() {dimension: "x"} : () -> (index)
+  %gDimY = "gpu.grid_dim"() {dimension: "y"} : () -> (index)
+  %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
 
   "some_op"(%bx, %tx) : (index, index) -> ()
   %42 = load %arg1[%bx] : memref<?xf32, 1>
@@ -121,4 +170,15 @@ func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
                   %arg0, %arg1)      // Arguments passed to the kernel function.
       {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()}  // Kernel function.
       : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+```
+
+### `gpu.thread_id`
+
+Returns the thread id, i.e. the index of the current thread within the block
+along the x, y, or z `dimension`.
+
+Example:
+
+```mlir {.mlir}
+  %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
 ```

@@ -53,20 +53,38 @@ func @nested_isolation(%sz : index) {
   return
 }
 
-func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
+func @kernel_1(%arg0 : f32, %arg1 : memref<?xf32, 1>)
     attributes { nvvm.kernel: true } {
+  %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
+  %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
+  %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)
+
+  %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
+  %bDimY = "gpu.block_dim"() {dimension: "y"} : () -> (index)
+  %bDimZ = "gpu.block_dim"() {dimension: "z"} : () -> (index)
+
+  %bIdX = "gpu.block_id"() {dimension: "x"} : () -> (index)
+  %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
+  %bIdZ = "gpu.block_id"() {dimension: "z"} : () -> (index)
+
+  %gDimX = "gpu.grid_dim"() {dimension: "x"} : () -> (index)
+  %gDimY = "gpu.grid_dim"() {dimension: "y"} : () -> (index)
+  %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+
+  "some_op"(%bIdX, %tIdX) : (index, index) -> ()
+  %42 = load %arg1[%bIdX] : memref<?xf32, 1>
   return
 }
 
 func @foo() {
   %0 = "op"() : () -> (f32)
-  %1 = "op"() : () -> (!llvm<"float*">)
+  %1 = "op"() : () -> (memref<?xf32, 1>)
   // CHECK: %c8 = constant 8
   %cst = constant 8 : index
 
-  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()} : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1 : (f32, memref<?xf32, 1>) -> ()} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1)
-      {kernel: @kernel_1 : (f32, !llvm<"float*">) -> ()}
-      : (index, index, index, index, index, index, f32, !llvm<"float*">) -> ()
+      {kernel: @kernel_1 : (f32, memref<?xf32, 1>) -> ()}
+      : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   return
 }

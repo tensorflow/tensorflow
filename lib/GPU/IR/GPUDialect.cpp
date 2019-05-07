@@ -31,8 +31,14 @@ StringRef GPUDialect::getDialectName() { return "gpu"; }
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchOp, LaunchFuncOp>();
+  addOperations<LaunchOp, LaunchFuncOp,
+#define GET_OP_LIST
+#include "mlir/GPU/GPUOps.cpp.inc"
+                >();
 }
+
+#define GET_OP_CLASSES
+#include "mlir/GPU/GPUOps.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // LaunchOp
