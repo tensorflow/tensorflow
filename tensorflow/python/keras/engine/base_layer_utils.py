@@ -589,7 +589,7 @@ def mark_as_return(outputs, acd):
 
     # Handle TensorFlow Probability attached metadata.
     # TODO(b/132076537): Remove this once TFP uses `CompositeTensor`.
-    if getattr(tensor, '_tfp_distribution', None):
+    if getattr(tensor, '_tfp_distribution', None) is not None:
       return_tensor._tfp_distribution = tensor._tfp_distribution
 
     return return_tensor
