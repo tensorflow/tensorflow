@@ -57,6 +57,8 @@ namespace tensorflow {
 
 namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
+using jit::DeviceId;
+using jit::DeviceSet;
 using xla::StatusOr;
 
 // The clusters we create here are eventually lowered into an
@@ -117,8 +119,8 @@ class MarkForCompilationPassImpl {
    public:
     // Constructs a trivial cluster representing a single TF node.
     Cluster(int tf_graph_node_id, int effective_cluster_size,
-            bool has_functional_control_flow,
-            absl::flat_hash_set<string> devices, string resource_op_device,
+            bool has_functional_control_flow, DeviceSet devices,
+            absl::optional<DeviceId> resource_op_device,
             absl::optional<int> resource_var_operation_node_id,
             absl::optional<DeadnessPredicate> deadness_predicate,
             bool is_xla_compile_attr_true, absl::optional<string> xla_scope)
@@ -126,7 +128,7 @@ class MarkForCompilationPassImpl {
           effective_cluster_size_(effective_cluster_size),
           has_functional_control_flow_(has_functional_control_flow),
           devices_(std::move(devices)),
-          resource_op_device_(std::move(resource_op_device)),
+          resource_op_device_(resource_op_device),
           deadness_predicate_(deadness_predicate),
           is_xla_compile_attr_true_(is_xla_compile_attr_true),
           xla_scope_(std::move(xla_scope)) {
@@ -162,12 +164,14 @@ class MarkForCompilationPassImpl {
     }
 
     // The set of devices nodes in the cluster are placed on.
-    const absl::flat_hash_set<string>& devices() const { return devices_; }
+    const DeviceSet& devices() const { return devices_; }
 
     // If the cluster has a resource operation then the device the resource
     // operation is placed on.  A cluster may have resource ops placed only on a
     // single device.
-    const string& resource_op_device() const { return resource_op_device_; }
+    const absl::optional<DeviceId>& resource_op_device() const {
+      return resource_op_device_;
+    }
 
     // If not nullopt the a predicate that is true iff the cluster is alive.
     // Otherwise the user has (unsafely) disabled deadness analysis.  If this is
@@ -208,8 +212,8 @@ class MarkForCompilationPassImpl {
     int cycles_graph_node_id_;
     int effective_cluster_size_;
     bool has_functional_control_flow_;
-    absl::flat_hash_set<string> devices_;
-    string resource_op_device_;
+    DeviceSet devices_;
+    absl::optional<DeviceId> resource_op_device_;
     absl::optional<DeadnessPredicate> deadness_predicate_;
     bool is_xla_compile_attr_true_;
     absl::optional<string> xla_scope_;
@@ -279,17 +283,17 @@ class MarkForCompilationPassImpl {
 
   Cluster* MakeNewCluster(int cycles_graph_node_id, int effective_cluster_size,
                           bool has_functional_control_flow,
-                          absl::flat_hash_set<string> devices,
-                          string resource_op_device,
+                          const DeviceSet& device_set,
+                          absl::optional<DeviceId> resource_op_device,
                           absl::optional<int> resource_var_operation_node_id,
                           absl::optional<DeadnessPredicate> deadness_predicate,
                           bool is_xla_compile_attr_true,
                           absl::optional<string> xla_scope) {
     cluster_storage_.push_back(absl::make_unique<Cluster>(
         cycles_graph_node_id, effective_cluster_size,
-        has_functional_control_flow, std::move(devices),
-        std::move(resource_op_device), resource_var_operation_node_id,
-        deadness_predicate, is_xla_compile_attr_true, xla_scope));
+        has_functional_control_flow, device_set, resource_op_device,
+        resource_var_operation_node_id, deadness_predicate,
+        is_xla_compile_attr_true, xla_scope));
     return cluster_storage_.back().get();
   }
 
@@ -486,13 +490,15 @@ void MarkForCompilationPassImpl::Cluster::Merge(Cluster* other) {
   effective_cluster_size_ += other->effective_cluster_size_;
   has_functional_control_flow_ |= other->has_functional_control_flow_;
 
-  for (string other_device : other->devices_) {
-    devices_.insert(other_device);
-  }
-  other->devices_.clear();
+  devices_.UnionWith(other->devices_);
 
-  if (resource_op_device_.empty()) {
-    resource_op_device_ = std::move(other->resource_op_device_);
+  DCHECK(!(resource_op_device_.has_value() &&
+           other->resource_op_device_.has_value()) ||
+         *resource_op_device_ == *other->resource_op_device_)
+      << "AreDevicesCompatible should have returned false otherwise!";
+
+  if (!resource_op_device_.has_value()) {
+    resource_op_device_ = other->resource_op_device_;
   }
 
   is_xla_compile_attr_true_ |= other->is_xla_compile_attr_true_;
@@ -779,12 +785,14 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
           deadness_analysis_->GetPredicateFor(node, Graph::kControlSlot));
     }
 
-    const string& device = !node->assigned_device_name().empty()
-                               ? node->assigned_device_name()
-                               : node->requested_device();
+    const string& device_name_str = !node->assigned_device_name().empty()
+                                        ? node->assigned_device_name()
+                                        : node->requested_device();
+    TF_ASSIGN_OR_RETURN(DeviceId device,
+                        device_info_cache_.GetIdFor(device_name_str));
 
     bool is_resource_op = HasResourceInputOrOutput(*node);
-    string resource_op_device;
+    absl::optional<DeviceId> resource_op_device;
     if (is_resource_op) {
       resource_op_device = device;
     }
@@ -805,15 +813,14 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 
-    absl::flat_hash_set<string> devices;
-    devices.insert(device);
+    DeviceSet devices;
+    devices.Insert(device);
 
     Cluster* new_cluster = MakeNewCluster(
         /*cycles_graph_node_id=*/node->id(),
         /*effective_cluster_size=*/effective_cluster_size,
-        /*has_functional_control_flow=*/has_functional_control_flow,
-        std::move(devices), std::move(resource_op_device),
-        resource_var_operation_node_id, deadness_predicate,
+        /*has_functional_control_flow=*/has_functional_control_flow, devices,
+        resource_op_device, resource_var_operation_node_id, deadness_predicate,
         /*is_xla_compile_attr_true=*/is_xla_compile_attr_true,
         GetXlaScope(node));
 
@@ -1255,27 +1262,22 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
 
 StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
     const Cluster& cluster_a, const Cluster& cluster_b) {
-  std::vector<string> devices;
-  absl::c_remove_copy(cluster_a.devices(), std::back_inserter(devices), "");
-  absl::c_remove_copy(cluster_b.devices(), std::back_inserter(devices), "");
-  absl::c_sort(devices);
-
-  if (devices.empty()) {
-    return false;
-  }
+  DeviceSet devices = cluster_a.devices();
+  devices.UnionWith(cluster_b.devices());
 
   // First check if we will even be able to pick a device for the larger
   // combined cluster.
-  bool can_pick_device;
-  TF_RETURN_IF_ERROR(CanPickDeviceForXla(
-      devices, /*allow_mixing_unknown_and_cpu=*/false, &can_pick_device));
+  TF_ASSIGN_OR_RETURN(
+      bool can_pick_device,
+      CanPickDeviceForXla(device_info_cache_, devices,
+                          /*allow_mixing_unknown_and_cpu=*/false));
   if (!can_pick_device) {
     return false;
   }
 
-  string chosen_device;
-  TF_RETURN_IF_ERROR(PickDeviceForXla(
-      devices, /*allow_mixing_unknown_and_cpu=*/false, &chosen_device));
+  TF_ASSIGN_OR_RETURN(DeviceId chosen_device,
+                      PickDeviceForXla(device_info_cache_, devices,
+                                       /*allow_mixing_unknown_and_cpu=*/false));
 
   // If we are able to pick a device `chosen_device` for the larger cluster, the
   // resource operations in `cluster_a` and `cluster_b` must be placed on the
@@ -1283,9 +1285,11 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   // _XlaRun kernels are going to run on and therefore try to access the
   // resource variables from `chosen_device`, which will be an error if the
   // resource variables are placed on some other device.
-  auto resource_op_device_ok = [&](const string& resource_op_device) {
-    return resource_op_device.empty() || resource_op_device == chosen_device;
-  };
+  auto resource_op_device_ok =
+      [&](absl::optional<DeviceId> resource_op_device) {
+        return !resource_op_device.has_value() ||
+               *resource_op_device == chosen_device;
+      };
 
   return resource_op_device_ok(cluster_a.resource_op_device()) &&
          resource_op_device_ok(cluster_b.resource_op_device());
@@ -1294,22 +1298,18 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
 // Returns `true` iff we should compile `cluster`.
 StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
     const Cluster& cluster) {
-  std::vector<string> devices;
-  absl::c_remove_copy(cluster.devices(), std::back_inserter(devices), "");
-  absl::c_sort(devices);
+  TF_ASSIGN_OR_RETURN(DeviceId chosen_device,
+                      PickDeviceForXla(device_info_cache_, cluster.devices(),
+                                       /*allow_mixing_unknown_and_cpu=*/false));
 
-  string chosen_device;
-  TF_RETURN_IF_ERROR(PickDeviceForXla(
-      devices, /*allow_mixing_unknown_and_cpu=*/false, &chosen_device));
-
-  TF_ASSIGN_OR_RETURN(const DeviceType& device_type,
-                      device_info_cache_.GetDeviceTypeFor(chosen_device));
-  TF_ASSIGN_OR_RETURN(const XlaOpRegistry::DeviceRegistration* registration,
-                      device_info_cache_.GetCompilationDevice(chosen_device));
+  const DeviceType& device_type =
+      device_info_cache_.GetDeviceTypeFor(chosen_device);
+  const XlaOpRegistry::DeviceRegistration* registration =
+      device_info_cache_.GetCompilationDevice(chosen_device);
   TF_RET_CHECK(registration)
-      << "chosen device = " << chosen_device
+      << "chosen device = " << device_info_cache_.GetNameFor(chosen_device)
       << "; device type = " << device_type.type() << "; devices ("
-      << devices.size() << ") = " << absl::StrJoin(devices, ", ");
+      << device_info_cache_.DebugString(cluster.devices());
 
   bool should_compile =
       cluster.is_xla_compile_attr_true() ||
@@ -1343,7 +1343,8 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
   }
 
   VLOG(3) << (should_compile ? "Compiling" : "Not compiling")
-          << " cluster with device " << chosen_device;
+          << " cluster with device "
+          << device_info_cache_.GetNameFor(chosen_device);
 
   return should_compile;
 }
