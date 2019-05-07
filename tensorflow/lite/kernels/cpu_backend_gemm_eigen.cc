@@ -57,10 +57,6 @@ void GemmImplUsingEigen::Run(
   EigenMatrixMapColMajorMutable eigen_dst(dst_data, dst_params.rows,
                                           dst_params.cols);
 
-  // Likewise, the assumption that params.bias != nullptr has already been
-  // checked.
-  EigenVectorMapConst eigen_bias(params.bias, lhs_params.rows);
-
   if (rhs_params.cols == 1) {
     eigen_dst.col(0).noalias() = eigen_lhs * eigen_rhs.col(0);
   } else if (lhs_params.rows == 1) {
@@ -69,9 +65,14 @@ void GemmImplUsingEigen::Run(
     eigen_dst.noalias() = eigen_lhs * eigen_rhs;
   }
 
-  eigen_dst = (eigen_dst.colwise() + eigen_bias)
-                  .cwiseMin(params.clamp_max)
-                  .cwiseMax(params.clamp_min);
+  if (params.bias) {
+    EigenVectorMapConst eigen_bias(params.bias, lhs_params.rows);
+    eigen_dst = (eigen_dst.colwise() + eigen_bias)
+                    .cwiseMin(params.clamp_max)
+                    .cwiseMax(params.clamp_min);
+  } else {
+    eigen_dst = eigen_dst.cwiseMin(params.clamp_max).cwiseMax(params.clamp_min);
+  }
 }
 
 }  // namespace detail
