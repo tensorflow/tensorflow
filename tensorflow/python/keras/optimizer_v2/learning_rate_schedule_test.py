@@ -21,8 +21,11 @@ from __future__ import print_function
 import math
 from absl.testing import parameterized
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -116,6 +119,26 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(decayed_lr(x)), 0.01, 1e-6)
     self.evaluate(x.assign(999))
     self.assertAllClose(self.evaluate(decayed_lr(x)), 0.001, 1e-6)
+
+  def testPiecewiseFunction(self, serialize):
+    del serialize
+    with context.eager_mode():
+      v = variables.Variable(1.)
+      def loss_fn():
+        return v * v
+      learning_rate = learning_rate_schedule.PiecewiseConstantDecay(
+          [1.], [1., 0.1])
+      opt = gradient_descent.SGD(learning_rate=learning_rate)
+
+      @def_function.function
+      def minimize():
+        with backprop.GradientTape() as tape:
+          loss = loss_fn()
+        g = tape.gradient(loss, [v])
+        opt.apply_gradients(list(zip(g, [v])))
+
+      minimize()
+      self.assertAllEqual(v.read_value(), -1.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstantEdgeCases(self, serialize):

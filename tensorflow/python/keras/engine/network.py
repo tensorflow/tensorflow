@@ -1234,6 +1234,23 @@ class Network(base_layer.Layer):
     constructor. See the documentation of `tf.train.Checkpoint` and
     `tf.keras.Model` for details.
 
+    While the formats are the same, do not mix `save_weights` and
+    `tf.train.Checkpoint`. Checkpoints saved by `Model.save_weights` should be
+    loaded using `Model.load_weights`. Checkpoints saved using
+    `tf.train.Checkpoint.save` should be restored using the corresponding
+    `tf.train.Checkpoint.restore`. Prefer `tf.train.Checkpoint` over
+    `save_weights` for training checkpoints.
+
+    The TensorFlow format matches objects and variables by starting at a root
+    object, `self` for `save_weights`, and greedily matching attribute
+    names. For `Model.save` this is the `Model`, and for `Checkpoint.save` this
+    is the `Checkpoint` even if the `Checkpoint` has a model attached. This
+    means saving a `tf.keras.Model` using `save_weights` and loading into a
+    `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
+    the `Model`'s variables. See the [guide to training
+    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
+    on the TensorFlow format.
+
     Arguments:
         filepath: String, path to the file to save the weights to. When saving
             in TensorFlow format, this is the prefix used for checkpoint files

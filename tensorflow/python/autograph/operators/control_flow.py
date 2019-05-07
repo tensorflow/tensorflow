@@ -25,11 +25,13 @@ from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import tensor_array_ops
 
 
 LIMIT_PYTHON_ITERATIONS = True
@@ -87,6 +89,9 @@ def for_stmt(iter_, extra_test, body, init_state):
   if isinstance(iter_, dataset_ops.DatasetV2):
     return _tf_dataset_for_stmt(iter_, extra_test, body, init_state)
 
+  if isinstance(iter_, iterator_ops.IteratorV2):
+    return _tf_iterator_for_stmt(iter_, extra_test, body, init_state)
+
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
   if custom_handler is not None:
@@ -108,13 +113,18 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
 
 
 def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
-  """Overload of for_stmt that iterates over objects that admit a length."""
+  """Overload of for_stmt that iterates over TF entities that admit a length."""
   _disallow_undefs_into_loop(*init_state)
 
   n = py_builtins.len_(iter_)
+  # TODO(b/117628877): Revisit performance once XLA has the necessary support.
+  # Note: using a TensorArray creates an extra copy, but can calculate
+  # gradients more efficiently than StridedSlice.
+  ta = tensor_array_ops.TensorArray(iter_.dtype, size=n)
+  iter_ = ta.unstack(iter_)
 
   def while_body(iterate_index, *state):
-    iterate = iter_[iterate_index]
+    iterate = iter_.read(iterate_index)
     new_state = body(iterate, *state)
 
     state = (iterate_index + 1,)
@@ -147,6 +157,55 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
     results = ()
 
   return results
+
+
+def _tf_iterator_for_stmt(itr, extra_test, body, init_state):
+  """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
+  _disallow_undefs_into_loop(*init_state)
+
+  def while_body_actual(opt_iterate, *state):
+    new_state = body(opt_iterate.get_value(), *state)
+    # TODO(mdan): Fix this inconsistency in the converter.
+    if new_state is None:
+      new_state = ()
+    return new_state
+
+  def while_body(has_next, state):
+    """Main loop body."""
+    opt_iterate = iterator_ops.get_next_as_optional(itr)
+    has_next = opt_iterate.has_value()
+
+    if not init_state:
+      # cond_v2 requires at least one state tensor in V1.
+      dummy_state = (constant_op.constant(()),)
+    else:
+      dummy_state = ()
+
+    # TODO(mdan): If tf.while_loop supported Optional, this could be avoided.
+    new_state = control_flow_ops.cond(
+        has_next,
+        lambda: dummy_state + while_body_actual(opt_iterate, *state),
+        lambda: dummy_state + state)
+
+    if dummy_state:
+      new_state = new_state[1:]
+
+    return has_next, new_state
+
+  def while_cond(has_next, state):
+    if extra_test is not None:
+      return control_flow_ops.cond(
+          has_next,
+          lambda: extra_test(*state),
+          lambda: False)
+    return has_next
+
+  _, final_state = _tf_while_stmt(
+      while_cond,
+      while_body,
+      init_state=(True, init_state),
+      opts=None)
+  return final_state
 
 
 def _tf_dataset_for_stmt(ds, extra_test, body, init_state):

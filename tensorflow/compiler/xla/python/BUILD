@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -171,6 +172,7 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",

@@ -128,7 +128,6 @@ bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
   } else if (builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
              builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_SVDF ||
-             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
              builtin_op_code == BuiltinOperator_RNN ||
              builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
              builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
@@ -262,7 +261,6 @@ void UpdateInt8OperatorVersions(ModelT* model) {
   for (int i = 0; i < model->operator_codes.size(); ++i) {
     const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
     if (op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
-        op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
         op_code == BuiltinOperator_RNN ||
         op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
         op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
@@ -271,6 +269,7 @@ void UpdateInt8OperatorVersions(ModelT* model) {
 
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED ||
                op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
+               op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
                op_code == BuiltinOperator_LSTM) {
       model->operator_codes[i]->version = 3;
     }
@@ -286,7 +285,8 @@ bool IsQuantizationPassThroughOps(
   const OperatorT* consumer_op = consumer_op_infos.front().op;
   const BuiltinOperator op_code =
       model->operator_codes[consumer_op->opcode_index]->builtin_code;
-  return op_code == BuiltinOperator_GATHER;
+  return op_code == BuiltinOperator_GATHER ||
+         op_code == BuiltinOperator_EMBEDDING_LOOKUP;
 }
 
 // Copies quantization parameters from input to output and returns consumers of

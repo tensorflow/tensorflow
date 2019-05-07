@@ -66,7 +66,7 @@ class _Loader(object):
     self._restore_checkpoint()
 
     for node in self._nodes:
-      if isinstance(node, tracking.TrackableResource):
+      if isinstance(node, tracking.CapturableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
         if not context.executing_eagerly():
           ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
@@ -122,8 +122,8 @@ class _Loader(object):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
-      elif isinstance(obj, tracking.TrackableResource):
-        # Note: this executes restored functions in the TrackableResource.
+      elif isinstance(obj, tracking.CapturableResource):
+        # Note: this executes restored functions in the CapturableResource.
         return obj.resource_handle
       raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
@@ -380,6 +380,9 @@ def load(export_dir, tags=None):
                        saved_model_proto,
                        export_dir)
       root = loader.get(0)
+    root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
+    root.tensorflow_git_version = (
+        meta_graph_def.meta_info_def.tensorflow_git_version)
   else:
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)

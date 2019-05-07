@@ -1337,8 +1337,8 @@ def run_cuda_only(func=None):
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
-  Warning: if not GPU version of the package is installed, the function would
-  also, return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
+  Warning: if a non-GPU version of the package is installed, the function would
+  also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
   was build with CUDA support.
 
   Args:
@@ -1606,6 +1606,36 @@ def no_xla_auto_jit(description):  # pylint: disable=unused-argument
   return no_xla_auto_jit_impl
 
 
+# The description is just for documentation purposes.
+def xla_allow_fallback(description):  # pylint: disable=unused-argument
+
+  def xla_allow_fallback_impl(func):
+    """Allow fallback to TF even though testing xla."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # Update the global XLABuildOpsPassFlags to enable lazy compilation,
+          # which allows the compiler to fall back to TF classic. Remember the
+          # old value so that we can reset it.
+          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          result = func(self, *args, **kwargs)
+          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          return result
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return xla_allow_fallback_impl
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -1625,10 +1655,10 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      os.putenv(
-          "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false " +
-          os.getenv("TF_XLA_FLAGS", ""))
+      pywrap_tensorflow.TF_SetXLaAutoJitMode("2")
+      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
+      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+
     self._threads = []
     self._tempdir = None
     self._cached_session = None

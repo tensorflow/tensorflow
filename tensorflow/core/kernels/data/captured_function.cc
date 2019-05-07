@@ -516,7 +516,6 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -558,7 +557,6 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -599,7 +597,6 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -655,7 +652,6 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(args), &captured_func_->captured_inputs(), ret_types_);
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ResourceMgr* resource_mgr = lib_->device()->resource_manager();
   ScopedStepContainer* step_container = new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {

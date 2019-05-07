@@ -911,6 +911,7 @@ tf_cuda_library(
         "framework/kernel_def_builder.h",
         "framework/kernel_def_util.h",
         "framework/log_memory.h",
+        "framework/logging.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
         "framework/node_def_builder.h",
@@ -1678,6 +1679,13 @@ tf_cuda_library(
 )
 
 # -----------------------------------------------------------------------------
+# MKL targets
+cc_library(
+    name = "mkl_graph_util",
+    hdrs = ["graph/mkl_graph_util.h"],
+)
+
+# -----------------------------------------------------------------------------
 # Public Android targets
 
 # Android-specific BUILD targets
@@ -2196,6 +2204,13 @@ tf_pyclif_proto_library(
     name = "protobuf/saved_model_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/saved_model.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/variable_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/variable.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -3234,6 +3249,7 @@ tf_cuda_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/clusters:virtual_cluster",

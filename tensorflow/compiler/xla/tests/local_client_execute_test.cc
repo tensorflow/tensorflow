@@ -130,14 +130,14 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   // Create x as a col-major array.
   auto x_array = LiteralToShapedBuffer(LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1})));
-  EXPECT_TRUE(LayoutUtil::Equal(x_array.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      x_array.on_device_shape().layout(), LayoutUtil::MakeLayout({0, 1})));
 
   // Create y as a row-major array.
   auto y_array = LiteralToShapedBuffer(LiteralUtil::CreateR2WithLayout(
       {{10.0f, 20.0f}, {30.0f, 40.0f}}, LayoutUtil::MakeLayout({1, 0})));
-  EXPECT_TRUE(LayoutUtil::Equal(y_array.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      y_array.on_device_shape().layout(), LayoutUtil::MakeLayout({1, 0})));
 
   ScopedShapedBuffer result_colmaj =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
@@ -171,8 +171,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {0, 1})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_colmaj.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      result_colmaj.on_device_shape().layout(),
+      LayoutUtil::MakeLayout({0, 1})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
                                        ShapedBufferToLiteral(result_colmaj),
                                        error_spec_);
@@ -183,8 +184,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {1, 0})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_rowmaj.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      result_rowmaj.on_device_shape().layout(),
+      LayoutUtil::MakeLayout({1, 0})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
                                        ShapedBufferToLiteral(result_rowmaj),
                                        error_spec_);

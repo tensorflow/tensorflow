@@ -20,14 +20,15 @@ from __future__ import print_function
 
 import copy
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.ops.array_ops import concat
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import util as trackable_util
@@ -330,7 +331,7 @@ class TimeDistributedTest(test.TestCase):
           [None, 2, 8])
 
 
-class BidirectionalTest(test.TestCase):
+class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional(self):
     rnn = keras.layers.SimpleRNN
@@ -770,12 +771,12 @@ class BidirectionalTest(test.TestCase):
       wrapped = keras.layers.Bidirectional(
           rnn(units, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
-      self.assertEqual(len(outputs), 5)
+      self.assertLen(outputs, 5)
       self.assertEqual(outputs[0].shape.as_list(), [None, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
-      self.assertEqual(len(y), 5)
+      self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
   def test_Bidirectional_sequence_output_with_masking(self):
@@ -797,13 +798,120 @@ class BidirectionalTest(test.TestCase):
           rnn(units, return_sequences=True),
           merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
-      self.assertEqual(len(outputs), 1)
+      self.assertLen(outputs, 1)
       self.assertEqual(outputs[0].shape.as_list(), [None, timesteps, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
-      self.assertEqual(len(y), 1)
+      self.assertLen(y, 1)
       self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
+
+  @parameterized.parameters(['sum', 'concat'])
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_custom_backward_layer(self, mode):
+    rnn = keras.layers.SimpleRNN
+    samples = 2
+    dim = 2
+    timesteps = 2
+    output_dim = 2
+
+    x = np.random.random((samples, timesteps, dim))
+    target_dim = 2 * output_dim if mode == 'concat' else output_dim
+    y = np.random.random((samples, target_dim))
+    forward_layer = rnn(output_dim)
+    backward_layer = rnn(output_dim, go_backwards=True)
+
+    # test with Sequential model
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Bidirectional(
+            forward_layer,
+            merge_mode=mode,
+            backward_layer=backward_layer,
+            input_shape=(timesteps, dim)))
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(x, y, epochs=1, batch_size=1)
+
+    # check whether the model variables are present in the
+    # trackable list of objects
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
+    for v in model.variables:
+      self.assertIn(v, checkpointed_objects)
+
+    # test compute output shape
+    ref_shape = model.layers[-1].output.shape
+    shape = model.layers[-1].compute_output_shape((None, timesteps, dim))
+    self.assertListEqual(shape.as_list(), ref_shape.as_list())
+
+    # test config
+    model.get_config()
+    model = keras.models.model_from_json(model.to_json())
+    model.summary()
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_custom_backward_layer_error_check(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'should have different `go_backwards` value.'):
+      keras.layers.Bidirectional(
+          forward_layer, merge_mode='concat', backward_layer=backward_layer)
+
+    for attr in ('stateful', 'return_sequences', 'return_state'):
+      kwargs = {attr: True}
+      backward_layer = rnn(units, go_backwards=True, **kwargs)
+      with self.assertRaisesRegexp(
+          ValueError, 'expected to have the same value for attribute ' + attr):
+        keras.layers.Bidirectional(
+            forward_layer, merge_mode='concat', backward_layer=backward_layer)
+
+  def test_custom_backward_layer_serialization(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units, go_backwards=True)
+    layer = keras.layers.Bidirectional(
+        forward_layer, merge_mode='concat', backward_layer=backward_layer)
+    config = layer.get_config()
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    new_config = layer_from_config.get_config()
+    self.assertDictEqual(config, new_config)
+
+  def test_rnn_layer_name(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    layer = keras.layers.Bidirectional(rnn(units, name='rnn'))
+    config = layer.get_config()
+
+    self.assertEqual(config['layer']['config']['name'], 'rnn')
+
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    self.assertEqual(layer_from_config.forward_layer.name, 'forward_rnn')
+    self.assertEqual(layer_from_config.backward_layer.name, 'backward_rnn')
+
+  def test_custom_backward_rnn_layer_name(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units, go_backwards=True)
+    layer = keras.layers.Bidirectional(
+        forward_layer, merge_mode='concat', backward_layer=backward_layer)
+    config = layer.get_config()
+
+    self.assertEqual(config['layer']['config']['name'], 'lstm')
+    self.assertEqual(config['backward_layer']['config']['name'], 'lstm_1')
+
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    self.assertEqual(layer_from_config.forward_layer.name, 'forward_lstm')
+    self.assertEqual(layer_from_config.backward_layer.name, 'backward_lstm_1')
 
 
 def _to_list(ls):

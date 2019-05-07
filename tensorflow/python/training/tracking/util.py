@@ -53,8 +53,15 @@ from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
+
+
+# Loaded lazily due to a circular dependency.
+keras_backend = lazy_loader.LazyLoader(
+    "keras_backend", globals(),
+    "tensorflow.python.keras.backend")
 
 
 class _ObjectGraphProtoPrettyPrinter(object):
@@ -602,7 +609,7 @@ def streaming_restore(status, session=None):
     # Streaming restore is the default/only behavior when executing eagerly.
     return
   if session is None:
-    session = ops.get_default_session()
+    session = keras_backend.get_session()
   if isinstance(status, NameBasedSaverStatus):
     raise NotImplementedError(
         "Streaming restore not supported from name-based checkpoints. File a "
@@ -743,7 +750,7 @@ class CheckpointLoadStatus(_LoadStatus):
     if context.executing_eagerly():
       return  # Run eagerly
     if session is None:
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
     session.run(self._checkpoint.restore_ops, feed_dict=self._feed_dict)
 
   def initialize_or_restore(self, session=None):
@@ -764,7 +771,7 @@ class CheckpointLoadStatus(_LoadStatus):
     if context.executing_eagerly():
       return  # Initialization and restoration ops are run eagerly
     if session is None:
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
     all_objects = self._graph_view.list_objects()
     already_initialized_objects = object_identity.ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
@@ -842,7 +849,7 @@ class InitializationOnlyStatus(_LoadStatus):
     if context.executing_eagerly():
       return  # run eagerly
     if session is None:
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
     trackable_objects = self._graph_view.list_objects()
     initializers = [
         c.initializer for c in trackable_objects
@@ -924,7 +931,7 @@ class NameBasedSaverStatus(_LoadStatus):
     if context.executing_eagerly():
       return  # Nothing to do, variables are restored on creation.
     if session is None:
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
     with ops.device("/cpu:0"):
       saveables = self._gather_saveable_objects()
       v1_saver_lib.Saver(saveables).restore(
@@ -1096,7 +1103,7 @@ class TrackableSaver(object):
     if not use_session:
       session = None
     elif session is None:
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
 
     if session:
       return session.run(save_path, feed_dict=feed_dict)
@@ -1344,6 +1351,16 @@ class CheckpointV1(tracking.AutoTrackable):
   as a single checkpoint. This avoids copying all variables to one worker, but
   does require that all workers see a common filesystem.
 
+  While `tf.keras.Model.save_weights` and `tf.train.Checkpoint.save` save in the
+  same format, note that the root of the resulting checkpoint is the object the
+  save method is attached to. This means saving a `tf.keras.Model` using
+  `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
+  attached (or vice versa) will not match the `Model`'s variables. See the
+  [guide to training
+  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
+  training checkpoints.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1469,7 +1486,7 @@ class CheckpointV1(tracking.AutoTrackable):
             "update metadata. tf.train.latest_checkpoint and related APIs will "
             "not see this checkpoint.")
       if session is None:
-        session = ops.get_default_session()
+        session = keras_backend.get_session()
       if self._save_counter is None:
         # When graph building, if this is a new save counter variable then it
         # needs to be initialized before assign_add. This is only an issue if
@@ -1671,6 +1688,16 @@ class Checkpoint(tracking.AutoTrackable):
   as a single checkpoint. This avoids copying all variables to one worker, but
   does require that all workers see a common filesystem.
 
+  While `tf.keras.Model.save_weights` and `tf.train.Checkpoint.save` save in the
+  same format, note that the root of the resulting checkpoint is the object the
+  save method is attached to. This means saving a `tf.keras.Model` using
+  `save_weights` and loading into a `tf.train.Checkpoint` with a `Model`
+  attached (or vice versa) will not match the `Model`'s variables. See the
+  [guide to training
+  checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for
+  details. Prefer `tf.train.Checkpoint` over `tf.keras.Model.save_weights` for
+  training checkpoints.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1789,7 +1816,7 @@ class Checkpoint(tracking.AutoTrackable):
             "tf.train.Checkpoint.write(), a lower-level API which does not "
             "update metadata. tf.train.latest_checkpoint and related APIs will "
             "not see this checkpoint.")
-      session = ops.get_default_session()
+      session = keras_backend.get_session()
       if self._save_counter is None:
         # When graph building, if this is a new save counter variable then it
         # needs to be initialized before assign_add. This is only an issue if

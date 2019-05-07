@@ -392,7 +392,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeturePossible(self):
+  def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeaturePossible(self):
     """Testing Gain calculation with min node weight and no split."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -692,6 +692,44 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
   def testMakeStatsSummaryNumericalPrecisionMegaBatch(self):
     """Tests numeric precision."""
     self._verify_precision(length=50000000)
+
+
+class BestFeatureSplitMultiClass(test_util.TensorFlowTestCase):
+  """Tests multi-class/multi-regression for best splits."""
+
+  def testCalculateBestMultiDimFeatureSplitsWithoutRegularizationMultiClass(
+      self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateMultiDimBestFeatureSplitsWithL2(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateMultiDimBestFeatureSplitsWithMinNodeWeight(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateMultiDimBestFeatureSplitsGradAlmostZero(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateBestMultiDimFeatureSplitsWithL1(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateBestMultiDimFeatureSplitsWithTreeComplexity(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateMultiDimBestSplitsWithMinNodeWeight(self):
+    # TODO(crawles)
+    pass
+
+  def testCalculateBestMultiDimFeatureSplitsWithNoSplitOnFeaturePossible(
+      self):
+    # TODO(crawles)
+    pass
 
 
 if __name__ == '__main__':

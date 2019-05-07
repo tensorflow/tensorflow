@@ -479,7 +479,7 @@ def _make_inputs_match(true_graph, false_graph, true_inputs, false_inputs):
 
 
 def _make_output_composite_tensors_match(true_graph, false_graph):
-  """Rewrites {true,false}_graph's outputs to use the same _TensorLike classes.
+  """Modifies true_graph and false_graph so they have the same output signature.
 
   Currently the only transformation implemented is turning a Tensor into an
   equivalent IndexedSlices if the other branch returns an IndexedSlices.

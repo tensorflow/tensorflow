@@ -38,14 +38,6 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerSession_allocate(
 JNIEXPORT void JNICALL Java_org_tensorflow_EagerSession_delete(JNIEnv *, jclass,
                                                                jlong);
 
-/*
- * Class:     org_tensorflow_EagerSession
- * Method:    allocateOperation
- * Signature: (JLjava/lang/String;)J
- */
-JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerSession_allocateOperation(
-    JNIEnv *, jclass, jlong, jstring);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

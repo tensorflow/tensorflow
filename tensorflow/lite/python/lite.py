@@ -154,12 +154,13 @@ class TFLiteConverterBase(object):
 
   def _grappler_config(self):
     is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == set(self._target_ops)
+    optimizers = ["constfold"]
     if is_only_flex_enabled:
       # The layout optimizer turns NHCW to NCHW. This provides performance
       # optimizations when Flex mode is enabled. However, this is not compatible
       # with builtin ops.
-      return _get_grappler_config(["layout"])
-    return None
+      optimizers.append("layout")
+    return _get_grappler_config(optimizers)
 
   def _validate_representative_dataset(self):
     if self.representative_dataset:
@@ -350,14 +351,12 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     # Run a Grappler pass.
     graph_def = frozen_func.graph.as_graph_def()
-    config = self._grappler_config()
-    if config:
-      graph_def = _run_graph_optimizations(
-          graph_def,
-          input_tensors,
-          output_tensors,
-          config,
-          graph=frozen_func.graph)
+    graph_def = _run_graph_optimizations(
+        graph_def,
+        input_tensors,
+        output_tensors,
+        config=self._grappler_config(),
+        graph=frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
@@ -879,12 +878,11 @@ class TFLiteConverter(TFLiteConverterBase):
     optimized_graph = self._graph_def
     if self.inference_type != constants.QUANTIZED_UINT8:
       try:
-        config = self._grappler_config()
-        if config:
-          optimized_graph = _run_graph_optimizations(self._graph_def,
-                                                     self._input_tensors,
-                                                     self._output_tensors,
-                                                     config)
+        optimized_graph = _run_graph_optimizations(
+            self._graph_def,
+            self._input_tensors,
+            self._output_tensors,
+            config=self._grappler_config())
       except Exception:
         optimized_graph = self._graph_def
 

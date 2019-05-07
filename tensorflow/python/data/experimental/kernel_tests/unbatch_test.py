@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -82,18 +83,37 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]
     self.assertDatasetProduces(data, expected_output=expected_output)
 
-  def testUnbatchDatasetWithDenseAndSparseTensor(self):
+  def testUnbatchDatasetWithDenseSparseAndRaggedTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
         values=list(range(10)),
         dense_shape=[10, 10])
-    data = dataset_ops.Dataset.from_tensors((list(range(10)), st))
+    rt = ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]],
+                                            [[5]], [[6]], [[7]], [[8]], [[9]]])
+    data = dataset_ops.Dataset.from_tensors((list(range(10)), st, rt))
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    expected_output = [(i, sparse_tensor.SparseTensorValue([[i]], [i], [10]))
+    expected_output = [(i, sparse_tensor.SparseTensorValue([[i]], [i], [10]),
+                        ragged_factory_ops.constant_value([[i]]))
                        for i in range(10)]
-    self.assertDatasetProduces(data, expected_output=expected_output)
+    self.assertDatasetProduces(
+        data, expected_output=expected_output)
+
+  def testUnbatchDatasetWithRaggedTensor(self):
+    rt = ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]],
+                                            [[5]], [[6]], [[7]], [[8]], [[9]]])
+    data = dataset_ops.Dataset.from_tensors(rt)
+    data = data.apply(batching.unbatch())
+    data = data.batch(5)
+    data = data.batch(2)
+    data = data.apply(batching.unbatch())
+    expected_output = [
+        ragged_factory_ops.constant_value([[[0]], [[1]], [[2]], [[3]], [[4]]]),
+        ragged_factory_ops.constant_value([[[5]], [[6]], [[7]], [[8]], [[9]]]),
+    ]
+    self.assertDatasetProduces(
+        data, expected_output=expected_output)
 
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])

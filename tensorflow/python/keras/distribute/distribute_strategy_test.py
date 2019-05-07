@@ -776,7 +776,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
 
       with distribution.scope():
         model_with_ds_strategy = get_model()
@@ -1374,7 +1374,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
 
       with distribution.scope():
         model_with_ds_strategy = get_model()

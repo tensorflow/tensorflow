@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "@com_google_googletest//:gtest",
@@ -112,6 +113,35 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_backend_threadpool",
+    hdrs = [
+        "cpu_backend_threadpool.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/kernels/internal:types",
+        ":cpu_backend_context",
+        # For now this unconditionally depends on both ruy and gemmlowp.
+        # We only need to depend on gemmlowp when tflite_with_ruy
+        # is false, but putting these dependencies in a select() seems to
+        # defeat copybara's rewriting rules.
+        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/experimental/ruy:thread_pool",
+        "@gemmlowp",
+    ],
+)
+
+cc_test(
+    name = "cpu_backend_threadpool_test",
+    srcs = ["cpu_backend_threadpool_test.cc"],
+    deps = [
+        ":cpu_backend_context",
+        ":cpu_backend_threadpool",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "cpu_backend_gemm",
     srcs = [
         "cpu_backend_gemm_ruy.h",
@@ -120,6 +150,7 @@ cc_library(
         "//conditions:default": [
             "cpu_backend_gemm_gemmlowp.h",
             "cpu_backend_gemm_eigen.h",
+            "cpu_backend_gemm_eigen.cc",
         ],
     }),
     hdrs = [
@@ -145,6 +176,7 @@ cc_test(
     srcs = ["cpu_backend_gemm_test.cc"],
     tags = ["notsan"],
     deps = [
+        ":cpu_backend_context",
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest",
         # ruy's reference path provides the reference implementation
@@ -295,6 +327,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "reverse.cc",
         "reverse_sequence.cc",
+        "round.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -654,6 +687,21 @@ cc_test(
 )
 
 cc_test(
+    name = "round_test",
+    size = "small",
+    srcs = ["round_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "elementwise_test",
     size = "small",
     srcs = ["elementwise_test.cc"],
@@ -878,8 +926,9 @@ cc_test(
     srcs = ["embedding_lookup_test.cc"],
     deps = [
         ":builtin_ops",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
     ],
 )

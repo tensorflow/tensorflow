@@ -27,10 +27,12 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import autograph
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -589,7 +591,7 @@ class Layer(module.Module):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
-        with graph.as_default(), ops.name_scope(self._name_scope()):
+        with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
@@ -617,18 +619,25 @@ class Layer(module.Module):
           if (self._expects_training_arg and
               not base_layer_utils.training_arg_passed_to_call(
                   tf_inspect.getfullargspec(self.call), args, kwargs) and
-              getattr(graph, 'name', None) == 'keras_graph'):
+              base_layer_utils.is_in_keras_graph()):
             learning_phase_passed_by_framework = True
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
                   input_list,
-                  self._mixed_precision_policy.should_cast_variables), (
-                      base_layer_utils.AutoAddUpdates(self,
-                                                      inputs)) as auto_updater:
-                outputs = call_fn(inputs, *args, **kwargs)
-                auto_updater.set_outputs(outputs)
+                  self._mixed_precision_policy.should_cast_variables):
+                # Add auto_control_deps in V2 when they are not already added by
+                # a `tf.function`.
+                if (ops.executing_eagerly_outside_functions() and
+                    not base_layer_utils.is_in_eager_or_tf_function()):
+                  with auto_control_deps.AutomaticControlDependencies() as acd:
+                    outputs = call_fn(inputs, *args, **kwargs)
+                    # Wrap Tensors in `outputs` in `tf.identity` to avoid
+                    # circular dependencies.
+                    outputs = base_layer_utils.mark_as_return(outputs, acd)
+                else:
+                  outputs = call_fn(inputs, *args, **kwargs)
 
             except TypeError as e:
               exception_str = str(e)
@@ -669,7 +678,7 @@ class Layer(module.Module):
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
-        with ops.name_scope(self._name_scope()):
+        with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           with base_layer_utils.autocast_context_manager(
               input_list, self._mixed_precision_policy.should_cast_variables):
@@ -739,7 +748,25 @@ class Layer(module.Module):
   def updates(self):
     if not self.trainable and not self.stateful:
       return []
-    return self._updates + self._gather_children_attribute('updates')
+    with backend.get_graph().as_default():
+      updates = []
+      for u in self._updates:
+        # Filter out updates created in a cross-replica context when in a
+        # replica context and vice versa.
+        if (getattr(u, '_in_cross_replica_context', False) !=
+            ds_context.in_cross_replica_context()):
+          continue
+        if callable(u):
+          try:
+            u = u()
+          except ValueError as e:
+            if 'Trying to capture a tensor from an inner function' in str(e):
+              base_layer_utils.check_graph_consistency(
+                  method='add_update', force_raise=True)
+            raise
+        base_layer_utils.check_graph_consistency(u, method='add_update')
+        updates.append(u)
+    return updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -1011,14 +1038,13 @@ class Layer(module.Module):
     """
     updates = generic_utils.to_list(updates)
 
-    if context.executing_eagerly():
-      # Don't run callable updates if currently executing inside the `call`
-      # of a Layer/Model with `trainable=False`.
+    # All updates can be run immediately in Eager or in a tf.function.
+    if base_layer_utils.is_in_eager_or_tf_function():
       if not base_layer_utils.is_in_frozen_context():
         for update in updates:
           if callable(update):
             update()
-      return  # Updates already applied when in eager mode.
+      return
 
     def process_update(x):
       """Standardize update ops.
@@ -1030,24 +1056,29 @@ class Layer(module.Module):
         An update op.
       """
       if callable(x):
-        x = x()
-      if isinstance(x, ops.Operation):
+        update = lambda: process_update(x())
+        if not ops.executing_eagerly_outside_functions():
+          # In V1 mode, call the callable right away and process. This is needed
+          # for TPU strategy.
+          return update()
+      elif isinstance(x, ops.Operation):
         update = x
       elif hasattr(x, 'op'):
         update = x.op
       else:
         update = ops.convert_to_tensor(x)
-      base_layer_utils.check_graph_consistency(update, method='add_update')
+      update._unconditional_update = (inputs is None)
+      update._in_cross_replica_context = (
+          ds_context.has_strategy() and ds_context.in_cross_replica_context())
       return update
 
     updates = [process_update(x) for x in updates]
+    # Non-callable Updates are run automatically inside `call` in V2, so
+    # they do not need to be tracked later.
+    if (ops.executing_eagerly_outside_functions() and
+        base_layer_utils.is_in_call_context()):
+      updates = [u for u in updates if callable(u)]
     self._updates += updates
-    if inputs is None:
-      for u in updates:
-        u._unconditional_update = True  # pylint: disable=protected-access
-    else:
-      for u in updates:
-        u._unconditional_update = False  # pylint: disable=protected-access
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1570,7 +1601,7 @@ class Layer(module.Module):
 
     def _loss_for_variable(v):
       """Creates a regularization loss `Tensor` for variable `v`."""
-      with ops.name_scope(name + '/Regularizer'):
+      with backend.name_scope(name + '/Regularizer'):
         regularization = regularizer(v)
       return regularization
 
@@ -1586,7 +1617,7 @@ class Layer(module.Module):
     # output, since it is output-specific.
     if self._activity_regularizer:
       output_list = nest.flatten(outputs)
-      with ops.name_scope('ActivityRegularizer'):
+      with backend.name_scope('ActivityRegularizer'):
         for output in output_list:
           activity_loss = self._activity_regularizer(output)
           batch_size = math_ops.cast(
@@ -1656,7 +1687,7 @@ class Layer(module.Module):
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:
-        with ops.name_scope(self.name):
+        with backend.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
     outputs = nest.pack_sequence_as(outputs, output_ls_copy)

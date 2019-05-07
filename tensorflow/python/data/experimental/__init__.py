@@ -32,6 +32,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
+@@RaggedTensorStructure
 @@RandomDataset
 @@Reducer
 @@SparseTensorStructure
@@ -137,6 +138,7 @@ from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalStructure
 from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import RaggedTensorStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
 from tensorflow.python.data.util.structure import TensorArrayStructure

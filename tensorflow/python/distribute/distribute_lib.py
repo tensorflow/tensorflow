@@ -1860,7 +1860,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _update_non_slot(self, colocate_with, fn, args, kwargs, should_group):
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
-    with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
+    with UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
       if should_group:
         return result

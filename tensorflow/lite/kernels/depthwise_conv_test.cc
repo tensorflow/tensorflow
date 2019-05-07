@@ -1642,6 +1642,42 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
               ElementsAreArray({79, 95, 53, 32, -1, -9, -49, -85}));
 }
 
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
+  PerChannelQuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 3, 3, 8}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [1 * 3 * 3 * 8] as [input_channel, y, x, output_channel]
+       {1, 3, 3, 8},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/
+       {1, 2, 3, 4, 4, 3, 2, 1},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0, 0, 0, 0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
+  m.SetInput({// array of 9 x 8 => [1, 3, 3, 8]
+              1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1,
+              0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+              1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1,
+              0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0});
+  m.SetFilter(
+      /*filter data*/
+      {// array of 9 x 8 => [1, 3, 3, 8]
+       1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+       1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+       1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
+
+  // Invoke and verify output.
+  m.Invoke();
+  printf("\n");
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     DepthwiseConvolutionOpTest, DepthwiseConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));

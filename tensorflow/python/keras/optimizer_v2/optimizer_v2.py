@@ -458,11 +458,11 @@ class OptimizerV2(trackable.Trackable):
         return update_op
 
     update_ops = []
-    with ops.name_scope(name, self._name) as name:
+    with backend.name_scope(name or self._name):
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name):
+        with backend.name_scope("update" + scope_name):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
