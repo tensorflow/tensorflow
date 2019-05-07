@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
@@ -1964,7 +1964,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
+    absl::ReaderMutexLock lock(&mu_);
     return !ok_;
   }
 
@@ -1974,7 +1974,7 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     ok_ = false;
   }
 
@@ -1998,7 +1998,7 @@ class Stream {
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.

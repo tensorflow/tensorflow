@@ -188,7 +188,7 @@ def _is_dynamic(value):
     return True
   # Don't need to do anything special in graph mode, since dynamic values
   # will propagate correctly automatically.
-  # TODO(josh11b): Add per-device caching across steps using variables for
+  # TODO(josh11b): Add per-replica caching across steps using variables for
   # truly static values once we add distributed support.
   if context.executing_eagerly() and isinstance(
       value, resource_variable_ops.ResourceVariable):
@@ -916,7 +916,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 
-    unwrapped_var_list = [x for v in var_list for x in distribution.unwrap(v)]
+    unwrapped_var_list = [
+        x for v in var_list for x in distribution.experimental_local_results(v)]
     eager_execution = context.executing_eagerly()
     if eager_execution:
       # Give a clear error in this case instead of "name not supported

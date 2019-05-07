@@ -48,7 +48,7 @@ if tf2.enabled():
 
 # This deserialization table is added for backward compatibility, as in TF 1.13,
 # BatchNormalizationV1 and BatchNormalizationV2 are used as class name for v1
-# and v2 version of BatchNormalization, respectively. Here we explictly convert
+# and v2 version of BatchNormalization, respectively. Here we explicitly convert
 # them to the canonical name in the config of deserialization.
 _DESERIALIZATION_TABLE = {
     'BatchNormalizationV1': 'BatchNormalization',

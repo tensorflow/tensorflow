@@ -27,22 +27,6 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
-class SymbolNamer(object):
-  """Describes the interface for ControlFlowTransformer's namer."""
-
-  def new_symbol(self, name_root, reserved_locals):
-    """Generate a new unique symbol.
-
-    Args:
-      name_root: String, used as stem in the new name.
-      reserved_locals: Set(string), additional local symbols that are reserved
-          and which should not be used.
-    Returns:
-      String.
-    """
-    raise NotImplementedError()
-
-
 class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
 

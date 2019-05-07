@@ -364,6 +364,19 @@ REGISTER_OP("ExperimentalSlidingWindowDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("SnapshotDataset")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // snapshot_path should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("ExperimentalSqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")
@@ -525,6 +538,23 @@ REGISTER_OP("ExperimentalIdentityIndexedDataset")
     .SetIsStateful()
     .SetShapeFn(
         shape_inference::ScalarShape);  // TODO(saeta): check input shapes.
+
+REGISTER_OP("SamplingDataset")
+    .Input("input_dataset: variant")
+    .Input("rate: float32")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // rate, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
 
 ///////////////////////////////////////////////////////////////////////////////
 //     IndexedDataset Internals

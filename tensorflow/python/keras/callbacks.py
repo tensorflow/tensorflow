@@ -25,6 +25,8 @@ import csv
 import io
 import json
 import os
+import re
+import tempfile
 import time
 
 import numpy as np
@@ -41,6 +43,7 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -161,7 +164,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -420,6 +423,7 @@ class Callback(object):
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
           Reference of the model being trained.
+      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
@@ -900,10 +904,14 @@ class ModelCheckpoint(Callback):
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return
 
-    if (self.load_weights_on_restart and self.filepath is not None and
-        os.path.exists(self.filepath)):
+    if self.load_weights_on_restart:
       try:
-        self.model.load_weights(self.filepath)
+        # `filepath` may contain placeholders such as `{epoch:02d}`, and thus
+        # it attempts to load the most recently modified file with file name
+        # matching the pattern.
+        self.model.load_weights(
+            self._get_most_recently_modified_file_matching_pattern(
+                self.filepath))
       except (IOError, ValueError) as e:
         raise ValueError('Error loading file from {}. Reason: {}'.format(
             self.filepath, e))
@@ -933,20 +941,27 @@ class ModelCheckpoint(Callback):
     """
     logs = logs or {}
 
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_checkpoint() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().should_checkpoint:
-      # For multi-worker training, it should not checkpoint a model in certain
-      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
-      return
-
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
 
-      filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      # TODO(rchao): Replace dc_context reference with
+      # distributed_training_utils.should_current_worker_checkpoint() once
+      # distributed_training_utils.py no longer depends on callbacks.py.
+      if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
+      ).should_checkpoint:
+        filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      else:
+        # If this is multi-worker training, and this worker should not
+        # save checkpoint, we replace the filepath with a dummy filepath so
+        # it writes to a file that will be removed at the end of _save_model()
+        # call. This is because the SyncOnReadVariable needs to be synced across
+        # all the workers in order to be read, and all workers need to initiate
+        # that.
+        file_handle, temp_file_name = tempfile.mkstemp()
+        extension = os.path.splitext(self.filepath)[1]
+        filepath = temp_file_name + extension
+
       if self.save_best_only:
         current = logs.get(self.monitor)
         if current is None:
@@ -974,6 +989,68 @@ class ModelCheckpoint(Callback):
           self.model.save_weights(filepath, overwrite=True)
         else:
           self.model.save(filepath, overwrite=True)
+
+      # Remove the file in multi-worker training where this worker should
+      # not checkpoint.
+      if K.in_multi_worker_mode(
+      ) and not dc_context.get_current_worker_context().should_checkpoint:
+        os.close(file_handle)
+        os.remove(filepath)
+
+  def _get_most_recently_modified_file_matching_pattern(self, pattern):
+    """Returns the most recently modified filepath matching pattern.
+
+    Pattern may contain python formatting placeholder. If
+    `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
+    check for most recently modified one that matches the pattern. This utility
+    function is best demonstrated via an example:
+
+    ```python
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      # Write something to each of the files
+    self.assertEqual(
+        _get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+    ```
+
+    Arguments:
+        pattern: The file pattern that may optionally contain python placeholder
+            such as `{epoch:02d}`.
+
+    Returns:
+        The most recently modified file's full filepath matching `pattern`. If
+        `pattern` does not contain any placeholder, this returns the filepath
+        that
+        exactly matches `pattern`. Returns `None` if no match is found.
+    """
+    dir_name = os.path.dirname(pattern)
+    base_name = os.path.basename(pattern)
+    base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
+
+    # If tf.train.latest_checkpoint tells us there exists a latest checkpoint,
+    # use that as it is more robust than `os.path.getmtime()`.
+    latest_tf_checkpoint = checkpoint_management.latest_checkpoint(dir_name)
+    if latest_tf_checkpoint is not None and re.match(
+        base_name_regex, os.path.basename(latest_tf_checkpoint)):
+      return latest_tf_checkpoint
+
+    latest_mod_time = 0
+    file_path_with_latest_mod_time = None
+    for file_name in os.listdir(dir_name):
+      if re.match(base_name_regex, file_name):
+        file_path = os.path.join(dir_name, file_name)
+        mod_time = os.path.getmtime(file_path)
+        if mod_time > latest_mod_time:
+          latest_mod_time = mod_time
+          file_path_with_latest_mod_time = file_path
+    return file_path_with_latest_mod_time
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -1003,6 +1080,16 @@ class EarlyStopping(Callback):
           the epoch with the best value of the monitored quantity.
           If False, the model weights obtained at the last step of
           training are used.
+
+  Example:
+
+  ```python
+  callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+  # This callback will stop the training when there is no improvement in
+  # the validation loss for three consecutive epochs.
+  model.fit(data, labels, epochs=100, callbacks=[callback],
+      validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self,
@@ -1327,7 +1414,7 @@ class TensorBoard(Callback):
 
     A writer will be created if it does not yet exist.
 
-    Args:
+    Arguments:
       writer_name: The name of the directory for which to create or
         retrieve a writer. Should be either `self._train_run_name` or
         `self._validation_run_name`.
@@ -1350,6 +1437,10 @@ class TensorBoard(Callback):
     """Writes scalar summaries for metrics on every training batch.
 
     Performs profiling if current batch is in profiler_batches.
+
+    Arguments:
+      batch: Integer, index of batch within the current epoch.
+      logs: Dict. Metric results for this batch.
     """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}

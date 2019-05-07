@@ -32,8 +32,7 @@ class CompilerFunctor {
  public:
   explicit CompilerFunctor(
       llvm::TargetMachine* target_machine, int opt_level,
-      bool optimize_for_size, bool enable_fast_math,
-      bool disable_expensive_passes,
+      bool optimize_for_size, bool disable_expensive_passes,
       LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
       LLVMCompiler::ModuleHook post_optimization_hook = nullptr,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook =
@@ -41,7 +40,6 @@ class CompilerFunctor {
       : target_machine_(target_machine),
         opt_level_(opt_level),
         optimize_for_size_(optimize_for_size),
-        enable_fast_math_(enable_fast_math),
         disable_expensive_passes_(disable_expensive_passes),
         pre_optimization_hook_(std::move(pre_optimization_hook)),
         post_optimization_hook_(std::move(post_optimization_hook)),
@@ -64,7 +62,6 @@ class CompilerFunctor {
   llvm::TargetMachine* target_machine_;
   const unsigned opt_level_;
   const bool optimize_for_size_;
-  const bool enable_fast_math_;
   const bool disable_expensive_passes_;
   LLVMCompiler::ModuleHook pre_optimization_hook_;
   LLVMCompiler::ModuleHook post_optimization_hook_;

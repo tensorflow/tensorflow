@@ -51,10 +51,22 @@ namespace {
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
     const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
+  // Special precise version, in case we cover dst_shape poorly with standard
+  // work group size.
   const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
-  if (GetAppleSocVersion() >= 12 &&
-      GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
-    return ConvolutionPrecise(id, input_id, output_id, attr, options);
+  if (GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    // Special version for PowerVR >= IPhone6S/SE
+    // Metal has bad driver for PowerVR in IPhone6, so for Iphone6 we should use
+    // default kernel with shared memory.
+    if ((GetAppleSocVersion() == 9 || GetAppleSocVersion() == 10) &&
+        CheckConvolutionPrecise1x1Support(attr)) {
+      return ConvolutionPrecise1x1PowerVR(id, input_id, output_id, attr,
+                                          options);
+    }
+    if (GetAppleSocVersion() >= 11 &&
+        GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+      return ConvolutionPrecise(id, input_id, output_id, attr, options);
+    }
   }
   if (GetAppleSocVersion() >= 11) {
     if (CheckConvolution1x1Support(attr)) {
@@ -239,10 +251,12 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
 
       case OperationType::APPLY_MASK:
       case OperationType::BATCH_NORMALIZATION:
+      case OperationType::BATCH_TO_SPACE:
       case OperationType::CONST:
       case OperationType::LSTM:
       case OperationType::MUL:
       case OperationType::RESIZE:
+      case OperationType::SPACE_TO_BATCH:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -57,7 +59,7 @@ Status FindNodesToDecluster(const Graph& graph,
 
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
-        DeviceToDeviceType(n->assigned_device_name(), &device_type));
+        DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
     TF_RETURN_IF_ERROR(MemoryTypesForNode(graph.op_registry(), device_type,
                                           n->def(), &input_mtypes,
                                           &output_mtypes));
@@ -77,8 +79,8 @@ Status FindNodesToDecluster(const Graph& graph,
       } else {
         MemoryTypeVector dst_input_mtypes, dst_output_mtypes;
         DeviceType dst_device_type("");
-        TF_RETURN_IF_ERROR(
-            DeviceToDeviceType(dst->assigned_device_name(), &dst_device_type));
+        TF_RETURN_IF_ERROR(DeviceNameToDeviceType(dst->assigned_device_name(),
+                                                  &dst_device_type));
         TF_RETURN_IF_ERROR(MemoryTypesForNode(graph.op_registry(), device_type,
                                               dst->def(), &dst_input_mtypes,
                                               &dst_output_mtypes));
@@ -237,7 +239,7 @@ bool IsMustCompileDevice(const DeviceType& device_type) {
 Status MustCompileNode(const Node* n, bool* must_compile) {
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n->assigned_device_name(), &device_type));
+      DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
 
   if (IsMustCompileDevice(device_type)) {
     *must_compile = true;
@@ -340,6 +342,46 @@ Status PartiallyDeclusterGraph(Graph* graph,
   return Status::OK();
 }
 }  // namespace reduce_recompilation
+
+namespace decluster_root_shape_consumers {
+// Returns true if `node` an operator that consumes only the shape of its input,
+// not the data itself.
+bool IsShapeConsumerOp(const Node& node) {
+  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
+         node.type_string() == "Size";
+}
+
+Status PartiallyDeclusterGraph(Graph* graph) {
+  std::vector<Node*> reverse_post_order;
+  GetReversePostOrder(*graph, &reverse_post_order,
+                      /*stable_comparator=*/NodeComparatorName(),
+                      /*edge_filter=*/NotBackedge);
+
+  for (Node* n : reverse_post_order) {
+    if (!IsShapeConsumerOp(*n)) {
+      continue;
+    }
+
+    absl::optional<absl::string_view> cluster = GetXlaClusterForNode(*n);
+    if (!cluster.has_value()) {
+      continue;
+    }
+
+    auto input_belongs_to_same_cluster = [&](const Edge* e) {
+      return cluster == GetXlaClusterForNode(*e->src());
+    };
+
+    if (absl::c_any_of(n->in_edges(), input_belongs_to_same_cluster)) {
+      continue;
+    }
+
+    VLOG(2) << "Declustering " << n->name()
+            << " because it is a root shape consumer";
+    RemoveFromXlaCluster(n);
+  }
+  return Status::OK();
+}
+}  // namespace decluster_root_shape_consumers
 }  // namespace
 
 Status PartiallyDeclusterPass::Run(
@@ -366,6 +408,9 @@ Status PartiallyDeclusterPass::Run(
   }
   TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(
       graph, options.flib_def, options.session_options->env));
+
+  TF_RETURN_IF_ERROR(
+      decluster_root_shape_consumers::PartiallyDeclusterGraph(graph));
 
   return Status::OK();
 }

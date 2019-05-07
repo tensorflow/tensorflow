@@ -23,30 +23,29 @@ extern "C" {
 #endif  // __cplusplus
 
 /*
- * Class:     org_tensorflow_lite_experimental_GpuDelegate
+ * Class:     org_tensorflow_lite_gpu_GpuDelegate
  * Method:    createDelegate
- * Signature: ()J
+ * Signature: (ZZI)J
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_createDelegate(JNIEnv* env,
-                                                                 jclass clazz);
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
+    JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
+    jboolean dynamic_batch_enabled, jint preferred_gl_object_type);
 
 /*
- * Class:     org_tensorflow_lite_experimental_GpuDelegate
+ * Class:     org_tensorflow_lite_gpu_GpuDelegate
  * Method:    deleteDelegate
  * Signature: (J)
  */
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_deleteDelegate(
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
     JNIEnv* env, jclass clazz, jlong delegate);
 
 /*
- * Class:     org_tensorflow_lite_experimental_GpuDelegate
+ * Class:     org_tensorflow_lite_gpu_GpuDelegate
  * Method:    bindGlBufferToTensor
  * Signature: (JII)Z
  */
 JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_experimental_GpuDelegate_bindGlBufferToTensor(
+Java_org_tensorflow_lite_gpu_GpuDelegate_bindGlBufferToTensor(
     JNIEnv* env, jclass clazz, jlong delegate, jint tensor_index, jint ssbo);
 
 #ifdef __cplusplus

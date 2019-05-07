@@ -83,7 +83,7 @@ class StackedRNNCells(Layer):
     if self.reverse_state_order:
       logging.warning('reverse_state_order=True in StackedRNNCells will soon '
                       'be deprecated. Please update the code to work with the '
-                      'natural order of states if you reply on the RNN states, '
+                      'natural order of states if you rely on the RNN states, '
                       'eg RNN(return_state=True).')
     super(StackedRNNCells, self).__init__(**kwargs)
 
@@ -140,14 +140,10 @@ class StackedRNNCells(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     if isinstance(input_shape, list):
-      constants_shape = input_shape[1:]
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        if generic_utils.has_arg(cell.call, 'constants'):
-          cell.build([input_shape] + constants_shape)
-        else:
-          cell.build(input_shape)
+        cell.build(input_shape)
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -203,22 +199,23 @@ class RNN(Layer):
         `state_size`.
       - A `get_initial_state(inputs=None, batch_size=None, dtype=None)`
         method that creates a tensor meant to be fed to `call()` as the
-        initial state, if user didn't specify any initial state via other
-        means. The returned initial state should be in shape of
-        [batch, cell.state_size]. Cell might choose to create zero filled
-        tensor, or with other values based on the cell implementations.
+        initial state, if the user didn't specify any initial state via other
+        means. The returned initial state should have a shape of
+        [batch_size, cell.state_size]. The cell might choose to create a
+        tensor full of zeros, or full of other values based on the cell's
+        implementation.
         `inputs` is the input tensor to the RNN layer, which should
         contain the batch size as its shape[0], and also dtype. Note that
-        the shape[0] might be None during the graph construction. Either
-        the `inputs` or the pair of `batch` and `dtype `are provided.
-        `batch` is a scalar tensor that represent the batch size
-        of the input. `dtype` is `tf.dtype` that represent the dtype of
-        the input.
+        the shape[0] might be `None` during the graph construction. Either
+        the `inputs` or the pair of `batch_size` and `dtype` are provided.
+        `batch_size` is a scalar tensor that represents the batch size
+        of the inputs. `dtype` is `tf.DType` that represents the dtype of
+        the inputs.
         For backward compatible reason, if this method is not implemented
-        by the cell, RNN layer will create a zero filled tensors with the
-        size of [batch, cell.state_size].
+        by the cell, the RNN layer will create a zero filled tensor with the
+        size of [batch_size, cell.state_size].
       In the case that `cell` is a list of RNN cell instances, the cells
-      will be stacked on after the other in the RNN, implementing an
+      will be stacked on top of each other in the RNN, resulting in an
       efficient stacked RNN.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence.
@@ -402,13 +399,13 @@ class RNN(Layer):
 
     self.supports_masking = True
     # The input shape is unknown yet, it could have nested tensor inputs, and
-    # the input spec will be the list of specs for flattened inputs.
+    # the input spec will be the list of specs for nested inputs, the structure
+    # of the input_spec will be the same as the input.
     self.input_spec = None
     self.state_spec = None
     self._states = None
     self.constants_spec = None
     self._num_constants = None
-    self._num_inputs = None
 
   @property
   def states(self):
@@ -490,16 +487,6 @@ class RNN(Layer):
       return output_mask
 
   def build(self, input_shape):
-    # Note input_shape will be list of shapes of initial states and
-    # constants if these are passed in __call__.
-    if self._num_constants is not None:
-      constants_shape = input_shape[-self._num_constants:]  # pylint: disable=invalid-unary-operand-type
-      constants_shape = nest.map_structure(
-          lambda s: tuple(tensor_shape.TensorShape(s).as_list()),
-          constants_shape)
-    else:
-      constants_shape = None
-
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
       # The input_shape here could be a nest structure.
@@ -540,21 +527,16 @@ class RNN(Layer):
         self.input_spec = [get_input_spec(input_shape)]
       step_input_shape = get_step_input_shape(input_shape)
     else:
-      flat_input_shapes = nest.flatten(input_shape)
-      flat_input_shapes = nest.map_structure(get_input_spec, flat_input_shapes)
-      assert len(flat_input_shapes) == self._num_inputs
       if self.input_spec is not None:
-        self.input_spec[:self._num_inputs] = flat_input_shapes
+        self.input_spec[0] = nest.map_structure(get_input_spec, input_shape)
       else:
-        self.input_spec = flat_input_shapes
+        self.input_spec = generic_utils.to_list(
+            nest.map_structure(get_input_spec, input_shape))
       step_input_shape = nest.map_structure(get_step_input_shape, input_shape)
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      if constants_shape is not None:
-        self.cell.build([step_input_shape] + constants_shape)
-      else:
-        self.cell.build(step_input_shape)
+      self.cell.build(step_input_shape)
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -591,15 +573,17 @@ class RNN(Layer):
         '`cell.state_size`. Received `state_spec`={}; '
         'however `cell.state_size` is '
         '{}'.format(init_state_specs, cell_state_sizes))
-    if len(cell_state_sizes) == len(init_state_specs):
-      for i in range(len(cell_state_sizes)):
-        if not tensor_shape.TensorShape(
-            # Ignore the first axis for init_state which is for batch
-            init_state_specs[i].shape[1:]).is_compatible_with(
-                tensor_shape.TensorShape(cell_state_sizes[i])):
-          raise validation_error
-    else:
+    flat_cell_state_size = nest.flatten(cell_state_sizes)
+    flat_state_spec = nest.flatten(init_state_specs)
+
+    if len(flat_cell_state_size) != len(flat_state_spec):
       raise validation_error
+    for i in range(len(flat_cell_state_size)):
+      if not tensor_shape.TensorShape(
+          # Ignore the first axis for init_state which is for batch
+          flat_state_spec[i].shape[1:]).is_compatible_with(
+              tensor_shape.TensorShape(flat_cell_state_size[i])):
+        raise validation_error
 
   def get_initial_state(self, inputs):
     get_initial_state_fn = getattr(self.cell, 'get_initial_state', None)
@@ -628,12 +612,7 @@ class RNN(Layer):
     inputs, initial_state, constants = _standardize_args(inputs,
                                                          initial_state,
                                                          constants,
-                                                         self._num_constants,
-                                                         self._num_inputs)
-    # in case the real inputs is a nested structure, set the size of flatten
-    # input so that we can distinguish between real inputs, initial_state and
-    # constants.
-    self._num_inputs = len(nest.flatten(inputs))
+                                                         self._num_constants)
 
     if initial_state is None and constants is None:
       return super(RNN, self).__call__(inputs, **kwargs)
@@ -646,9 +625,8 @@ class RNN(Layer):
     additional_specs = []
     if initial_state is not None:
       additional_inputs += initial_state
-      self.state_spec = [
-          InputSpec(shape=K.int_shape(state)) for state in initial_state
-      ]
+      self.state_spec = nest.map_structure(
+          lambda s: InputSpec(shape=K.int_shape(s)), initial_state)
       additional_specs += self.state_spec
     if constants is not None:
       additional_inputs += constants
@@ -658,8 +636,8 @@ class RNN(Layer):
       self._num_constants = len(constants)
       additional_specs += self.constants_spec
     # at this point additional_inputs cannot be empty
-    is_keras_tensor = K.is_keras_tensor(additional_inputs[0])
-    for tensor in additional_inputs:
+    is_keras_tensor = K.is_keras_tensor(nest.flatten(additional_inputs)[0])
+    for tensor in nest.flatten(additional_inputs):
       if K.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
@@ -672,8 +650,8 @@ class RNN(Layer):
       full_input = [inputs] + additional_inputs
       # The original input_spec is None since there could be a nested tensor
       # input. Update the input_spec to match the inputs.
-      full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
-                        ] + additional_specs
+      full_input_spec = generic_utils.to_list(
+          nest.map_structure(lambda _: None, inputs)) + additional_specs
       # Perform the call with temporarily replaced input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
@@ -2409,7 +2387,7 @@ class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
    Note that this cell is not optimized for performance on GPU. Please use
-  `tf.keras.layers.CuDNNLSTM` for better performance on GPU.
+  `tf.compat.v1.keras.layers.CuDNNLSTM` for better performance on GPU.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -2689,8 +2667,7 @@ def _generate_dropout_mask(ones, rate, training=None, count=1):
   return K.in_train_phase(dropped_inputs, ones, training=training)
 
 
-def _standardize_args(
-    inputs, initial_state, constants, num_constants, num_inputs=1):
+def _standardize_args(inputs, initial_state, constants, num_constants):
   """Standardizes `__call__` to a single list of tensor inputs.
 
   When running a model loaded from a file, the input tensors
@@ -2706,8 +2683,6 @@ def _standardize_args(
     constants: Tensor or list of tensors or None, constant tensors.
     num_constants: Expected number of constants (if constants are passed as
       part of the `inputs` list.
-    num_inputs: Expected number of real input tensors (exclude initial_states
-      and constants).
 
   Returns:
     inputs: Single tensor or tuple of tensors.
@@ -2721,21 +2696,19 @@ def _standardize_args(
     # In the eager mode, __call__ will be called twice, once during
     # rnn_layer(inputs=input_t, constants=c_t, ...), and second time will be
     # model.fit/train_on_batch/predict with real np data. In the second case,
-    # the inputs will contain initial_state and constants, and more importantly,
-    # the real inputs will be in a flat list, instead of nested tuple.
+    # the inputs will contain initial_state and constants as eager tensor.
     #
-    # For either case, we will use num_inputs to split the input list, and
-    # restructure the real input into tuple.
+    # For either case, the real input is the first item in the list, which
+    # could be a nested structure itself. Then followed by initial_states, which
+    # could be a list of items, or list of list if the initial_state is complex
+    # structure, and finally followed by constants which is a flat list.
     assert initial_state is None and constants is None
-    inputs = nest.flatten(inputs)
     if num_constants is not None:
       constants = inputs[-num_constants:]
       inputs = inputs[:-num_constants]
-    if num_inputs is None:
-      num_inputs = 1
-    if len(inputs) > num_inputs:
-      initial_state = inputs[num_inputs:]
-      inputs = inputs[:num_inputs]
+    if len(inputs) > 1:
+      initial_state = inputs[1:]
+      inputs = inputs[:1]
 
     if len(inputs) > 1:
       inputs = tuple(inputs)

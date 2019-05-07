@@ -109,6 +109,24 @@ class CudaSparse {
   Status Gtsv(int m, int n, const Scalar *dl, const Scalar *d, const Scalar *du,
               Scalar *B, int ldb) const;
 
+  // Solves tridiagonal system of equations without pivoting.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-gtsv_nopivot
+  // Returns Status::OK() if the kernel was launched successfully.
+  template <typename Scalar>
+  Status GtsvNoPivot(int m, int n, const Scalar *dl, const Scalar *d,
+                     const Scalar *du, Scalar *B, int ldb) const;
+
+  // Solves a batch of tridiagonal systems of equations. Doesn't support
+  // multiple right-hand sides per each system. Doesn't do pivoting.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-gtsvstridedbatch
+  // Returns Status::OK() if the kernel was launched successfully.
+  template <typename Scalar>
+  Status GtsvStridedBatch(int m, const Scalar *dl, const Scalar *d,
+                          const Scalar *du, Scalar *x, int batchCount,
+                          int batchStride) const;
+
  private:
   bool initialized_;
   OpKernelContext *context_;  // not owned.

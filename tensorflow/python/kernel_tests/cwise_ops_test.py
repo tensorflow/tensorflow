@@ -827,6 +827,7 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testTypes(self):
+    self.skipTest("b/131162241")
     for dtype in [np.float16, np.float32, np.float64]:
       self._testDtype(dtype)
 
@@ -1116,7 +1117,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 4, 7):
+    if not compat.forward_compatible(2019, 5, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

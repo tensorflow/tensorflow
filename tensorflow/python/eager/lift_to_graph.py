@@ -207,7 +207,8 @@ def _copy_non_source(op, graph, op_map):
         op_type=op.type,
         inputs=copied_inputs,
         dtypes=[x.dtype for x in op.outputs],
-        attrs=op.node_def.attr,
+        attrs={key: value for key, value in op.node_def.attr.items()
+               if not key.startswith("_class")},  # b/128981532.
         name=op.name)
   op_map[op] = copied_op
   for i, o in enumerate(op.outputs):
@@ -271,6 +272,9 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
         graph_mode=True)
 
   op_map[s] = copied_placeholder
+  # Add an entry for the op of the source tensor so that if there are any nodes
+  # depending on that op via control dependencies it can work correctly.
+  op_map[s.op] = copied_placeholder.op
 
 
 def lift_to_graph(init_tensors, graph, sources=None,

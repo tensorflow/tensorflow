@@ -83,7 +83,8 @@ TEST(TFCompileTest, Add) {
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
 // non-existent buffers.
 TEST(TFCompileTest, Add_SetArg) {
-  AddComp add(AddComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  AddComp add(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
   int32 arg_x = 10;
   int32 arg_y = 32;
@@ -296,7 +297,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   foo::bar::MatMulComp matmul(
-      foo::bar::MatMulComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.
@@ -503,8 +504,36 @@ TEST(TFCompileTest, VariableSequentialUpdates) {
 
   // This implements the recursion:
   // x[0] = 2.0
-  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  // x[n+1] = x[n] - 0.1*(x[n-1] + y)
   VariableSequentialUpdatesComp fn;
+  fn.var_x() = 2;
+  *const_cast<float*>(fn.var_y_data()) = 1;
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 1.187f, 1e-6);
+
+  const float y = 1;
+  fn.set_var_y_data(&y);
+
+  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've set
+  // the buffer to point to a constant location.
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 0.594322f, 1e-6);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  VariableSequentialUpdatesComp fn(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   float x = 2;
   float y = 1;
   fn.set_var_x_data(&x);

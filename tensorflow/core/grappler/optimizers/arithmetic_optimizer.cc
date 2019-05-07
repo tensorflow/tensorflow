@@ -1758,7 +1758,7 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   bool IsSupported(const NodeDef* node) const override {
     // Note: div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
     // for b == 0 would result in a / Inf instead of 0.
-    return IsAnyDiv(*node) && !IsDivNoNan(*node);
+    return IsAnyDiv(*node) && !IsDivNoNan(*node) && !IsFloorDiv(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2178,7 +2178,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   ~FoldTransposeIntoMatMul() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMatMul(*node);
+    return IsAnyMatMul(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2231,6 +2231,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     if (a_is_foldable) deps_to_forward.push_back(a);
     if (b_is_foldable) deps_to_forward.push_back(b);
     ForwardControlDependencies(new_op, deps_to_forward);
+    *simplified_node_name = new_op->name();
 
     return Status::OK();
   }
@@ -3317,7 +3318,7 @@ class UniqueNodes {
     uint64 sig = ComputeSignature(*node);
     std::vector<NodeDef*>& candidates = rep_[sig];
     for (auto& candidate : candidates) {
-      if (SameNode(*candidate, *node)) {
+      if ((candidate == node) || SameNode(*candidate, *node)) {
         return candidate;
       }
     }

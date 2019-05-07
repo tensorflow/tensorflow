@@ -50,7 +50,8 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 22> kPassThroughOps = {
+constexpr std::array<const char*, 23> kPassThroughOps = {
+    "_Retval",
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
@@ -121,10 +122,12 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(num_shards_node->name());
   new_node.add_input(index_node->name());
 
+  // Ensure that each shard will have at least one element.
+  (*(new_node.mutable_attr()))["require_non_empty"].set_b(true);
+
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
 
-  LOG(WARNING) << add_after->DebugString();
   if (str_util::EndsWith(add_after->op(), "Dataset") ||
       str_util::EndsWith(add_after->op(), "DatasetV2")) {
     // We still may or may not have the right attributes because Datasets like
@@ -283,16 +286,14 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
   // function in flat_map.
   if (IsDatasetNodeOfType(node, kFuncDatasetOps) &&
       ReaderOpInFunction(node, *flib)) {
-    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
-                                                num_workers, index));
-    return Status::OK();
+    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
+                                    index);
   }
 
   if (IsDatasetNodeOfType(node, kReaderDatasetOps)) {
     // We reached a reader dataset directly and we try to shard input 0.
-    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
-                                                num_workers, index));
-    return Status::OK();
+    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
+                                    index);
   }
 
   if (!IsDatasetNodeOfType(node, kPassThroughOps)) {

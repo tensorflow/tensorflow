@@ -648,7 +648,7 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that aribtrary TensorFlow functions
+  The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
   quick experimentation. For more advanced use cases, subclassing
@@ -717,6 +717,9 @@ class Lambda(Layer):
         output_shape` If a function, it specifies the entire shape as a function
         of the
       input shape: `output_shape = f(input_shape)`
+    mask: Either None (indicating no masking) or a callable with the same
+      signature as the `compute_mask` layer method, or a tensor that will be
+      returned as output mask regardless what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
   Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
@@ -747,7 +750,7 @@ class Lambda(Layer):
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
       # Make use of existing autocomputation but provide Lambda-specific
-      # error message. This is always safe to run even whn the outer context
+      # error message. This is always safe to run even when the outer context
       # is Graph mode because Lambda layers don't have side effects such as
       # `add_loss`.
       with context.eager_mode():

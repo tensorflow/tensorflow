@@ -334,8 +334,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         def loss_fn():
           # Use fixed initialization to make the steps deterministic.
           predict = math_ops.matmul(x, w)
-          return losses_impl.mean_squared_error(
+          loss = losses_impl.mean_squared_error(
               y, predict, reduction=loss_reduction)
+          if loss_reduction == losses_impl.Reduction.SUM:
+            return loss
+          return loss / distribution.num_replicas_in_sync
 
         optimizer = optimizer_fn()  # GradientDescent with 0.2 learning rate
 
@@ -514,7 +517,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     if not reduced:
       self.assertLen(distribution.experimental_local_results(loss_output),
                      distribution.num_replicas_in_sync)
-      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
+      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output,
+                                        axis=None)
     else:
       unwrapped_output = distribution.experimental_local_results(loss_output)
       self.assertLen(unwrapped_output, 1)

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -36,6 +35,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+    dtypes.int8: _types_pb2.INT8,
     dtypes.complex64: _types_pb2.COMPLEX64
 }
 
@@ -147,33 +147,19 @@ def set_tensor_shapes(tensors, shapes):
           raise ValueError(message)
 
 
-def get_grappler_config(enable_layout_optimizer=False, function_only=False):
-  """Creates a tf.ConfigProto for configuring Grappler.
+def get_grappler_config(optimizers_list):
+  """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
 
   Args:
-    enable_layout_optimizer: Bool indicating whether to run the layout
-      optimizer. This turns NHCW to NCHW. This provides performance
-      optimizations when Flex mode is enabled. (default False)
-    function_only: Bool indiciating whether to only run the function optimizer.
-      This inlines functions and is required for freezing models with functions.
-      (default False)
+    optimizers_list: List of strings that represents the list of optimizers.
 
   Returns:
     tf.ConfigProto.
   """
   config = _config_pb2.ConfigProto()
   rewrite_options = config.graph_options.rewrite_options
-  if function_only:
-    rewrite_options.optimizers.append("function")
-  else:
-    if enable_layout_optimizer:
-      rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-    else:
-      rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.OFF
-
-    # Avoid remapping as it creates ops like _FusedConv2D, which are not
-    # supported by TFLite.
-    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  for optimizer in optimizers_list:
+    rewrite_options.optimizers.append(optimizer)
   return config
 
 
@@ -241,7 +227,7 @@ def freeze_graph(sess, input_tensors, output_tensors):
     return _convert_op_hints_if_present(sess, output_tensors)
 
   # Runs a Grappler pass in order to inline any functions in the graph.
-  config = get_grappler_config(function_only=True)
+  config = get_grappler_config(["function"])
   graph_def = run_graph_optimizations(
       sess.graph_def, input_tensors, output_tensors, config, graph=sess.graph)
 

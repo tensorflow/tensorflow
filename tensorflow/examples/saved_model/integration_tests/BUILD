@@ -31,6 +31,7 @@ py_binary(
 py_library(
     name = "util",
     srcs = ["util.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -39,6 +40,7 @@ py_library(
 py_library(
     name = "mnist_util",
     srcs = ["mnist_util.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -60,6 +62,7 @@ py_test(
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
+        "no_pip",  # b/131697937
     ],
     deps = [
         "//tensorflow:tensorflow_py",

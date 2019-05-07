@@ -25,6 +25,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.util import tf_contextlib
 
 
 class CondBranchFuncGraph(FuncGraph):
@@ -205,3 +206,23 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
                        "a resource in its body is not supported: %s" % op_name)
 
   return input_names.index(tensor_name)
+
+
+@tf_contextlib.contextmanager
+def clear_control_inputs():
+  """Clears the control inputs but preserves the ControlFlowContext.
+
+  This is needed to preserve the XLAControlFlowControl when clearing
+  control inputs for the gradient accumulators in while_v2.
+  `ops.control_dependencies` does not allow that.
+
+  Yields:
+    A context manager in which the ops created will not have any control inputs
+    by default but the control flow context is the same.
+  """
+  # pylint: disable=protected-access
+  control_flow_context = ops.get_default_graph()._get_control_flow_context()
+  with ops.control_dependencies(None):
+    ops.get_default_graph()._set_control_flow_context(control_flow_context)
+    yield
+  # pylint: enable=protected-access

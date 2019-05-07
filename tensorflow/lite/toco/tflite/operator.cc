@@ -1203,6 +1203,12 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1629,6 +1635,13 @@ class SparseToDense
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& value_input_name = op_signature.op->inputs[2];
+    const Array& value_input_array =
+        op_signature.model->GetArray(value_input_name);
+    // Version 2 supports Int64 value type.
+    if (value_input_array.data_type == ArrayDataType::kInt64) {
+      return 2;
+    }
     return 1;
   }
 };

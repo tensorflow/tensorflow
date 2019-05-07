@@ -30,13 +30,14 @@ Example:
     output, = custom.add_outputs(output)
     return output
 
-  image = tf.placeholder(tf.float32, (1, 16, 16, 1))
+  image = tf.compat.v1.placeholder(tf.float32, (1, 16, 16, 1))
   output = tf.identity(tflite_cool_activation(image))
 
-  session = tf.Session()
+  session = tf.compat.v1.Session()
 
   graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
-  tflite_graph = tf.lite.toco_convert(graphdef_to_convert, [image], [output])
+  tflite_graph = tf.compat.v1.lite.toco_convert(
+      graphdef_to_convert, [image], [output])
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
@@ -88,7 +89,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-@_tf_export("lite.OpHint")
+@_tf_export(v1=["lite.OpHint"])
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -593,7 +594,10 @@ class _LiteAggregateOperand(_LiteOperand):
       The name of a pack that aggregates this node.
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       return _tensor_name_base(flattened[0].name)
     else:
       new_node = _node_def_pb2.NodeDef()
@@ -624,7 +628,10 @@ class _LiteAggregateOperand(_LiteOperand):
       op).
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       temp_op = _LiteSingleOperand(flattened[0])
       return temp_op.aggregate_and_return_name_for_output(
           fused_op_name, output_index, out_graphdef)
@@ -1253,7 +1260,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
-@_tf_export("lite.experimental.convert_op_hints_to_stubs")
+@_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):

@@ -31,17 +31,7 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_rnn {
 
-namespace {
-
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-
-}  // namespace
+// LINT.IfChange
 
 constexpr int kInputTensor = 0;
 // Forward and backward cell tensors.
@@ -63,6 +53,8 @@ constexpr int kBwAuxWeightsTensor = 11;  // Optional.
 // Output tensors.
 constexpr int kFwOutputTensor = 0;
 constexpr int kBwOutputTensor = 1;  // Only if merge_outputs is false.
+
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/quantize_weights.cc)
 
 // Temporary tensors.
 enum TemporaryTensor {

@@ -525,11 +525,11 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       weight_column_name=weight_column_name,
       # wide settings
       linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
-      linear_optimizer=tf.train.FtrlOptimizer(...),
+      linear_optimizer=tf.compat.v1.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       dnn_hidden_units=[1000, 500, 100],
-      dnn_optimizer=tf.train.AdagradOptimizer(...))
+      dnn_optimizer=tf.compat.v1.train.AdagradOptimizer(...))
 
   # Input builders
   def input_fn_train: # returns x, y (where y represents label's class index).
@@ -870,14 +870,14 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       weight_column_name=weight_column_name,
       # wide settings
       linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
-      linear_optimizer=tf.train.FtrlOptimizer(...),
+      linear_optimizer=tf.compat.v1.train.FtrlOptimizer(...),
       # deep settings
       dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       dnn_hidden_units=[1000, 500, 100],
-      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+      dnn_optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(...))
 
   # To apply L1 and L2 regularization, you can set optimizers as follows:
-  tf.train.ProximalAdagradOptimizer(
+  tf.compat.v1.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)

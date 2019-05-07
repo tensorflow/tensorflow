@@ -108,9 +108,10 @@ def result_wrapper(result_fn):
       # with distribution object as the first parameter. We create a wrapper
       # here so that the result function need not have that parameter.
       def merge_fn_wrapper(distribution, merge_fn, *args):
-        # We will get `PerDevice` merge function. Taking the first one as all
+        # We will get `PerReplica` merge function. Taking the first one as all
         # are identical copies of the function that we had passed below.
-        merged_result_fn = distribution.unwrap(merge_fn)[0](*args)
+        merged_result_fn = (
+            distribution.experimental_local_results(merge_fn)[0](*args))
 
         # Wrapping result in identity so that control dependency between
         # update_op from `update_state` and result works in case result returns

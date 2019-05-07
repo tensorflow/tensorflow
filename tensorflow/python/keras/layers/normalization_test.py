@@ -291,18 +291,18 @@ class NormalizationLayersGraphModeOnlyTest(
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       model.train_on_batch(x, x)
 
-      self.assertEqual(len(bn.updates), 4)
-      self.assertEqual(len(model.updates), 2)
-      self.assertEqual(len(model.get_updates_for(x2)), 2)
+      self.assertLen(bn.updates, 4)
+      self.assertLen(bn.get_updates_for(x1), 2)
+      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
       new_model = keras.models.Model(x3, y3, name='new_model')
 
-      self.assertEqual(len(new_model.updates), 2)
-      self.assertEqual(len(model.updates), 4)
-      self.assertEqual(len(new_model.get_updates_for(x3)), 2)
+      self.assertLen(new_model.updates, 6)
+      self.assertLen(model.updates, 6)
+      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
@@ -451,28 +451,6 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     layer.build((None, 3, 4))
     self.assertEqual(layer.gamma.constraint, max_norm)
     self.assertEqual(layer.beta.constraint, max_norm)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_layernorm_convnet(self):
-    if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
-        model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(
-            input_shape=(3, 4, 4))
-        model.add(norm)
-        model.compile(loss='mse',
-                      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                      run_eagerly=testing_utils.should_run_eagerly())
-
-        # centered on 5.0, variance 10.0
-        x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 3, 4, 4))
-        model.fit(x, x, epochs=4, verbose=0)
-        out = model.predict(x)
-        out -= np.reshape(keras.backend.eval(norm.beta), (1, 3, 1, 1))
-        out /= np.reshape(keras.backend.eval(norm.gamma), (1, 3, 1, 1))
-
-        np.testing.assert_allclose(np.mean(out, axis=(0, 2, 3)), 0.0, atol=1e-1)
-        np.testing.assert_allclose(np.std(out, axis=(0, 2, 3)), 1.0, atol=1e-1)
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_convnet_channel_last(self):

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -349,9 +350,9 @@ TEST(BasicInterpreter, BufferAccess) {
                 0, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
             kTfLiteOk);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  // Verify we get a valid pointer.r
+  // Verify we get a valid pointer.
   ASSERT_NE(interpreter.typed_tensor<float>(0), nullptr);
-  // Verify incorrect pointer will not returned.
+  // Verify incorrect pointer is not returned.
   ASSERT_EQ(interpreter.typed_tensor<int>(0), nullptr);
   // Verify that raw c interface ptr matches safe interface.
   ASSERT_EQ(interpreter.typed_tensor<float>(0), interpreter.tensor(0)->data.f);
@@ -733,6 +734,17 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.num_calls(), 1);
 }
 
+TEST(BasicInterpreter, TestUseNNAPI) {
+  TestErrorReporter reporter;
+  Interpreter interpreter(&reporter);
+  interpreter.UseNNAPI(true);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  interpreter.UseNNAPI(false);
+  ASSERT_EQ(reporter.error_messages(),
+            "Attempting to disable NNAPI delegate after it's applied.");
+}
+
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
@@ -1097,7 +1109,7 @@ class TestDelegate : public ::testing::Test {
   }
 
   void TearDown() override {
-    // Interpreter relies on delegate_ to free the resources properly. Thus
+    // Interpreter relies on delegate to free the resources properly. Thus
     // the life cycle of delegate must be longer than interpreter.
     interpreter_.reset();
     delegate_.reset();
@@ -1123,7 +1135,7 @@ class TestDelegate : public ::testing::Test {
         int index = 0;
         for (auto node_index : simple->nodes_) {
           nodes_to_separate->data[index++] = node_index;
-          // make sure node is add
+          // make sure node is added
           TfLiteNode* node;
           TfLiteRegistration* reg;
           context->GetNodeAndRegistration(context, node_index, &node, &reg);

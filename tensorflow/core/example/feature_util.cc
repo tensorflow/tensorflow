@@ -103,6 +103,21 @@ protobuf::RepeatedPtrField<Feature>* GetFeatureList(
 }
 
 template <>
+void ClearFeatureValues<protobuf_int64>(Feature* feature) {
+  feature->mutable_int64_list()->Clear();
+}
+
+template <>
+void ClearFeatureValues<float>(Feature* feature) {
+  feature->mutable_float_list()->Clear();
+}
+
+template <>
+void ClearFeatureValues<string>(Feature* feature) {
+  feature->mutable_bytes_list()->Clear();
+}
+
+template <>
 Features* GetFeatures<Features>(Features* proto) {
   return proto;
 }

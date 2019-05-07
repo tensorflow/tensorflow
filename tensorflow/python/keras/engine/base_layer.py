@@ -27,9 +27,12 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import autograph
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -47,6 +50,7 @@ from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -55,6 +59,8 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -62,9 +68,12 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
+# Prefix that is added to the TF op layer names.
+_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
 
 @keras_export('keras.layers.Layer')
-class Layer(trackable.Trackable):
+class Layer(module.Module):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -117,6 +126,18 @@ class Layer(trackable.Trackable):
       constraints on inputs that can be accepted by the layer.
   """
 
+  # See tf.Module for the usage of this property.
+  # The key for _obj_reference_counts_dict is a Trackable, which could be a
+  # variable or layer etc. tf.Module._flatten will fail to flatten the key
+  # since it is trying to convert Trackable to a string. This attribute can be
+  # ignored even after the fix of nest lib, since the trackable object should
+  # already been available as individual attributes. _obj_reference_counts_dict
+  # just contains a copy of them.
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+      ('_obj_reference_counts_dict',),
+      module.Module._TF_MODULE_IGNORED_PROPERTIES
+  ))
+
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
@@ -132,9 +153,7 @@ class Layer(trackable.Trackable):
         'activity_regularizer',
     }
     # Validate optional keyword arguments.
-    for kwarg in kwargs:
-      if kwarg not in allowed_kwargs:
-        raise TypeError('Keyword argument not understood:', kwarg)
+    generic_utils.validate_kwargs(kwargs, allowed_kwargs)
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
@@ -360,7 +379,7 @@ class Layer(trackable.Trackable):
         initializer=initializer,
         dtype=dtype,
         constraint=constraint,
-        trainable=trainable and self.trainable,
+        trainable=trainable,
         partitioner=partitioner,
         use_resource=use_resource,
         collections=collections,
@@ -564,7 +583,7 @@ class Layer(trackable.Trackable):
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
-    with base_layer_utils.call_context():
+    with base_layer_utils.call_context(self):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -572,7 +591,7 @@ class Layer(trackable.Trackable):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
-        with graph.as_default(), ops.name_scope(self._name_scope()):
+        with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
@@ -582,11 +601,7 @@ class Layer(trackable.Trackable):
           # autograph is strictly needed only for subclassed layers.
           if base_layer_utils.is_subclassed(self):
             decorators, original_func = tf_decorator.unwrap(self.call)
-            # TODO(psv): Remove optional_features param from the call here
-            # after b/129001876 is fixed.
-            converted_func = autograph.convert(
-                recursive=True, optional_features=None)(
-                    original_func)
+            converted_func = autograph.convert(recursive=True)(original_func)
             if decorators:
               call_fn = tf_decorator.rewrap(self.call, original_func,
                                             converted_func)
@@ -598,22 +613,28 @@ class Layer(trackable.Trackable):
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
+          # TODO(omalleyt): Reconcile this with new `trainable` behavior
+          # when available.
           learning_phase_passed_by_framework = False
           if (self._expects_training_arg and
               not base_layer_utils.training_arg_passed_to_call(
                   tf_inspect.getfullargspec(self.call), args, kwargs) and
-              getattr(graph, 'name', None) == 'keras_graph'):
+              base_layer_utils.is_in_keras_graph()):
             learning_phase_passed_by_framework = True
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
                   input_list,
-                  self._mixed_precision_policy.should_cast_variables), (
-                      base_layer_utils.AutoAddUpdates(self,
-                                                      inputs)) as auto_updater:
-                outputs = call_fn(inputs, *args, **kwargs)
-                auto_updater.set_outputs(outputs)
+                  self._mixed_precision_policy.should_cast_variables):
+                if ops.executing_eagerly_outside_functions():
+                  with auto_control_deps.AutomaticControlDependencies() as acd:
+                    outputs = call_fn(inputs, *args, **kwargs)
+                    # Wrap Tensors in `outputs` in `tf.identity` to avoid
+                    # circular dependencies.
+                    outputs = base_layer_utils.mark_as_return(outputs, acd)
+                else:
+                  outputs = call_fn(inputs, *args, **kwargs)
 
             except TypeError as e:
               exception_str = str(e)
@@ -654,7 +675,7 @@ class Layer(trackable.Trackable):
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
-        with ops.name_scope(self._name_scope()):
+        with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           with base_layer_utils.autocast_context_manager(
               input_list, self._mixed_precision_policy.should_cast_variables):
@@ -669,6 +690,7 @@ class Layer(trackable.Trackable):
           self._initial_weights is not None):
         self.set_weights(self._initial_weights)
         del self._initial_weights
+
     return outputs
 
   @property
@@ -721,7 +743,27 @@ class Layer(trackable.Trackable):
 
   @property
   def updates(self):
-    return self._get_unfiltered_updates(check_trainable=True)
+    if not self.trainable and not self.stateful:
+      return []
+    with backend.get_graph().as_default():
+      updates = []
+      for u in self._updates:
+        # Filter out updates created in a cross-replica context when in a
+        # replica context and vice versa.
+        if (getattr(u, '_in_cross_replica_context', False) !=
+            ds_context.in_cross_replica_context()):
+          continue
+        if callable(u):
+          try:
+            u = u()
+          except ValueError as e:
+            if 'Trying to capture a tensor from an inner function' in str(e):
+              base_layer_utils.check_graph_consistency(
+                  method='add_update', force_raise=True)
+            raise
+        base_layer_utils.check_graph_consistency(u, method='add_update')
+        updates.append(u)
+    return updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -769,7 +811,7 @@ class Layer(trackable.Trackable):
     class MyLayer(tf.keras.layers.Layer):
       def call(inputs, self):
         self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
-        return 2*inputs
+        return inputs
     ```
 
     This method can also be called directly on a Functional Model during
@@ -825,6 +867,7 @@ class Layer(trackable.Trackable):
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+      base_layer_utils.check_graph_consistency(loss, method='add_loss')
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -836,12 +879,15 @@ class Layer(trackable.Trackable):
     for loss in losses:
       if callable(loss):
         callable_losses.append(functools.partial(_tag_unconditional, loss))
-      elif tf_utils.is_symbolic_tensor(loss):
+        continue
+      if loss is None:
+        continue
+      if not tensor_util.is_tensor(loss):
+        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+      if tf_utils.is_symbolic_tensor(loss):
         symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
-      elif loss is not None:  # `None` is valid but should be ignored.
-        raise ValueError('Found non-Tensor loss: ' + str(loss))
 
     self._callable_losses += callable_losses
 
@@ -974,7 +1020,10 @@ class Layer(trackable.Trackable):
     execution).
 
     Arguments:
-      updates: Update op, or list/tuple of update ops.
+      updates: Update op, or list/tuple of update ops, or zero-arg callable
+        that returns an update op. A zero-arg callable should be passed in
+        order to disable running the updates by setting `trainable=False`
+        on this Layer, when executing in Eager mode.
       inputs: If anything other than None is passed, it signals the updates
         are conditional on some of the layer's inputs,
         and thus they should only be run where these inputs are available.
@@ -984,26 +1033,49 @@ class Layer(trackable.Trackable):
         have is available at runtime.
         A step counter might fall into this category.
     """
-    if context.executing_eagerly():
-      return  # Updates already applied when in eager mode.
+    updates = generic_utils.to_list(updates)
+
+    # All updates can be run immediately in Eager or in a tf.function.
+    if base_layer_utils.is_in_eager_or_tf_function():
+      if not base_layer_utils.is_in_frozen_context():
+        for update in updates:
+          if callable(update):
+            update()
+      return
 
     def process_update(x):
-      if isinstance(x, ops.Operation):
-        return x
-      elif hasattr(x, 'op'):
-        return x.op
-      else:
-        return ops.convert_to_tensor(x)
+      """Standardize update ops.
 
-    updates = generic_utils.to_list(updates)
+      Arguments:
+        x: Tensor, op, or callable.
+
+      Returns:
+        An update op.
+      """
+      if callable(x):
+        update = lambda: process_update(x())
+        if not ops.executing_eagerly_outside_functions():
+          # In V1 mode, call the callable right away and process. This is needed
+          # for TPU strategy.
+          return update()
+      elif isinstance(x, ops.Operation):
+        update = x
+      elif hasattr(x, 'op'):
+        update = x.op
+      else:
+        update = ops.convert_to_tensor(x)
+      update._unconditional_update = (inputs is None)
+      update._in_cross_replica_context = (
+          ds_context.has_strategy() and ds_context.in_cross_replica_context())
+      return update
+
     updates = [process_update(x) for x in updates]
+    # Non-callable Updates are run automatically inside `call` in V2, so
+    # they do not need to be tracked later.
+    if (ops.executing_eagerly_outside_functions() and
+        base_layer_utils.is_in_call_context()):
+      updates = [u for u in updates if callable(u)]
     self._updates += updates
-    if inputs is None:
-      for u in updates:
-        u._unconditional_update = True  # pylint: disable=protected-access
-    else:
-      for u in updates:
-        u._unconditional_update = False  # pylint: disable=protected-access
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1055,25 +1127,16 @@ class Layer(trackable.Trackable):
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
-    # Updates disabled if layer is not trainable and not explicitly stateful.
-    if not self.trainable and not self.stateful:
-      return []
-
     if inputs is None:
       # Requesting unconditional updates.
-      return [
-          x for x in self._get_unfiltered_updates() if x._unconditional_update  # pylint: disable=protected-access
-      ]
+      return [u for u in self.updates if u._unconditional_update]
 
     # Requesting input-conditional updates.
+    updates = [u for u in self.updates if not u._unconditional_update]
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(
-        inputs, self._get_unfiltered_updates())
-    return [u for u in self._get_unfiltered_updates() if u in reachable]  # pylint: disable=protected-access
+    reachable = tf_utils.get_reachable_from_inputs(inputs, updates)
+    return [u for u in updates if u in reachable]
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1083,26 +1146,16 @@ class Layer(trackable.Trackable):
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if inputs is None:
       # Requesting unconditional losses.
-      return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
+      return [l for l in self.losses if l._unconditional_loss]
 
     # Requesting input-conditional losses.
+    losses = [l for l in self.losses if not l._unconditional_loss]
     inputs = nest.flatten(inputs)
-    # Retrieve the set of tensors in the TF graph that depend on `inputs`.
-    # The losses we want to return will be part of this set.
-    # To avoid unnecessary work, we stop the search in case all of
-    # `self.losses` have been retrieved.
-    reachable = tf_utils.get_reachable_from_inputs(inputs, self.losses)
-    losses = []
-    for loss in self.losses:
-      if loss in reachable:
-        losses.append(loss)
-    return losses
+    reachable = tf_utils.get_reachable_from_inputs(inputs, losses)
+    return [l for l in losses if l in reachable]
 
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
@@ -1344,7 +1397,8 @@ class Layer(trackable.Trackable):
     """
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
+        with tf_utils.maybe_init_scope(self):
+          self.build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1502,24 +1556,21 @@ class Layer(trackable.Trackable):
     self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    base_layer_utils.check_graph_consistency(value, method='add_metric')
+    match = self._get_existing_metric(name)
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model
       # layer `__init__` and we have tracked that instance already in
       # model.__setattr__.
-      match = self._get_existing_metric(name)
       if match:
         result_tensor = value
-        if match.name not in self._metrics_tensors:
-          self._metrics_tensors[match.name] = result_tensor
-          return
-        else:
-          raise ValueError(
-              'We currently do not support reusing a metric instance.')
+        metric_obj = match
       elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+        self._metrics.append(metric_obj)
       else:
         raise ValueError(
             'We do not support adding an aggregated metric result tensor that '
@@ -1533,9 +1584,13 @@ class Layer(trackable.Trackable):
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
-      metric_obj, result_tensor = base_layer_utils.create_mean_metric(
-          value, name)
-    self._metrics.append(metric_obj)
+      if match:
+        result_tensor = match(value)
+        metric_obj = match
+      else:
+        metric_obj, result_tensor = base_layer_utils.create_mean_metric(
+            value, name)
+        self._metrics.append(metric_obj)
     self._metrics_tensors[metric_obj.name] = result_tensor
 
   def _handle_weight_regularization(self, name, variable, regularizer):
@@ -1543,7 +1598,7 @@ class Layer(trackable.Trackable):
 
     def _loss_for_variable(v):
       """Creates a regularization loss `Tensor` for variable `v`."""
-      with ops.name_scope(name + '/Regularizer'):
+      with backend.name_scope(name + '/Regularizer'):
         regularization = regularizer(v)
       return regularization
 
@@ -1559,7 +1614,7 @@ class Layer(trackable.Trackable):
     # output, since it is output-specific.
     if self._activity_regularizer:
       output_list = nest.flatten(outputs)
-      with ops.name_scope('ActivityRegularizer'):
+      with backend.name_scope('ActivityRegularizer'):
         for output in output_list:
           activity_loss = self._activity_regularizer(output)
           batch_size = math_ops.cast(
@@ -1629,7 +1684,7 @@ class Layer(trackable.Trackable):
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:
-        with ops.name_scope(self.name):
+        with backend.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
     outputs = nest.pack_sequence_as(outputs, output_ls_copy)
@@ -1808,7 +1863,11 @@ class Layer(trackable.Trackable):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      # Any setup work performed only once should happen in an `init_scope`
+      # to avoid creating symbolic Tensors that will later pollute any eager
+      # operations.
+      with tf_utils.maybe_init_scope(self):
+        self.build(input_shapes)
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
@@ -1848,6 +1907,11 @@ class Layer(trackable.Trackable):
       super(Layer, self).__setattr__(name, default_value)
 
   def __delattr__(self, name):
+    # For any super.__delattr__() call, we will directly use the implementation
+    # in Trackable and skip the behavior in AutoTrackable. The Layer was
+    # originally use Trackable as base class, the change of using Module as base
+    # class forced us to have AutoTrackable in the class hierarchy. Skipping
+    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -1855,7 +1919,7 @@ class Layer(trackable.Trackable):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
 
     reference_count = reference_counts[existing_value]
@@ -1863,33 +1927,40 @@ class Layer(trackable.Trackable):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(Layer, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
         or trackable_layer_utils.has_weights(existing_value)):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
   def __setattr__(self, name, value):
-    if (not getattr(self, '_setattr_tracking', True) or
+    if (name == '_self_setattr_tracking' or
+        not getattr(self, '_self_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
-      super(Layer, self).__setattr__(name, value)
+      try:
+        super(tracking.AutoTrackable, self).__setattr__(name, value)
+      except AttributeError:
+        raise AttributeError(
+            ('Can\'t set the attribute "{}", likely because it conflicts with '
+             'an existing read-only @property of the object. Please choose a '
+             'different name.').format(name))
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
@@ -1906,6 +1977,8 @@ class Layer(trackable.Trackable):
     except AttributeError:
       pass
 
+    # TODO(scottzhu): Need to track Module object as well for weight tracking.
+    # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
@@ -1938,7 +2011,9 @@ class Layer(trackable.Trackable):
             self._non_trainable_weights.append(val)
           backend.track_variable(val)
 
-    super(Layer, self).__setattr__(name, value)
+    # Skip the auto trackable from tf.Module to keep status quo. See the comment
+    # at __delattr__.
+    super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
@@ -1958,11 +2033,6 @@ class Layer(trackable.Trackable):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
-
-  def _get_unfiltered_updates(self, check_trainable=True):
-    if check_trainable and not self.trainable and not self.stateful:
-      return []
-    return self._updates + self._gather_children_attribute('updates')
 
 
 class Node(object):
@@ -2122,7 +2192,7 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
-        name=name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
     # Layer uses original op unless it is called on new inputs.
@@ -2149,6 +2219,18 @@ class TensorFlowOpLayer(Layer):
         inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
       c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
+
+      # Record the gradient because custom-made ops don't go through the
+      # code-gen'd eager call path
+      op_type = compat.as_str(op.op_def.name)
+      attr_names = [compat.as_str(attr.name) for attr in op.op_def.attr]
+      attrs = []
+      for attr_name in attr_names:
+        attrs.append(attr_name)
+        attrs.append(op.get_attr(attr_name))
+      attrs = tuple(attrs)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs,
+                              op.name)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

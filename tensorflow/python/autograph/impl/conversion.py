@@ -38,7 +38,6 @@ from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
@@ -47,7 +46,6 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
@@ -311,7 +309,7 @@ def convert(entity, program_ctx):
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
-def is_whitelisted_for_graph(o):
+def is_whitelisted_for_graph(o, check_call_override=True):
   """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
@@ -319,6 +317,9 @@ def is_whitelisted_for_graph(o):
 
   Args:
     o: A Python entity.
+    check_call_override: Reserved for internal use. When set to `False`, it
+      disables the rule according to which classes are whitelisted if their
+      __call__ method is whitelisted.
 
   Returns:
     Boolean
@@ -348,7 +349,14 @@ def is_whitelisted_for_graph(o):
     logging.log(2, 'Whitelisted: %s: already converted', o)
     return True
 
-  if hasattr(o, '__call__'):
+  if tf_inspect.isgeneratorfunction(o):
+    logging.warn(
+        'Entity {} appears to be a generator function. It will not be converted'
+        ' by AutoGraph.'.format(o), 1)
+    logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
+    return True
+
+  if check_call_override and hasattr(o, '__call__'):
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
@@ -380,7 +388,9 @@ def is_whitelisted_for_graph(o):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(owner_class):
+      is_call_override = (o.__name__ == '__call__')
+      if is_whitelisted_for_graph(
+          owner_class, check_call_override=not is_call_override):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
@@ -428,17 +438,12 @@ def convert_entity_to_ast(o, program_ctx):
     nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   elif tf_inspect.ismethod(o):
     nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
-  # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
+    # Note: this should only be raised when attempting to convert the object
+    # directly. converted_call should still support it.
     raise NotImplementedError(
-        'Object conversion is not yet supported. If you are '
-        'trying to convert code that uses an existing object, '
-        'try including the creation of that object in the '
-        'conversion. For example, instead of converting the method '
-        'of a class, try converting the entire class instead. '
-        'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
-        'python/autograph/README.md#using-the-functional-api '
-        'for more information.')
+        'cannot convert entity "{}": object conversion is not yet'
+        ' supported.'.format(o))
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
@@ -578,8 +583,6 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
-    ag_internal.rewrite_graph_construction_error = (
-        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -686,6 +689,4 @@ def node_to_graph(node, context):
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.
   if context.program.options.uses(converter.Feature.NAME_SCOPES):
     node = converter.apply_(node, context, function_scopes)
-  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
-    node = converter.apply_(node, context, error_handlers)
   return node

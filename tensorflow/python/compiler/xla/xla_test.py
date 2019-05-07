@@ -220,13 +220,10 @@ class XlaCompileTest(test.TestCase):
   def test_xla_compile_eager(self):
     """Tests that xla.compile raises proper exception when used eagerly."""
 
-    def computation():
-      return 1
+    def computation(a, b):
+      return a + b
 
-    with self.assertRaisesRegexp(
-        RuntimeError, 'xla.experimental.compile is not supported when eager '
-        'execution is enabled. Try use it inside tf.function.'):
-      xla.compile(computation)
+    self.assertEqual(self.evaluate(xla.compile(computation, [1, 2])[0]), 3)
 
   def test_xla_compile_in_function(self):
     """Tests that xla.compile works in tf.function."""

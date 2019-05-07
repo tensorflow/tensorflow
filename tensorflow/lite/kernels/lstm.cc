@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -125,6 +125,15 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE(context, params->cell_clip >= 0);
   TF_LITE_ENSURE(context, params->proj_clip >= 0);
 
+  const TfLiteTensor* input_to_forget_weights =
+      GetInput(context, node, kInputToForgetWeightsTensor);
+  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->size, 2);
+  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[1], n_input);
+  TF_LITE_ENSURE(context, (input_to_forget_weights->type == kTfLiteFloat32) ||
+                              (input_to_forget_weights->type == kTfLiteUInt8) ||
+                              (input_to_forget_weights->type == kTfLiteInt8));
+
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
   const bool use_cifg = (input_to_input_weights == nullptr);
@@ -132,19 +141,17 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
+    TF_LITE_ENSURE_EQ(context, input_to_input_weights->type,
+                      input_to_forget_weights->type);
   }
-
-  const TfLiteTensor* input_to_forget_weights =
-      GetInput(context, node, kInputToForgetWeightsTensor);
-  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->size, 2);
-  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[0], n_cell);
-  TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[1], n_input);
 
   const TfLiteTensor* input_to_cell_weights =
       GetInput(context, node, kInputToCellWeightsTensor);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[1], n_input);
+  TF_LITE_ENSURE_EQ(context, input_to_cell_weights->type,
+                    input_to_forget_weights->type);
 
   const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
@@ -154,6 +161,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                       n_cell);
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->data[1],
                       n_output);
+    TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->type,
+                      input_to_forget_weights->type);
   }
 
   const TfLiteTensor* recurrent_to_forget_weights =
@@ -163,6 +172,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                     n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->dims->data[1],
                     n_output);
+  TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->type,
+                    input_to_forget_weights->type);
 
   const TfLiteTensor* recurrent_to_cell_weights =
       GetInput(context, node, kRecurrentToCellWeightsTensor);
@@ -170,6 +181,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[1],
                     n_output);
+  TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->type,
+                    input_to_forget_weights->type);
 
   // We make sure the input-gate's parameters are either both present (regular
   // LSTM) or not at all (CIFG-LSTM).
@@ -185,6 +198,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
+    TF_LITE_ENSURE_EQ(context, cell_to_input_weights->type,
+                      input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_forget_weights =
@@ -192,6 +207,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_forget_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
+    TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->type,
+                      input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_output_weights =
@@ -199,6 +216,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_output_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
+    TF_LITE_ENSURE_EQ(context, cell_to_output_weights->type,
+                      input_to_forget_weights->type);
   }
 
   // Making sure the peephole weights are there all or none.
@@ -219,21 +238,25 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   } else {
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->data[0], n_cell);
+    TF_LITE_ENSURE_EQ(context, input_gate_bias->type, kTfLiteFloat32);
   }
 
   const TfLiteTensor* forget_gate_bias =
       GetInput(context, node, kForgetGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
 
   const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteFloat32);
 
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, kOutputGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, output_gate_bias->type, kTfLiteFloat32);
 
   const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
@@ -241,6 +264,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[0], n_output);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[1], n_cell);
+    TF_LITE_ENSURE_EQ(context, projection_weights->type,
+                      input_to_forget_weights->type);
   }
 
   const TfLiteTensor* projection_bias =
@@ -248,6 +273,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (projection_bias != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->data[0], n_output);
+    TF_LITE_ENSURE_EQ(context, projection_bias->type, kTfLiteFloat32);
   }
 
   // Making sure the projection tensors are consistent:
@@ -269,6 +295,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->size, 1);
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->data[0],
                         n_cell);
+      TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->type,
+                        kTfLiteFloat32);
     }
 
     const TfLiteTensor* forget_layer_norm_coefficients =
@@ -277,6 +305,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->data[0],
                       n_cell);
+    TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->type,
+                      kTfLiteFloat32);
 
     const TfLiteTensor* cell_layer_norm_coefficients =
         GetInput(context, node, kCellLayerNormCoefficientsTensor);
@@ -284,6 +314,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->data[0],
                       n_cell);
+    TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->type,
+                      kTfLiteFloat32);
 
     const TfLiteTensor* output_layer_norm_coefficients =
         GetInput(context, node, kOutputLayerNormCoefficientsTensor);
@@ -291,6 +323,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->data[0],
                       n_cell);
+    TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->type,
+                      kTfLiteFloat32);
   }
 
   return kTfLiteOk;
@@ -311,8 +345,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // 20-inputs lstm are deprecated and is only kept here for backward
   // compatibility.
   if (node->inputs->size == 24) {
-    const TfLiteTensor* forget_layer_norm_coefficients =
-        GetInput(context, node, kForgetLayerNormCoefficientsTensor);
+    const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
+        context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
       op_data->is_layer_norm_lstm = false;
     } else {
@@ -571,7 +605,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO(mirkov): add a check that weights are all uint8s or all floats.
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
       return lstm_eval::EvalFloat(
@@ -762,7 +795,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(state_out), GetTensorData<float>(state_out),
         GetTensorShape(activation_out), GetTensorData<float>(activation_out),
         GetTensorShape(concat_temp), GetTensorData<float>(concat_temp),
-        GetTensorShape(activation_temp), GetTensorData<float>(activation_temp));
+        GetTensorShape(activation_temp), GetTensorData<float>(activation_temp),
+        cpu_backend_support::GetFromContext(context));
   } else if (input->type == kTfLiteUInt8 &&
              prev_activation->type == kTfLiteUInt8 &&
              weights->type == kTfLiteUInt8 && bias->type == kTfLiteInt32 &&
@@ -771,7 +805,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
              activation_out->type == kTfLiteUInt8 &&
              concat_temp->type == kTfLiteUInt8 &&
              activation_temp->type == kTfLiteInt16) {
-    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
     int state_scale_log2_rounded;
     if (!CheckedLog2(state_out->params.scale, &state_scale_log2_rounded)) {
       context->ReportError(
@@ -810,7 +843,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(activation_out), GetTensorData<uint8_t>(activation_out),
         GetTensorShape(concat_temp), GetTensorData<uint8_t>(concat_temp),
         GetTensorShape(activation_temp),
-        GetTensorData<int16_t>(activation_temp), gemm_context);
+        GetTensorData<int16_t>(activation_temp),
+        cpu_backend_support::GetFromContext(context));
   } else {
     context->ReportError(context,
                          "Unsupported combination of data types for LstmCell");
@@ -829,7 +863,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace basic
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  gemm_support::IncrementUsageCounter(context);
+  cpu_backend_support::IncrementUsageCounter(context);
 
   const auto* params = reinterpret_cast<const TfLiteLSTMParams*>(buffer);
   switch (params->kernel_type) {
@@ -843,7 +877,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
-  gemm_support::DecrementUsageCounter(context);
+  cpu_backend_support::DecrementUsageCounter(context);
 
   delete reinterpret_cast<OpData*>(buffer);
 }

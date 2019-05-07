@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NOLINT
+
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -38,11 +41,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -88,6 +95,7 @@ string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
@@ -143,7 +151,9 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    auto* eager_client = remote_eager_workers->GetClient(remote_worker);
+    tensorflow::eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(
+        remote_eager_workers->GetClient(remote_worker, &eager_client));
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
           "Cannot find a client for the given target:", remote_worker);
@@ -218,7 +228,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
       remote_workers, rendezvous_id, keep_alive_secs, server_def,
-      remote_eager_workers.get(), ctx->context.Async(), &remote_contexts));
+      remote_eager_workers.get(), ctx->context->Async(), &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
@@ -237,12 +247,13 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  return ctx->context.InitializeRemote(
+  return ctx->context->InitializeRemote(
       std::move(server), std::move(remote_eager_workers),
       std::move(remote_device_mgr), remote_contexts, r, device_mgr,
       keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
+#endif  // !IS_MOBILE_PLATFORM
 
 tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
                                            TFE_TensorHandle* input) {
@@ -339,7 +350,7 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char enable,
                                                         TF_Status* status) {
-  status->status = ctx->context.SetAsyncForThread(enable);
+  status->status = ctx->context->SetAsyncForThread(enable);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
@@ -379,16 +390,14 @@ void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
-  ctx->context.local_device_mgr()->ListDeviceAttributes(&list->response);
-  if (ctx->context.remote_device_mgr()) {
-    ctx->context.remote_device_mgr()->ListDeviceAttributes(&list->response);
+  ctx->context->local_device_mgr()->ListDeviceAttributes(&list->response);
+  if (ctx->context->remote_device_mgr()) {
+    ctx->context->remote_device_mgr()->ListDeviceAttributes(&list->response);
   }
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.ClearCaches();
-}
+void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context->ClearCaches(); }
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -396,6 +405,10 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+#else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -404,11 +417,12 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
   }
   status->status =
       UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def, ctx);
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
-  ctx->context.SetThreadLocalDevicePlacementPolicy(
+  ctx->context->SetThreadLocalDevicePlacementPolicy(
       static_cast<tensorflow::ContextDevicePlacementPolicy>(policy));
 }
 
@@ -418,19 +432,19 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
   return static_cast<TFE_ContextDevicePlacementPolicy>(
-      ctx->context.GetDevicePlacementPolicy());
+      ctx->context->GetDevicePlacementPolicy());
 }
 
 void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.AsyncWait();
+  status->status = ctx->context->AsyncWait();
 }
 
 void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context.GetStatus();
+  status->status = ctx->context->GetStatus();
 }
 
 void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->context.ClearAsyncError();
+  ctx->context->ClearAsyncError();
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -590,7 +604,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
     return new TFE_Op(ctx, name, false, types,
                       new TFE_OpInferenceContext(op_def));
   }
-  if (!ctx->context.FindFunctionByName(name)) {
+  if (!ctx->context->FindFunctionByName(name)) {
     status->status = tensorflow::errors::NotFound(
         "'", name,
         "' is neither a type of a primitive operation nor a name "
@@ -888,7 +902,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                const char* device_name,
                                                TF_Status* status) {
   tensorflow::TensorHandle* handle;
-  status->status = tensorflow::EagerCopyToDevice(h->handle, &ctx->context,
+  status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
                                                  device_name, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
@@ -905,26 +919,26 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
-  status->status = ctx->context.AddFunctionDef(function_def);
+  status->status = ctx->context->AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  status->status = ctx->context.AddFunctionDef(function->fdef);
+  status->status = ctx->context->AddFunctionDef(function->fdef);
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
-  return ctx->context.FindFunctionDef(name) != nullptr;
+  return ctx->context->FindFunctionDef(name) != nullptr;
 }
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(true);
-  ctx->context.SetShouldStoreStepStats(true);
+  ctx->context->SetShouldStoreGraphs(true);
+  ctx->context->SetShouldStoreStepStats(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(false);
-  ctx->context.SetShouldStoreStepStats(false);
+  ctx->context->SetShouldStoreGraphs(false);
+  ctx->context->SetShouldStoreStepStats(false);
 }
 
 }  // extern "C"
@@ -953,9 +967,9 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
   TFE_ContextAsyncWait(ctx, status);
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
-  status->status = MessageToBuffer(*ctx->context.RunMetadataProto(), buf);
-  ctx->context.ClearRunMetadata();
+  tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
+  status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);
+  ctx->context->ClearRunMetadata();
 }
 
 namespace {
@@ -971,9 +985,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }
 }  // namespace
 
-void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context.StartStep(); }
+void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context->StartStep(); }
 
-void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context.EndStep(); }
+void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context->EndStep(); }
 
 namespace tensorflow {
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,

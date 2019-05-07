@@ -158,7 +158,7 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
       bw_lstm_layer: The backward lstm layer either a single lstm cell or a
         multi lstm cell.
       sess: Old session.
-      saver: saver created by tf.train.Saver()
+      saver: saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: use dynamic_rnn or not.
 
     Returns:

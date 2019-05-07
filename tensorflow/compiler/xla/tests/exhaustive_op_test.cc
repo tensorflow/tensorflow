@@ -215,7 +215,7 @@ class ExhaustiveOpTest
         RunImpl<half, uint16>(enqueue_op, evaluate_op);
         break;
       case BF16:
-        SetDefaultErrSpec(0.001, 0.01);
+        SetDefaultErrSpec(0.002, 0.02);
         RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op);
         break;
       default:
@@ -553,9 +553,37 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
   Run(Sqrt, std::sqrt);
 }
 
-// TODO(jlebar): Add remaining trig functions.  Don't forget Atan2!
 // TODO(jlebar): Test trig functions over complex inputs.
-XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+
+XLA_TEST_P(ExhaustiveOpTest, Acosh) {
+  // Error inherited from Log, which our implementation of Acosh uses.
+  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
+    abs_err_ = 0.001;
+    rel_err_ = 0.001;
+  }
+  Run(Acosh, std::acosh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Asinh) {
+  // Error inherited from Log, which our implementation of Asinh uses.
+  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
+    abs_err_ = 0.001;
+    rel_err_ = 0.001;
+  }
+  Run(Asinh, std::asinh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
+
+// TODO(jlebar): Enable these.
+// XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
+// XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
+// XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
+// XLA_TEST_P(ExhaustiveOpTest, Cosh) { Run(Cosh, std::cosh); }
+// XLA_TEST_P(ExhaustiveOpTest, Cos) { Run(Cos, std::cos); }
+// XLA_TEST_P(ExhaustiveOpTest, Sinh) { Run(Sinh, std::sinh); }
+// XLA_TEST_P(ExhaustiveOpTest, Sin) { Run(Sin, std::sin); }
+// XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+// XLA_TEST_P(ExhaustiveOpTest, Tan) { Run(Tan, std::tan); }
+// XLA_TEST_P(ExhaustiveOpTest, Atan2) { Run(Atan2, std::atan2); }
 
 XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
