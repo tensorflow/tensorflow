@@ -1788,7 +1788,6 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
             per_sample_losses = loss_fn.call(y_true, y_pred)
             weighted_losses = losses_utils.compute_weighted_loss(
@@ -1819,19 +1818,13 @@ class Model(network.Network):
             output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
-          # Keep track of stateful result tensor and function for the loss.
-          # Compute the stateful loss value.
-          if weighted_losses is not None:
-            # TODO(b/120571621): Directly call metric when the bug is fixed.
-            aggregated_output_loss = (
-                distributed_training_utils.call_replica_local_fn(
-                    self._output_loss_metrics[i],
-                    weighted_losses,
-                    strategy=self._distribution_strategy))
-          else:
-            # Custom loss class.
-            aggregated_output_loss = self._call_metric_fn(
-                self._output_loss_metrics[i], y_true, y_pred, sample_weight)
+          # Keep track of stateful result tensor for the loss.
+          # TODO(b/120571621): Directly call metric when the bug is fixed.
+          aggregated_output_loss = (
+              distributed_training_utils.call_replica_local_fn(
+                  self._output_loss_metrics[i],
+                  output_loss,
+                  strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         if total_loss is None:
@@ -2111,12 +2104,12 @@ class Model(network.Network):
           self._set_per_output_metric_attributes(
               self._per_output_weighted_metrics[i], i))
 
-    # Create a metric wrapper for each output loss.
+    # Create a metric wrapper for each output loss. This computes mean of an
+    # output loss across mini-batches (irrespective of how we reduce within a
+    # batch).
     if len(self.outputs) > 1:
       self._output_loss_metrics = [
-          metrics_module.SumOverBatchSize() if hasattr(loss_fn, 'reduction')
-          else metrics_module.SumOverBatchSizeMetricWrapper(loss_fn)
-          for loss_fn in self.loss_functions
+          metrics_module.Mean() for _ in self.loss_functions
       ]
 
     self._per_output_metrics = updated_per_output_metrics
