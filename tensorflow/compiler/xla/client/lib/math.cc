@@ -574,9 +574,9 @@ XlaOp Acosh(XlaOp x) {
 // If x^2 will overflow and x is positive, we can approximate x + sqrt(x^2 + 1)
 // as 2*x and return log(2) + log(x).
 //
-// If x is negative, the above would give us some trouble, because we'd need to
-// approximate x + sqrt(sqrt(x^2 + 1) - abs(x).  But we're saved
-// by the fact that asinh(-x) = -asinh(x).
+// If x is negative, the above would give us some trouble; we can't approximate
+// the result as x + abs(x) = 0!  But we're saved by the fact that asinh(-x) =
+// -asinh(x).
 XlaOp Asinh(XlaOp x) {
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
