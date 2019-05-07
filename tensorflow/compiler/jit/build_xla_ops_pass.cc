@@ -233,14 +233,10 @@ void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
 }
 
 // Returns true (into `result`) if a node placed on `device` must be compiled.
-Status DeviceRequiresCompilation(const string& device, bool* result) {
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(DeviceNameToDeviceType(device, &device_type));
-  const XlaOpRegistry::DeviceRegistration* registration = nullptr;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return errors::Internal("Could not find compilation device ",
-                            device_type.type());
-  }
+Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
+                                 jit::DeviceId device, bool* result) {
+  const XlaOpRegistry::DeviceRegistration* registration =
+      device_info_cache.GetCompilationDevice(device);
   *result = registration->autoclustering_policy ==
             XlaOpRegistry::AutoclusteringPolicy::kAlways;
   return Status::OK();
@@ -293,17 +289,20 @@ Status ReplaceFunctionCallWithPartionedCall(
   return Status::OK();
 }
 
-Status InferDeviceForCluster(Node* n, const string& function_name,
-                             const FunctionLibraryDefinition& flib_def,
-                             string* result) {
+xla::StatusOr<jit::DeviceId> InferDeviceForCluster(
+    jit::DeviceInfoCache* device_info_cache, Node* n,
+    const string& function_name, const FunctionLibraryDefinition& flib_def) {
   const FunctionDef* func_def = flib_def.Find(function_name);
   TF_RET_CHECK(func_def) << "Could not find " << function_name;
 
-  std::set<string> device_names;
+  jit::DeviceSet device_set;
+
   for (const NodeDef& ndef : func_def->node_def()) {
     VLOG(3) << ndef.DebugString();
     if (!ndef.device().empty()) {
-      device_names.insert(ndef.device());
+      TF_ASSIGN_OR_RETURN(jit::DeviceId device_id,
+                          device_info_cache->GetIdFor(ndef.device()));
+      device_set.Insert(device_id);
     }
   }
 
@@ -311,41 +310,47 @@ Status InferDeviceForCluster(Node* n, const string& function_name,
     // TODO(sanjoy): We need this because EncapsulateSubgraphsPass drops device
     // assignment when constant folding.  We should fix EncapsulateSubgraphsPass
     // instead.
-    device_names.insert(n->assigned_device_name());
+    TF_ASSIGN_OR_RETURN(jit::DeviceId device_id,
+                        device_info_cache->GetIdFor(n->assigned_device_name()));
+    device_set.Insert(device_id);
   }
 
-  std::vector<string> device_names_vector;
-  absl::c_copy(device_names, std::back_inserter(device_names_vector));
-
-  Status s = PickDeviceForXla(device_names_vector, true, result);
-  if (s.ok()) {
-    VLOG(2) << "For " << function_name << " PickDeviceForXla("
-            << absl::StrJoin(device_names_vector, ", ") << ") -> " << *result;
-  }
-  return s;
+  TF_ASSIGN_OR_RETURN(jit::DeviceId result,
+                      PickDeviceForXla(*device_info_cache, device_set,
+                                       /*allow_mixing_unknown_and_cpu=*/true));
+  VLOG(2) << "For " << function_name << " PickDeviceForXla("
+          << device_info_cache->DebugString(device_set) << ") -> "
+          << device_info_cache->GetNameFor(result);
+  return result;
 }
 
 Status ReplaceNodeWithXlaCompileAndXlaRun(
+    jit::DeviceInfoCache* device_info_cache,
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, bool lazy_compilation_enabled,
     bool insert_print_nodes, Graph* g, Node* n) {
   XlaClusterInfo cluster_info;
   TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
 
-  string device;
-  TF_RETURN_IF_ERROR(InferDeviceForCluster(n, cluster_info.function.name(),
-                                           flib_def, &device));
+  TF_ASSIGN_OR_RETURN(
+      jit::DeviceId device,
+      InferDeviceForCluster(device_info_cache, n, cluster_info.function.name(),
+                            flib_def));
+
   bool requires_compilation;
-  TF_RETURN_IF_ERROR(DeviceRequiresCompilation(device, &requires_compilation));
+  TF_RETURN_IF_ERROR(DeviceRequiresCompilation(*device_info_cache, device,
+                                               &requires_compilation));
   if (!lazy_compilation_enabled) {
     requires_compilation = true;
   }
+
+  string device_name_str = string(device_info_cache->GetNameFor(device));
 
   Status status;
   Scope root = NewInternalScope(g, &status, /*refiner=*/nullptr)
                    .NewSubScope(n->name())
                    .WithDevice(n->requested_device())
-                   .WithAssignedDevice(device);
+                   .WithAssignedDevice(device_name_str);
 
   ops::_XlaCompile xla_compile(root.WithOpName("xla_compile"),
                                /*constants=*/cluster_info.constant_inputs,
@@ -441,10 +446,12 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   bool insert_print_nodes =
       GetBuildXlaOpsPassFlags()->tf_xla_print_cluster_outputs;
 
+  jit::DeviceInfoCache device_info_cache;
+
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(
-        options, *options.flib_def, lazy_compilation_enabled,
-        insert_print_nodes, graph, n));
+        &device_info_cache, options, *options.flib_def,
+        lazy_compilation_enabled, insert_print_nodes, graph, n));
   }
 
   if (VLOG_IS_ON(1)) {

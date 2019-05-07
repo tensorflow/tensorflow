@@ -16,16 +16,14 @@
 set -x
 
 cd bazel_pip
+virtualenv --system-site-packages --python=python .env
+source .env/bin/activate
 pip --version
 pip install portpicker
 pip install *.whl
 
 # Use default configuration
 yes "" | python configure.py
-
-# Run as non-root to aviod file permission related test failures.
-useradd -m normal_user
-su normal_user
 
 PIP_TEST_ROOT=pip_test_root
 mkdir -p ${PIP_TEST_ROOT}

@@ -747,23 +747,20 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
 
   d = BroadcastInDim(d, dimensions, broadcast_dims);
 
-  // As m >= n, only first m columns vectors are needed to be permuted, and the
-  // rest of m - n vectors are appended after the sorting is done.
+  // As m >= n, only first n column vectors need to be permuted, and the rest of
+  // m - n vectors are appended after the sorting is done.
   XlaOp sort_u_result =
-      Sort({-d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
-           CreateScalarLtComputation(
+      Sort({d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
 
-  // TODO(kuny): using CreateScalarGtComputation after b/124862300 is fixed.
   XlaOp sort_v_result =
-      Sort({SliceInMinorDims(-d, {0, 0}, {n, n}), result.v},
-           CreateScalarLtComputation(
+      Sort({SliceInMinorDims(d, {0, 0}, {n, n}), result.v},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
-  // Make sure all the signular values are non-negative.
-  result.d = Max(-GetMatrixDiagonal(GetTupleElement(sort_v_result, 0)),
-                 ScalarLike(d, 0.0));
+  result.d = GetMatrixDiagonal(GetTupleElement(sort_v_result, 0));
 
   result.v = GetTupleElement(sort_v_result, 1);
   result.v = Mul(

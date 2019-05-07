@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -105,11 +106,27 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         input_names = []
         input_specs = []
       # TODO(allenl): Support optional arguments
-      signature_fn = wrapped.prune(
-          feeds=[wrapped.graph.as_graph_element(inp.name)
-                 for inp in input_specs],
-          fetches={name: wrapped.graph.as_graph_element(out.name)
-                   for name, out in signature_def.outputs.items()})
+      feeds = [wrapped.graph.as_graph_element(inp.name)
+               for inp in input_specs]
+      fetches = {name: wrapped.graph.as_graph_element(out.name)
+                 for name, out in signature_def.outputs.items()}
+      try:
+        signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
+      except lift_to_graph.UnliftableError as ex:
+        # Mutate the exception to add a bit more detail.
+        args = ex.args
+        if not args:
+          message = ""
+        else:
+          message = args[0]
+        message = (
+            ("A SavedModel signature needs an input for each placeholder the "
+             "signature's outputs use. An output for signature '{}' depends on "
+             "a placeholder which is not an input (i.e. the placeholder is not "
+             "fed a value).\n\n").format(signature_key)
+            + message)
+        ex.args = (message,) + args[1:]
+        raise
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
       if len(input_names) == 1:

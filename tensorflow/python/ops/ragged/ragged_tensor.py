@@ -40,7 +40,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
-
 # pylint: enable=protected-access
 
 #===============================================================================

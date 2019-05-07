@@ -23,24 +23,119 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace jit {
+// Instances of DeviceId represent TensorFlow devices as integers.
+//
+// This helps avoid having to manipulate device names as strings when
+// auto-clustering.
+class DeviceId {
+ public:
+  DeviceId(DeviceId&&) = default;
+  DeviceId(const DeviceId&) = default;
+  DeviceId& operator=(const DeviceId&) = default;
+
+  bool operator==(const DeviceId& other) const { return id() == other.id(); }
+  bool operator!=(const DeviceId& other) const { return !(*this == other); }
+
+ private:
+  int id_;
+
+  explicit DeviceId(int id) : id_(id) {}
+
+  int id() const { return id_; }
+
+  friend class DeviceInfoCache;
+  friend class DeviceSet;
+};
+
+// A set of DeviceIds, represented as a bitmap.
+class DeviceSet {
+ public:
+  void Insert(DeviceId device_id);
+  void UnionWith(const DeviceSet& other);
+  bool IsEmpty() const;
+
+  // Calls `func` on each DeviceId in the set.  Stops iterating early if `func`
+  // return false.
+  //
+  // TODO(sanjoy): Change this to take a typed std::function if that's
+  // performance neutral.
+  template <typename FnTy>
+  void ForEach(FnTy func) const {
+    // This is really a poor man's iterator, we should consider writing a proper
+    // iterator if this ends up being used widely.
+    for (int word_index = 0; word_index < storage_.size(); word_index++) {
+      uint64 word = storage_[word_index];
+      for (int bit_index = 0; bit_index < kWordSize; bit_index++) {
+        if (word & (1ull << bit_index)) {
+          if (!func(DeviceId(word_index * kWordSize + bit_index))) {
+            return;
+          }
+        }
+      }
+    }
+  }
+
+ private:
+  absl::InlinedVector<uint64, 1> storage_;
+
+  const int kWordSize = 64;
+};
+
 // Caches some miscellaneous information about TF devices.  Thread compatible.
 class DeviceInfoCache {
  public:
-  xla::StatusOr<const XlaOpRegistry::DeviceRegistration*> GetCompilationDevice(
-      absl::string_view device_name);
-  xla::StatusOr<std::reference_wrapper<const DeviceType>> GetDeviceTypeFor(
-      absl::string_view device_name);
+  bool IsGpu(DeviceId device) const { return is_gpu_[device.id()]; }
+  bool IsCpu(DeviceId device) const { return is_cpu_[device.id()]; }
+
+  absl::string_view GetNameFor(DeviceId device) const {
+    return names_[device.id()];
+  }
+
+  xla::StatusOr<DeviceId> GetIdFor(absl::string_view name);
+
+  using DeviceRegistration = const XlaOpRegistry::DeviceRegistration;
+
+  DeviceRegistration* GetCompilationDevice(DeviceId device) const {
+    return id_to_compilation_device_[device.id()];
+  }
+
+  xla::StatusOr<DeviceRegistration*> GetCompilationDevice(
+      absl::string_view name) {
+    TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(name));
+    return GetCompilationDevice(device_id);
+  }
+
+  const DeviceType& GetDeviceTypeFor(DeviceId device) const {
+    return *id_to_device_type_[device.id()];
+  }
+
+  using DeviceTypeConstRef = std::reference_wrapper<const DeviceType>;
+
+  xla::StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(
+      absl::string_view device_name) {
+    TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(device_name));
+    return std::cref(*id_to_device_type_[device_id.id()]);
+  }
+
+  string DebugString(const DeviceSet& device_set) const;
 
  private:
-  absl::flat_hash_map<string, const XlaOpRegistry::DeviceRegistration*>
-      device_to_device_registration_;
-  absl::flat_hash_map<string, std::unique_ptr<DeviceType>>
-      device_to_device_type_;
+  absl::flat_hash_map<string, DeviceId> name_to_id_;
+
+  // These fields are populated for a device in GetIdFor, *before* we give out a
+  // DeviceId.
+  std::vector<const XlaOpRegistry::DeviceRegistration*>
+      id_to_compilation_device_;
+  std::vector<std::unique_ptr<DeviceType>> id_to_device_type_;
+  std::vector<string> names_;
+  std::vector<bool> is_cpu_;
+  std::vector<bool> is_gpu_;
 };
 
 }  // namespace jit
@@ -49,7 +144,7 @@ class DeviceInfoCache {
 Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
 
 // Picks the device for which XLA should compile a cluster that contains
-// operations placed in devices in `device_names`.  For instance a cluster that
+// operations placed in devices in `devices`.  For instance a cluster that
 // contains operations solely placed on the CPU will be compiled into a CPU
 // executable by XLA, whereas a cluster that contains operations placed on the
 // CPU and also operations placed on the GPU will be compiled into a GPU
@@ -82,16 +177,15 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
 //   case it is the responsibility of the optimization pass that injected the
 //   CPU nodes into the cluster to ensure that these nodes can be compiled by
 //   the unknown XLA backend.
-Status PickDeviceForXla(absl::Span<const string> device_names,
-                        bool allow_mixing_unknown_and_cpu,
-                        string* out_device_picked);
+xla::StatusOr<jit::DeviceId> PickDeviceForXla(
+    const jit::DeviceInfoCache& device_info_cache,
+    const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 
 // This is like `PickDeviceForXla` except that it returns false (instead of a
-// non-OK Status) in `out_can_pick_device` if no unambiguous choice of device
-// exists.
-Status CanPickDeviceForXla(absl::Span<const string> device_names,
-                           bool allow_mixing_unknown_and_cpu,
-                           bool* out_can_pick_device);
+// non-OK Status) if no unambiguous choice of device exists.
+xla::StatusOr<bool> CanPickDeviceForXla(
+    const jit::DeviceInfoCache& device_info_cache,
+    const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_

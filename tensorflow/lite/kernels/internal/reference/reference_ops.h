@@ -2619,6 +2619,29 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline float RoundToNearest(float value) {
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) ||
+      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val = floor_val + 1.0f;
+  }
+}
+
+inline void Round(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    // Note that this implementation matches that of tensorFlow tf.round
+    // and corresponds to the bankers rounding method.
+    // cfenv (for fesetround) is not yet supported universally on Android, so
+    // using a work around.
+    output_data[i] = RoundToNearest(input_data[i]);
+  }
+}
+
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,

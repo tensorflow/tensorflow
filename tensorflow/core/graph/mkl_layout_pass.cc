@@ -3406,6 +3406,16 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
     return nullptr;
   }
 
+  // We make an exception for Conv2D, as the corresponding MKL ops
+  // currently do not support the case of padding == EXPLICIT yet.
+  if (n->type_string() == csinfo_.conv2d ||
+      n->type_string() == csinfo_.conv2d_grad_input ||
+      n->type_string() == csinfo_.conv2d_grad_filter) {
+    string padding;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "padding", &padding));
+    if (padding == "EXPLICIT") return nullptr;
+  }
+
   // We make an exception for __MklDummyConv2DWithBias,
   // __MklConv2DBackpropFilterWithBias, and __MklDummyPadWithConv2D since their
   // names do not match Mkl node names.

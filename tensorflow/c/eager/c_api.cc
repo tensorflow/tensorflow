@@ -21,8 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"

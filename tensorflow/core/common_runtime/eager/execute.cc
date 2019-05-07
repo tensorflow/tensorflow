@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"

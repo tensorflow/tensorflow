@@ -765,19 +765,20 @@ distribute_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/eager:test",
+    main = "moving_averages_test.py",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

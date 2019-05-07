@@ -78,7 +78,7 @@ def partition_or_replicate_on_host(tensor, dims):
                 x, num_or_size_splits=num_or_size_splits, axis=axis))
       output = new_output
     else:
-      output = [array_ops.split(x, dim, axis=axis) for x in output]
+      output = [array_ops.split(x, int(dim), axis=axis) for x in output]
     output = nest.flatten(output)
   return output
 
