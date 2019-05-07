@@ -24,6 +24,7 @@ import functools
 import inspect
 import os
 import pdb
+import re
 import sys
 import textwrap
 
@@ -256,7 +257,8 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  if any(f in m.__dict__.values() for m in (collections, pdb, copy, inspect)):
+  if any(
+      f in m.__dict__.values() for m in (collections, pdb, copy, inspect, re)):
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return _call_unconverted(f, args, kwargs)
 
