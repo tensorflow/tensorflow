@@ -51,10 +51,10 @@ cc_library(
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
+        "conv.cc",
         "fully_connected.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
-        "conv.cc",
         "softmax.cc",
     ],
     hdrs = [
