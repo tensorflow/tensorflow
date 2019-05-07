@@ -43,6 +43,7 @@ from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -80,7 +81,7 @@ ops.NotDifferentiable("ReduceDataset")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable):
+class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -299,6 +300,24 @@ class DatasetV2(tracking_base.Trackable):
     output_types = str(output_types).replace("'", "")
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
+
+  def _to_components(self):
+    return [self._variant_tensor]
+
+  def _component_metadata(self):
+    return self._element_structure
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    return _VariantDataset(components[0], metadata)
+
+  def _shape_invariant_to_components(self, shape=None):
+    del shape  # not used
+    return tensor_shape.TensorShape([])  # dataset component is always a scalar.
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._variant_tensor, "graph")
 
   @staticmethod
   def from_tensors(tensors):
@@ -2277,6 +2296,14 @@ class DatasetStructure(structure_lib.Structure):
   def __init__(self, element_structure):
     self._element_structure = element_structure
 
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, DatasetStructure) and
+            self._element_structure == other._element_structure)
+
+  def __hash__(self):
+    return hash(self._element_structure)
+
   @property
   def _flat_shapes(self):
     return [tensor_shape.scalar()]
@@ -2725,6 +2752,7 @@ class RangeDataset(DatasetSource):
   def __init__(self, *args):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
+    self._structure = structure_lib.TensorStructure(dtypes.int64, [])
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -2754,7 +2782,7 @@ class RangeDataset(DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure_lib.TensorStructure(dtypes.int64, [])
+    return self._structure
 
 
 class CacheDataset(UnaryUnchangedStructureDataset):
