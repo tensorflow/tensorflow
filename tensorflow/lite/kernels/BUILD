@@ -431,7 +431,6 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "reverse.cc",
         "reverse_sequence.cc",
-        "round.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -849,22 +848,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "round_test",
-    size = "small",
-    srcs = ["round_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":builtin_ops",
-        ":test_main",
-        ":test_util",
-        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )

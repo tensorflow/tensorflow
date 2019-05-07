@@ -117,11 +117,12 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 inline TfLiteStatus EvalOptimized(TfLiteContext* context, TfLiteNode* node,
-    void func(const RuntimeShape&, const float*, const RuntimeShape&, float*)) {
+                                  void func(const RuntimeShape&, const float*,
+                                            const RuntimeShape&, float*)) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   func(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+       GetTensorShape(output), GetTensorData<float>(output));
   return kTfLiteOk;
 }
 
@@ -147,6 +148,25 @@ TfLiteStatus CeilEval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
   return kTfLiteOk;
+}
+
+inline float RoundToNearest(float value) {
+  // Note that this implementation matches that of tensorFlow tf.round
+  // and corresponds to the bankers rounding method.
+  // cfenv (for fesetround) is not yet supported universally on Android, so
+  // using a work around.
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) ||
+      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val = floor_val + 1.0f;
+  }
+}
+
+TfLiteStatus RoundEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, [](float f) { return RoundToNearest(f); });
 }
 
 }  // namespace
@@ -245,6 +265,14 @@ TfLiteRegistration* Register_CEIL() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       elementwise::CeilEval<elementwise::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_ROUND() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::RoundEval};
   return &r;
 }
 

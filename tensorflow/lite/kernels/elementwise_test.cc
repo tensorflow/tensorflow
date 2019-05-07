@@ -194,5 +194,27 @@ TEST(ElementWise, CeilMultiDims) {
               ElementsAreArray({2, 1, 1, 5}));
 }
 
+TEST(ElementWise, RoundSingleDim) {
+  ElementWiseOpFloatModel model(BuiltinOperator_ROUND, {6});
+  model.PopulateTensor<float>(model.input(), {8.5, 0.0, 3.5, 4.2, -3.5, -4.5});
+  model.Invoke();
+  EXPECT_THAT(model.ExtractVector<float>(model.output()),
+              ElementsAreArray({8, 0, 4, 4, -4, -4}));
+  EXPECT_THAT(model.GetTensorShape(model.output()),
+              ElementsAreArray({6}));
+}
+
+TEST(ElementWise, RoundMultiDims) {
+  ElementWiseOpFloatModel model(BuiltinOperator_ROUND, {2, 1, 1, 6});
+  model.PopulateTensor<float>(
+      model.input(), {0.0001, 8.0001, 0.9999, 9.9999, 0.5, -0.0001, -8.0001,
+                      -0.9999, -9.9999, -0.5, -2.5, 1.5});
+  model.Invoke();
+  EXPECT_THAT(model.ExtractVector<float>(model.output()),
+              ElementsAreArray({0, 8, 1, 10, 0, 0, -8, -1, -10, -0, -2, 2}));
+  EXPECT_THAT(model.GetTensorShape(model.output()),
+              ElementsAreArray({2, 1, 1, 6}));
+}
+
 }  // namespace
 }  // namespace tflite
