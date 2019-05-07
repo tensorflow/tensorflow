@@ -205,7 +205,7 @@ class VocabularyProcessor(object):
       for idx, token in enumerate(tokens):
         if idx >= self.max_document_length:
           break
-        word_ids[idx] = self.vocabulary_.get(token)
+        word_ids[idx] = self.vocabulary_.get(token, 0) # if tokens does not exist in the Vocab index should be 0 since '<UNK>' is given 0 index
       yield word_ids
 
   def reverse(self, documents):
