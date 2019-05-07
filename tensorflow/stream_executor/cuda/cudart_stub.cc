@@ -122,9 +122,9 @@ extern __host__ __device__ unsigned CUDARTAPI __cudaPushCallConfiguration(
 }
 
 #if CUDA_VERSION >= 10010
-extern void CUDARTAPI __cudaUnregisterFatBinaryEnd(void **fatCubinHandle) {
+extern void CUDARTAPI __cudaRegisterFatBinaryEnd(void **fatCubinHandle) {
   using FuncPtr = void(CUDARTAPI *)(void **fatCubinHandle);
-  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaUnregisterFatBinaryEnd");
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaRegisterFatBinaryEnd");
   if (!func_ptr) return;
   func_ptr(fatCubinHandle);
 }
