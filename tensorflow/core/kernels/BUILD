@@ -6149,6 +6149,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
     "gemm_functors.h",
     "mirror_pad_op_cpu_impl.h",
