@@ -1,5 +1,10 @@
 # TensorFlow API backwards compatibility tests.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "py_test",
+)
+
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
 )
