@@ -2160,16 +2160,6 @@ T FloorMod(T input1, T input2) {
              : trunc_mod;
 }
 
-inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::ceil(input_data[offset]);
-  }
-}
-
 inline float RoundToNearest(float value) {
   auto floor_val = std::floor(value);
   auto diff = value - floor_val;

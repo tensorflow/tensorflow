@@ -137,6 +137,18 @@ TfLiteStatus FloorEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <KernelType type>
+TfLiteStatus CeilEval(TfLiteContext* context, TfLiteNode* node) {
+  if (type == kReference) {
+    return EvalNumeric(context, node, [](float f) { return std::ceil(f); });
+  } else if (type == kGenericOptimized) {
+    return EvalOptimized(context, node, optimized_ops::Ceil);
+  } else {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace
 }  // namespace elementwise
 
@@ -217,6 +229,22 @@ TfLiteRegistration* Register_FLOOR() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       elementwise::FloorEval<elementwise::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_CEIL_REF() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::CeilEval<elementwise::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_CEIL() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::CeilEval<elementwise::kGenericOptimized>};
   return &r;
 }
 

@@ -384,7 +384,6 @@ cc_library(
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
         "cast.cc",
-        "ceil.cc",
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
@@ -850,22 +849,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "ceil_test",
-    size = "small",
-    srcs = ["ceil_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":builtin_ops",
-        ":test_main",
-        ":test_util",
-        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )
