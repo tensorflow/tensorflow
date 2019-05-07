@@ -380,6 +380,9 @@ def load(export_dir, tags=None):
                        saved_model_proto,
                        export_dir)
       root = loader.get(0)
+    root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
+    root.tensorflow_git_version = (
+        meta_graph_def.meta_info_def.tensorflow_git_version)
   else:
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)

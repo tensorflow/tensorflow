@@ -28,6 +28,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -333,6 +334,13 @@ class LoadTest(test.TestCase):
     path = self._signature_with_no_inputs()
     imported = load.load(path)
     self.assertEqual([2], imported.signatures["key"]()["value"].shape)
+
+  def test_version_info(self):
+    path = self._signature_with_no_inputs()
+    imported = load.load(path)
+    self.assertEqual(versions.__version__, imported.tensorflow_version)
+    self.assertEqual(versions.__git_version__,
+                     imported.tensorflow_git_version)
 
   def _unfed_placeholder_signature(self):
     export_graph = ops.Graph()

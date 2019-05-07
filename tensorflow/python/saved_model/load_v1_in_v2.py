@@ -171,6 +171,10 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
     root.variables = list(wrapped.graph.variables)
+    root.tensorflow_version = (
+        meta_graph_def.meta_info_def.tensorflow_version)
+    root.tensorflow_git_version = (
+        meta_graph_def.meta_info_def.tensorflow_git_version)
     return root
 
 
