@@ -1062,8 +1062,16 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
 StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
     Cluster* cluster_from) {
   bool changed = false;
-  for (int to :
-       cycles_graph_.Successors(cluster_from->cycles_graph_node_id())) {
+
+  // Make a copy of the set of successors because we may modify the graph in
+  // TryToContractEdge.
+  std::vector<int32> successors_copy = [&] {
+    absl::Span<const int32> successors =
+        cycles_graph_.Successors(cluster_from->cycles_graph_node_id());
+    return std::vector<int32>(successors.begin(), successors.end());
+  }();
+
+  for (int to : successors_copy) {
     iteration_count_++;
     if (to >= graph_->num_node_ids()) {
       // Node is a fictitious node that is present only in the cycle detection
