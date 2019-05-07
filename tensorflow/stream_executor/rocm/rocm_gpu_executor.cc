@@ -144,7 +144,7 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
 void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
-  mutex_lock lock{in_memory_modules_mu_};
+  absl::MutexLock lock{&in_memory_modules_mu_};
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
     VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
@@ -784,34 +784,7 @@ bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
 bool GpuExecutor::GetSymbol(const string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
-<<<<<<< HEAD
-    mutex_lock lock{in_memory_modules_mu_};
-=======
-  {  // give limited scope to lock
-    absl::MutexLock lock{&disk_modules_mu_};
-    for (auto& it : disk_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to lock
     absl::MutexLock lock{&in_memory_modules_mu_};
-    for (auto& it : in_memory_modules_) {
-      if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
-                                     reinterpret_cast<hipDeviceptr_t*>(mem),
-                                     bytes)) {
-        return true;
-      }
-    }
-  }
-
-  {  // give limited scope to lock
-    absl::MutexLock lock{&in_memory_modules_mu_};
->>>>>>> upstream/master
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
       CHECK(it != gpu_binary_to_module_.end());

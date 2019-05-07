@@ -14,11 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/rocm/rocm_platform.h"
-<<<<<<< HEAD
-=======
 
 #include "absl/memory/memory.h"
->>>>>>> upstream/master
 #include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"

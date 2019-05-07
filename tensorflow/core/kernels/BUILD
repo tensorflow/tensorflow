@@ -4101,17 +4101,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-<<<<<<< HEAD
-    deps = NN_DEPS +
-         [
-           ":redux_functor",
-           ":reduction_ops",
-      ] + if_cuda([
-        "@cub_archive//:cub",
-        "//tensorflow/core:stream_executor",
-        "//tensorflow/stream_executor/cuda:cuda_stream",
-    ]) + if_rocm_is_configured([
-=======
     deps = NN_DEPS + [
         ":redux_functor",
     ] + if_cuda_or_rocm([
@@ -4121,7 +4110,6 @@ tf_kernel_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
->>>>>>> upstream/master
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -4158,20 +4146,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-<<<<<<< HEAD
-    deps = NN_DEPS + 
-	[
-          ":reduction_ops",
-    ] + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm_is_configured([
-=======
     deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
         "@cub_archive//:cub",
     ]) + if_rocm([
->>>>>>> upstream/master
         "@rocprim_archive//:rocprim",
     ]),
 )
@@ -4836,11 +4815,7 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-<<<<<<< HEAD
-    ] + if_cuda_is_configured([
-=======
     ] + if_cuda_or_rocm([
->>>>>>> upstream/master
         ":reduction_ops",
     ]) + if_cuda([
         "@cub_archive//:cub",
@@ -5357,11 +5332,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-<<<<<<< HEAD
-    ] + if_cuda_is_configured([
-=======
     ] + if_cuda_or_rocm([
->>>>>>> upstream/master
         ":reduction_ops",
     ]) + if_cuda([
         "@cub_archive//:cub",

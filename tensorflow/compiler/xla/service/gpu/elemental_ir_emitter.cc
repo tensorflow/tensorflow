@@ -282,7 +282,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return FPCast(fast_tanh, value->getType());
 }
 
-<<<<<<< HEAD
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
     PrimitiveType prim_type, llvm::Value* value) {
     // Use libdevice __nv_round instead of llvm.round. This is to workaround a
@@ -294,8 +293,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
                                  prim_type);
 }
 
-=======
->>>>>>> upstream/master
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,

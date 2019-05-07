@@ -538,7 +538,6 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-<<<<<<< HEAD
   def testPostTrainingCalibrateAndQuantize(self):
 
     if test.is_built_with_rocm() :
@@ -554,9 +553,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
       # this if condition can be removed)
       self.skipTest("Temporary failure in ROCm")
 
-=======
   def _getCalibrationQuantizeModel(self):
->>>>>>> upstream/master
     np.random.seed(0)
     inp = array_ops.placeholder(
         dtype=dtypes.float32, shape=(1, 5, 5, 3), name='input')

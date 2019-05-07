@@ -26,16 +26,11 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
-<<<<<<< HEAD
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
-#include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
-=======
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
->>>>>>> upstream/master
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
+#include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"

@@ -280,12 +280,8 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-<<<<<<< HEAD
         # TODO(b/124344198): Add "multi_and_single_gpu",
 	"no_rocm",  # needs support for "NcclAllReduce" op
-=======
-        # TODO(b/123307453): Add "multi_and_single_gpu",
->>>>>>> upstream/master
     ],
 )
 
