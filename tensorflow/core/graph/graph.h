@@ -40,7 +40,9 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -309,6 +311,8 @@ struct NodeDebugInfo {
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
+  NodeDebugInfo(StringPiece node_name, bool has_experimental_debug_info,
+                const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
 };
 
 // Represents an input of a node, i.e., the `index`-th input to `node`.
