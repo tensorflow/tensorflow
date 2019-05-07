@@ -88,12 +88,12 @@ class SaveRestoreShardedTest(test.TestCase):
       asset_file = constant_op.constant(asset_filepath_orig, name="filename42")
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset_file)
 
-      with gfile.FastGFile(asset_filepath_orig, "w") as f:
+      with gfile.GFile(asset_filepath_orig, "w") as f:
         f.write("your data here")
       assets_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
 
       ignored_asset = os.path.join(test.get_temp_dir(), "ignored.txt")
-      with gfile.FastGFile(ignored_asset, "w") as f:
+      with gfile.GFile(ignored_asset, "w") as f:
         f.write("additional data here")
 
       variables.global_variables_initializer().run()
