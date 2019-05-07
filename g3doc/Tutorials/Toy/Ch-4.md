@@ -73,7 +73,7 @@ replacing it with a different set of operations, we can plug into the MLIR
 `Canonicalizer` pass by implementing a `RewritePattern`:
 
 ```c++
-/// Fold transpose(transpose(x) -> transpose(x)
+/// Fold transpose(transpose(x)) -> x
 struct SimplifyRedundantTranspose : public mlir::RewritePattern {
   /// We register this pattern to match every toy.transpose in the IR.
   /// The "benefit" is used by the framework to order the patterns and process
@@ -104,7 +104,7 @@ struct SimplifyRedundantTranspose : public mlir::RewritePattern {
 };
 ```
 
-Let see how to improve our `TransposeOp` by extending it with a new static
+Let's see how to improve our `TransposeOp` by extending it with a new static
 method:
 
 ```c++
@@ -142,8 +142,8 @@ transpose operation. However one of the transpose hasn't been eliminated. That
 is not ideal! What happened is that our pattern replaced the last transform with
 the function input and left behind the now dead transpose input. The
 Canonicalizer knows to cleanup dead operations, however MLIR conservatively
-assume that operations may have side-effects. We can fix it by adding a new
-traits, `HasNoSideEffect`, to our `TransposeOp`:
+assumes that operations may have side-effects. We can fix it by adding a new
+trait, `HasNoSideEffect`, to our `TransposeOp`:
 
 ```c++
 class TransposeOp : public mlir::Op<TransposeOp, mlir::OpTrait::OneOperand,
@@ -163,7 +163,7 @@ func @transpose_transpose(%arg0: !toy<"array">)
 Perfect! No `transpose` operation is left, the code is optimal.
 
 The code in `mlir/ToyCombine.cpp` implements a few more patterns that eliminate
-trivial reshape, or fold them into constants.
+trivial reshapes, or fold them into constants.
 
 # Shape Inference and Generic Function Specialization
 
@@ -188,11 +188,11 @@ auto multiply_add(array<M1, N1> a, array<M1, N1> b) {
 
 Every new call to `multiply_add` would instantiate the template and emit code
 for the specific shape and deduce the return type. Clang implements this
-transformation on its AST, but we will implement it in a MLIR pass here.
+transformation on its AST, but we will implement it in an MLIR pass here.
 
-The ShapeInferencePass is a ModulePass: it will run on the Module as a whole.
-MLIR also supports FunctionPass which are restricted to modify a single function
-at a time. This pass couldn't be a function pass due the nature of its
+The ShapeInferencePass is a `ModulePass`: it will run on the Module as a whole.
+MLIR also supports `FunctionPass`es which are restricted to modify a single
+function at a time. This pass couldn't be a function pass due the nature of its
 interprocedural transformations.
 
 Implementing a such pass is creating a class inheriting from `mlir::ModulePass`
@@ -221,7 +221,7 @@ The algorithm has two levels, first intra-procedurally:
 
 There is a twist though: when a call to a generic function is encountered, shape
 inference requires the return type of the callee to be inferred first. At this
-point we need to run specialize the callee by cloning it. Here is the
+point we need to specialize the callee by cloning it. Here is the
 inter-procedural flow that wraps the intra-procedural inference:
 
 1.  Keep a worklist of function to process. Start with function "main".
