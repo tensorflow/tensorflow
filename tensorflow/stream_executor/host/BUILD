@@ -4,6 +4,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package_group(
     name = "friends",
@@ -110,4 +111,19 @@ cc_library(
         "//tensorflow/stream_executor/lib",
     ],
     alwayslink = True,
+)
+
+tf_cc_test(
+    name = "host_stream_test",
+    srcs = ["host_stream_test.cc"],
+    deps = [
+        ":host_platform",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:platform",
+        "//tensorflow/stream_executor:stream",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
