@@ -83,7 +83,7 @@ class MklReshapeOp : public OpKernel {
     TensorShape shape;
     int64 product = 1;
     int unknown_index = -1;
-    bool sizes_has_zero_dim;
+    bool sizes_has_zero_dim = false;
     switch (sizes.dtype()) {
       case DT_INT32:
         OP_REQUIRES_OK(context,
