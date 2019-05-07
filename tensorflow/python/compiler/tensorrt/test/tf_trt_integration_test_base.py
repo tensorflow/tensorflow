@@ -56,12 +56,6 @@ RunParams = namedtuple("RunParams", [
     "use_calibration"
 ])
 
-ConversionParams = namedtuple("ConversionParams", [
-    "max_batch_size", "max_workspace_size_bytes", "precision_mode",
-    "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
-    "cached_engine_batches", "rewriter_config", "use_calibration"
-])
-
 PRECISION_MODES = ["FP32", "FP16", "INT8"]
 
 
@@ -163,7 +157,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     raise NotImplementedError()
 
   def GetConversionParams(self, run_params):
-    """Return a ConversionParams for test."""
+    """Return a TrtConversionParams for test."""
     batch_list = []
     for dims_list in self._GetParamsCached().input_dims:
       assert dims_list
@@ -171,19 +165,22 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       input_batches = [dims[0] for dims in dims_list]
       assert max(input_batches) == min(input_batches)
       batch_list.append(input_batches[0])
-    return ConversionParams(
+    conversion_params = trt_convert.TrtConversionParams(
         # We use the minimum of all the batch sizes, so when multiple different
         # input shapes are provided it'll always create new engines in the
         # cache, and we can therefore test the cache behavior.
-        max_batch_size=min(batch_list),
+        rewriter_config_template=None,
         max_workspace_size_bytes=1 << 25,
         precision_mode=run_params.precision_mode,
         minimum_segment_size=2,
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
-        cached_engine_batches=None,
-        rewriter_config=None,
-        use_calibration=run_params.use_calibration)
+        use_calibration=run_params.use_calibration,
+        use_function_backup=False,
+        max_batch_size=min(batch_list),
+        cached_engine_batches=None)
+    return conversion_params._replace(
+        use_function_backup=IsQuantizationWithCalibration(conversion_params))
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -218,24 +215,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Get config proto based on specific settings."""
     conversion_params = self.GetConversionParams(run_params)
     if graph_state == GraphState.INFERENCE and run_params.use_optimizer:
-      rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
-          conversion_params.rewriter_config,
-          conversion_params.max_batch_size,
-          conversion_params.max_workspace_size_bytes,
-          conversion_params.precision_mode,
-          conversion_params.minimum_segment_size,
-          conversion_params.is_dynamic_op,
-          conversion_params.maximum_cached_engines,
-          conversion_params.cached_engine_batches,
-          conversion_params.use_calibration,
-          use_function_backup=IsQuantizationWithCalibration(conversion_params))
-
+      rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(conversion_params)
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
       graph_options = config_pb2.GraphOptions()
-      if conversion_params.rewriter_config is not None:
+      if conversion_params.rewriter_config_template is not None:
         graph_options.rewrite_options.CopyFrom(
-            conversion_params.rewriter_config)
+            conversion_params.rewriter_config_template)
 
     config = config_pb2.ConfigProto(
         gpu_options=self._GetGPUOptions(), graph_options=graph_options)
@@ -310,7 +296,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         maximum_cached_engines=conversion_params.maximum_cached_engines,
         cached_engine_batches=conversion_params.cached_engine_batches,
         use_calibration=conversion_params.use_calibration,
-        use_function_backup=IsQuantizationWithCalibration(conversion_params))
+        use_function_backup=conversion_params.use_function_backup)
     return converter
 
   def _GetCalibratedInferGraph(self, run_params, gdef, inputs_data):

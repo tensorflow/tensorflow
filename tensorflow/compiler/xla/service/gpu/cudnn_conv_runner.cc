@@ -364,7 +364,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       params.output_buf = operand_buffers[1];
       break;
     case CudnnConvKind::kForwardActivation: {
-      params.kind = CudnnConvKind::kForwardActivation;
       params.input_shape = &lhs_shape;
       params.filter_shape = &rhs_shape;
       params.output_shape = &conv_result_shape;

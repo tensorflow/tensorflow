@@ -547,6 +547,121 @@ inline void NdArrayDescsForElementwiseBroadcast(
   }
 }
 
+// Copied from gemmlowp::RoundDown when we dropped direct dependency on
+// gemmlowp.
+//
+// Returns the runtime argument rounded down to the nearest multiple of
+// the fixed Modulus.
+template <unsigned Modulus, typename Integer>
+Integer RoundDown(Integer i) {
+  return i - (i % Modulus);
+}
+
+// Copied from gemmlowp::RoundUp when we dropped direct dependency on
+// gemmlowp.
+//
+// Returns the runtime argument rounded up to the nearest multiple of
+// the fixed Modulus.
+template <unsigned Modulus, typename Integer>
+Integer RoundUp(Integer i) {
+  return RoundDown<Modulus>(i + Modulus - 1);
+}
+
+// Copied from gemmlowp::CeilQuotient when we dropped direct dependency on
+// gemmlowp.
+//
+// Returns the quotient a / b rounded up ('ceil') to the nearest integer.
+template <typename Integer>
+Integer CeilQuotient(Integer a, Integer b) {
+  return (a + b - 1) / b;
+}
+
+// This function is a copy of gemmlowp::HowManyThreads, copied when we dropped
+// the direct dependency of internal/optimized/ on gemmlowp.
+//
+// TODO(b/131910176): get rid of this function by switching each call site
+// to its own more sensible logic for its own workload.
+template <int KernelRows>
+inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
+                                int depth) {
+  // Early-exit in the default case where multi-threading is disabled.
+  if (max_num_threads == 1) {
+    return 1;
+  }
+
+  // Basic calculation: take into account max pool size, and
+  // how many rows we have to feed our kernel.
+  // The motivation for an absolute minimum number of rows per thread,
+  // potentially higher than KernelRows, is that very thin thread workload
+  // currently defeat assumptions of the AddMod generator, resulting
+  // in substantial bias in TestWithRealData on 24 threads.
+  // Ideally, the AddMod generator should be aware of global (r,c) coordinates
+  // so as to be independent of the number of threads.
+  static const int AbsoluteMinRowsPerThread = 16;
+  static const int MinRowsPerThread = KernelRows > AbsoluteMinRowsPerThread
+                                          ? KernelRows
+                                          : AbsoluteMinRowsPerThread;
+  int thread_count =
+      std::min(max_num_threads, CeilQuotient(rows, MinRowsPerThread));
+
+  // At this point for small products we already have thread_count==1 so
+  // we can avoid doing more work; otherwise, we still want to check
+  // that the cubic size (rows*cols*depth) is big enough to keep
+  // workers_ busy.
+  if (thread_count > 1) {
+    // Empirically determined value.
+    static constexpr std::uint64_t min_cubic_size_per_thread = 64 * 1024;
+
+    // We can only multiply two out of three sizes without risking overflow
+    const std::uint64_t cubic_size =
+        std::uint64_t(rows) * std::uint64_t(cols) * std::uint64_t(depth);
+
+    thread_count = std::min(
+        thread_count, static_cast<int>(cubic_size / min_cubic_size_per_thread));
+
+    if (thread_count < 1) {
+      thread_count = 1;
+    }
+  }
+
+  assert(thread_count > 0 && thread_count <= max_num_threads);
+  return thread_count;
+}
+
+template <typename T>
+void optimized_ops_preload_l1_stream(const T* ptr) {
+#ifdef __aarch64__
+  // Aarch64 has very detailed prefetch instructions, that compilers
+  // can't know how to map __builtin_prefetch to, and as a result, don't,
+  // leaving __builtin_prefetch a no-op on this architecture.
+  // For our purposes, "pldl1keep" is usually what we want, meaning:
+  // "prefetch for load, into L1 cache, using each value multiple times".
+  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+#elif defined __GNUC__
+  // builtin offered by GCC-compatible compilers including clang
+  __builtin_prefetch(ptr);
+#else
+  (void)ptr;
+#endif
+}
+
+template <typename T>
+void optimized_ops_preload_l1_keep(const T* ptr) {
+#ifdef __aarch64__
+  // Aarch64 has very detailed prefetch instructions, that compilers
+  // can't know how to map __builtin_prefetch to, and as a result, don't,
+  // leaving __builtin_prefetch a no-op on this architecture.
+  // For our purposes, "pldl1keep" is usually what we want, meaning:
+  // "prefetch for load, into L1 cache, using each value multiple times".
+  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+#elif defined __GNUC__
+  // builtin offered by GCC-compatible compilers including clang
+  __builtin_prefetch(ptr);
+#else
+  (void)ptr;
+#endif
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_

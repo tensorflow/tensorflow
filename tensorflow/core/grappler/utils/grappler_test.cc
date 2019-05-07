@@ -88,6 +88,7 @@ GrapplerTest::GrapplerTest() {
   cfg->set_layout_optimizer(RewriterConfig::OFF);
   cfg->set_loop_optimization(RewriterConfig::OFF);
   cfg->set_pin_to_host_optimization(RewriterConfig::OFF);
+  cfg->set_remapping(RewriterConfig::OFF);
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(

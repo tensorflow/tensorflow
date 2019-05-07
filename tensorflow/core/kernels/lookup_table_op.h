@@ -57,19 +57,21 @@ class LookupTableOp : public OpKernel {
                                       use_node_name_sharing_));
     }
 
-    auto creator = [ctx, this](lookup::LookupInterface** ret) {
-      lookup::LookupInterface* container = new Container(ctx, this);
-      if (!ctx->status().ok()) {
-        container->Unref();
-        return ctx->status();
-      }
-      if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(
-            container->MemoryUsed() + table_handle_.AllocatedBytes());
-      }
-      *ret = container;
-      return Status::OK();
-    };
+    auto creator =
+        [ctx, this](lookup::LookupInterface** ret)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              lookup::LookupInterface* container = new Container(ctx, this);
+              if (!ctx->status().ok()) {
+                container->Unref();
+                return ctx->status();
+              }
+              if (ctx->track_allocations()) {
+                ctx->record_persistent_memory_allocation(
+                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+              }
+              *ret = container;
+              return Status::OK();
+            };
 
     lookup::LookupInterface* table = nullptr;
     OP_REQUIRES_OK(ctx,

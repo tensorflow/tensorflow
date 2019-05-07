@@ -218,7 +218,6 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
                                     FunctionLibraryRuntime* lib,
                                     OpKernelContext* ctx, DoneCallback done) {
   FunctionLibraryRuntime::Options run_opts;
-  run_opts.step_id = ctx->step_id();
   run_opts.step_container = ctx->step_container();
   run_opts.cancellation_manager = ctx->cancellation_manager();
   run_opts.stats_collector = ctx->stats_collector();

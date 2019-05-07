@@ -20,8 +20,9 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/memory_planner.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -84,7 +85,7 @@ class Subgraph {
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
-  // to Interpreter.
+  // to Interpreter. `quantization` ownership is passed to the subgraph.
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
@@ -102,7 +103,7 @@ class Subgraph {
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
-  // to Interpreter.
+  // to Interpreter. `quantization` ownership is passed to the subgraph.
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
@@ -275,12 +276,12 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(profiling::Profiler* profiler) {
+  void SetProfiler(Profiler* profiler) {
     profiler_ = profiler;
     context_->profiler = profiler;
   }
 
-  profiling::Profiler* GetProfiler() { return profiler_; }
+  Profiler* GetProfiler() { return profiler_; }
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
@@ -511,8 +512,9 @@ class Subgraph {
   // TODO(aselle): replace execution_plan_ with this.
   std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
 
-  // Whether to delegate to NN API
-  std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
+  // Whether to use delegate to modify the graph.
+  bool should_apply_nnapi_delegate_ = false;
+  bool applied_nnapi_delegate_ = false;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
@@ -525,7 +527,7 @@ class Subgraph {
   TfLiteExternalContext** external_contexts_;
 
   // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_ = nullptr;
+  Profiler* profiler_ = nullptr;
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;

@@ -37,16 +37,8 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
-      DistributedFunctionLibraryRuntime* parent = nullptr);
-
-  // With `custom_kernel_creator`.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator,
-                                thread::ThreadPool* thread_pool,
-                                DistributedFunctionLibraryRuntime* parent);
+      DistributedFunctionLibraryRuntime* parent = nullptr,
+      const CustomKernelCreator* custom_kernel_creator = nullptr);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -141,6 +133,9 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+           FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
@@ -185,21 +180,21 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            const FunctionLibraryDefinition* lib_def,
+                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
-          lib_def_(lib_def),
+          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)) {}
 
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
-    // An overlay library used to extend a base library with definitions of
-    // the component function definitions.
-    FunctionLibraryDefinitionOverlay lib_def_;
+    // A library that contains definitions of component functions and their
+    // transitive dependencies.
+    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
@@ -221,11 +216,24 @@ class ProcessFunctionLibraryRuntime {
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
 
+  // Clones ProcessFunctionLibraryRuntime and FunctionLibraryDefinition
+  // (transferring ownership of both to the caller). Note that the
+  // ProcessFunctionLibraryRuntime borrows a pointer to the
+  // FunctionLibraryDefinition and so the FunctionLibraryDefinition should
+  // outlive the ProcessFunctionLibraryRuntime.
+  //
+  // The `skip_flib_def` argument controls whether the method should clone the
+  // FunctionLibraryDefinition (default behavior) or return an empty function
+  // library. The latter is used by tf.data, which manages
+  // FunctionLibraryDefinitions for its functions independently (and passes
+  // these into the FunctionLibraryRuntime through an overlay), to avoid linear
+  // runtime w.r.t. to number of functions in the current function library.
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
-               CustomKernelCreator custom_kernel_creator,
+               const CustomKernelCreator* custom_kernel_creator,
                std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const;
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+               bool skip_flib_def = false) const;
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 

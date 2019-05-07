@@ -80,6 +80,8 @@ int NumSchedulableCPUs() {
   return kDefaultCores;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
 int NumTotalCPUs() {
   int count = absl::base_internal::NumCPUs();
   return (count <= 0) ? kUnknownCPU : count;

@@ -24,8 +24,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"

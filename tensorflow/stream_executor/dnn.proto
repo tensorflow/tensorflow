@@ -107,4 +107,6 @@ message ConvolutionDescriptorProto {
   // See cuDNN's group count.
   int32 group_count = 5;
   ConvolutionMode convolution_mode = 6;
+  // Tensorflow node name, same as in NodeDef, for debugging purposes.
+  string name = 7;
 }

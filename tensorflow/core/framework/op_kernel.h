@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
+#include <atomic>
 #include <functional>
 
 #include <utility>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -93,14 +95,22 @@ class OpKernel {
   // may be called concurrently (e.g. by multiple executions of the same graph
   // concurrently).
   //
-  // Most OpKernels should compute synchronously.  They should
+  // Most OpKernels should compute synchronously. They should
   // subclass OpKernel and override the Compute() method and have it
   // return after completing the supplied work.
   //
-  // A few special kernels might need to be asynchronous to bound the
-  // number of threads (e.g., network receive operations). These
-  // kernels must subclass AsyncOpKernel and override
-  // AsyncOpKernel::ComputeAsync().
+  // A synchronous OpKernel *MUST NOT* block the calling thread on a
+  // synchronization mechanism (condition variable, Notification, etc.) that
+  // will be unblocked by the execution of another OpKernel. Execution may
+  // deadlock in that case, because the executor may use a bounded number of
+  // threads.
+  //
+  // If an OpKernel must block on the execution of another OpKernel (e.g. a
+  // RecvOp, or a DequeueOp), the implementation *MUST* subclass AsyncOpKernel,
+  // and override `AsyncOpKernel::ComputeAsync()`. In addition, because the
+  // unblocking kernel may never run (due to an error or cancellation), in most
+  // cases the AsyncOpKernel should implement cancellation support via
+  // `ctx->cancellation_manager()`.
   //
   // In both cases, implementations of Compute() and ComputeAsync()
   // get inputs and write outputs through the given OpKernelContext
@@ -116,10 +126,34 @@ class OpKernel {
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
   virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
+  // Initial time (in CPU cycles) we expect an operation to take.  Used to
+  // determine whether an operation should be place in a threadpool.  Operations
+  // start out "expensive".
+  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
+  static const uint64 kCostDecay = 10;
+
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() { return expensive_; }
+  virtual bool IsExpensive() {
+    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
+                          kOpIsExpensiveThresholdCycles);
+  }
+
+  // Updates the dynamic cost estimate, which is used to determine whether this
+  // op is expensive. The new cost estimate is a weighted average of the old
+  // cost estimate and the latest cost.
+  void UpdateCostEstimate(uint64 elapsed_cycles) {
+    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simultaneous
+    // updates may result in one or more updates being ignored.  This does not
+    // affect correctness but may slow down the update frequency.
+    cost_estimate_.store(
+        (kCostDecay - 1) * cost_estimate_.load(std::memory_order_relaxed) /
+                kCostDecay +
+            (elapsed_cycles / kCostDecay),
+        std::memory_order_relaxed);
+  }
 
   // Accessors.
   const NodeDef& def() const { return *def_; }
@@ -184,6 +218,7 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   bool expensive_;
+  std::atomic_uint_fast64_t cost_estimate_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -194,9 +229,19 @@ class AsyncOpKernel : public OpKernel {
 
   // Asynchronous compute.
   //
-  // Implementations of ComputeAsync() must run "done" to signal the
-  // completion of the computation. "context" is guaranteed to be
-  // alive until the "done" callback starts.
+  // Implementations of ComputeAsync() must ensure that `done` is (eventually)
+  // called exactly once to signal the completion of the computation. The
+  // implementation of ComputeAsync() must not block on the execution of another
+  // OpKernel. `done` may be called by the current thread, or by another thread
+  // `context` is guaranteed to stay alive until the `done` callback starts.
+  //
+  // Since it is possible that the unblocking kernel may never run (due to an
+  // error or cancellation), in most cases the AsyncOpKernel should implement
+  // cancellation support via `ctx->cancellation_manager()`.
+  //
+  // WARNING: As soon as the `done` callback starts, `context` and `this` may be
+  // deleted. No code depending on these objects should execute after the call
+  // to `done`.
   typedef std::function<void()> DoneCallback;
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
@@ -204,8 +249,6 @@ class AsyncOpKernel : public OpKernel {
   const AsyncOpKernel* AsAsync() const final { return this; }
 
   void Compute(OpKernelContext* context) final;
-
-  bool IsExpensive() override { return true; }
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For
@@ -660,7 +703,7 @@ class OpKernelContext {
 
   // params must outlive the OpKernelContext.
   explicit OpKernelContext(Params* params);
-  OpKernelContext(Params* params, int noutputs);
+  OpKernelContext(Params* params, int num_outputs);
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
@@ -1182,6 +1225,8 @@ class OpKernelContext {
 
   bool input_is_ref(int index) const;
 
+  void set_record_memory_consumption(bool v) { record_memory_consumption_ = v; }
+
   // Used by OpKernel implementations to track actively running deferred ops.
   //
   // A deferred op is one whose Compute method returns (or whose ComputeAsync
@@ -1202,6 +1247,7 @@ class OpKernelContext {
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);
+  bool record_memory_consumption_ = false;
 
   // Internal method to add a tensor's buffer to the list of buffers
   // referenced during the execution of the Op, so that GPUs may

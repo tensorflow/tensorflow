@@ -73,6 +73,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
@@ -136,6 +137,7 @@ py_library(
     ],
     deps = [
         ":lite_constants",
+        ":op_hint",
         "//tensorflow/python:tf_optimizer",
     ],
 )
@@ -151,6 +153,17 @@ py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "wrap_toco",
+    srcs = [
+        "wrap_toco.py",
+    ],
+    deps = [
+        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -172,9 +185,9 @@ py_library(
     deps = [
         ":lite_constants",
         ":util",
+        ":wrap_toco",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
-        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
@@ -188,7 +201,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],

@@ -34,7 +34,11 @@ void BufRendezvous::StartAbort(const Status& s) {
   HookTable dummy_table;
   {
     mutex_lock l(mu_);
-    status_.Update(s);
+    // Use a "derived" status as the status for the rendezvous. Derived
+    // status messages are ignored when aggregating errors across devices: this
+    // allows us to prefer our original status message over any cancellation
+    // related errors.
+    status_.Update(StatusGroup::MakeDerived(s));
     hook_table_.swap(dummy_table);
   }
   PurgeTable(s, &dummy_table);

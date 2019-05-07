@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
@@ -66,6 +67,14 @@ one_device_strategy_gpu = combinations.NamedDistribution(
     "OneDeviceGPU",
     lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
     required_gpus=1)
+one_device_strategy_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1CPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/cpu:0"),  # pylint: disable=line-too-long
+    required_gpus=None)
+one_device_strategy_gpu_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1GPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/gpu:0"),  # pylint: disable=line-too-long
+    required_gpus=1)
 tpu_strategy = combinations.NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2), required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
@@ -92,6 +101,10 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
+    "CentralStorage2GPUs",
+    lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
+    required_gpus=2)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
@@ -102,6 +115,7 @@ adam_optimizer_v1_fn = combinations.NamedObject(
 rmsprop_optimizer_v1_fn = combinations.NamedObject(
     "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
+# TODO(shiningsun): consider adding the other v1 optimizers
 optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
 
 gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
@@ -112,6 +126,13 @@ adam_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
 rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
     "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
+
+# TODO(shiningsun): consider adding the other v2 optimizers
+optimizers_v2 = [
+    gradient_descent_optimizer_keras_v2_fn, adagrad_optimizer_keras_v2_fn
+]
+
+optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -125,6 +146,28 @@ def distributions_and_v1_optimizers():
           mirrored_strategy_with_two_gpus,
       ],
       optimizer_fn=optimizers_v1)
+
+
+def distributions_and_v2_optimizers():
+  """A common set of combination with DistributionStrategies and Optimizers."""
+  return combinations.combine(
+      distribution=[
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+      ],
+      optimizer_fn=optimizers_v2)
+
+
+def distributions_and_v1_and_v2_optimizers():
+  """A common set of combination with DistributionStrategies and Optimizers."""
+  return combinations.combine(
+      distribution=[
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+      ],
+      optimizer_fn=optimizers_v1_and_v2)
 
 
 strategies_minus_tpu = [

@@ -54,13 +54,13 @@ def _test_input_fn(input_context):
   return dataset_ops.DatasetV2.from_tensors(1.).repeat()
 
 
-class _TestStrategy(distribute_lib.DistributionStrategy):
+class _TestStrategy(distribute_lib.Strategy):
 
   def __init__(self):
     super(_TestStrategy, self).__init__(_TestExtended(self))
 
 
-class _TestExtended(distribute_lib.DistributionStrategyExtended):
+class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, distribute):
     super(_TestExtended, self).__init__(distribute)
@@ -321,7 +321,7 @@ class TestStrategyTest(test.TestCase):
   @_run_in_and_out_of_scope
   def testReduce(self, dist):
     x = constant_op.constant(1.)
-    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x)
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
     self.assertEqual(self.evaluate(x), self.evaluate(x_r))
 
   def testReductions_acceptStringOps(self):
@@ -329,7 +329,7 @@ class TestStrategyTest(test.TestCase):
     for op in ("mean", "MEAN", "sum", "SUM"):
       x = constant_op.constant(1.)
       y = constant_op.constant(1.)
-      x_r = dist.reduce(op, x)
+      x_r = dist.reduce(op, x, axis=None)
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       x_r = dist.extended.reduce_to(op, x, "/CPU:0")
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
@@ -341,7 +341,7 @@ class TestStrategyTest(test.TestCase):
   @_run_in_and_out_of_scope
   def testExperimentalMakeNumpyDataset(self, dist):
     numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.extended.experimental_make_numpy_dataset(numpy_input)
+    dataset = dist.experimental_make_numpy_dataset(numpy_input)
     self.assertEqual(
         self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 

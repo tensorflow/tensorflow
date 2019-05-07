@@ -25,13 +25,13 @@ from tensorflow.python.saved_model import nested_structure_coder
 
 def _serialize_function_spec(function_spec, coder):
   """Serialize a FunctionSpec object into its proto representation."""
+  if function_spec.is_method and not function_spec.fullargspec.args:
+    raise NotImplementedError(
+        "Missing support to serialize a method function without a named "
+        "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
   proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
   proto.is_method = function_spec.is_method
-  proto.args_to_prepend.CopyFrom(
-      coder.encode_structure(function_spec.args_to_prepend))
-  proto.kwargs_to_include.CopyFrom(
-      coder.encode_structure(function_spec.kwargs_to_include))
   proto.input_signature.CopyFrom(
       coder.encode_structure(function_spec.input_signature))
   return proto

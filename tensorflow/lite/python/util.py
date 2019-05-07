@@ -20,7 +20,8 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
+from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
+from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util as tf_graph_util
@@ -34,6 +35,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+    dtypes.int8: _types_pb2.INT8,
     dtypes.complex64: _types_pb2.COMPLEX64
 }
 
@@ -145,19 +147,35 @@ def set_tensor_shapes(tensors, shapes):
           raise ValueError(message)
 
 
+def get_grappler_config(optimizers_list):
+  """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
+
+  Args:
+    optimizers_list: List of strings that represents the list of optimizers.
+
+  Returns:
+    tf.ConfigProto.
+  """
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  for optimizer in optimizers_list:
+    rewrite_options.optimizers.append(optimizer)
+  return config
+
+
 def run_graph_optimizations(graph_def,
                             input_arrays,
                             output_arrays,
-                            graph=None,
-                            config=None):
+                            config,
+                            graph=None):
   """Apply standard TensorFlow optimizations to the graph_def.
 
   Args:
     graph_def: Frozen GraphDef to be optimized.
     input_arrays: List of arrays that are considered inputs of the graph.
     output_arrays: List of arrays that are considered outputs of the graph.
+    config: tf.ConfigProto.
     graph: TensorFlow Graph. Required when Eager mode is enabled. (default None)
-    config: tf.ConfigProto. (default None)
 
   Returns:
     A new, optimized GraphDef.
@@ -171,14 +189,19 @@ def run_graph_optimizations(graph_def,
     fetch_collection.node_list.value.append(array.name)
   meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
 
-  if config is None:
-    config = _config_pb2.ConfigProto()
-    rewrite_options = config.graph_options.rewrite_options
-    rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-    # Avoid remapping as it creates ops like _FusedConv2D, which are not
-    # supported by TF Lite.
-    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
   return tf_optimizer.OptimizeGraph(config, meta_graph)
+
+
+def _convert_op_hints_if_present(sess, output_tensors):
+  if is_frozen_graph(sess):
+    raise ValueError("Try to convert op hints, needs unfrozen graph.")
+  hinted_outputs_nodes = find_all_hinted_output_nodes(sess)
+  output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
+  graph_def = tf_graph_util.convert_variables_to_constants(
+      sess, sess.graph_def, output_arrays + hinted_outputs_nodes)
+  graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
+  graph_def = tf_graph_util.remove_training_nodes(graph_def)
+  return graph_def
 
 
 def freeze_graph(sess, input_tensors, output_tensors):
@@ -187,6 +210,7 @@ def freeze_graph(sess, input_tensors, output_tensors):
   Runs a Grappler pass and freezes a graph with Variables in it. Otherwise the
   existing GraphDef is returned. The Grappler pass is only run on models that
   are frozen in order to inline the functions in the graph.
+  If OpHints is present, it will try to convert the OpHint graph.
 
   Args:
     sess: TensorFlow Session.
@@ -196,16 +220,16 @@ def freeze_graph(sess, input_tensors, output_tensors):
   Returns:
     Frozen GraphDef.
   """
+  # Grappler inline function optimization will break OpHints graph
+  # transformation, so if OpHints are present, just convert it.
+  hinted_outputs_nodes = find_all_hinted_output_nodes(sess)
+  if len(hinted_outputs_nodes) > 0:  #  pylint: disable=g-explicit-length-test
+    return _convert_op_hints_if_present(sess, output_tensors)
+
   # Runs a Grappler pass in order to inline any functions in the graph.
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.optimizers.append("function")
+  config = get_grappler_config(["function"])
   graph_def = run_graph_optimizations(
-      sess.graph_def,
-      input_tensors,
-      output_tensors,
-      graph=sess.graph,
-      config=config)
+      sess.graph_def, input_tensors, output_tensors, config, graph=sess.graph)
 
   if not is_frozen_graph(sess):
     output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]

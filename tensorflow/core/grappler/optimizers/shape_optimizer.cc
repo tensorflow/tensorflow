@@ -73,15 +73,29 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           continue;
         }
         // Rewrite the reduction of the shape dimensions as a Size operation.
+        NodeDef size_node(*fanout.node);
         const DataType type = input_props[0].dtype();
-        fanout.node->set_op("Size");
-        fanout.node->set_input(0, node.input(0));
-        fanout.node->set_input(1, AsControlDependency(node));
-        fanout.node->mutable_attr()->erase("Tidx");
-        fanout.node->mutable_attr()->erase("keep_dims");
-        (*fanout.node->mutable_attr())["out_type"] =
-            fanout.node->attr().at("T");
-        (*fanout.node->mutable_attr())["T"].set_type(type);
+        size_node.set_op("Size");
+        size_node.set_input(0, node.input(0));
+        size_node.set_input(1, AsControlDependency(node));
+        size_node.mutable_attr()->erase("Tidx");
+        size_node.mutable_attr()->erase("keep_dims");
+        (*size_node.mutable_attr())["out_type"] = fanout.node->attr().at("T");
+        (*size_node.mutable_attr())["T"].set_type(type);
+
+        // The corresponding Size kernel might not exist on the device where
+        // Prod was placed, so assign the Size kernel to the same device as the
+        // input.
+        size_node.set_device(node.device());
+
+        // In the unlikely even that "Size" is not registered on the input
+        // device, skip the optimization.
+        Status s = IsKernelRegisteredForNode(size_node);
+        if (!s.ok()) {
+          continue;
+        }
+
+        fanout.node->Swap(&size_node);
       }
     }
   }

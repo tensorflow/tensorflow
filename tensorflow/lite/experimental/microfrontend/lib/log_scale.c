@@ -37,7 +37,7 @@ static uint32_t Log2FractionPart(const uint32_t x, const uint32_t log2x) {
   // Part 2
   const uint32_t base_seg = frac >> (kLogScaleLog2 - kLogSegmentsLog2);
   const uint32_t seg_unit =
-      (((uint32_t) 1) << kLogScaleLog2) >> kLogSegmentsLog2;
+      (((uint32_t)1) << kLogScaleLog2) >> kLogSegmentsLog2;
 
   const int32_t c0 = kLogLut[base_seg];
   const int32_t c1 = kLogLut[base_seg + 1];
@@ -51,8 +51,7 @@ static uint32_t Log(const uint32_t x, const uint32_t scale_shift) {
   const uint32_t fraction = Log2FractionPart(x, integer);
   const uint32_t log2 = (integer << kLogScaleLog2) + fraction;
   const uint32_t round = kLogScale / 2;
-  const uint32_t loge =
-      (((uint64_t) kLogCoeff) * log2 + round) >> kLogScaleLog2;
+  const uint32_t loge = (((uint64_t)kLogCoeff) * log2 + round) >> kLogScaleLog2;
   // Finally scale to our output scale
   const uint32_t loge_scaled = ((loge << scale_shift) + round) >> kLogScaleLog2;
   return loge_scaled;
@@ -61,7 +60,7 @@ static uint32_t Log(const uint32_t x, const uint32_t scale_shift) {
 uint16_t* LogScaleApply(struct LogScaleState* state, uint32_t* signal,
                         int signal_size, int correction_bits) {
   const int scale_shift = state->scale_shift;
-  uint16_t* output = (uint16_t*) signal;
+  uint16_t* output = (uint16_t*)signal;
   uint16_t* ret = output;
   int i;
   for (i = 0; i < signal_size; ++i) {

@@ -70,7 +70,7 @@ bool IsTrivialOp(const NodeDef& node, const MutableGraphView& graph_view) {
   }
   // Const nodes are always executed before anything else, so if they only
   // have control outputs we can remove them.
-  if (IsConstant(node) &&
+  if (IsConstant(node) && node.input().empty() &&
       graph_view.NumFanouts(node, /*include_controlled_nodes=*/false) == 0) {
     return true;
   }
@@ -106,7 +106,7 @@ bool CanRemoveNode(const NodeDef& node, const MutableGraphView& graph_view,
   if (IsNoOp(node) && node.input().empty()) {
     return true;
   }
-  if (IsConstant(node) &&
+  if (IsConstant(node) && node.input().empty() &&
       graph_view.NumFanouts(node, /*include_controlled_nodes=*/false) == 0) {
     return true;
   }

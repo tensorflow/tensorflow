@@ -86,6 +86,11 @@ class GpuExecutable : public Executable {
       absl::Span<const ShapedBuffer* const> arguments) override;
 
  private:
+  StatusOr<ScopedShapedBuffer> Execute(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile, bool block_host_until_done);
+
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for

@@ -189,7 +189,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // instructions match specific patterns, so they shouldn't be further fused.
   // Input fusion instructions need to be rooted at a particular HLO (e.g.
   // kReduce), so they shouldn't be further fused either.
-  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+  if (!fusion->IsLoopFusion()) {
     VLOG(3) << "Not merging " << fusion->name() << ": Is not loop fusion.";
     ++num_fail_not_loop_fusion_;
     return Status::OK();
@@ -206,7 +206,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
-               (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+               (user->IsLoopFusion() ||
                 (IsReduceInputFusion(*user) &&
                  LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
       })) {

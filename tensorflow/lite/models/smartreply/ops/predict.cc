@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstdio>
 #include <unordered_map>
 #include <vector>
 

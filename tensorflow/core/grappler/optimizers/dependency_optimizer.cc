@@ -76,7 +76,7 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     return false;
   }
   for (const auto& consumer : node_map_->GetOutputs(node.name())) {
-    if (node.input_size() > 1 && IsMerge(*consumer)) {
+    if (node.input_size() > 1 && (IsRetval(*consumer) || IsMerge(*consumer))) {
       return false;
     }
     if (IsSwitch(*input)) {
@@ -295,6 +295,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     }
     node->set_op("NoOp");
     node->clear_attr();
+    DedupControlInputs(node);
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;
   }

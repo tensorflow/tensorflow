@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,6 +38,14 @@ class Variant;
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
+  AllocationAttributes() = default;
+
+  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+                       std::function<uint64()>* freed_by_func)
+      : no_retry_on_failure(no_retry_on_failure),
+        allocation_will_be_logged(allocation_will_be_logged),
+        freed_by_func(freed_by_func) {}
+
   // If the first attempt to allocate the memory fails, the allocation
   // should return immediately without retrying.
   // An example use case is optional scratch spaces where a failure
@@ -49,9 +58,11 @@ struct AllocationAttributes {
   // true.
   bool allocation_will_be_logged = false;
   // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
-  // a memory chunk whose last-freed count is at this value or earlier may be
+  // a memory chunk whose freed_at_count is at this value or earlier may be
   // returned.
-  std::function<uint64()> freed_by_func = nullptr;
+  std::function<uint64()>* freed_by_func = nullptr;  // Not owned.
+
+  TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
 // Runtime statistics collected by an allocator. Exactly the same as
@@ -67,11 +78,20 @@ struct AllocatorStats {
   // is known.
   absl::optional<int64> bytes_limit;
 
+  // Stats for reserved memory usage.
+  int64 bytes_reserved;       // Number of bytes reserved.
+  int64 peak_bytes_reserved;  // The peak number of bytes reserved.
+  // The upper limit on the number bytes of reservable memory,
+  // if such a limit is known.
+  absl::optional<int64> bytes_reservable_limit;
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
-        largest_alloc_size(0) {}
+        largest_alloc_size(0),
+        bytes_reserved(0),
+        peak_bytes_reserved(0) {}
 
   string DebugString() const;
 };
@@ -147,13 +167,13 @@ class Allocator {
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if
   // TracksAllocationSizes is overridden to return true.
-  virtual bool TracksAllocationSizes() { return false; }
+  virtual bool TracksAllocationSizes() const { return false; }
 
   // Returns true if this allocator requires tensors with 0 elements
   // to allocate buffers. This is false for most allocators, but may
   // be used by special-case allocators that want to track tensor
   // usage.
-  virtual bool ShouldAllocateEmptyTensors() { return false; }
+  virtual bool ShouldAllocateEmptyTensors() const { return false; }
 
   // Returns the user-requested size of the data allocated at
   // 'ptr'.  Note that the actual buffer allocated might be larger
@@ -164,7 +184,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(const void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) const {
     CHECK(false) << "allocator doesn't track sizes";
     return size_t(0);
   }
@@ -177,7 +197,9 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) const {
+    return RequestedSize(ptr);
+  }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -188,7 +210,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(const void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) const { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -196,7 +218,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(const void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) const {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
@@ -208,6 +230,8 @@ class Allocator {
 
   // Clears the internal stats except for the `in_use` field.
   virtual void ClearStats() {}
+
+  virtual void SetSafeFrontier(uint64 count) {}
 
  private:
   // No constructors or destructors are run for simple types
@@ -308,27 +332,27 @@ class AllocatorWrapper : public Allocator {
 
   void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
 
-  bool TracksAllocationSizes() override {
+  bool TracksAllocationSizes() const override {
     return wrapped_->TracksAllocationSizes();
   }
 
-  bool ShouldAllocateEmptyTensors() override {
+  bool ShouldAllocateEmptyTensors() const override {
     return wrapped_->TracksAllocationSizes();
   }
 
-  size_t RequestedSize(const void* ptr) override {
+  size_t RequestedSize(const void* ptr) const override {
     return wrapped_->RequestedSize(ptr);
   }
 
-  size_t AllocatedSize(const void* ptr) override {
+  size_t AllocatedSize(const void* ptr) const override {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(const void* ptr) override {
+  int64 AllocationId(const void* ptr) const override {
     return wrapped_->AllocationId(ptr);
   }
 
-  size_t AllocatedSizeSlow(const void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) const override {
     return wrapped_->AllocatedSizeSlow(ptr);
   }
 
@@ -383,6 +407,9 @@ struct AllocatorAttributes {
   // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
   // a named special-purpose allocator on the same device.
   int32 scope_id = 0;
+
+  // Returns a human readable representation of this.
+  string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.

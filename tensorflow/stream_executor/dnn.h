@@ -26,10 +26,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <tuple>
+#include <type_traits>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -70,19 +70,34 @@ inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
   return SetDim(absl::MakeSpan(*data), dim, value);
 }
 
-// tensorflow::int64 is not the same type as tensorflow::protobuf_int64 in
-// open-source. Wrapper function that gives an int64 array slice view of a
-// repeated int64 protobuf field.
-inline absl::Span<const int64> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  return absl::Span<const int64>(reinterpret_cast<const int64*>(v.data()),
-                                 v.size());
+// int64 is not the same type as tensorflow::protobuf_int64 in open-source. This
+// wrapper function gives an int64 array slice view of a repeated int64 protobuf
+// field.
+//
+// T should be a protobuf RepeatedField.
+template <typename T>
+inline absl::Span<const int64> AsInt64Slice(const T& repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field.data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field.data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<const int64>(
+      reinterpret_cast<const int64*>(repeated_field.data()),
+      repeated_field.size());
 }
-
-inline absl::Span<int64> AsInt64Slice(
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* v) {
-  return absl::Span<int64>(reinterpret_cast<int64*>(v->mutable_data()),
-                           v->size());
+template <typename T>
+inline absl::Span<int64> AsInt64Slice(T* repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field->data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field->data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<int64>(
+      reinterpret_cast<int64*>(repeated_field->mutable_data()),
+      repeated_field->size());
 }
 
 // Returns a string representation of the given data layout.
@@ -563,6 +578,10 @@ class ConvolutionDescriptor {
                                      : ConvolutionMode::CROSS_CORRELATION);
     return *this;
   }
+  ConvolutionDescriptor& set_name(const string& name) {
+    proto_.set_name(name);
+    return *this;
+  }
   int64 zero_padding_height() const { return GetDim(padding(), DimIndex::Y); }
   int64 zero_padding_width() const { return GetDim(padding(), DimIndex::X); }
   int64 vertical_filter_stride() const {
@@ -601,6 +620,8 @@ class ConvolutionDescriptor {
   absl::Span<const int64> padding() const {
     return AsInt64Slice(proto_.paddings());
   }
+
+  string name() const { return proto_.name(); }
 
  private:
   absl::Span<int64> strides() { return AsInt64Slice(proto_.mutable_strides()); }
@@ -701,6 +722,10 @@ class PoolingDescriptor {
     propagate_nans_ = value;
     return *this;
   }
+  PoolingDescriptor& set_name(const string& name) {
+    name_ = name;
+    return *this;
+  }
 
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
@@ -722,11 +747,13 @@ class PoolingDescriptor {
   absl::Span<const int64> padding() const { return padding_; }
   absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
+  string name() const { return name_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
   bool propagate_nans_;
+  string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;

@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <mutex>  // NOLINT
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <cstdlib>
-#include <cstring>
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -105,7 +104,8 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       graph_def_version_(context->graph_def_version()),
       is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
-      output_name_map_(context->num_outputs()) {
+      output_name_map_(context->num_outputs()),
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
@@ -119,6 +119,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 }
 
 OpKernel::~OpKernel() {}
+
+const uint64 OpKernel::kInitialCostEstimateCycles;
+const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
+const uint64 OpKernel::kCostDecay;
 
 const string& OpKernel::name() const { return def_->name(); }
 const string& OpKernel::type_string() const { return def_->op(); }
@@ -650,7 +654,7 @@ Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                        Tensor** output) {
+                                        Tensor** tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
   bool forward_expected =
@@ -662,7 +666,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
         "turning off the ScopedAllocator optimizer.");
   }
   AllocatorAttributes attr = output_alloc_attr(index);
-  return allocate_output(index, shape, output, attr);
+  return allocate_output(index, shape, tensor, attr);
 }
 
 Status OpKernelContext::allocate_output(StringPiece name,
@@ -698,9 +702,10 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  AllocationAttributes logged_attr(allocation_attr);
-  logged_attr.allocation_will_be_logged = true;
-  Tensor new_tensor(a, type, shape, logged_attr);
+  Tensor new_tensor(a, type, shape,
+                    AllocationAttributes(allocation_attr.no_retry_on_failure,
+                                         /* allocation_will_be_logged= */ true,
+                                         allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -746,6 +751,9 @@ Status OpKernelContext::allocate_temp(
       int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
+  } else if (record_memory_consumption_) {
+    mutex_lock l(stats_mu_);
+    temp_memory_allocated_ += out_temp->TotalBytes();
   }
   return s;
 }
@@ -770,6 +778,10 @@ Status OpKernelContext::allocate_persistent(DataType type,
         int64 alloc_id = a->AllocationId(t->tensor_data().data());
         record_persistent_memory_allocation(alloc_size, alloc_id);
       }
+    } else if (record_memory_consumption_) {
+      mutex_lock l(stats_mu_);
+      persistent_memory_allocated_ +=
+          out_persistent->AccessTensor(this)->TotalBytes();
     }
   }
   return s;
@@ -791,24 +803,51 @@ Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
 void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  DCHECK(!IsRefType(params_->op_kernel->output_type(index)));
+  const DataType type = params_->op_kernel->output_type(index);
+  DCHECK(!IsRefType(type));
   DCHECK_EQ(mutable_output(index), nullptr);
-  record_tensor_reference(tensor);
-  outputs_[index] = TensorValue(new Tensor(tensor));
-  if (track_allocations() && tensor.TotalBytes() > 0) {
-    mutex_lock l(stats_mu_);
-    if (!temp_tensor_buffer_and_size_) {
-      return;
-    }
-    auto it = std::find_if(temp_tensor_buffer_and_size_->begin(),
-                           temp_tensor_buffer_and_size_->end(),
-                           [&tensor](const std::pair<const void*, int64>& e) {
-                             return e.first == static_cast<const void*>(
-                                                   tensor.tensor_data().data());
-                           });
-    if (it != temp_tensor_buffer_and_size_->end()) {
-      temp_memory_allocated_ -= it->second;
-      temp_tensor_buffer_and_size_->erase(it);
+
+  const bool never_forward =
+      (params_->forward_from_array != nullptr &&
+       params_->forward_from_array[index] == Params::kNeverForward);
+  if (never_forward) {
+    // This output was marked to not be forwarded either during graph
+    // construction or grappler passes.  Force an allocation and copy input to
+    // output.
+    AllocatorAttributes allocator_attributes = output_alloc_attr(index);
+    VLOG(1) << "OpKernelContext set_output index " << index << " tensor "
+            << tensor.DebugString() << " never_forward " << never_forward
+            << " params_->forward_from_array[index] "
+            << params_->forward_from_array[index] << " alloc_attr.scope_id "
+            << allocator_attributes.scope_id;
+    auto new_tensor = MakeUnique<Tensor>();
+    Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
+                               allocator_attributes);
+    TF_DCHECK_OK(s);
+    device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
+                                     op_device_context(), [](const Status&) {});
+    outputs_[index] = TensorValue(new_tensor.release());
+  } else {
+    // Input can be forwarded to output; incref on `tensor` and set output at
+    // `index` to this tensor.
+    record_tensor_reference(tensor);
+    outputs_[index] = TensorValue(new Tensor(tensor));
+    if (track_allocations() && tensor.TotalBytes() > 0) {
+      mutex_lock l(stats_mu_);
+      if (!temp_tensor_buffer_and_size_) {
+        return;
+      }
+      const auto it = std::find_if(
+          temp_tensor_buffer_and_size_->begin(),
+          temp_tensor_buffer_and_size_->end(),
+          [&tensor](const std::pair<const void*, int64>& e) {
+            return e.first ==
+                   static_cast<const void*>(tensor.tensor_data().data());
+          });
+      if (it != temp_tensor_buffer_and_size_->end()) {
+        temp_memory_allocated_ -= it->second;
+        temp_tensor_buffer_and_size_->erase(it);
+      }
     }
   }
 }
@@ -1002,10 +1041,8 @@ void LoadDynamicKernelsInternal() {
   bool override_abi_check =
       strcmp(getenv("TF_REALLY_LOAD_UNSAFE_PACKAGES"), "1") == 0;
 
-  string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
-                                         "tensorflow",
-                                         "core",
-                                         "kernels");
+  string bazel_kernel_dir =
+      io::JoinPath(env->GetRunfilesDir(), "tensorflow", "core", "kernels");
   std::vector<string> files;
   Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {

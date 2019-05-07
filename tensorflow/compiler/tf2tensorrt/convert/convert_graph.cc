@@ -903,6 +903,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         (engine_bytes_size.at(i) / total_engine_bytes_size +
          converted_segments.at(i).first.size() / total_num_nodes_in_segments) /
         2.0;
+    VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
+            << engine.engine_name;
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.

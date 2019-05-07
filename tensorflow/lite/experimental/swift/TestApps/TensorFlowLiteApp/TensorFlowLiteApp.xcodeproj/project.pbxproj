@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4A1E2BA0227C8B53006C23E2 /* multi_add.bin in Resources */ = {isa = PBXBuildFile; fileRef = 4A1E2B9D227C8B51006C23E2 /* multi_add.bin */; };
+		4A1E2BA1227C8B53006C23E2 /* add_quantized.bin in Resources */ = {isa = PBXBuildFile; fileRef = 4A1E2B9E227C8B52006C23E2 /* add_quantized.bin */; };
+		4A1E2BA2227C8B53006C23E2 /* add.bin in Resources */ = {isa = PBXBuildFile; fileRef = 4A1E2B9F227C8B52006C23E2 /* add.bin */; };
 		4A7304B421500B8400C90B21 /* Data+TensorFlowLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7304B321500B8300C90B21 /* Data+TensorFlowLite.swift */; };
 		4AA72B732146ED64006C3AEF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA72B722146ED64006C3AEF /* AppDelegate.swift */; };
 		4AA72B752146ED64006C3AEF /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA72B742146ED64006C3AEF /* ViewController.swift */; };
@@ -17,6 +20,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		4A1E2B9D227C8B51006C23E2 /* multi_add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = multi_add.bin; path = ../../../../../testdata/multi_add.bin; sourceTree = "<group>"; };
+		4A1E2B9E227C8B52006C23E2 /* add_quantized.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add_quantized.bin; path = ../../../../../testdata/add_quantized.bin; sourceTree = "<group>"; };
+		4A1E2B9F227C8B52006C23E2 /* add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add.bin; path = ../../../../../testdata/add.bin; sourceTree = "<group>"; };
 		4A7304B321500B8300C90B21 /* Data+TensorFlowLite.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Data+TensorFlowLite.swift"; sourceTree = "<group>"; };
 		4AA72B6F2146ED64006C3AEF /* TensorFlowLiteApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TensorFlowLiteApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AA72B722146ED64006C3AEF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -66,6 +72,9 @@
 				4AA72B792146ED66006C3AEF /* Assets.xcassets */,
 				4AA72B7B2146ED66006C3AEF /* LaunchScreen.storyboard */,
 				4AA72B7E2146ED66006C3AEF /* Info.plist */,
+				4A1E2B9E227C8B52006C23E2 /* add_quantized.bin */,
+				4A1E2B9F227C8B52006C23E2 /* add.bin */,
+				4A1E2B9D227C8B51006C23E2 /* multi_add.bin */,
 			);
 			path = TensorFlowLiteApp;
 			sourceTree = "<group>";
@@ -102,6 +111,7 @@
 				TargetAttributes = {
 					4AA72B6E2146ED64006C3AEF = {
 						CreatedOnToolsVersion = 9.4.1;
+						LastSwiftMigration = 1020;
 					};
 				};
 			};
@@ -128,9 +138,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4A1E2BA1227C8B53006C23E2 /* add_quantized.bin in Resources */,
 				4AA72B7D2146ED66006C3AEF /* LaunchScreen.storyboard in Resources */,
 				4AA72B7A2146ED66006C3AEF /* Assets.xcassets in Resources */,
+				4A1E2BA2227C8B53006C23E2 /* add.bin in Resources */,
 				4AA72B782146ED64006C3AEF /* Main.storyboard in Resources */,
+				4A1E2BA0227C8B53006C23E2 /* multi_add.bin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -296,7 +309,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TensorFlowLite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -313,7 +326,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TensorFlowLite;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

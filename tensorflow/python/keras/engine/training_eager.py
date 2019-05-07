@@ -56,9 +56,23 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
   # TODO(psv): Consider supporting skip target indices in eager mode?
-  metric_results = model._handle_metrics(
-      outputs, targets=targets, sample_weights=sample_weights, masks=masks)
-  return [backend.mean(t) for t in metric_results]
+  # Invoke all(weighted and unweighted) metrics.
+  metric_results = []
+  if targets:
+    metric_results = model._handle_metrics(
+        outputs,
+        return_weighted_and_unweighted_metrics=True,
+        targets=targets,
+        sample_weights=sample_weights,
+        masks=masks)
+
+  # Add metric results from the `add_metric` metrics.
+  metric_results.extend([
+      m.result()
+      for m in model.metrics
+      if m not in model._compile_metric_functions
+  ])
+  return metric_results
 
 
 def _model_loss(model,
@@ -85,6 +99,7 @@ def _model_loss(model,
      regularization losses and applies masking and sample weighting
      to the loss value.
   """
+  # TODO(psv): Dedup code here with graph mode prepare_total_loss() fn.
   # Used to keep track of the total loss value (stateless).
   # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
   #                   loss_weight_2 * output_2_loss_fn(...) +
@@ -105,15 +120,17 @@ def _model_loss(model,
   outs = model(inputs, **kwargs)
 
   outs = nest.flatten(outs)
-  # `None` by default for `EagerTensors`.
-  masks = [t._keras_mask for t in outs]
+  masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
 
   # Used to keep track of individual output losses.
   output_losses = []
 
   with backend.name_scope('loss'):
-    for i, loss_fn in enumerate(model.loss_functions):
+    loss_fns = [
+        loss_fn for loss_fn in model.loss_functions if loss_fn is not None
+    ]
+    for i, loss_fn in enumerate(loss_fns):
       weights = sample_weights[i] if sample_weights else None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
@@ -128,19 +145,25 @@ def _model_loss(model,
                 losses_utils.squeeze_or_expand_dimensions(mask, None, weights))
             weights *= mask
 
-        # Reset reduction on the loss so that we can get the per sample loss
-        # value. We use this to get both the stateless and stateful loss
-        # values without having to compute the underlying loss function
-        # twice.
         weighted_losses = None
         if hasattr(loss_fn, 'reduction'):
-          current_loss_reduction = loss_fn.reduction
-          loss_fn.reduction = losses_utils.ReductionV2.NONE
-          weighted_losses = loss_fn(targets[i], outs[i], sample_weight=weights)
-          loss_fn.reduction = current_loss_reduction
+          per_sample_losses = loss_fn.call(targets[i], outs[i])
+          weighted_losses = losses_utils.compute_weighted_loss(
+              per_sample_losses,
+              sample_weight=weights,
+              reduction=losses_utils.ReductionV2.NONE)
+          loss_reduction = loss_fn.reduction
+
+          # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
+          # compile use cases.
+          if loss_reduction == losses_utils.ReductionV2.AUTO:
+            loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
           # Compute the stateless loss value.
-          output_loss = losses_utils.reduce_weighted_loss(weighted_losses)
+          output_loss = losses_utils.reduce_weighted_loss(
+              weighted_losses, reduction=loss_reduction)
+          if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
         else:
           # Compute the stateless loss value for a custom loss class.
           # Here we assume that the class takes care of loss reduction
@@ -148,6 +171,8 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+          # For custom losses we assume reduction was mean.
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -166,7 +191,6 @@ def _model_loss(model,
 
       total_loss += model.loss_weights_list[i] * output_loss
 
-    total_loss = backend.mean(total_loss)
     # Add regularization losses
     custom_losses = model.losses
     if custom_losses:
@@ -250,12 +274,14 @@ def train_on_batch(model,
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
       inputs = training_utils.cast_if_floating_dtype(
           [ops.convert_to_tensor(val) for val in inputs])
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
@@ -277,7 +303,12 @@ def train_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [tensor_util.constant_value(v) for v in results]
+  return [_non_none_constant_value(v) for v in results]
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v
 
 
 def test_on_batch(model,
@@ -327,4 +358,4 @@ def test_on_batch(model,
   total_loss = nest.flatten(total_loss)
   results = total_loss + output_losses + metrics_results
 
-  return [tensor_util.constant_value(v) for v in results]
+  return [_non_none_constant_value(v) for v in results]

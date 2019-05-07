@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.lite.python import util
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import constants
@@ -203,8 +202,5 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     out_tensors = _get_tensors(graph, outputs, output_arrays)
     util.set_tensor_shapes(in_tensors, input_shapes)
 
-    output_names = [node.split(":")[0] for node in outputs]
-    frozen_graph_def = tf_graph_util.convert_variables_to_constants(
-        sess, graph.as_graph_def(), output_names)
-
+    frozen_graph_def = util.freeze_graph(sess, in_tensors, out_tensors)
     return frozen_graph_def, in_tensors, out_tensors

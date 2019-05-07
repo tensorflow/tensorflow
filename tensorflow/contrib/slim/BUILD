@@ -23,6 +23,7 @@ py_library(
 py_test(
     name = "evaluation_test",
     srcs = ["python/slim/evaluation_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":evaluation",
@@ -70,6 +71,7 @@ py_library(
 py_test(
     name = "learning_test",
     srcs = ["python/slim/learning_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -168,6 +170,7 @@ py_library(
 py_test(
     name = "summaries_test",
     srcs = ["python/slim/summaries_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":summaries",

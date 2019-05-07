@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -30,12 +31,14 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
@@ -61,7 +64,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
-    DistributedFunctionLibraryRuntime* parent)
+    DistributedFunctionLibraryRuntime* parent,
+    const CustomKernelCreator* custom_kernel_creator)
     : env_(env),
       device_mgr_(device_mgr),
       lib_def_(lib_def),
@@ -71,33 +75,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
   if (device_mgr == nullptr) {
     flr_map_[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, this);
-    return;
-  }
-  for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d] = NewFunctionLibraryRuntime(
-        device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, this);
-  }
-}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
-    thread::ThreadPool* default_thread_pool,
-    DistributedFunctionLibraryRuntime* parent)
-    : env_(env),
-      device_mgr_(device_mgr),
-      lib_def_(lib_def),
-      default_thread_pool_(default_thread_pool),
-      next_handle_(0),
-      parent_(parent) {
-  if (device_mgr == nullptr) {
-    flr_map_[nullptr] = NewFunctionLibraryRuntime(
-        nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, std::move(custom_kernel_creator), this);
+        optimizer_options, custom_kernel_creator, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
@@ -320,6 +298,43 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
+Status SetArgShape(
+    const std::unordered_map<int, TensorShape>& input_tensor_shapes,
+    const std::unordered_map<int, std::pair<DataType, TensorShape>>&
+        input_resource_dtypes_and_shapes,
+    const std::vector<Node*>& arg_nodes) {
+  for (Node* n : arg_nodes) {
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    if (dtype != DT_RESOURCE) {
+      auto shape_iter = input_tensor_shapes.find(index);
+      if (shape_iter != input_tensor_shapes.end()) {
+        TensorShapeProto shape_proto;
+        shape_iter->second.AsProto(&shape_proto);
+        AttrValue attr_value;
+        *attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_output_shapes", attr_value);
+      }
+    } else {
+      auto dtype_and_shape_iter = input_resource_dtypes_and_shapes.find(index);
+      if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
+        AttrValue dtype_attr_value;
+        dtype_attr_value.mutable_list()->add_type(
+            dtype_and_shape_iter->second.first);
+        n->AddAttr("_handle_dtypes", dtype_attr_value);
+        TensorShapeProto shape_proto;
+        dtype_and_shape_iter->second.second.AsProto(&shape_proto);
+        AttrValue shape_attr_value;
+        *shape_attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_handle_shapes", shape_attr_value);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -356,7 +371,11 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " colo group: " << colocation_group;
           while (src_device->empty() && colocation_group.empty() &&
                  src_node->IsIdentity()) {
-            src_node = *src_node->in_nodes().begin();
+            // Only follows the real data input of Identity, not control edges.
+            Node* input_node;
+            TF_RETURN_IF_ERROR(src_node->input_node(0, &input_node));
+            src_node = input_node;
+
             src_device = AssignedOrRequestedDeviceName(*src_node);
             GetColocationGroup(src_node, &colocation_group);
             VLOG(3) << "Considering src: " << src_node->name()
@@ -578,14 +597,17 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     device_set.AddDevice(d);
   }
 
+  TF_RETURN_IF_ERROR(SetArgShape(options.input_tensor_shapes,
+                                 options.input_resource_dtypes_and_shapes,
+                                 arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(options.input_devices,
                                     options.output_devices, device_set,
                                     arg_nodes, ret_nodes));
 
   std::unique_ptr<MultiDeviceFunctionData> data =
-      absl::make_unique<MultiDeviceFunctionData>(function_name, function_key,
-                                                 ret_node_names.size(), lib_def,
-                                                 std::move(ret_types));
+      absl::make_unique<MultiDeviceFunctionData>(
+          function_name, function_key, ret_node_names.size(),
+          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
@@ -619,7 +641,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  Placer placer(graph.get(), &device_set, default_device,
+  Placer placer(graph.get(), function_name, optimization_options.flib_def,
+                &device_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
@@ -672,9 +695,16 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   for (const auto& pair : subgraphs) {
+    const auto* optimized_subgraph = pair.second.get();
     DumpGraph(
         strings::StrCat("After all optimization passes (", pair.first, ")"),
-        pair.second.get());
+        optimized_subgraph);
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile(
+          strings::StrCat("pflr_after_all_optimization_passes_",
+                          reinterpret_cast<uintptr_t>(optimized_subgraph)),
+          optimized_subgraph->ToGraphDefDebug());
+    }
   }
 
   if (options.graph_collector != nullptr) {
@@ -709,17 +739,19 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     // TODO(iga): Fail gracefully if the set of devices corresponds
     // to more than one address space.
     const string& target = pair.first;
+    FunctionLibraryRuntime* target_flr = GetFLR(target);
+    const string& device_type = target_flr->device()->device_type();
     Graph* subgraph = pair.second.get();
 
     ComponentFunctionData* comp_data = &data->glue_[target];
     TF_RETURN_IF_ERROR(UpdateArgAndRetvalMetadata(
-        subgraph, &comp_data->arg_indices_, &comp_data->ret_indices_,
-        &comp_data->arg_alloc_attrs_, &comp_data->ret_alloc_attrs_));
+        subgraph, device_type, &comp_data->arg_indices_,
+        &comp_data->ret_indices_, &comp_data->arg_alloc_attrs_,
+        &comp_data->ret_alloc_attrs_));
     FunctionDef shard;
     string unique_name = name_generator.GetName();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
-    FunctionLibraryRuntime* target_flr = GetFLR(target);
     TF_RETURN_IF_ERROR(data->lib_def_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.executor_type = options.executor_type;
@@ -803,6 +835,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  VLOG(1) << "Running multi-device function " << data->function_name_;
+  VLOG(4) << "    with " << opts.DebugString();
+
   if (data->glue_.empty()) {
     // Trivial case where the function body is empty.
     done(Status::OK());
@@ -819,8 +854,6 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const string& target = pair.first;
     const ComponentFunctionData& comp_data = pair.second;
     FunctionLibraryRuntime::Handle handle = pair.second.handle_;
-    VLOG(1) << "Running function shard on device " << target << " with handle "
-            << handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs_;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
@@ -830,15 +863,20 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     // When target device has private thread pool, use the target device runner
     thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
     opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+
     std::vector<Tensor> comp_args =
         GetArgsForIndices(comp_data.arg_indices_, args);
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
+
+    VLOG(1) << "Running component function on device " << target
+            << " with handle " << handle;
+    VLOG(4) << "    with " << opts_copy.DebugString();
     flr->Run(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
           if (!status.ok()) {
-            LOG(ERROR) << "Component function execution failed: " << status;
+            VLOG(2) << "Component function execution failed: " << status;
             refcounted_done->UpdateStatus(status);
           } else {
             for (int i = 0; i < comp_rets->size(); ++i) {
@@ -968,7 +1006,7 @@ void ProcessFunctionLibraryRuntime::Run(
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    return RunMultiDevice(opts, handle, args, rets, done);
+    return RunMultiDevice(opts, handle, args, rets, std::move(done));
   }
 
   FunctionLibraryRuntime* flr = nullptr;
@@ -1051,16 +1089,70 @@ void ProcessFunctionLibraryRuntime::Run(
   done(errors::Internal("Could not find device"));
 }
 
+void ProcessFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  std::vector<Tensor> args;
+  args.reserve(frame->num_args());
+  for (size_t i = 0; i < frame->num_args(); ++i) {
+    Tensor arg;
+    Status s = frame->GetArg(i, &arg);
+    args.push_back(std::move(arg));
+    if (!s.ok()) {
+      done(s);
+    }
+  }
+  std::vector<Tensor>* rets = new std::vector<Tensor>;
+  rets->reserve(frame->num_retvals());
+
+  Run(opts, handle, args, rets,
+      std::bind(
+          [frame, rets](FunctionLibraryRuntime::DoneCallback& done,
+                        // Begin unbound arguments.
+                        const Status& status) {
+            std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
+
+            if (!status.ok()) {
+              done(status);
+              return;
+            }
+
+            if (rets->size() != frame->num_retvals()) {
+              done(errors::Internal(
+                  "Number of return values from function (", rets->size(),
+                  ") did not match expected number of return values (",
+                  frame->num_retvals(), ")."));
+              return;
+            }
+
+            for (size_t i = 0; i < frame->num_retvals(); ++i) {
+              Status s = frame->SetRetval(i, (*rets)[i]);
+              if (!s.ok()) {
+                done(s);
+                return;
+              }
+            }
+            done(Status::OK());
+          },
+          std::move(done), std::placeholders::_1));
+}
+
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
+    const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const {
-  out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
-  out_pflr->reset(new ProcessFunctionLibraryRuntime(
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+    bool skip_flib_def) const {
+  if (skip_flib_def) {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(
+        lib_def_->default_registry(), FunctionDefLibrary{});
+  } else {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(*lib_def_);
+  }
+  *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, std::move(custom_kernel_creator), default_thread_pool_,
-      parent_));
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator);
   return Status::OK();
 }
 

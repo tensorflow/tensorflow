@@ -48,6 +48,24 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 3)
     self.assertTransformedEquivalent(test_fn, 4)
 
+  def test_multiple_continues(self):
+
+    def test_fn(x):
+      v = []
+      while x > 0:
+        x -= 1
+        if x > 2:
+          continue
+        if x > 1:
+          continue
+        v.append(x)
+      return v
+
+    self.assertTransformedEquivalent(test_fn, 0)
+    self.assertTransformedEquivalent(test_fn, 1)
+    self.assertTransformedEquivalent(test_fn, 3)
+    self.assertTransformedEquivalent(test_fn, 4)
+
   def test_for_loop(self):
 
     def test_fn(a):

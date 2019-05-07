@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -1535,6 +1536,19 @@ ENTRY MinMaxValues {
 
 )"
 },
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+}
 });
   // clang-format on
 }
@@ -2263,6 +2277,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParseReplicaGroups) {
+  const string original = "{{0,1},{2,3}}";
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                          ParseReplicaGroupsOnly(original));
+  EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
   const string original = "0_1x2_3";
   TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
@@ -2830,6 +2851,90 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter has 2 leaf buffers, but "
                                    "parameter_replication has 3 elements"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[2] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("The first operand must be a scalar"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "The first operand must be a scalar of PRED or S32"));
+}
+
+TEST_F(HloParserTest,
+       CheckPredicatedConditionalRequiresTrueAndFalseComputation) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = pred[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(
+      result.status().error_message(),
+      ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
 }  // namespace

@@ -43,8 +43,8 @@ class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
     self.assertRaisesRegexp(ValueError, r'Invalid row_splits: \[\]',
                             segment_id_ops.row_splits_to_segment_ids, [])
     self.assertRaisesRegexp(
-        ValueError, r'Tensor conversion requested dtype int64 for '
-        'Tensor with dtype float32', segment_id_ops.row_splits_to_segment_ids,
+        ValueError, r'splits must have dtype int32 or int64',
+        segment_id_ops.row_splits_to_segment_ids,
         constant_op.constant([0.5]))
     self.assertRaisesRegexp(ValueError, r'Shape \(\) must have rank 1',
                             segment_id_ops.row_splits_to_segment_ids, 0)

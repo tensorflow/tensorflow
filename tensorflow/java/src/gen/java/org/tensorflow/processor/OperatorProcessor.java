@@ -54,6 +54,8 @@ import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.TypeName;
+import com.squareup.javapoet.ParameterizedTypeName;
+import com.squareup.javapoet.WildcardTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
 
@@ -158,6 +160,13 @@ public final class OperatorProcessor extends AbstractProcessor {
   private static final TypeName T_EXEC_ENV =
       ClassName.get("org.tensorflow", "ExecutionEnvironment");
   private static final TypeName T_STRING = ClassName.get(String.class);
+  // Operand<?>
+  private static final TypeName T_OPERAND =
+      ParameterizedTypeName.get(
+          ClassName.get("org.tensorflow", "Operand"), WildcardTypeName.subtypeOf(Object.class));
+  // Iterable<Operand<?>>
+  private static final TypeName T_ITERABLE_OPERAND =
+      ParameterizedTypeName.get(ClassName.get(Iterable.class), T_OPERAND);
 
   private Filer filer;
   private Messager messager;
@@ -390,6 +399,18 @@ public final class OperatorProcessor extends AbstractProcessor {
             .addJavadoc(
                 "Returns an API that uses the provided name for an op.\n\n"
                     + "@see {@link $T#withName(String)}\n",
+                T_SCOPE)
+            .build());
+
+    opsBuilder.addMethod(
+        MethodSpec.methodBuilder("withControlDependencies")
+            .addModifiers(Modifier.PUBLIC)
+            .addParameter(T_ITERABLE_OPERAND, "controls")
+            .returns(T_OPS)
+            .addStatement("return new Ops(scope.withControlDependencies(controls))")
+            .addJavadoc(
+                "Returns an API that adds operations to the graph with the provided control dependencies.\n\n"
+                    + "@see {@link $T#withControlDependencies(Iterable<Operand<?>>)}\n",
                 T_SCOPE)
             .build());
 

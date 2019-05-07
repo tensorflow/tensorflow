@@ -85,7 +85,7 @@ class Nadam(optimizer_v2.OptimizerV2):
         compatibility, recommended to use `learning_rate` instead.
     """
 
-    # Backwards compatiblity with keras NAdam optimizer.
+    # Backwards compatibility with keras NAdam optimizer.
     kwargs['decay'] = kwargs.pop('schedule_decay', 0.004)
     learning_rate = kwargs.get('lr', learning_rate)
     if isinstance(learning_rate, learning_rate_schedule.LearningRateSchedule):

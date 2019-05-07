@@ -1,5 +1,10 @@
 # TensorFlow API backwards compatibility tests.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "py_test",
+)
+
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
 )
@@ -32,6 +37,18 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "deprecation_test",
+    srcs = ["deprecation_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )

@@ -103,6 +103,50 @@ XrtBuffer::~XrtBuffer() { Delete(); }
   return std::make_shared<XrtBuffer>(std::move(buffer_handle), literal.shape());
 }
 
+/*static*/ xla::StatusOr<std::shared_ptr<XrtBuffer>> XrtBuffer::MakeTuple(
+    const std::shared_ptr<XrtContext>& context,
+    const std::vector<std::shared_ptr<XrtBuffer>>& elements) {
+  if (elements.empty()) {
+    return errors::Unimplemented(
+        "The arity zero case of MakeTuple is not implemented.");
+  }
+  int tf_device_id = elements[0]->handle().device_id();
+  xrt::XLATupleNode tuple_description;
+  std::vector<xla::Shape> element_shapes;
+  element_shapes.reserve(elements.size());
+  for (int index = 0; index < elements.size(); ++index) {
+    xrt::XLATupleNode* node = tuple_description.add_tuples();
+    node->set_input_index(index);
+    element_shapes.push_back(elements[index]->shape());
+    if (elements[index]->handle().device_id() != tf_device_id) {
+      return errors::InvalidArgument(
+          "All elements of tuple must be on the same device ( ",
+          elements[index]->handle().device_id(), " vs. ", tf_device_id, ")");
+    }
+  }
+  auto proto = absl::make_unique<TensorProto>();
+  proto->set_dtype(DT_STRING);
+  tuple_description.SerializeToString(proto->add_string_val());
+
+  XrtTensorHandle description_handle =
+      context->tf_context()->SendTensor(std::move(proto), tf_device_id,
+                                        /*host_memory=*/true);
+
+  protobuf::Map<string, AttrValue> attrs;
+  attrs["Ninputs"] = MakeAttrValue(elements.size());
+
+  std::vector<const XrtTensorHandle*> args;
+  args.reserve(elements.size() + 1);
+  args.push_back(&description_handle);
+  for (const auto& element : elements) {
+    args.push_back(&element->handle());
+  }
+  XrtTensorHandle buffer_handle = std::move(context->tf_context()->EnqueueOp(
+      "XRTMakeTuple", args, /*output_arity=*/1, attrs, tf_device_id)[0]);
+  return std::make_shared<XrtBuffer>(
+      std::move(buffer_handle), xla::ShapeUtil::MakeTupleShape(element_shapes));
+}
+
 xla::StatusOr<xla::Literal> XrtBuffer::ToLiteral() const {
   TF_RET_CHECK(handle_.valid());
   XrtTensorHandle literal_handle = std::move(handle_.context()->EnqueueOp(
@@ -373,7 +417,7 @@ XrtExecutable::ExecuteReplicated(
   for (int i = 0; i < device_assignment_.replica_count(); ++i) {
     for (int j = 0; j < device_assignment_.computation_count(); ++j) {
       for (int k = 0; k < args[j].n2(); ++k) {
-        inputs.push_back(&args[j](i, j)->handle());
+        inputs.push_back(&args[j](i, k)->handle());
         input_types.push_back(DT_INT64);
       }
     }

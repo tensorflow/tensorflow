@@ -111,7 +111,7 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
+    case xla::OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type is not integral";
     default:
       LOG(FATAL) << "unhandled element type " << type;

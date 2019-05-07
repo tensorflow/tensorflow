@@ -66,7 +66,6 @@ from __future__ import print_function
 import collections
 import enum
 
-from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cfg
@@ -76,10 +75,8 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis import live_values
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
-from tensorflow.python.autograph.pyct.static_analysis import type_info
 from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): These contexts can be refactored into first class objects.
@@ -99,8 +96,6 @@ class Feature(enum.Enum):
     ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
-    ERROR_REWRITING: Rewrite errors that occur in the generated code to
-      indicate the source code to which the failing code corresponds.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
     LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
       Tensors to their TF counterparts.
@@ -113,7 +108,6 @@ class Feature(enum.Enum):
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
   ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
   BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
-  ERROR_REWRITING = 'ERROR_REWRITING'
   LISTS = 'LISTS'
   LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'
@@ -361,10 +355,6 @@ def standard_analysis(node, context, is_initial=False):
   node = activity.resolve(node, context, None)
   node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
   node = liveness.resolve(node, context, graphs)
-  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, context)
-  # This second call allows resolving first-order class attributes.
-  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
   if is_initial:
     anno.dup(
         node,

@@ -23,6 +23,8 @@ import contextlib
 import copy
 import json
 import os
+import subprocess
+import sys
 import threading
 import numpy as np
 
@@ -38,11 +40,15 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import nest
 
 
 original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
@@ -284,9 +290,14 @@ class MultiWorkerTestBase(test.TestCase):
 
     return config
 
-  def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
-                  **kwargs):
-    result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+  def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
+                  *args, **kwargs):
+    if eager_mode:
+      with context.eager_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+    else:
+      with context.graph_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
     if np.all(result):
       with self._lock:
         self._result += 1
@@ -308,7 +319,8 @@ class MultiWorkerTestBase(test.TestCase):
       for task_id in range(len(cluster_spec.get(task_type, []))):
         t = threading.Thread(
             target=self._run_client,
-            args=(client_fn, task_type, task_id, num_gpus) + args,
+            args=(client_fn, task_type, task_id, num_gpus,
+                  context.executing_eagerly()) + args,
             kwargs=kwargs)
         t.start()
         threads.append(t)
@@ -394,10 +406,18 @@ class IndependentWorkerTestBase(test.TestCase):
     self._mock_context.__exit__(None, None, None)
     super(IndependentWorkerTestBase, self).tearDown()
 
-  def _task_thread(self, task_fn, tf_config, *args, **kwargs):
+  def _task_thread(self, task_fn, tf_config, executing_eagerly, *args,
+                   **kwargs):
     with self._coord.stop_on_exception():
       os.environ['TF_CONFIG'] = json.dumps(tf_config)
-      task_fn(*args, **kwargs)
+      # Force the new thread simulating a worker to run in the same context
+      # mode as the parent thread does.
+      if executing_eagerly:
+        with context.eager_mode():
+          task_fn(*args, **kwargs)
+      else:
+        with ops.Graph().as_default(), context.graph_mode():
+          task_fn(*args, **kwargs)
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
@@ -415,7 +435,7 @@ class IndependentWorkerTestBase(test.TestCase):
       }
     t = threading.Thread(
         target=self._task_thread,
-        args=(task_fn, tf_config) + args,
+        args=(task_fn, tf_config, context.executing_eagerly()) + args,
         kwargs=kwargs)
     t.start()
     return t
@@ -433,7 +453,69 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)
+    try:
+      self._coord.join(worker_threads)
+    except errors.UnknownError as e:
+      if 'Could not start gRPC server' in e.message:
+        self.skipTest('Cannot start std servers.')
+      else:
+        raise
+
+
+class MultiWorkerMultiProcessTest(test.TestCase):
+  """Testing infra for independent workers using multiple processes."""
+
+  def _run_task_in_process(self, cmd_args, cluster_spec, task_type, task_id):
+    env = os.environ.copy()
+    env['TF_CONFIG'] = json.dumps({
+        'cluster': cluster_spec,
+        'task': {
+            'type': task_type,
+            'index': task_id
+        }
+    })
+    return subprocess.Popen(
+        cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+
+  def run_multiple_tasks_in_processes(self, cmd_args, cluster_spec):
+    """Run `cmd_args` in a process for each task in `cluster_spec`."""
+    processes = {}
+    for task_type in cluster_spec.keys():
+      processes[task_type] = []
+      for task_id in range(len(cluster_spec[task_type])):
+        p = self._run_task_in_process(cmd_args, cluster_spec, task_type,
+                                      task_id)
+        processes[task_type].append(p)
+    return processes
+
+  def join_independent_workers(self, worker_processes):
+    return_codes = []
+    for p in nest.flatten(worker_processes):
+      try:
+        # Calling p.wait() will hang if we don't consume its output.
+        p.communicate()
+      except ValueError:
+        # The output of the process may have been consumed, in which case
+        # calling `p.communicate()` will raise a ValueError.
+        pass
+      finally:
+        return_codes.append(p.returncode)
+    for return_code in return_codes:
+      self.assertEqual(return_code, 0)
+
+  def stream_stderr(self, process):
+    # TODO(yuefengz): calling stream_stderr on a single process will probably
+    # make all processes hang if they have too much output e.g. adding
+    # --vmodule=execute=2 to cmd_args. But this method is useful for debugging
+    # purposes. We should figure out the hanging problem, probably by consuming
+    # outputs of all processes at the same time.
+    while True:
+      output = process.stderr.readline()
+      if not output and process.poll() is not None:
+        break
+      if output:
+        print(output.strip())
+        sys.stdout.flush()
 
 
 def get_tf_config_task():

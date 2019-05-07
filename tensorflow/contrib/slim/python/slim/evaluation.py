@@ -39,8 +39,8 @@ method:
   log_dir = '/tmp/my_model_eval/'
 
   initial_op = tf.group(
-      tf.global_variables_initializer(),
-      tf.local_variables_initializer())
+      tf.compat.v1.global_variables_initializer(),
+      tf.compat.v1.local_variables_initializer())
 
   metric_values = slim.evaluate_once(
       master='',
@@ -76,7 +76,7 @@ more summaries and call the evaluation_loop method:
 
   # Define the summaries to write:
   for metric_name, metric_value in metrics_to_values.iteritems():
-    tf.summary.scalar(metric_name, metric_value)
+    tf.compat.v1.summary.scalar(metric_name, metric_value)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -106,8 +106,8 @@ with only summaries. The user need only leave out the 'eval_op' argument:
   predictions = MyModel(images)
 
   # Define the summaries to write:
-  tf.summary.scalar(...)
-  tf.summary.histogram(...)
+  tf.compat.v1.summary.scalar(...)
+  tf.compat.v1.summary.histogram(...)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -175,14 +175,14 @@ def evaluate_once(master,
       value of `final_op` is returned.
     final_op_feed_dict: A feed dictionary to use when executing `final_op`.
     summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
-      default the summary_op is set to tf.summary.merge_all().
+      default the summary_op is set to tf.compat.v1.summary.merge_all().
     summary_op_feed_dict: An optional feed dictionary to use when running the
       `summary_op`.
     variables_to_restore: A list of TensorFlow variables to restore during
       evaluation. If the argument is left as `None` then
       slim.variables.GetVariablesToRestore() is used.
-    session_config: An instance of `tf.ConfigProto` that will be used to
-      configure the `Session`. If left as `None`, the default will be used.
+    session_config: An instance of `tf.compat.v1.ConfigProto` that will be used
+      to configure the `Session`. If left as `None`, the default will be used.
     hooks: A list of additional `SessionRunHook` objects to pass during the
       evaluation.
 
@@ -192,11 +192,16 @@ def evaluate_once(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
+  all_hooks = [
+      evaluation.StopAfterNEvalsHook(num_evals),
+  ]
 
   if summary_op is not None:
-    all_hooks.append(evaluation.SummaryAtEndHook(
-        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+    all_hooks.append(
+        evaluation.SummaryAtEndHook(
+            log_dir=logdir,
+            summary_op=summary_op,
+            feed_dict=summary_op_feed_dict))
   if hooks is not None:
     all_hooks.extend(hooks)
 
@@ -254,7 +259,7 @@ def evaluation_loop(master,
       value of `final_op` is returned.
     final_op_feed_dict: A feed dictionary to use when executing `final_op`.
     summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
-      default the summary_op is set to tf.summary.merge_all().
+      default the summary_op is set to tf.compat.v1.summary.merge_all().
     summary_op_feed_dict: An optional feed dictionary to use when running the
       `summary_op`.
     variables_to_restore: A list of TensorFlow variables to restore during
@@ -263,15 +268,15 @@ def evaluation_loop(master,
     eval_interval_secs: The minimum number of seconds between evaluations.
     max_number_of_evaluations: the max number of iterations of the evaluation.
       If the value is left as 'None', the evaluation continues indefinitely.
-    session_config: An instance of `tf.ConfigProto` that will be used to
-      configure the `Session`. If left as `None`, the default will be used.
+    session_config: An instance of `tf.compat.v1.ConfigProto` that will be used
+      to configure the `Session`. If left as `None`, the default will be used.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
     timeout_fn: Optional function to call after a timeout.  If the function
       returns True, then it means that no new checkpoints will be generated and
       the iterator will exit.  The function is called with no arguments.
-    hooks: A list of additional `SessionRunHook` objects to pass during
-      repeated evaluations.
+    hooks: A list of additional `SessionRunHook` objects to pass during repeated
+      evaluations.
 
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
@@ -279,11 +284,16 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
+  all_hooks = [
+      evaluation.StopAfterNEvalsHook(num_evals),
+  ]
 
   if summary_op is not None:
-    all_hooks.append(evaluation.SummaryAtEndHook(
-        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+    all_hooks.append(
+        evaluation.SummaryAtEndHook(
+            log_dir=logdir,
+            summary_op=summary_op,
+            feed_dict=summary_op_feed_dict))
 
   if hooks is not None:
     # Add custom hooks if provided.
@@ -297,8 +307,10 @@ def evaluation_loop(master,
       checkpoint_dir,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op, init_feed_dict=initial_op_feed_dict,
-          init_fn=init_fn, saver=saver),
+          init_op=initial_op,
+          init_feed_dict=initial_op_feed_dict,
+          init_fn=init_fn,
+          saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,

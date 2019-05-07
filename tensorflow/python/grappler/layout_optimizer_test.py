@@ -201,6 +201,8 @@ def _is_permute(node):
       'VecPermuteNCHWToNHWC-LayoutOptimizer')
 
 
+@test_util.for_all_test_methods(test_util.no_xla_auto_jit,
+                                'Test does not apply in XLA setting')
 class LayoutOptimizerTest(test.TestCase):
   """Tests the Grappler layout optimizer."""
 

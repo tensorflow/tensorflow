@@ -78,7 +78,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "input_generator_test",
     size = "small",
     srcs = ["input_generator_test.cc"],

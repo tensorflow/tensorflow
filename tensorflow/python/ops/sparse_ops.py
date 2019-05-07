@@ -373,10 +373,10 @@ def sparse_add(a, b, threshold=None, thresh=None):
 
   Then,
 
-      * `thresh == 0` (the default): all 5 index/value pairs will be returned.
-      * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `thresh == 0.21`: .1, 0, and -.2 will vanish.
+  * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+  * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
@@ -434,11 +434,11 @@ def sparse_add_v2(a, b, threshold=0):
 
   Then,
 
-      * `threshold == 0` (the default): all 5 index/value pairs will be
-          returned.
-      * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `threshold == 0.21`: .1, 0, and -.2 will vanish.
+  * `threshold == 0` (the default): all 5 index/value pairs will be
+      returned.
+  * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `threshold == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
@@ -491,20 +491,22 @@ def sparse_cross(inputs, name=None):
   """Generates sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: "a_X_d_X_f"
-    [1, 0]: "b_X_e_X_g"
-    [1, 1]: "c_X_e_X_g"
+
+      shape = [2, 2]
+      [0, 0]: "a_X_d_X_f"
+      [1, 0]: "b_X_e_X_g"
+      [1, 1]: "c_X_e_X_g"
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -524,26 +526,28 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
   """Generates hashed sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: FingerprintCat64(
-                Fingerprint64("f"), FingerprintCat64(
-                    Fingerprint64("d"), Fingerprint64("a")))
-    [1, 0]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("b")))
-    [1, 1]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("c")))
+
+      shape = [2, 2]
+      [0, 0]: FingerprintCat64(
+                  Fingerprint64("f"), FingerprintCat64(
+                      Fingerprint64("d"), Fingerprint64("a")))
+      [1, 0]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("b")))
+      [1, 1]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("c")))
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -1418,7 +1422,7 @@ def sparse_tensor_to_dense(sp_input,
        [c x x x x]]
 
   Indices must be without repeats.  This is only
-  tested if validate_indices is True.
+  tested if `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.
@@ -1504,7 +1508,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
     sp_values = sparse_tensor.SparseTensor(sp_input.indices, new_values,
                                            sp_input.dense_shape)
 
-    sp_new = sparse_merge(sp_input, sp_values, vocab_size, name)
+    sp_new = sparse_merge_impl(sp_input, sp_values, vocab_size, name)
 
     # validate_indices may be False because we allow duplicates in new_indices:
     # repeated indices are allowed when creating an indicator matrix.
@@ -1607,6 +1611,15 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
       `vocab_size` is not a or list thereof and `sp_ids` is a list.
     ValueError: If `sp_ids` and `vocab_size` are lists of different lengths.
   """
+  return sparse_merge_impl(sp_ids, sp_values, vocab_size, name, already_sorted)
+
+
+def sparse_merge_impl(sp_ids,
+                      sp_values,
+                      vocab_size,
+                      name=None,
+                      already_sorted=False):
+  """Internal implementation for sparse_merge to avoid deprecation warnings."""
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
     sp_ids = [sp_ids]
@@ -2380,7 +2393,7 @@ def sparse_softmax(sp_input, name=None):
   values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
   indices = np.vstack(np.where(values)).astype(np.int64).T
 
-  result = tf.sparse_softmax(tf.SparseTensor(indices, values, shape))
+  result = tf.sparse.softmax(tf.SparseTensor(indices, values, shape))
   # ...returning a 3-D SparseTensor, equivalent to:
   # [?   1.]     [1    ?]
   # [1.  ? ] and [.5  .5]
@@ -2412,7 +2425,7 @@ def sparse_maximum(sp_a, sp_b, name=None):
   ```python
   sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
   sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse_maximum(sp_zero, sp_one).eval()
+  res = tf.sparse.maximum(sp_zero, sp_one).eval()
   # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
   ```
 
@@ -2450,7 +2463,7 @@ def sparse_minimum(sp_a, sp_b, name=None):
   ```python
   sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
   sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
-  res = tf.sparse_minimum(sp_zero, sp_one).eval()
+  res = tf.sparse.minimum(sp_zero, sp_one).eval()
   # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
   ```
 
