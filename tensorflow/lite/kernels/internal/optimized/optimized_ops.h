@@ -269,18 +269,6 @@ inline void AddBiasAndEvalActivationFunction(float output_activation_min,
 #endif
 }
 
-template <typename Lhs, typename Rhs, typename Result>
-void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
-          Eigen::MatrixBase<Result>* result) {
-  if (rhs.cols() == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    result->col(0).noalias() = lhs * rhs.col(0);
-  } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
-    result->noalias() = lhs * rhs;
-  }
-}
-
 #ifdef GEMMLOWP_NEON
 // In the common case of batch size 1, a fully-connected node degenerates
 // to a matrix*vector product. LSTM cells contain a fully-connected node;
@@ -6301,7 +6289,8 @@ inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
     const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data) {
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("TransposeConvV2");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
@@ -6334,21 +6323,25 @@ inline void TransposeConvV2(
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
-  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      Matrix;
-  typedef Eigen::Map<Matrix> MatrixRef;
-  typedef Eigen::Map<const Matrix> ConstMatrixRef;
-  ConstMatrixRef hwoi_ordered_filter_matrix_map(
-      hwoi_ordered_filter_data, hwoi_ordered_filter_total_size, input_depth);
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = hwoi_ordered_filter_total_size;
+  lhs_params.cols = input_depth;
   float* output_data_p = output_data;
   tensor_utils::ZeroVector(output_data, output_offset * batch_size);
   for (int i = 0; i < batch_size; ++i) {
-    ConstMatrixRef input_matrix_map(input_data + input_offset * i,
-                                    input_image_size, input_depth);
-    MatrixRef output_matrix_map(col2im_data, input_image_size,
-                                hwoi_ordered_filter_total_size);
-    Gemm(input_matrix_map, hwoi_ordered_filter_matrix_map.transpose(),
-         &output_matrix_map);
+    cpu_backend_gemm::MatrixParams<float> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_depth;
+    rhs_params.cols = input_image_size;
+    cpu_backend_gemm::MatrixParams<float> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = hwoi_ordered_filter_total_size;
+    dst_params.cols = input_image_size;
+    cpu_backend_gemm::GemmParams<float, float> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
 
     Col2im(col2im_data, output_depth, output_height, output_width,
            filter_height, filter_width, padding_top, padding_left,
@@ -6356,29 +6349,6 @@ inline void TransposeConvV2(
            output_data_p);
     output_data_p += output_offset;
   }
-}
-
-// TODO(renjieliu): Investigate whether we need to keep this.
-inline void TransposeConv(
-    const ConvParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // Note we could use transposed weights with forward conv for unstrided
-  // cases. But we are already getting good performance with this code as-is.
-  TFLITE_DCHECK(im2col_data);
-  TransposeIm2col(params, 0, input_shape, input_data, filter_shape,
-                  output_shape, im2col_data);
-
-  const auto im2col_matrix_map =
-      MapAsMatrixWithLastDimAsRows(im2col_data, im2col_shape);
-  const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
-
-  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented

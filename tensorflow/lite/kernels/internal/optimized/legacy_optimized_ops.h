@@ -527,6 +527,18 @@ void AddBiasAndEvalActivationFunction(const float* bias_data,
                                    output_activation_max);
 }
 
+template <typename Lhs, typename Rhs, typename Result>
+void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
+          Eigen::MatrixBase<Result>* result) {
+  if (rhs.cols() == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    result->col(0).noalias() = lhs * rhs.col(0);
+  } else {
+    gemmlowp::ScopedProfilingLabel label("GEMM");
+    result->noalias() = lhs * rhs;
+  }
+}
+
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& weights_shape,
@@ -2085,6 +2097,28 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
       gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
       filter_offset, input_offset, output_pipeline);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  gemmlowp::ScopedProfilingLabel label("TransposeConv");
+  // Note we could use transposed weights with forward conv for unstrided
+  // cases. But we are already getting good performance with this code as-is.
+  TFLITE_DCHECK(im2col_data);
+  TransposeIm2col(params, 0, input_shape, input_data, filter_shape,
+                  output_shape, im2col_data);
+
+  const auto im2col_matrix_map =
+      MapAsMatrixWithLastDimAsRows(im2col_data, im2col_shape);
+  const auto filter_matrix_map =
+      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
+  auto output_matrix_map =
+      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+
+  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
