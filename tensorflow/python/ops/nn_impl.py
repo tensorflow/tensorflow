@@ -1241,15 +1241,15 @@ def fused_batch_norm(
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
   y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-       x,
-       scale,
-       offset,
-       mean,
-       variance,
-       epsilon=epsilon,
-       data_format=data_format,
-       is_training=is_training,
-       name=name)
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
   return y, batch_mean, batch_var
 
 
