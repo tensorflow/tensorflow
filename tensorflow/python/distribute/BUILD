@@ -943,3 +943,37 @@ distribute_py_test(
         "//tensorflow/python:layers",
     ],
 )
+
+py_library(
+    name = "model_collection_base",
+    srcs = ["model_collection/model_collection_base.py"],
+)
+
+py_library(
+    name = "simple_models",
+    srcs = ["model_collection/simple_models.py"],
+    deps = [
+        ":model_collection_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saved_model_test.py"],
+    main = "saved_model_test.py",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
+    deps = [
+        ":combinations",
+        ":model_combinations",
+        ":strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
+        "//third_party/py/numpy",
+    ],
+)
