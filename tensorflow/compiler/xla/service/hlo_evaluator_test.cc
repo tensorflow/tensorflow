@@ -352,6 +352,13 @@ TEST_P(HloEvaluatorBf16Test, DoesAbsR1WithZeroSize) {
   auto expected = LiteralUtil::CreateR1<float>({});
   TestUnaryOp(HloOpcode::kAbs, std::move(expected), std::move(operand));
 }
+
+TEST_F(HloEvaluatorTest, DoesAbsC128) {
+  auto x = LiteralUtil::CreateR0<complex128>({1, 2});
+  auto expected_real = LiteralUtil::CreateR0<double>(2.23607);
+  TestUnaryOp(HloOpcode::kAbs, std::move(expected_real), std::move(x), 3e-06);
+}
+
 TEST_F(HloEvaluatorTest, DoesNegateR2) {
   auto operand = LiteralUtil::CreateR2<int32>(
       {{0, std::numeric_limits<int32>::min()}, {-1, 4}});
