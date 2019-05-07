@@ -46,31 +46,6 @@ TEST(RecorderTest, SingleThreaded) {
               ::testing::ElementsAre(Named("during1"), Named("during2")));
 }
 
-TEST(RecorderTest, CollectionBeforeStop) {
-  uint64 start_time = Env::Default()->NowNanos();
-  uint64 end_time = start_time + kNanosInSec;
-
-  TraceMeRecorder::Record({1, "ignored", start_time, end_time});
-  TraceMeRecorder::Start(/*level=*/1);
-  TraceMeRecorder::Record({2, "during1", start_time, end_time});
-  TraceMeRecorder::Record({3, "during2", start_time, end_time});
-  auto collected_results = TraceMeRecorder::Collect();
-  TraceMeRecorder::Record({4, "after_collect", start_time, end_time});
-  auto stopped_results = TraceMeRecorder::Stop();
-  TraceMeRecorder::Record({5, "after_stop", start_time, end_time});
-  auto results_after_stop = TraceMeRecorder::Collect();
-
-  ASSERT_EQ(collected_results.size(), 1);
-  EXPECT_THAT(collected_results[0].events,
-              ::testing::ElementsAre(Named("during1"), Named("during2")));
-
-  ASSERT_EQ(stopped_results.size(), 1);
-  EXPECT_THAT(stopped_results[0].events,
-              ::testing::ElementsAre(Named("after_collect")));
-
-  ASSERT_EQ(results_after_stop.size(), 0);
-}
-
 void SpinNanos(int nanos) {
   uint64 deadline = Env::Default()->NowNanos() + nanos;
   while (Env::Default()->NowNanos() < deadline) {

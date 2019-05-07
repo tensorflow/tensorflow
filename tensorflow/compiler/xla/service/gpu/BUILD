@@ -1,7 +1,6 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -335,6 +334,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
@@ -553,10 +553,19 @@ cc_library(
     hdrs = ["redzone_allocator.h"],
     deps = [
         ":gpu_constants",
+        ":partition_assignment",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_executor_headers",
     ],
 )
 
@@ -568,7 +577,9 @@ tf_cc_test(
         ":redzone_allocator",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
@@ -982,6 +993,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla/service:sort_simplifier",
         "//tensorflow/compiler/xla/service:stable_sort_expander",
         "//tensorflow/compiler/xla/service:transpose_folding",
@@ -1213,30 +1225,30 @@ cc_library(
     hdrs = ["buffer_comparator.h"],
     deps = [
         ":gpu_executable",
+        ":partition_assignment",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
-        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/strings",
     ],
 )
 
-xla_test(
+tf_cc_test(
     name = "buffer_comparator_test",
     srcs = ["buffer_comparator_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":buffer_comparator",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/stream_executor:device_memory",
     ],
 )
 

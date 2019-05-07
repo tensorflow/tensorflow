@@ -56,6 +56,7 @@ class CriticalSectionTest(test.TestCase):
                         sorted(r_value))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.xla_allow_fallback("b/128495870")
   def testCriticalSectionWithControlFlow(self):
     for outer_cond in [False, True]:
       for inner_cond in [False, True]:

@@ -26,6 +26,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -175,6 +177,80 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
       self.assertEqual(components["bar"][i], results["bar"])
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  def testFromTensorSlicesRagged(self):
+    components = (
+        ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]),
+        ragged_factory_ops.constant_value([[[3]], [[4]], [[5]]]),
+    )
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    expected = [(ragged_factory_ops.constant_value([[0]]),
+                 ragged_factory_ops.constant_value([[3]])),
+                (ragged_factory_ops.constant_value([[1]]),
+                 ragged_factory_ops.constant_value([[4]])),
+                (ragged_factory_ops.constant_value([[2]]),
+                 ragged_factory_ops.constant_value([[5]]))]
+    self.assertDatasetProduces(dataset, expected_output=expected)
+
+  def testFromTensorSlicesMixedRagged(self):
+    components = (np.tile(np.array([[1], [2], [3]]),
+                          20), np.tile(np.array([[12], [13], [14]]),
+                                       22), np.array([37.0, 38.0, 39.0]),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0, 0], [1, 0], [2, 0]]),
+                      values=np.array([0, 0, 0]),
+                      dense_shape=np.array([3, 1])),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0, 0], [1, 1], [2, 2]]),
+                      values=np.array([1, 2, 3]),
+                      dense_shape=np.array([3, 3])),
+                  ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]))
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    get_next = self.getNext(dataset)
+
+    expected = [
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[0]]),
+             values=np.array([1]),
+             dense_shape=np.array([3])), ragged_factory_ops.constant_value([[0]
+                                                                           ])),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[1]]),
+             values=np.array([2]),
+             dense_shape=np.array([3])), ragged_factory_ops.constant_value([[1]
+                                                                           ])),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[2]]),
+             values=np.array([3]),
+             dense_shape=np.array([3])), ragged_factory_ops.constant_value([[2]
+                                                                           ])),
+    ]
+    for i in range(3):
+      results = self.evaluate(get_next())
+      for component, result_component in zip(
+          (list(zip(*components[:3]))[i] + expected[i]), results):
+        if sparse_tensor.is_sparse(component):
+          self.assertSparseValuesEqual(component, result_component)
+        elif ragged_tensor.is_ragged(component):
+          self.assertRaggedEqual(component, result_component)
+        else:
+          self.assertAllEqual(component, result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
 
 if __name__ == "__main__":
   test.main()

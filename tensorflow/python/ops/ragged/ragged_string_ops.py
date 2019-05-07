@@ -627,15 +627,15 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
     A `SparseTensor` or `RaggedTensor` of rank `N+1`, the strings split
     according to the delimiter.
   """
-  source = deprecation.deprecated_argument_lookup(
+  input = deprecation.deprecated_argument_lookup(
       "input", input, "source", source)
-  with ops.name_scope(name, "StringSplit", [source]):
+  with ops.name_scope(name, "StringSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         input, dtype=dtypes.string, name="input")
     if result_type == "SparseTensor" and input.shape.rank == 1:
-      return string_ops.string_split_v2(source, sep=sep, maxsplit=maxsplit)
+      return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
 
-    ragged_result = string_split_v2(source, sep=sep, maxsplit=maxsplit)
+    ragged_result = string_split_v2(input, sep=sep, maxsplit=maxsplit)
     if result_type == "SparseTensor":
       return ragged_result.to_sparse()
     elif result_type == "RaggedTensor":

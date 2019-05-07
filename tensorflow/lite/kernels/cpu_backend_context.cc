@@ -22,11 +22,15 @@ namespace tflite {
 
 CpuBackendContext::CpuBackendContext()
     : ruy_context_(new ruy::Context),
-      gemmlowp_context_(new gemmlowp::GemmContext) {}
+      gemmlowp_context_(new gemmlowp::GemmContext) {
+  set_max_num_threads(1);
+}
 
 CpuBackendContext::~CpuBackendContext() {}
 
 void CpuBackendContext::set_max_num_threads(int max_num_threads) {
+  max_num_threads_ = max_num_threads;
+  ruy_context_->max_num_threads = max_num_threads;
   gemmlowp_context_->set_max_num_threads(max_num_threads);
 }
 

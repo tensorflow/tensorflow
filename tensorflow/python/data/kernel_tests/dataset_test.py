@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -206,6 +208,12 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_dataset = input_dataset_fn()
     dataset_fn = self.make_interleave_fn(*interleave_fn_args)
     self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
+
+  def testNoWarnings(self):
+    with test.mock.patch.object(warnings, "warn") as mock_log:
+      dataset_fn = self.make_interleave_fn(dataset_ops.Dataset.range(10))
+      dataset_fn(dataset_ops.Dataset.range(10))
+      self.assertEmpty(mock_log.call_args_list)
 
   @parameterized.named_parameters(
       ("Concatenate", lambda x, y: x.concatenate(y),

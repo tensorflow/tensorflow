@@ -316,12 +316,11 @@ def _get_grouped_variables(vars_to_warm_start):
 
       - A regular expression (string) that captures which variables to
         warm-start (see tf.compat.v1.get_collection).  This expression will
-        only consider
-        variables in the TRAINABLE_VARIABLES collection.
-      - A list of Variables to warm-start.
+        only consider variables in the TRAINABLE_VARIABLES collection.
       - A list of strings, each representing a full variable name to warm-start.
-      - `None`, in which case only variables specified in
-        `var_name_to_vocab_info` will be warm-started.
+        These will consider variables in GLOBAL_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - `None`, in which case all variables in TRAINABLE_VARIABLES will be used.
   Returns:
     A dictionary mapping variable names (strings) to lists of Variables.
   Raises:
@@ -331,6 +330,7 @@ def _get_grouped_variables(vars_to_warm_start):
   if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
+    logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
@@ -382,13 +382,13 @@ def warm_start(ckpt_to_initialize_from,
         consider variables in the TRAINABLE_VARIABLES collection -- if you need
         to warm-start non_TRAINABLE vars (such as optimizer accumulators or
         batch norm statistics), please use the below option.
-      - A list of Variables to warm-start.  If you do not have access to the
-        `Variable` objects at the call site, please use the below option.
       - A list of strings, each a regex scope provided to
         tf.compat.v1.get_collection with GLOBAL_VARIABLES (please see
         tf.compat.v1.get_collection).  For backwards compatibility reasons,
         this is separate from the single-string argument type.
-      - `None`, in which case only variables specified in
+      - A list of Variables to warm-start.  If you do not have access to the
+        `Variable` objects at the call site, please use the above option.
+      - `None`, in which case only TRAINABLE variables specified in
         `var_name_to_vocab_info` will be warm-started.
 
       Defaults to `'.*'`, which warm-starts all variables in the
@@ -418,6 +418,7 @@ def warm_start(ckpt_to_initialize_from,
     var_name_to_prev_var_name = {}
   logging.info("Warm-starting from: %s", (ckpt_to_initialize_from,))
   grouped_variables = _get_grouped_variables(vars_to_warm_start)
+  warmstarted_count = 0
 
   # Keep track of which var_names in var_name_to_prev_var_name and
   # var_name_to_vocab_info have been used.  Err on the safer side by throwing an
@@ -436,6 +437,7 @@ def warm_start(ckpt_to_initialize_from,
     vocab_info = var_name_to_vocab_info.get(var_name)
     if vocab_info:
       vocab_info_used.add(var_name)
+      warmstarted_count += 1
       logging.debug(
           "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
           " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
@@ -460,6 +462,7 @@ def warm_start(ckpt_to_initialize_from,
       # For the special value of vars_to_warm_start = None,
       # we only warm-start variables with explicitly specified vocabularies.
       if vars_to_warm_start:
+        warmstarted_count += 1
         logging.debug("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
         # Because we use a default empty list in grouped_variables, single
@@ -474,6 +477,8 @@ def warm_start(ckpt_to_initialize_from,
   prev_var_name_not_used = set(
       var_name_to_prev_var_name.keys()) - prev_var_name_used
   vocab_info_not_used = set(var_name_to_vocab_info.keys()) - vocab_info_used
+
+  logging.info("Warm-started %d variables.", warmstarted_count)
 
   if prev_var_name_not_used:
     raise ValueError(

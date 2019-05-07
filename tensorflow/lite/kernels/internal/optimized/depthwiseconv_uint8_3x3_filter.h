@@ -362,7 +362,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 1,
         "dup v30.16b, w4\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v31.16b, w0\n"
-        "neg w9, w9\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "add x10, %[bias_ptr], #16\n"
@@ -1296,7 +1295,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 1, 1> {
         "dup v30.16b, w4\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v31.16b, w0\n"
-        "neg w9, w9\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "add x10, %[bias_ptr], #16\n"
@@ -2113,7 +2111,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 2,
         "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
         "cmp %w[output_window_height], #2\n"
         "dup v28.8h, w0\n"
-        "neg w9, w9\n"
         "ldr w1, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
         "dup v26.4s, w9\n"
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
@@ -3146,7 +3143,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 2, 2> {
         "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
         "cmp %w[output_window_height], #2\n"
         "dup v28.8h, w0\n"
-        "neg w9, w9\n"
         "ldr w1, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
         "dup v26.4s, w9\n"
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
@@ -4030,7 +4026,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w10, w10\n"
         "dup v29.4s, w10\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w9\n"
@@ -4144,7 +4139,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w10, w10\n"
         "dup v29.4s, w10\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w9\n"
@@ -4266,7 +4260,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w7, w7\n"
         "dup v29.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w6\n"
@@ -4432,7 +4425,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w7, w7\n"
         "dup v29.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w6\n"
@@ -4592,7 +4584,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -4792,7 +4783,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -4982,7 +4972,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5187,7 +5176,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5603,7 +5591,7 @@ inline void DepthwiseConv3x3Filter(
   params.output_offset = output_offset;
   params.filter_offset = filter_offset;
   params.output_multiplier = output_multiplier;
-  params.output_right_shift = -output_shift;
+  params.output_right_shift = output_shift;
   params.output_activation_min = output_activation_min;
   params.output_activation_max = output_activation_max;
 

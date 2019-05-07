@@ -288,8 +288,7 @@ void BenchmarkTfLiteModel::PrepareInputData() {
     TfLiteTensor* t = interpreter->tensor(i);
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
-    // TODO(haoliang): Ignore the 0-th dimension (number of batches).
-    for (int i = 1; i < sizes.size(); ++i) {
+    for (int i = 0; i < sizes.size(); ++i) {
       num_elements *= sizes[i];
     }
     InputTensorData t_data;

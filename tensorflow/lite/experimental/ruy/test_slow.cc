@@ -29,10 +29,10 @@ using TestSetType =
 
 TEST(RuyTest, TestBigNarrowMuls) {
   for (int width : {1, 2, 3, 4, 5, 8}) {
-    TestPackedLinearRCC<TestSetType>(width, 401, 601);
-    TestPackedLinearRCC<TestSetType>(587, 443, width);
+    TestRCC<TestSetType>(width, 401, 601);
+    TestRCC<TestSetType>(587, 443, width);
   }
-  TestPackedLinearRCC<TestSetType>(512, 256, 16);
+  TestRCC<TestSetType>(512, 256, 16);
 }
 
 TEST(RuyTest, TestBigShallowMuls) {
@@ -42,7 +42,7 @@ TEST(RuyTest, TestBigShallowMuls) {
 }
 
 TEST(RuyTest, TestBigMuls) {
-  TestPackedLinearRCC<TestSetType>(225, 303, 199);
+  TestRCC<TestSetType>(225, 303, 199);
   TestLinearAllOrders<TestSetType>(256, 192, 128);
 }
 

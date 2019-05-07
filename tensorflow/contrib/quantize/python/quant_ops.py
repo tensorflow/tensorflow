@@ -55,7 +55,8 @@ def _ModelVariable(name,
       shape=shape,
       initializer=initializer,
       collections=collections,
-      trainable=trainable)
+      trainable=trainable,
+      aggregation=variable_scope.VariableAggregation.MEAN)
 
 
 def LastValueQuantize(inputs,
@@ -161,12 +162,12 @@ def LastValueQuantize(inputs,
         # than the positive range.
         min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
 
-      # TFLite requires that 0.0 if always in the [min; max] range. Because
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
       # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
       range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
       range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
     else:
-      # TFLite requires that 0.0 if always in the [min; max] range.
+      # TFLite requires that 0.0 is always in the [min; max] range.
       range_min = math_ops.minimum(batch_min, 0.0)
       range_max = math_ops.maximum(batch_max, 0.0)
 
@@ -286,12 +287,12 @@ def MovingAvgQuantize(inputs,
         # than the positive range.
         min_max_ratio = -((1 << num_bits) - 2) / (1 << num_bits)
 
-      # TFLite requires that 0.0 if always in the [min; max] range. Because
+      # TFLite requires that 0.0 is always in the [min; max] range. Because
       # batch_min <= batch_max, it follows that range_min <= 0 <= range_max.
       range_min = math_ops.minimum(batch_min, batch_max / min_max_ratio)
       range_max = math_ops.maximum(batch_max, batch_min * min_max_ratio)
     else:
-      # TFLite requires that 0.0 if always in the [min; max] range.
+      # TFLite requires that 0.0 is always in the [min; max] range.
       range_min = math_ops.minimum(batch_min, 0.0)
       range_max = math_ops.maximum(batch_max, 0.0)
 

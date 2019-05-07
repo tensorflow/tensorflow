@@ -123,9 +123,20 @@ cc_library(
     textual_hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
+<<<<<<< HEAD
         ":rocm_kernel",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
+=======
+        ":rocm_driver",
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/stream_executor",  # buildcleaner: keep
+        "//tensorflow/stream_executor:executor_cache",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:stream_executor_pimpl_header",
+>>>>>>> upstream/master
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),

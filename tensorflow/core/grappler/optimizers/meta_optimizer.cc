@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -775,6 +776,8 @@ Status OptimizeGraph(
     Status added_device = item.AddDevice(d->name());
     if (!added_device.ok()) VLOG(3) << added_device.error_message();
   }
+  VLOG(3) << "Grappler available devices: "
+          << absl::StrJoin(item.devices(), ", ");
 
   // Add fetches so that the graph can be pruned.
   item.fetch.swap(ret_node_names);

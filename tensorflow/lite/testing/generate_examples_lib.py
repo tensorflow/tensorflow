@@ -3585,6 +3585,32 @@ def make_ceil_tests(options):
 
 
 @register_make_test_function()
+def make_round_tests(options):
+  """Build the round op testing graph."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the round op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.round(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
 def make_neg_tests(options):
   """Make a set of tests to do neg."""
 
@@ -3758,6 +3784,15 @@ def make_slice_tests(options):
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
           "size": [[2, 3], [2, 2]],
+      },
+      # 4-D with size -1
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4, 4]],
+          "begin": [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
+                    [0, 0, 0, 1]],
+          "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
       },
   ]
 

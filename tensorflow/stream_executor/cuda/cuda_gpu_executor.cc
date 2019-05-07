@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -273,7 +272,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
   if (spec.has_cuda_cubin_in_memory()) {
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
     const char *cubin = spec.cuda_cubin_in_memory().bytes();
     if (!LoadModuleFromCuBin(cubin, &module)) {
@@ -296,7 +295,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
       return false;
     }
 
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (!LoadModuleFromPtx(ptx, &module)) {
       return false;
     }
@@ -344,7 +343,7 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
 void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
-  mutex_lock lock{in_memory_modules_mu_};
+  absl::MutexLock lock{&in_memory_modules_mu_};
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
     VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
@@ -363,7 +362,7 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   // ModuleHandle::id().
   CUmodule cu_module;
   if (spec.has_cuda_cubin_in_memory()) {
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (!LoadModuleFromCuBin(
             reinterpret_cast<const char *>(spec.cuda_cubin_in_memory().data()),
             &cu_module)) {
@@ -381,7 +380,7 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
       return false;
     }
 
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (!LoadModuleFromPtx(spec.cuda_ptx_in_memory(), &cu_module)) {
       return false;
     }
@@ -395,7 +394,7 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
 
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   const char *gpu_binary = reinterpret_cast<const char *>(module_handle.id());
-  mutex_lock lock{in_memory_modules_mu_};
+  absl::MutexLock lock{&in_memory_modules_mu_};
   return UnloadGpuBinary(gpu_binary);
 }
 
@@ -429,7 +428,7 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   // whether we've done an occupancy check on this kernel before isn't free
   // (because we have to synchronize), so we only do this at -v 2+.
   if (VLOG_IS_ON(2)) {
-    mutex_lock lock(launched_kernels_mu_);
+    absl::MutexLock lock(&launched_kernels_mu_);
     if (!launched_kernels_.count(cufunc)) {
       VlogOccupancyInfo(kernel, thread_dims, block_dims);
       // TODO(rspringer): Remove elements from launched_kernels_...if we ever
@@ -893,7 +892,7 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
   };
 
   {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
       CHECK(it != gpu_binary_to_module_.end());

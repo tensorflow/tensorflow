@@ -115,6 +115,11 @@ class XlaOpRegistry {
 
     // If we should cluster operations returning DT_VARIANT.
     bool cluster_variant_ops = false;
+
+    // If we should cluster the "Svd" op.  The XLA implemenation of this op has
+    // some performance (b/128001705) and possibly correctness (b/127344411)
+    // issues so we avoid auto-clustering it for non XLA_* devices.
+    bool cluster_svd_op = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the

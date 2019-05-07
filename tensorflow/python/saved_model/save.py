@@ -220,7 +220,7 @@ class _SaveableView(object):
         asset_filename_map={},
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
-      if isinstance(obj, tracking.TrackableResource):
+      if isinstance(obj, tracking.CapturableResource):
         # pylint: disable=protected-access
         with ops.device(obj._resource_device):
           new_resource = obj._create_resource()
@@ -424,7 +424,7 @@ def _generate_signatures(signature_functions, resource_map):
 
 
 def _trace_resource_initializers(accessible_objects):
-  """Create concrete functions from `TrackableResource` objects."""
+  """Create concrete functions from `CapturableResource` objects."""
   resource_initializers = []
 
   def _wrap_initializer(obj):
@@ -435,7 +435,7 @@ def _trace_resource_initializers(accessible_objects):
     return lambda: _wrap_initializer(obj)
 
   for obj in accessible_objects:
-    if isinstance(obj, tracking.TrackableResource):
+    if isinstance(obj, tracking.CapturableResource):
       resource_initializers.append(def_function.function(
           _wrap_obj_initializer(obj),
           # All inputs are captures.
@@ -608,7 +608,7 @@ def _write_object_proto(obj, proto, asset_file_def_index):
         function_serialization.serialize_bare_concrete_function(obj))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
-  elif isinstance(obj, tracking.TrackableResource):
+  elif isinstance(obj, tracking.CapturableResource):
     proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)

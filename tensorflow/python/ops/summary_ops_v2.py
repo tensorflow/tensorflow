@@ -1020,10 +1020,12 @@ def run_metadata(name, data, step=None):
   with summary_scope(name,
                      "graph_run_metadata_summary",
                      [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(data.SerializeToString(),
+                                    dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(
-            data.SerializeToString(), dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 
@@ -1061,10 +1063,12 @@ def run_metadata_graphs(name, data, step=None):
   with summary_scope(name,
                      "graph_run_metadata_graph_summary",
                      [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(data.SerializeToString(),
+                                    dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(
-            data.SerializeToString(), dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 
@@ -1107,9 +1111,11 @@ def keras_model(name, data, step=None):
     return False
 
   with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(json_string, dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(json_string, dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 

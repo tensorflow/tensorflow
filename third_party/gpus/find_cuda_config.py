@@ -104,6 +104,10 @@ def _matches_version(actual_version, required_version):
   """
   if actual_version is None:
     return False
+
+  # Strip spaces from the versions.
+  actual_version = actual_version.strip()
+  required_version = required_version.strip()
   return actual_version.startswith(required_version)
 
 
@@ -423,9 +427,13 @@ def find_cuda_config():
     cuda_paths = _list_from_env("CUDA_TOOLKIT_PATH", base_paths)
     result.update(_find_cuda_config(cuda_paths, cuda_version))
 
+    cublas_paths = _list_from_env("CUBLAS_INSTALL_PATH", base_paths)
+    # Add cuda paths in case CuBLAS is installed under CUDA_TOOLKIT_PATH.
+    cublas_paths += list(set(cuda_paths) - set(cublas_paths))
     cuda_version = result["cuda_version"]
     cublas_version = os.environ.get("TF_CUBLAS_VERSION", "")
-    result.update(_find_cublas_config(cuda_paths, cublas_version, cuda_version))
+    result.update(
+        _find_cublas_config(cublas_paths, cublas_version, cuda_version))
 
   if "cudnn" in libraries:
     cudnn_paths = _list_from_env("CUDNN_INSTALL_PATH", base_paths)
