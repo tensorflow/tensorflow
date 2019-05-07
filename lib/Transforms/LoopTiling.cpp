@@ -397,13 +397,10 @@ void LoopTiling::runOnFunction() {
     SmallVector<unsigned, 6> tileSizes;
     getTileSizes(band, &tileSizes);
     if (llvm::DebugFlag) {
-      std::stringstream msg;
-      msg << "using tile sizes [";
+      auto diag = band[0].emitRemark("using tile sizes [");
       for (auto tSize : tileSizes)
-        msg << tSize << " ";
-      msg << "]\n";
-      auto rootForOp = band[0];
-      rootForOp.emitRemark(msg.str());
+        diag << tSize << " ";
+      diag << "]\n";
     }
     if (failed(tileCodeGen(band, tileSizes)))
       return signalPassFailure();

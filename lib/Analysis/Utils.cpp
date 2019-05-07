@@ -398,8 +398,8 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     ucst.addConstantLowerBound(r, dimSize);
     outOfBounds = !ucst.isEmpty();
     if (outOfBounds && emitError) {
-      loadOrStoreOp.emitOpError(
-          "memref out of upper bound access along dimension #" + Twine(r + 1));
+      loadOrStoreOp.emitOpError()
+          << "memref out of upper bound access along dimension #" << (r + 1);
     }
 
     // Check for a negative index.
@@ -409,8 +409,8 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     lcst.addConstantUpperBound(r, -1);
     outOfBounds = !lcst.isEmpty();
     if (outOfBounds && emitError) {
-      loadOrStoreOp.emitOpError(
-          "memref out of lower bound access along dimension #" + Twine(r + 1));
+      loadOrStoreOp.emitOpError()
+          << "memref out of lower bound access along dimension #" << (r + 1);
     }
   }
   return failure(outOfBounds);

@@ -211,13 +211,9 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
   return true;
 }
 
-static void emitRemarkForBlock(Block &block, const Twine &message) {
+static InFlightDiagnostic emitRemarkForBlock(Block &block) {
   auto *op = block.getContainingOp();
-  if (!op) {
-    block.getFunction()->emitRemark(message);
-  } else {
-    op->emitRemark(message);
-  }
+  return op ? op->emitRemark() : block.getFunction()->emitRemark();
 }
 
 /// Creates a buffer in the faster memory space for the specified region;
@@ -356,11 +352,10 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     fastBufferMap[memref] = fastMemRef;
     // fastMemRefType is a constant shaped memref.
     *sizeInBytes = getMemRefSizeInBytes(fastMemRefType).getValue();
-    LLVM_DEBUG(std::string ss; llvm::raw_string_ostream oss(ss);
-               oss << "Creating DMA buffer of type " << fastMemRefType;
-               oss << " and size " << llvm::divideCeil(*sizeInBytes, 1024)
-                   << " KiB\n";
-               emitRemarkForBlock(*block, oss.str()));
+    LLVM_DEBUG(emitRemarkForBlock(*block)
+               << "Creating DMA buffer of type " << fastMemRefType
+               << " and size " << llvm::divideCeil(*sizeInBytes, 1024)
+               << " KiB\n");
   } else {
     // Reuse the one already created.
     fastMemRef = fastBufferMap[memref];
@@ -741,9 +736,9 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
-    forOp.emitRemark(
-        Twine(sizeInKib) +
-        " KiB of DMA buffers in fast memory space for this block\n");
+    forOp.emitRemark()
+        << sizeInKib
+        << " KiB of DMA buffers in fast memory space for this block\n";
   }
 
   if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {

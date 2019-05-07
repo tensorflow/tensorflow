@@ -158,8 +158,7 @@ impl::FunctionConversion::convertOp(DialectOpConversion *converter,
 
   auto results = converter->rewrite(op, operands, builder);
   if (results.size() != op->getNumResults())
-    return (op->emitError("rewriting produced a different number of results"),
-            failure());
+    return op->emitError("rewriting produced a different number of results");
 
   for (unsigned i = 0, e = results.size(); i < e; ++i)
     mapping.map(op->getResult(i), results[i]);
