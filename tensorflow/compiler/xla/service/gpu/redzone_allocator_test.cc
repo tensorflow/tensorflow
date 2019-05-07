@@ -106,6 +106,27 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   modify_redzone(rhs_redzone, /*offset=*/kRedzoneSize - 1, "rhs");
 }
 
+// Older CUDA compute capabilities (<= 2.0) have a limitation that grid
+// dimension X cannot be larger than 65535.
+//
+// Make sure we can launch kernels on sizes larger than that, given that the
+// maximum number of threads per block is 1024.
+TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
+  // Make sure the redzone size would require grid dimension > 65535.
+  constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  HloModuleConfig config;
+  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, /*redzone_pattern=*/-1);
+  se::Stream stream(stream_exec);
+  stream.Init();
+  (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
+  TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

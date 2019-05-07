@@ -110,7 +110,7 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
 // Code must compile for the oldest GPU XLA may be compiled for.
 static const char* redzone_checker_ptx = R"(
 .version 4.2
-.target sm_20
+.target sm_30
 .address_size 64
 
 .visible .entry redzone_checker(
