@@ -572,10 +572,10 @@ XLA_TEST_P(ExhaustiveOpTest, Asinh) {
   Run(Asinh, std::asinh);
 }
 XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
+XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
+XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
 
 // TODO(jlebar): Enable these.
-// XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
-// XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
 // XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
 // XLA_TEST_P(ExhaustiveOpTest, Cosh) { Run(Cosh, std::cosh); }
 // XLA_TEST_P(ExhaustiveOpTest, Cos) { Run(Cos, std::cos); }
