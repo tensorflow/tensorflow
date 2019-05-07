@@ -159,10 +159,18 @@ class LocalBackend(Backend):
     return executable.ExecutePerReplica(per_replica_args)
 
 
+def _cpu_backend_factory():
+  return LocalBackend(platform='cpu', xla_platform_id='Host', asynchronous=True)
+
+
+def _gpu_backend_factory():
+  return LocalBackend(platform='gpu', xla_platform_id='CUDA')
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
-    ('cpu', lambda: LocalBackend(platform='cpu', xla_platform_id='Host')),
-    ('gpu', lambda: LocalBackend(platform='gpu', xla_platform_id='CUDA')),
+    ('cpu', _cpu_backend_factory),
+    ('gpu', _gpu_backend_factory),
 ])
 
 
