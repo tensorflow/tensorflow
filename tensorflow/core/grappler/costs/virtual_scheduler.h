@@ -132,8 +132,10 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
-  virtual void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
+  virtual Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) {
+    return Status::OK();
+  }
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
@@ -144,8 +146,6 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
-  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -166,8 +166,6 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
-  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -188,8 +186,8 @@ class LIFOManager : public ReadyNodeManager {
 class FirstReadyManager : public ReadyNodeManager {
  public:
   FirstReadyManager();
-  void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
+  Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   ~FirstReadyManager() override {}
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
   const NodeDef* GetCurrNode() override;
@@ -227,8 +225,8 @@ class CompositeNodeManager : public ReadyNodeManager {
   CompositeNodeManager();
   ~CompositeNodeManager() override {}
 
-  void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
+  Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -245,8 +243,8 @@ class CompositeNodeManager : public ReadyNodeManager {
   FirstReadyManager recv_manager_;
 
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
-  // Not owned by FirstReadyManager.
-  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+  // Not owned by CompositeReadyManager.
+  const std::unordered_map<const NodeDef*, NodeState>* node_map_;
 
   // Cached curr node. Set back to nullptr from RemoveCurrNode().
   const NodeDef* curr_node_;
