@@ -376,7 +376,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     #   Batch 2 = [((9 - 6)^2 * 4, (12 - 8)^2 * 5)] = [36, 80]
 
     #   Result (reduction=SUM) = ((2 + 12) + (36 + 80))/2 = 65
-    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO) = 130 / 4 = 32.5
+    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO/NONE) = 130 / 4 = 32.5
 
     # Loss `output_2`:
     #   Per-sample weighted losses
@@ -384,7 +384,11 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     #   Batch 2 = [(9 - 6)^2 * 1.5, (12 - 8)^2 * 0.5)] = [13.5, 8]
 
     #   Result (reduction=SUM) = ((3.5 + 10) + (13.5 + 8))/2 = 17.5
-    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO) = 35 / 4 = 8.75
+    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO/NONE) = 35 / 4 = 8.75
+
+    # When reduction is 'NONE' loss value that is passed to the optimizer will
+    # be vector loss but what is reported is a scalar, which is an average of
+    # all the values in all the batch vectors.
 
     # Total loss = Output_loss_1 + Output_loss_2
 
@@ -395,6 +399,8 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     }
 
     self.expected_fit_result = {
+        loss_reduction.ReductionV2.NONE:
+            sum_over_batch_size_fit_result,
         loss_reduction.ReductionV2.SUM: {
             'loss': [82.5, 82.5],
             'output_1_loss': [65, 65],
@@ -408,6 +414,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
 
     # In the order: 'loss', 'output_1_loss', 'output_2_loss',
     self.expected_batch_result = {
+        loss_reduction.ReductionV2.NONE: [41.25, 32.5, 8.75],
         loss_reduction.ReductionV2.SUM: [82.5, 65, 17.5],
         loss_reduction.ReductionV2.AUTO: [41.25, 32.5, 8.75],
         loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE: [41.25, 32.5, 8.75],
