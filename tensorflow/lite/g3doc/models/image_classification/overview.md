@@ -280,5 +280,5 @@ trees in the original training data. To do this, you will need a set of training
 images for each of the new labels you wish to train.
 
 Learn how to perform transfer learning in the
-<a href="https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/">TensorFlow
-for Poets</a> codelab.
+<a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">Recognize
+flowers with TensorFlow</a> codelab.
