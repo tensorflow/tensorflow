@@ -35,18 +35,6 @@ limitations under the License.
 #define TF_RED_WARPSIZE 64
 #endif
 
-#if GOOGLE_CUDA
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
-                          shared_mem, stream, ...) \
-  kernel<<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
-#elif TENSORFLOW_USE_ROCM
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
-                          shared_mem, stream, ...) \
-  hipLaunchKernelGGL(kernel, \
-    block_count, threads_per_block, shared_mem, stream, \
-    __VA_ARGS__);
-#endif
-
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
 #define GPU_1D_KERNEL_LOOP(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
