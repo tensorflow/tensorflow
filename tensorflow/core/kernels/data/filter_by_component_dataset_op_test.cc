@@ -65,7 +65,7 @@ struct TestCase {
   std::vector<int> breakpoints;
 };
 
-// Test case 1: the data type of last component is DT_BOOL.
+// Test case 1: simple case.
 TestCase TestCase1() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
@@ -81,40 +81,8 @@ TestCase TestCase1() {
           /*breakpoints*/ {0, 1, 5}};
 }
 
-// Test case 2: the data type of last component is DT_INT64.
+// Test case 2: the output of input dataset is empty.
 TestCase TestCase2() {
-  return {
-      /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                               {0, 1, 2, 3, 4, 5}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {-1, 0, 1})},
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {0, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {4, 5})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({2})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 1, 5}};
-}
-
-// Test case 3: the data type of last component is DT_STRING.
-TestCase TestCase3() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                   {0, 1, 2, 3, 4, 5}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape{3, 1},
-                                                    {"a", "bc", ""})},
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {0, 1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {2, 3})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({2})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 1, 5}};
-}
-
-// Test case 4: the output of input dataset is empty.
-TestCase TestCase4() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
           /*expected_outputs*/ {},
@@ -124,8 +92,8 @@ TestCase TestCase4() {
           /*breakpoints*/ {0}};
 }
 
-// Test case 5: the output of input dataset has only one component.
-TestCase TestCase5() {
+// Test case 3: the output of input dataset has only one component.
+TestCase TestCase3() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<bool>(TensorShape{3, 1},
                                                   {true, false, true})},
@@ -136,13 +104,26 @@ TestCase TestCase5() {
           /*breakpoints*/ {0, 1, 5}};
 }
 
-// Test case 6: the last component has more than one element.
+// Test case 4: the last component has more than one element.
 TestCase InvalidLastComponentShape() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
                                                    {0, 1, 2, 3, 4, 5}),
            DatasetOpsTestBase::CreateTensor<bool>(
                TensorShape{3, 2}, {true, false, true, true, false, true})},
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({2})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {}};
+}
+
+// Test case 5: the data type of last component is not DT_BOOL.
+TestCase InvalidLastComponentDType() {
+  return {/*input_tensors*/
+          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
+                                                   {0, 1, 2, 3, 4, 5}),
+           DatasetOpsTestBase::CreateTensor<int>(TensorShape{3}, {1, 1, 0})},
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({2})},
@@ -558,47 +539,49 @@ TEST_P(ParameterizedFilterByLastComponentDatasetOpTest, Roundtrip) {
 INSTANTIATE_TEST_SUITE_P(FilterByLastComponentDatasetOpTest,
                          ParameterizedFilterByLastComponentDatasetOpTest,
                          ::testing::ValuesIn(std::vector<TestCase>(
-                             {TestCase1(), TestCase2(), TestCase3(),
-                              TestCase4(), TestCase5()})));
+                             {TestCase1(), TestCase2(), TestCase3()})));
 
-TEST_F(FilterByLastComponentDatasetOpTest, InvalidComponentShape) {
+TEST_F(FilterByLastComponentDatasetOpTest, InvalidLastComponent) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = InvalidLastComponentShape();
+  std::vector<TestCase> test_cases = {InvalidLastComponentShape(),
+                                      InvalidLastComponentDType()};
+  for (const TestCase &test_case : test_cases) {
+    std::unique_ptr<OpKernel> filter_by_last_component_dataset_kernel;
+    TF_ASSERT_OK(CreateFilterByLastComponentDatasetKernel(
+        test_case.expected_output_dtypes, test_case.expected_output_shapes,
+        &filter_by_last_component_dataset_kernel));
 
-  std::unique_ptr<OpKernel> filter_by_last_component_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterByLastComponentDatasetKernel(
-      test_case.expected_output_dtypes, test_case.expected_output_shapes,
-      &filter_by_last_component_dataset_kernel));
+    Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
+    std::vector<Tensor> inputs_for_tensor_slice_dataset =
+        test_case.input_tensors;
+    TF_ASSERT_OK(CreateTensorSliceDatasetTensor(
+        &inputs_for_tensor_slice_dataset, &tensor_slice_dataset_tensor));
+    gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+    std::unique_ptr<OpKernelContext> filter_by_last_component_dataset_context;
+    TF_ASSERT_OK(CreateFilterByLastComponentDatasetContext(
+        filter_by_last_component_dataset_kernel.get(), &inputs,
+        &filter_by_last_component_dataset_context));
+    DatasetBase *filter_by_last_component_dataset;
+    TF_ASSERT_OK(CreateDataset(filter_by_last_component_dataset_kernel.get(),
+                               filter_by_last_component_dataset_context.get(),
+                               &filter_by_last_component_dataset));
+    core::ScopedUnref scoped_unref(filter_by_last_component_dataset);
 
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
-  std::unique_ptr<OpKernelContext> filter_by_last_component_dataset_context;
-  TF_ASSERT_OK(CreateFilterByLastComponentDatasetContext(
-      filter_by_last_component_dataset_kernel.get(), &inputs,
-      &filter_by_last_component_dataset_context));
-  DatasetBase *filter_by_last_component_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_by_last_component_dataset_kernel.get(),
-                             filter_by_last_component_dataset_context.get(),
-                             &filter_by_last_component_dataset));
-  core::ScopedUnref scoped_unref(filter_by_last_component_dataset);
+    std::unique_ptr<IteratorContext> iterator_ctx;
+    TF_ASSERT_OK(CreateIteratorContext(
+        filter_by_last_component_dataset_context.get(), &iterator_ctx));
+    std::unique_ptr<IteratorBase> iterator;
+    TF_ASSERT_OK(filter_by_last_component_dataset->MakeIterator(
+        iterator_ctx.get(), "Iterator", &iterator));
 
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(
-      filter_by_last_component_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(filter_by_last_component_dataset->MakeIterator(
-      iterator_ctx.get(), "Iterator", &iterator));
-
-  std::vector<Tensor> next;
-  bool end_of_sequence = false;
-  EXPECT_EQ(
-      iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence).code(),
-      tensorflow::error::INVALID_ARGUMENT);
+    std::vector<Tensor> next;
+    bool end_of_sequence = false;
+    EXPECT_EQ(
+        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence).code(),
+        tensorflow::error::INVALID_ARGUMENT);
+  }
 }
 
 }  // namespace
