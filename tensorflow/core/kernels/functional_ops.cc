@@ -120,6 +120,8 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
     opts->stats_collector = ctx->stats_collector();
   }
   opts->runner = ctx->runner();
+  opts->stats_collector = ctx->stats_collector();
+  opts->trace_collector = ctx->trace_collector();
 }
 
 class IfOp : public AsyncOpKernel {

@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
@@ -570,6 +571,7 @@ class OpKernelContext {
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    tracing::TraceCollector* trace_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -986,6 +988,10 @@ class OpKernelContext {
   }
   StepStatsCollectorInterface* stats_collector() const {
     return params_->stats_collector;
+  }
+
+  tracing::TraceCollector* trace_collector() const {
+    return params_->trace_collector;
   }
 
   // Shared resources accessible to this kernel.

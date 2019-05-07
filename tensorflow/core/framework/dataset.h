@@ -274,6 +274,8 @@ class IteratorContext {
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
+    tracing::TraceCollector* trace_collector = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -282,6 +284,8 @@ class IteratorContext {
     params_.env = ctx->env();
     params_.runner = *(ctx->runner());
     params_.lib = ctx->function_library();
+    params_.stats_collector = ctx->stats_collector();
+    params_.trace_collector = ctx->trace_collector();
     // NOTE: must use reinterpret_cast because function.h forward-declares
     // Device.
     DeviceBase* device =
@@ -323,6 +327,14 @@ class IteratorContext {
 
   std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
     return params_.stats_aggregator_getter;
+  }
+
+  StepStatsCollectorInterface* stats_collector() const {
+    return params_.stats_collector;
+  }
+
+  tracing::TraceCollector* trace_collector() const {
+    return params_.trace_collector;
   }
 
  private:

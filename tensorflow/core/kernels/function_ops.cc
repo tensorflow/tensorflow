@@ -241,6 +241,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
+    opts.trace_collector = ctx->trace_collector();
     opts.step_container = ctx->step_container();
     opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
@@ -337,6 +338,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   opts.step_id = ctx->step_id();
   opts.runner = ctx->runner();
   opts.source_device = source_device;
+  opts.stats_collector = ctx->stats_collector();
+  opts.trace_collector = ctx->trace_collector();
   if (opts.source_device != target_device) {
     opts.remote_execution = true;
   }
