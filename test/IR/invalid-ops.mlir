@@ -528,3 +528,93 @@ func @dma_wait_no_tag_memref(%tag : f32, %c0 : index) {
 func @invalid_cmp_attr(%idx : i32) {
   // expected-error@+1 {{expected string comparison predicate attribute}}
   %cmp = cmpi i1, %idx, %idx : i32
+
+// -----
+
+func @cmpf_generic_invalid_predicate_value(%a : f32) {
+  // expected-error@+1 {{'predicate' attribute value out of range}}
+  %r = "std.cmpf"(%a, %a) {predicate: 42} : (f32, f32) -> i1
+}
+
+// -----
+
+func @cmpf_canonical_invalid_predicate_value(%a : f32) {
+  // expected-error@+1 {{unknown comparison predicate "foo"}}
+  %r = cmpf "foo", %a, %a : f32
+}
+
+// -----
+
+func @cmpf_canonical_invalid_predicate_value_signed(%a : f32) {
+  // expected-error@+1 {{unknown comparison predicate "sge"}}
+  %r = cmpf "sge", %a, %a : f32
+}
+
+// -----
+
+func @cmpf_canonical_invalid_predicate_value_no_order(%a : f32) {
+  // expected-error@+1 {{unknown comparison predicate "eq"}}
+  %r = cmpf "eq", %a, %a : f32
+}
+
+// -----
+
+func @cmpf_canonical_no_predicate_attr(%a : f32, %b : f32) {
+  %r = cmpf %a, %b : f32 // expected-error {{}}
+}
+
+// -----
+
+func @cmpf_generic_no_predicate_attr(%a : f32, %b : f32) {
+  // expected-error@+1 {{requires an integer attribute named 'predicate'}}
+  %r = "std.cmpf"(%a, %b) {foo: 1} : (f32, f32) -> i1
+}
+
+// -----
+
+func @cmpf_wrong_type(%a : i32, %b : i32) {
+  %r = cmpf "oeq", %a, %b : i32 // expected-error {{op requires a float type}}
+}
+
+// -----
+
+func @cmpf_generic_wrong_result_type(%a : f32, %b : f32) {
+  // expected-error@+1 {{op requires a bool result type}}
+  %r = "std.cmpf"(%a, %b) {predicate: 0} : (f32, f32) -> f32
+}
+
+// -----
+
+func @cmpf_canonical_wrong_result_type(%a : f32, %b : f32) -> f32 {
+  %r = cmpf "oeq", %a, %b : f32 // expected-error {{prior use here}}
+  // expected-error@+1 {{use of value '%r' expects different type than prior uses}}
+  return %r : f32
+}
+
+// -----
+
+func @cmpf_result_shape_mismatch(%a : vector<42xf32>) {
+  // expected-error@+1 {{op requires the same shape for all operands and results}}
+  %r = "std.cmpf"(%a, %a) {predicate: 0} : (vector<42 x f32>, vector<42 x f32>) -> vector<41 x i1>
+}
+
+// -----
+
+func @cmpf_operand_shape_mismatch(%a : vector<42xf32>, %b : vector<41xf32>) {
+  // expected-error@+1 {{op requires all operands to have the same type}}
+  %r = "std.cmpf"(%a, %b) {predicate: 0} : (vector<42 x f32>, vector<41 x f32>) -> vector<42 x i1>
+}
+
+// -----
+
+func @cmpf_generic_operand_type_mismatch(%a : f32, %b : f64) {
+  // expected-error@+1 {{op requires all operands to have the same type}}
+  %r = "std.cmpf"(%a, %b) {predicate: 0} : (f32, f64) -> i1
+}
+
+// -----
+
+func @cmpf_canonical_type_mismatch(%a : f32, %b : f64) { // expected-error {{prior use here}}
+  // expected-error@+1 {{use of value '%b' expects different type than prior uses}}
+  %r = cmpf "oeq", %a, %b : f32
+}

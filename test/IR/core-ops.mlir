@@ -253,6 +253,29 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = xor %cst_4, %cst_4 : tensor<42xi32>
   %63 = xor %tci32, %tci32 : tensor<42 x i32>
 
+  %64 = constant splat<vector<4 x f32>, 0.> : vector<4 x f32>
+  %tcf32 = constant splat<tensor<42 x f32>, 0.> : tensor<42 x f32>
+  %vcf32 = constant splat<vector<4 x f32>, 0.> : vector<4 x f32>
+
+  // CHECK: %{{[0-9]+}} = cmpf "ogt", %{{[0-9]+}}, %{{[0-9]+}} : f32
+  %65 = cmpf "ogt", %f3, %f4 : f32
+
+  // Predicate 0 means ordered equality comparison.
+  // CHECK: %{{[0-9]+}} = cmpf "oeq", %{{[0-9]+}}, %{{[0-9]+}} : f32
+  %66 = "std.cmpf"(%f3, %f4) {predicate: 1} : (f32, f32) -> i1
+
+  // CHECK: %{{[0-9]+}} = cmpf "olt", %cst_8, %cst_8 : vector<4xf32>
+  %67 = cmpf "olt", %vcf32, %vcf32 : vector<4 x f32>
+
+  // CHECK: %{{[0-9]+}} = cmpf "oeq", %cst_8, %cst_8 : vector<4xf32>
+  %68 = "std.cmpf"(%vcf32, %vcf32) {predicate: 1} : (vector<4 x f32>, vector<4 x f32>) -> vector<4 x i1>
+
+  // CHECK: %{{[0-9]+}} = cmpf "oeq", %cst_7, %cst_7 : tensor<42xf32>
+  %69 = cmpf "oeq", %tcf32, %tcf32 : tensor<42 x f32>
+
+  // CHECK: %{{[0-9]+}} = cmpf "oeq", %cst_8, %cst_8 : vector<4xf32>
+  %70 = cmpf "oeq", %vcf32, %vcf32 : vector<4 x f32>
+
   return
 }
 

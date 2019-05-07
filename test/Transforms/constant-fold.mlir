@@ -330,6 +330,67 @@ func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
 
 // -----
 
+// CHECK-LABEL: func @cmpf_normal_numbers
+func @cmpf_normal_numbers() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
+  %c42 = constant 42. : f32
+  %cm1 = constant -1. : f32
+  // CHECK-DAG: %false = constant 0 : i1
+  // CHECK-DAG: %true = constant 1 : i1
+  // CHECK-NEXT: return %false,
+  %0 = cmpf "false", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %1 = cmpf "oeq", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %2 = cmpf "ogt", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %3 = cmpf "oge", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %4 = cmpf "olt", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %5 = cmpf "ole", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %6 = cmpf "one", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %7 = cmpf "ord", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %8 = cmpf "ueq", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %9 = cmpf "ugt", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %10 = cmpf "uge", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %11 = cmpf "ult", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %12 = cmpf "ule", %c42, %cm1 : f32
+  // CHECK-SAME: %true,
+  %13 = cmpf "une", %c42, %cm1 : f32
+  // CHECK-SAME: %false,
+  %14 = cmpf "uno", %c42, %cm1 : f32
+  // CHECK-SAME: %true
+  %15 = cmpf "true", %c42, %cm1 : f32
+  return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+}
+
+// -----
+
+// CHECK-LABEL: func @cmpf_nan
+func @cmpf_nans() {
+  // TODO(b/122019992) Add tests for nan constant folding when it's possible to
+  // have nan constants
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @cmpf_inf
+func @cmpf_inf() {
+  // TODO(b/122019992) Add tests for inf constant folding when it's possible to
+  // have inf constants
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @fold_extract_element
 func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
   %const_0 = constant 0 : index

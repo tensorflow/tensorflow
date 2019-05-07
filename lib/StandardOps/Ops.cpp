@@ -61,9 +61,10 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpIOp, CondBranchOp,
-                DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
-                LoadOp, MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
+  addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpFOp, CmpIOp,
+                CondBranchOp, DeallocOp, DimOp, DmaStartOp, DmaWaitOp,
+                ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
+                StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -577,7 +578,7 @@ void CallIndirectOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
-// CmpIOp
+// General helpers for comparison ops
 //===----------------------------------------------------------------------===//
 
 // Return the type of the same shape (scalar, vector or tensor) containing i1.
@@ -627,9 +628,13 @@ static bool checkI1SameShape(Type pattern, Type type) {
   llvm_unreachable("unsupported type");
 }
 
-// Returns an array of mnemonics for CmpIPredicates, indexed by values thereof.
-static inline const char *const *getPredicateNames() {
-  static const char *predicateNames[(int)CmpIPredicate::NumPredicates]{
+//===----------------------------------------------------------------------===//
+// CmpIOp
+//===----------------------------------------------------------------------===//
+
+// Returns an array of mnemonics for CmpIPredicates indexed by values thereof.
+static inline const char *const *getCmpIPredicateNames() {
+  static const char *predicateNames[]{
       /*EQ*/ "eq",
       /*NE*/ "ne",
       /*SLT*/ "slt",
@@ -639,7 +644,11 @@ static inline const char *const *getPredicateNames() {
       /*ULT*/ "ult",
       /*ULE*/ "ule",
       /*UGT*/ "ugt",
-      /*UGE*/ "uge"};
+      /*UGE*/ "uge",
+  };
+  static_assert(std::extent<decltype(predicateNames)>::value ==
+                    (size_t)CmpIPredicate::NumPredicates,
+                "wrong number of predicate names");
   return predicateNames;
 }
 
@@ -664,9 +673,9 @@ void CmpIOp::build(Builder *build, OperationState *result,
                    CmpIPredicate predicate, Value *lhs, Value *rhs) {
   result->addOperands({lhs, rhs});
   result->types.push_back(getI1SameShape(build, lhs->getType()));
-  result->addAttribute(getPredicateAttrName(),
-                       build->getIntegerAttr(build->getIntegerType(64),
-                                             static_cast<int64_t>(predicate)));
+  result->addAttribute(
+      getPredicateAttrName(),
+      build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
 }
 
 bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -717,7 +726,7 @@ void CmpIOp::print(OpAsmPrinter *p) {
          "unknown predicate index");
   Builder b(getContext());
   auto predicateStringAttr =
-      b.getStringAttr(getPredicateNames()[predicateValue]);
+      b.getStringAttr(getCmpIPredicateNames()[predicateValue]);
   p->printAttribute(predicateStringAttr);
 
   *p << ", ";
@@ -779,6 +788,206 @@ Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
   if (!lhs || !rhs)
+    return {};
+
+  auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
+  return IntegerAttr::get(IntegerType::get(1, context), APInt(1, val));
+}
+
+//===----------------------------------------------------------------------===//
+// CmpFOp
+//===----------------------------------------------------------------------===//
+
+// Returns an array of mnemonics for CmpFPredicates indexed by values thereof.
+static inline const char *const *getCmpFPredicateNames() {
+  static const char *predicateNames[] = {
+      /*FALSE*/ "false",
+      /*OEQ*/ "oeq",
+      /*OGT*/ "ogt",
+      /*OGE*/ "oge",
+      /*OLT*/ "olt",
+      /*OLE*/ "ole",
+      /*ONE*/ "one",
+      /*ORD*/ "ord",
+      /*UEQ*/ "ueq",
+      /*UGT*/ "ugt",
+      /*UGE*/ "uge",
+      /*ULT*/ "ult",
+      /*ULE*/ "ule",
+      /*UNE*/ "une",
+      /*UNO*/ "uno",
+      /*TRUE*/ "true",
+  };
+  static_assert(std::extent<decltype(predicateNames)>::value ==
+                    (size_t)CmpFPredicate::NumPredicates,
+                "wrong number of predicate names");
+  return predicateNames;
+}
+
+// Returns a value of the predicate corresponding to the given mnemonic.
+// Returns NumPredicates (one-past-end) if there is no such mnemonic.
+CmpFPredicate CmpFOp::getPredicateByName(StringRef name) {
+  return llvm::StringSwitch<CmpFPredicate>(name)
+      .Case("false", CmpFPredicate::FALSE)
+      .Case("oeq", CmpFPredicate::OEQ)
+      .Case("ogt", CmpFPredicate::OGT)
+      .Case("oge", CmpFPredicate::OGE)
+      .Case("olt", CmpFPredicate::OLT)
+      .Case("ole", CmpFPredicate::OLE)
+      .Case("one", CmpFPredicate::ONE)
+      .Case("ord", CmpFPredicate::ORD)
+      .Case("ueq", CmpFPredicate::UEQ)
+      .Case("ugt", CmpFPredicate::UGT)
+      .Case("uge", CmpFPredicate::UGE)
+      .Case("ult", CmpFPredicate::ULT)
+      .Case("ule", CmpFPredicate::ULE)
+      .Case("une", CmpFPredicate::UNE)
+      .Case("uno", CmpFPredicate::UNO)
+      .Case("true", CmpFPredicate::TRUE)
+      .Default(CmpFPredicate::NumPredicates);
+}
+
+void CmpFOp::build(Builder *build, OperationState *result,
+                   CmpFPredicate predicate, Value *lhs, Value *rhs) {
+  result->addOperands({lhs, rhs});
+  result->types.push_back(getI1SameShape(build, lhs->getType()));
+  result->addAttribute(
+      getPredicateAttrName(),
+      build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
+}
+
+bool CmpFOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  SmallVector<NamedAttribute, 4> attrs;
+  Attribute predicateNameAttr;
+  Type type;
+  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName(),
+                             attrs) ||
+      parser->parseComma() || parser->parseOperandList(ops, 2) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(ops, type, result->operands))
+    return true;
+
+  if (!predicateNameAttr.isa<StringAttr>())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected string comparison predicate attribute");
+
+  // Rewrite string attribute to an enum value.
+  StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
+  auto predicate = getPredicateByName(predicateName);
+  if (predicate == CmpFPredicate::NumPredicates)
+    return parser->emitError(parser->getNameLoc(),
+                             "unknown comparison predicate \"" + predicateName +
+                                 "\"");
+
+  auto builder = parser->getBuilder();
+  Type i1Type = getCheckedI1SameShape(&builder, type);
+  if (!i1Type)
+    return parser->emitError(parser->getNameLoc(),
+                             "expected type with valid i1 shape");
+
+  attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
+  result->attributes = attrs;
+
+  result->addTypes({i1Type});
+  return false;
+}
+
+void CmpFOp::print(OpAsmPrinter *p) {
+  *p << "cmpf ";
+
+  auto predicateValue =
+      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getInt();
+  assert(predicateValue >= static_cast<int>(CmpFPredicate::FirstValidValue) &&
+         predicateValue < static_cast<int>(CmpFPredicate::NumPredicates) &&
+         "unknown predicate index");
+  Builder b(getContext());
+  auto predicateStringAttr =
+      b.getStringAttr(getCmpFPredicateNames()[predicateValue]);
+  p->printAttribute(predicateStringAttr);
+
+  *p << ", ";
+  p->printOperand(getOperand(0));
+  *p << ", ";
+  p->printOperand(getOperand(1));
+  p->printOptionalAttrDict(getAttrs(),
+                           /*elidedAttrs=*/{getPredicateAttrName()});
+  *p << " : " << getOperand(0)->getType();
+}
+
+LogicalResult CmpFOp::verify() {
+  auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
+  if (!predicateAttr)
+    return emitOpError("requires an integer attribute named 'predicate'");
+  auto predicate = predicateAttr.getInt();
+  if (predicate < (int64_t)CmpFPredicate::FirstValidValue ||
+      predicate >= (int64_t)CmpFPredicate::NumPredicates)
+    return emitOpError("'predicate' attribute value out of range");
+
+  return success();
+}
+
+// Compute `lhs` `pred` `rhs`, where `pred` is one of the known floating point
+// comparison predicates.
+static bool applyCmpPredicate(CmpFPredicate predicate, const APFloat &lhs,
+                              const APFloat &rhs) {
+  auto cmpResult = lhs.compare(rhs);
+  switch (predicate) {
+  case CmpFPredicate::FALSE:
+    return false;
+  case CmpFPredicate::OEQ:
+    return cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::OGT:
+    return cmpResult == APFloat::cmpGreaterThan;
+  case CmpFPredicate::OGE:
+    return cmpResult == APFloat::cmpGreaterThan ||
+           cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::OLT:
+    return cmpResult == APFloat::cmpLessThan;
+  case CmpFPredicate::OLE:
+    return cmpResult == APFloat::cmpLessThan || cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::ONE:
+    return cmpResult != APFloat::cmpUnordered && cmpResult != APFloat::cmpEqual;
+  case CmpFPredicate::ORD:
+    return cmpResult != APFloat::cmpUnordered;
+  case CmpFPredicate::UEQ:
+    return cmpResult == APFloat::cmpUnordered || cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::UGT:
+    return cmpResult == APFloat::cmpUnordered ||
+           cmpResult == APFloat::cmpGreaterThan;
+  case CmpFPredicate::UGE:
+    return cmpResult == APFloat::cmpUnordered ||
+           cmpResult == APFloat::cmpGreaterThan ||
+           cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::ULT:
+    return cmpResult == APFloat::cmpUnordered ||
+           cmpResult == APFloat::cmpLessThan;
+  case CmpFPredicate::ULE:
+    return cmpResult == APFloat::cmpUnordered ||
+           cmpResult == APFloat::cmpLessThan || cmpResult == APFloat::cmpEqual;
+  case CmpFPredicate::UNE:
+    return cmpResult != APFloat::cmpEqual;
+  case CmpFPredicate::UNO:
+    return cmpResult == APFloat::cmpUnordered;
+  case CmpFPredicate::TRUE:
+    return true;
+  default:
+    llvm_unreachable("unknown comparison predicate");
+  }
+}
+
+// Constant folding hook for comparisons.
+Attribute CmpFOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) {
+  assert(operands.size() == 2 && "cmpf takes two arguments");
+
+  auto lhs = operands.front().dyn_cast_or_null<FloatAttr>();
+  auto rhs = operands.back().dyn_cast_or_null<FloatAttr>();
+  if (!lhs || !rhs ||
+      // TODO(b/122019992) Implement and test constant folding for nan/inf when
+      // it is possible to have constant nan/inf
+      !lhs.getValue().isFinite() || !rhs.getValue().isFinite())
     return {};
 
   auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());

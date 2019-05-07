@@ -725,6 +725,15 @@ LogicalResult OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
   return success();
 }
 
+LogicalResult OpTrait::impl::verifyOperandsAreFloatLike(Operation *op) {
+  for (auto *operand : op->getOperands()) {
+    auto type = getTensorOrVectorElementType(operand->getType());
+    if (!type.isa<FloatType>())
+      return op->emitOpError("requires a float type");
+  }
+  return success();
+}
+
 LogicalResult OpTrait::impl::verifySameTypeOperands(Operation *op) {
   // Zero or one operand always have the "same" type.
   unsigned nOperands = op->getNumOperands();

@@ -310,6 +310,7 @@ LogicalResult verifyZeroOperands(Operation *op);
 LogicalResult verifyOneOperand(Operation *op);
 LogicalResult verifyNOperands(Operation *op, unsigned numOperands);
 LogicalResult verifyAtLeastNOperands(Operation *op, unsigned numOperands);
+LogicalResult verifyOperandsAreFloatLike(Operation *op);
 LogicalResult verifyOperandsAreIntegerLike(Operation *op);
 LogicalResult verifySameTypeOperands(Operation *op);
 LogicalResult verifyZeroResult(Operation *op);
@@ -649,6 +650,17 @@ public:
   static AbstractOperation::OperationProperties getTraitProperties() {
     return static_cast<AbstractOperation::OperationProperties>(
         OperationProperty::NoSideEffect);
+  }
+};
+
+/// This class verifies that all operands of the specified op have a float type,
+/// a vector thereof, or a tensor thereof.
+template <typename ConcreteType>
+class OperandsAreFloatLike
+    : public TraitBase<ConcreteType, OperandsAreFloatLike> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyOperandsAreFloatLike(op);
   }
 };
 

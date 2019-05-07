@@ -255,6 +255,81 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 };
 
+/// The predicate indicates the type of the comparison to perform:
+/// (un)orderedness, (in)equality and signed less/greater than (or equal to) as
+/// well as predicates that are always true or false.
+enum class CmpFPredicate {
+  FirstValidValue,
+  // Always false
+  FALSE = FirstValidValue,
+  // Ordered comparisons
+  OEQ,
+  OGT,
+  OGE,
+  OLT,
+  OLE,
+  ONE,
+  // Both ordered
+  ORD,
+  // Unordered comparisons
+  UEQ,
+  UGT,
+  UGE,
+  ULT,
+  ULE,
+  UNE,
+  // Any unordered
+  UNO,
+  // Always true
+  TRUE,
+  // Number of predicates.
+  NumPredicates
+};
+
+/// The "cmpf" operation compares its two operands according to the float
+/// comparison rules and the predicate specified by the respective attribute.
+/// The predicate defines the type of comparison: (un)orderedness, (in)equality
+/// and signed less/greater than (or equal to) as well as predicates that are
+/// always true or false.  The operands must have the same type, and this type
+/// must be a float type, or a vector or tensor thereof.  The result is an i1,
+/// or a vector/tensor thereof having the same shape as the inputs. Unlike cmpi,
+/// the operands are always treated as signed. The u prefix indicates
+/// *unordered* comparison, not unsigned comparison, so "une" means unordered or
+/// not equal. For the sake of readability by humans, custom assembly form for
+/// the operation uses a string-typed attribute for the predicate.  The value of
+/// this attribute corresponds to lower-cased name of the predicate constant,
+/// e.g., "one" means "ordered not equal".  The string representation of the
+/// attribute is merely a syntactic sugar and is converted to an integer
+/// attribute by the parser.
+///
+///   %r1 = cmpf "oeq" %0, %1 : f32
+///   %r2 = cmpf "ult" %0, %1 : tensor<42x42xf64>
+///   %r3 = "std.cmpf"(%0, %1) {predicate: 0} : (f8, f8) -> i1
+class CmpFOp
+    : public Op<CmpFOp, OpTrait::OperandsAreFloatLike,
+                OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
+                OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
+                OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
+public:
+  using Op::Op;
+
+  CmpFPredicate getPredicate() {
+    return (CmpFPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
+        .getInt();
+  }
+
+  static StringRef getOperationName() { return "std.cmpf"; }
+  static StringRef getPredicateAttrName() { return "predicate"; }
+  static CmpFPredicate getPredicateByName(StringRef name);
+
+  static void build(Builder *builder, OperationState *result, CmpFPredicate,
+                    Value *lhs, Value *rhs);
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+  LogicalResult verify();
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
+};
+
 /// The "cond_br" operation represents a conditional branch operation in a
 /// function. The operation takes variable number of operands and produces
 /// no results. The operand number and types for each successor must match the
