@@ -1676,30 +1676,41 @@ TEST_F(OpConverterTest, ConvertMatMul) {
                                "Data type int32 is not supported for MatMul, "
                                "must be one of [float, half], at my_matmul");
   }
-  // transpose_a is set.
-  for (bool transpose_b : {false, true}) {
-    Reset();
-    NodeDef node_def =
-        get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/true, transpose_b);
-    AddTestTensor("input", {2}, /*batch_size=*/1);
-    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "transpose_a is not supported for TensorRT FullyConnected");
-  }
   // OK.
+  for (bool transpose_a : {false, true}) {
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def = get_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
+      AddTestTensor("input", {2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      RunValidationAndConversion(node_def);
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      ASSERT_TRUE(output.is_tensor());
+      ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
+
+      const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
+      DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
+      BuildAndRun(input_data, &output_data);
+      if (transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
+      } else {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
+      }
+    }
+  }
+  // OK, 3D inputs
   for (bool transpose_b : {false, true}) {
     Reset();
     NodeDef node_def =
         get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false, transpose_b);
-    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestTensor("input", {1, 1, 2}, /*batch_size=*/1);
     AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
     ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
-
+    ExpectTrtDimsEqualsArray({2, 1, 1}, output.tensor()->getDimensions());
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
     DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
     BuildAndRun(input_data, &output_data);
