@@ -627,7 +627,10 @@ class Layer(module.Module):
               with base_layer_utils.autocast_context_manager(
                   input_list,
                   self._mixed_precision_policy.should_cast_variables):
-                if ops.executing_eagerly_outside_functions():
+                # Add auto_control_deps in V2 when they are not already added by
+                # a `tf.function`.
+                if (ops.executing_eagerly_outside_functions() and
+                    not base_layer_utils.is_in_eager_or_tf_function()):
                   with auto_control_deps.AutomaticControlDependencies() as acd:
                     outputs = call_fn(inputs, *args, **kwargs)
                     # Wrap Tensors in `outputs` in `tf.identity` to avoid
