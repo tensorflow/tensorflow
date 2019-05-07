@@ -1543,10 +1543,6 @@ renames = {
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
-    'tf.where':
-        'tf.compat.v1.where',
-    'tf.where_v2':
-        'tf.compat.v2.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':
