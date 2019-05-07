@@ -237,7 +237,8 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
-    return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+    return dtype() == DT_STRING ||
+           (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
   }
 
