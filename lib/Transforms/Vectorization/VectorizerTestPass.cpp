@@ -145,13 +145,12 @@ static std::string toString(Operation *op) {
 }
 
 static NestedPattern patternTestSlicingOps() {
-  // Just use a custom op name for this test, it makes life easier.
-  constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;
   using matcher::Op;
   // Match all operations with the kTestSlicingOpName name.
   auto filter = [](Operation &op) {
-    return op.getName().getStringRef() == kTestSlicingOpName;
+    // Just use a custom op name for this test, it makes life easier.
+    return op.getName().getStringRef() == "slicing-test-op";
   };
   return Op(filter);
 }
