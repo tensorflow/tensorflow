@@ -550,7 +550,9 @@ ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
     if (PyErr_Occurred() || nested == nullptr) {
       return absl::make_unique<ErrorValueIterator>();
     }
-    return absl::make_unique<SingleValueIterator>(nested);
+    ValueIteratorPtr result = absl::make_unique<SingleValueIterator>(nested);
+    Py_DECREF(nested);  // ValueIterator took ownership
+    return result;
   }
   return GetValueIterator(nested);
 }
