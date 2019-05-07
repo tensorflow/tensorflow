@@ -74,6 +74,10 @@ constexpr TfLiteType typeToTfLiteType<string>() {
   return kTfLiteString;
 }
 
+template <>
+constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
+  return kTfLiteFloat16;
+}
 // An interpreter for a graph of nodes that input and output from tensors.
 // Each node of the graph processes a set of input tensors and produces a
 // set of output Tensors. All inputs/output tensors are referenced by index.

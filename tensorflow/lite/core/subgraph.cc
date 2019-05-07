@@ -469,6 +469,9 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteInt8:
       *bytes = sizeof(int8_t) * count;
       break;
+    case kTfLiteFloat16:
+      *bytes = sizeof(TfLiteFloat16) * count;
+      break;
     default:
       ReportError(
           "Only float32, int8, int16, int32, int64, uint8, bool, complex64 "

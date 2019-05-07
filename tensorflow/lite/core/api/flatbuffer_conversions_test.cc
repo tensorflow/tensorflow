@@ -141,6 +141,13 @@ TEST_F(FlatbufferConversionsTest, TestConvertTensorType) {
   EXPECT_EQ(kTfLiteFloat32, type);
 }
 
+TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeFloat16) {
+  TfLiteType type;
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_FLOAT16, &type, &mock_reporter_));
+  EXPECT_EQ(kTfLiteFloat16, type);
+}
+
 }  // namespace tflite
 
 int main(int argc, char** argv) {
