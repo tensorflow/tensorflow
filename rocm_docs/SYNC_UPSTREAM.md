@@ -25,7 +25,7 @@ git pull
 ```
 ### Add remotes
 ```
-git remote add upstream git@github.com:tensorflow/tensorflow.git
+git remote add upstream https://github.com/tensorflow/tensorflow.git
 git fetch upstream
 ```
 
