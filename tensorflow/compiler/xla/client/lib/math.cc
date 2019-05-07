@@ -636,9 +636,39 @@ XlaOp Atanh(XlaOp x) {
   });
 }
 
-XlaOp Cosh(XlaOp x) { return (Exp(x) + Exp(-x)) * ScalarLike(x, 0.5); }
+// Cosh(x) = (e^x + e^-x) / 2
+//         = e^(x + log(1/2)) + e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Cosh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) + Exp(-x + log_one_half);
+  });
+}
 
-XlaOp Sinh(XlaOp x) { return (Exp(x) - Exp(-x)) * ScalarLike(x, 0.5); }
+// Sinh(x) = (e^x - e^-x) / 2
+//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to +/-inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Sinh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) - Exp(-x + log_one_half);
+  });
+}
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();

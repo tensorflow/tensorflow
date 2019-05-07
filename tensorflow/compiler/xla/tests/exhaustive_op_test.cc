@@ -434,7 +434,7 @@ class ExhaustiveOpTest
       LOG(ERROR) << err_generator();
     } else if (*mismatches == kMaxMismatchesLoggedToErr) {
       LOG(ERROR) << "Not printing any more mismatches; pass "
-                    "--vmodule=exhaustive_f32__op_test=2 to see "
+                    "--vmodule=exhaustive_op_test=2 to see "
                     "all of them.";
     }
   }
@@ -574,13 +574,52 @@ XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
 XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
 XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
 
+XLA_TEST_P(ExhaustiveOpTest, Cosh) {
+  // Our cosh implementation incorrectly overflows to inf for +/-89.4159851.
+  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
+  // max-float, so we deem this acceptable.
+  //
+  // This does not occur on CPU because we have an offsetting error in our
+  // implementation of exp.
+  float (*host_cosh)(float);
+  if (platform_ == "Host") {
+    host_cosh = &std::cosh;
+  } else {
+    host_cosh = +[](float x) {
+      if (std::abs(x) == 89.4159851f) {
+        return std::numeric_limits<float>::infinity();
+      }
+      return std::cosh(x);
+    };
+  }
+  Run(Cosh, host_cosh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Sinh) {
+  // Our sinh implementation incorrectly overflows to +/-inf for +/-89.4159851.
+  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
+  // max-float, so we deem this acceptable.
+  //
+  // This does not occur on CPU because we have an offsetting error in our
+  // implementation of exp.
+  float (*host_sinh)(float);
+  if (platform_ == "Host") {
+    host_sinh = &std::sinh;
+  } else {
+    host_sinh = +[](float x) {
+      if (std::abs(x) == 89.4159851f) {
+        return std::copysign(std::numeric_limits<float>::infinity(), x);
+      }
+      return std::sinh(x);
+    };
+  }
+  Run(Sinh, host_sinh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+
 // TODO(jlebar): Enable these.
 // XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
-// XLA_TEST_P(ExhaustiveOpTest, Cosh) { Run(Cosh, std::cosh); }
 // XLA_TEST_P(ExhaustiveOpTest, Cos) { Run(Cos, std::cos); }
-// XLA_TEST_P(ExhaustiveOpTest, Sinh) { Run(Sinh, std::sinh); }
 // XLA_TEST_P(ExhaustiveOpTest, Sin) { Run(Sin, std::sin); }
-// XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
 // XLA_TEST_P(ExhaustiveOpTest, Tan) { Run(Tan, std::tan); }
 // XLA_TEST_P(ExhaustiveOpTest, Atan2) { Run(Atan2, std::atan2); }
 
