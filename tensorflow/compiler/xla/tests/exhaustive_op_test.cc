@@ -496,40 +496,39 @@ XLA_TEST_P(ExhaustiveOpTest, Log1p) {
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Exp) {
-  if (platform_ == "Host" && ty_ == F32) {
-    // TODO(b/73142289): The vectorized Exp implementation gives results outside
-    // our error spec in this range.
-    known_incorrect_begin_ = 1107296256 + 11583654;
-    known_incorrect_end_ = 1107296256 + 11629080;
-  } else if (platform_ == "Host" && ty_ == BF16) {
-    // TODO(jlebar): Is this a rounding error?  Why doesn't it occur on XLA:GPU?
-    //
-    // Mismatch on 88.5 (0x42b1).
-    //   Expected 2.72491739e+38 (0x7f4d), but got inf (0x7f80).
-    known_incorrect_begin_ = 0x42b1;
-    known_incorrect_end_ = 0x42b2;
+  // Our CPU implementation of exp returns one incorrect value: says
+  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
+  // acceptable and check for it explicitly so that we can be aware if anything
+  // changes.
+  if (platform_ == "Host") {
+    auto host_exp_with_overflow = +[](float f) {
+      if (f == 88.7228394f) {
+        return 3.40282347e+38f;
+      }
+      return std::exp(f);
+    };
+    Run(Exp, host_exp_with_overflow);
+  } else {
+    Run(Exp, std::exp);
   }
-
-  Run(Exp, std::exp);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Expm1) {
-  // Expm1 has the same erroneous behavior on CPU as Exp.
-  if (platform_ == "Host" && ty_ == F32) {
-    // TODO(b/73142289): The vectorized Exp implementation gives results outside
-    // our error spec in this range.
-    known_incorrect_begin_ = 1107296256 + 11583654;
-    known_incorrect_end_ = 1107296256 + 11629080;
-  } else if (platform_ == "Host" && ty_ == BF16) {
-    // TODO(jlebar): Is this a rounding error?  Why doesn't it occur on XLA:GPU?
-    //
-    // Mismatch on 88.5 (0x42b1).
-    //   Expected 2.72491739e+38 (0x7f4d), but got inf (0x7f80).
-    known_incorrect_begin_ = 0x42b1;
-    known_incorrect_end_ = 0x42b2;
+  // Our CPU implementation of expm1 returns one incorrect value: says
+  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
+  // acceptable and check for it explicitly so that we can be aware if anything
+  // changes.
+  if (platform_ == "Host") {
+    auto host_expm1_with_overflow = +[](float f) {
+      if (f == 88.7228394f) {
+        return 3.40282347e+38f;
+      }
+      return std::expm1(f);
+    };
+    Run(Expm1, host_expm1_with_overflow);
+  } else {
+    Run(Expm1, std::expm1);
   }
-
-  Run(Expm1, std::expm1);
 }
 
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
