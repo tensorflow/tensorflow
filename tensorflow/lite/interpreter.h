@@ -402,9 +402,14 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
-  void SetProfiler(profiling::Profiler* profiler);
+  // Sets the profiler to tracing execution. The caller retains ownership
+  // of the profiler and must ensure its validity.
+  // WARNING: This is an experimental API and subject to change.
+  void SetProfiler(Profiler* profiler);
 
-  profiling::Profiler* GetProfiler();
+  // Gets the profiler used for op tracing.
+  // WARNING: This is an experimental API and subject to change.
+  Profiler* GetProfiler();
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
