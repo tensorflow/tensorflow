@@ -217,8 +217,8 @@ bool HasResourceInputOrOutput(const Node& node) {
 // This is to help workaround a problem with the following use pattern,
 //     op0 : VarHandleOp
 //     op1 : Switch op0, pred
-//     op2 : ReadVariableOp op0
-//     op3 : ReadVariableOp op1
+//     op2 : ReadVariableOp op1
+//     op3 : AssignVariableOp op0, value
 //
 //  If op2 and op3 are clustered, the op0 and op1 are inputs,
 //  and they are both considered as resources, and
@@ -227,13 +227,36 @@ bool HasResourceInputOrOutput(const Node& node) {
 //  not allowed to be initialized (locked) twice.
 //
 bool HasResourceInputFromSwitch(const Node& node) {
-  if (std::find(node.input_types().begin(), node.input_types().end(),
-                DT_RESOURCE) != node.input_types().end()) {
+  auto n_inputs = node.num_inputs();
+  if (n_inputs == 0) {
+    return false;
+  }
+  for (int i = 0; i < n_inputs; ++i) {
+    if (node.input_types()[i] != DT_RESOURCE) {
+      continue;
+    }
+
+    // check if the node n is the node's input at input_index
+    auto is_input_at = [&](const Node &n, int input_index) {
+      for (auto oedge : n.out_edges()) {
+        if (oedge->dst() == &node &&
+            oedge->dst_input() == input_index) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     for (auto edge : node.in_edges()) {
-      if (edge->src()->type_string() == "Switch")
-        return true;
+      if (edge->src()->type_string() == "Switch") {
+        if (is_input_at(*edge->src(), i)) {
+          // if the Switch node is the resource input node
+          return true;
+        }
+      }
     }
   }
+
   return false;
 }
 

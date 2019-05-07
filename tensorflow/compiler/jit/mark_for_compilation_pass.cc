@@ -896,8 +896,8 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     // This is to workaround a problem with the following use pattern,
     //     op0 : VarHandleOp
     //     op1 : Switch op0, pred
-    //     op2 : ReadVariableOp op0
-    //     op3 : ReadVariableOp op1
+    //     op2 : ReadVariableOp op1
+    //     op3 : AssignVariableOp op0, val
     //
     //  If op2 and op3 are clustered, the op0 and op1 are inputs,
     //  and they are both considered as resources, and
