@@ -80,7 +80,7 @@ public:
   static StringRef getOperationName() { return "affine.apply"; }
 
   // Hooks to customize behavior of this op.
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
@@ -130,7 +130,7 @@ public:
   static void build(Builder *builder, OperationState *result, int64_t lb,
                     int64_t ub, int64_t step = 1);
   LogicalResult verify();
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -326,7 +326,7 @@ public:
   Region &getElseBlocks();
 
   LogicalResult verify();
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 };
 

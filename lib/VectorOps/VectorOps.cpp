@@ -120,7 +120,8 @@ void VectorTransferReadOp::print(OpAsmPrinter *p) {
   *p << ", " << getResultType();
 }
 
-bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult VectorTransferReadOp::parse(OpAsmParser *parser,
+                                        OperationState *result) {
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexInfo;
   SmallVector<OpAsmParser::OperandType, 8> paddingInfo;
@@ -133,7 +134,7 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
                                        OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
-    return true;
+    return failure();
 
   // Resolution.
   if (types.size() != 2)
@@ -160,12 +161,12 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
     paddingType = vectorType.getElementType();
   }
   auto indexType = parser->getBuilder().getIndexType();
-  return parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
-         parser->resolveOperands(indexInfo, indexType, result->operands) ||
-         (hasOptionalPaddingValue &&
-          parser->resolveOperand(paddingInfo[0], paddingType,
-                                 result->operands)) ||
-         parser->addTypeToList(vectorType, result->types);
+  return failure(
+      parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
+      parser->resolveOperands(indexInfo, indexType, result->operands) ||
+      (hasOptionalPaddingValue &&
+       parser->resolveOperand(paddingInfo[0], paddingType, result->operands)) ||
+      parser->addTypeToList(vectorType, result->types));
 }
 
 LogicalResult VectorTransferReadOp::verify() {
@@ -286,7 +287,8 @@ void VectorTransferWriteOp::print(OpAsmPrinter *p) {
   p->printType(getMemRefType());
 }
 
-bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult VectorTransferWriteOp::parse(OpAsmParser *parser,
+                                         OperationState *result) {
   OpAsmParser::OperandType storeValueInfo;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
@@ -297,7 +299,7 @@ bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
-    return true;
+    return failure();
 
   if (types.size() != 2)
     return parser->emitError(parser->getNameLoc(), "expected 2 types");
@@ -308,10 +310,10 @@ bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
   if (!memrefType)
     return parser->emitError(parser->getNameLoc(), "memRef type expected");
 
-  return parser->resolveOperands(storeValueInfo, vectorType,
-                                 result->operands) ||
-         parser->resolveOperands(memrefInfo, memrefType, result->operands) ||
-         parser->resolveOperands(indexInfo, indexType, result->operands);
+  return failure(
+      parser->resolveOperands(storeValueInfo, vectorType, result->operands) ||
+      parser->resolveOperands(memrefInfo, memrefType, result->operands) ||
+      parser->resolveOperands(indexInfo, indexType, result->operands));
 }
 
 LogicalResult VectorTransferWriteOp::verify() {
@@ -390,15 +392,16 @@ void VectorTypeCastOp::build(Builder *builder, OperationState *result,
   result->addTypes(dstType);
 }
 
-bool VectorTypeCastOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult VectorTypeCastOp::parse(OpAsmParser *parser,
+                                    OperationState *result) {
   OpAsmParser::OperandType operand;
   Type srcType, dstType;
-  return parser->parseOperand(operand) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonType(srcType) || parser->parseComma() ||
-         parser->parseType(dstType) ||
-         parser->addTypeToList(dstType, result->types) ||
-         parser->resolveOperand(operand, srcType, result->operands);
+  return failure(parser->parseOperand(operand) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(srcType) || parser->parseComma() ||
+                 parser->parseType(dstType) ||
+                 parser->addTypeToList(dstType, result->types) ||
+                 parser->resolveOperand(operand, srcType, result->operands));
 }
 
 void VectorTypeCastOp::print(OpAsmPrinter *p) {

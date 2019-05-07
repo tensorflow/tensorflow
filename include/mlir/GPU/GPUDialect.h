@@ -80,7 +80,7 @@ public:
 
   /// Custom syntax support.
   void print(OpAsmPrinter *p);
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
 
   static StringRef getOperationName() { return "gpu.launch"; }
 

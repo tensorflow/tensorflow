@@ -159,7 +159,7 @@ void LaunchOp::print(OpAsmPrinter *p) {
 // where %region_arg are percent-identifiers for the region arguments to be
 // introduced futher (SSA defs), and %operand are percent-identifiers for the
 // SSA value uses.
-static bool
+static ParseResult
 parseSizeAssignment(OpAsmParser *parser,
                     MutableArrayRef<OpAsmParser::OperandType> sizes,
                     MutableArrayRef<OpAsmParser::OperandType> regionSizes,
@@ -169,14 +169,14 @@ parseSizeAssignment(OpAsmParser *parser,
       parser->parseComma() || parser->parseRegionArgument(indices[2]) ||
       parser->parseRParen() || parser->parseKeyword("in") ||
       parser->parseLParen())
-    return true;
+    return failure();
 
   for (int i = 0; i < 3; ++i) {
     if (i != 0 && parser->parseComma())
-      return true;
+      return failure();
     if (parser->parseRegionArgument(regionSizes[i]) || parser->parseEqual() ||
         parser->parseOperand(sizes[i]))
-      return true;
+      return failure();
   }
 
   return parser->parseRParen();
@@ -188,7 +188,7 @@ parseSizeAssignment(OpAsmParser *parser,
 //                             (`args` ssa-reassignment `:` type-list)?
 //                             region attr-dict?
 // ssa-reassignment ::= `(` ssa-id `=` ssa-use (`,` ssa-id `=` ssa-use)* `)`
-bool LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // Sizes of the grid and block.
   SmallVector<OpAsmParser::OperandType, kNumConfigOperands> sizes(
       kNumConfigOperands);
@@ -217,7 +217,7 @@ bool LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
                           regionArgsRef.slice(3, 3)) ||
       parser->resolveOperands(sizes, parser->getBuilder().getIndexType(),
                               result->operands))
-    return true;
+    return failure();
 
   // If kernel argument renaming segment is present, parse it.  When present,
   // the segment should have at least one element.  If this segment is present,
@@ -232,20 +232,20 @@ bool LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
     if (parser->getCurrentLocation(&argsLoc) || parser->parseLParen() ||
         parser->parseRegionArgument(regionArgs.back()) ||
         parser->parseEqual() || parser->parseOperand(dataOperands.back()))
-      return true;
+      return failure();
 
     while (!parser->parseOptionalComma()) {
       regionArgs.push_back({});
       dataOperands.push_back({});
       if (parser->parseRegionArgument(regionArgs.back()) ||
           parser->parseEqual() || parser->parseOperand(dataOperands.back()))
-        return true;
+        return failure();
     }
 
     if (parser->parseRParen() || parser->parseColonTypeList(dataTypes) ||
         parser->resolveOperands(dataOperands, dataTypes, argsLoc,
                                 result->operands))
-      return true;
+      return failure();
   }
 
   // Introduce the body region and parse it.  The region has
@@ -255,10 +255,9 @@ bool LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   Type index = parser->getBuilder().getIndexType();
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
   Region *body = result->addRegion();
-  return parser->parseRegion(*body, regionArgs, dataTypes) ||
-         parser->parseOptionalAttributeDict(result->attributes);
+  return failure(parser->parseRegion(*body, regionArgs, dataTypes) ||
+                 parser->parseOptionalAttributeDict(result->attributes));
 }
-
 
 //===----------------------------------------------------------------------===//
 // LaunchFuncOp

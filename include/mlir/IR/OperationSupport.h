@@ -42,6 +42,7 @@ struct OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
+class ParseResult;
 class Pattern;
 class Region;
 class RewritePattern;
@@ -85,7 +86,7 @@ public:
   bool (&isClassFor)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
+  ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(Operation *op, OpAsmPrinter *p);
@@ -150,7 +151,7 @@ private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&isClassFor)(Operation *op),
-      bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
+      ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(Operation *op, OpAsmPrinter *p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&constantFoldHook)(Operation *op,

@@ -115,7 +115,7 @@ public:
   Optional<Value *> getPaddingValue();
   AffineMap getPermutationMap();
 
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
 };
@@ -177,7 +177,7 @@ public:
   operand_range getIndices();
   AffineMap getPermutationMap();
 
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
 };
@@ -200,7 +200,7 @@ public:
   static StringRef getOperationName() { return "vector.type_cast"; }
   static void build(Builder *builder, OperationState *result, Value *srcVector,
                     Type dstType);
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
 };

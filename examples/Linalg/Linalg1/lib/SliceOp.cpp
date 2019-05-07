@@ -74,7 +74,8 @@ mlir::LogicalResult linalg::SliceOp::verify() {
   return mlir::success();
 }
 
-bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
+                                   OperationState *result) {
   OpAsmParser::OperandType viewInfo;
   SmallVector<OpAsmParser::OperandType, 1> indexingInfo;
   SmallVector<Type, 8> types;
@@ -83,7 +84,7 @@ bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
                                OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
-    return true;
+    return failure();
 
   if (indexingInfo.size() != 1)
     return parser->emitError(parser->getNameLoc(), "expected 1 indexing type");
@@ -107,10 +108,10 @@ bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
   ViewType resultViewType =
       ViewType::get(viewType.getContext(), viewType.getElementType(), rank);
 
-  return parser->resolveOperand(viewInfo, viewType, result->operands) ||
-         parser->resolveOperands(indexingInfo[0], types.back(),
-                                 result->operands) ||
-         parser->addTypeToList(resultViewType, result->types);
+  return failure(parser->resolveOperand(viewInfo, viewType, result->operands) ||
+                 parser->resolveOperands(indexingInfo[0], types.back(),
+                                         result->operands) ||
+                 parser->addTypeToList(resultViewType, result->types));
 }
 
 // A SliceOp prints as:

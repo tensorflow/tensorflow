@@ -126,7 +126,7 @@ static void printICmpOp(OpAsmPrinter *p, ICmpOp &op) {
 
 // <operation> ::= `llvm.icmp` string-literal ssa-use `,` ssa-use
 //                 attribute-dict? `:` type
-static bool parseICmpOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseICmpOp(OpAsmParser *parser, OperationState *result) {
   Builder &builder = parser->getBuilder();
 
   Attribute predicate;
@@ -142,7 +142,7 @@ static bool parseICmpOp(OpAsmParser *parser, OperationState *result) {
       parser->parseType(type) ||
       parser->resolveOperand(lhs, type, result->operands) ||
       parser->resolveOperand(rhs, type, result->operands))
-    return true;
+    return failure();
 
   // Replace the string attribute `predicate` with an integer attribute.
   auto predicateStr = predicate.dyn_cast<StringAttr>();
@@ -173,7 +173,7 @@ static bool parseICmpOp(OpAsmParser *parser, OperationState *result) {
 
   result->attributes = attrs;
   result->addTypes({resultType});
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -195,7 +195,7 @@ static void printAllocaOp(OpAsmPrinter *p, AllocaOp &op) {
 
 // <operation> ::= `llvm.alloca` ssa-use `x` type attribute-dict?
 //                 `:` type `,` type
-static bool parseAllocaOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseAllocaOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType arraySize;
   Type type, elemType;
@@ -204,7 +204,7 @@ static bool parseAllocaOp(OpAsmParser *parser, OperationState *result) {
       parser->parseType(elemType) ||
       parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
       parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
-    return true;
+    return failure();
 
   // Extract the result type from the trailing function type.
   auto funcType = type.dyn_cast<FunctionType>();
@@ -215,11 +215,11 @@ static bool parseAllocaOp(OpAsmParser *parser, OperationState *result) {
         "expected trailing function type with one argument and one result");
 
   if (parser->resolveOperand(arraySize, funcType.getInput(0), result->operands))
-    return true;
+    return failure();
 
   result->attributes = attrs;
   result->addTypes({funcType.getResult(0)});
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -242,7 +242,7 @@ static void printGEPOp(OpAsmPrinter *p, GEPOp &op) {
 
 // <operation> ::= `llvm.getelementptr` ssa-use `[` ssa-use-list `]`
 //                 attribute-dict? `:` type
-static bool parseGEPOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseGEPOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType base;
   SmallVector<OpAsmParser::OperandType, 8> indices;
@@ -253,7 +253,7 @@ static bool parseGEPOp(OpAsmParser *parser, OperationState *result) {
                                OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
       parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
-    return true;
+    return failure();
 
   // Deconstruct the trailing function type to extract the types of the base
   // pointer and result (same type) and the types of the indices.
@@ -267,11 +267,11 @@ static bool parseGEPOp(OpAsmParser *parser, OperationState *result) {
   if (parser->resolveOperand(base, funcType.getInput(0), result->operands) ||
       parser->resolveOperands(indices, funcType.getInputs().drop_front(),
                               parser->getNameLoc(), result->operands))
-    return true;
+    return failure();
 
   result->attributes = attrs;
   result->addTypes(funcType.getResults());
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -302,7 +302,7 @@ static Type getLoadStoreElementType(OpAsmParser *parser, Type type,
 }
 
 // <operation> ::= `llvm.load` ssa-use attribute-dict? `:` type
-static bool parseLoadOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType addr;
   Type type;
@@ -312,13 +312,13 @@ static bool parseLoadOp(OpAsmParser *parser, OperationState *result) {
       parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
       parser->parseType(type) ||
       parser->resolveOperand(addr, type, result->operands))
-    return true;
+    return failure();
 
   Type elemTy = getLoadStoreElementType(parser, type, trailingTypeLoc);
 
   result->attributes = attrs;
   result->addTypes(elemTy);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -332,7 +332,7 @@ static void printStoreOp(OpAsmPrinter *p, StoreOp &op) {
 }
 
 // <operation> ::= `llvm.store` ssa-use `,` ssa-use attribute-dict? `:` type
-static bool parseStoreOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType addr, value;
   Type type;
@@ -342,18 +342,18 @@ static bool parseStoreOp(OpAsmParser *parser, OperationState *result) {
       parser->parseOperand(addr) || parser->parseOptionalAttributeDict(attrs) ||
       parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
       parser->parseType(type))
-    return true;
+    return failure();
 
   Type elemTy = getLoadStoreElementType(parser, type, trailingTypeLoc);
   if (!elemTy)
-    return true;
+    return failure();
 
   if (parser->resolveOperand(value, elemTy, result->operands) ||
       parser->resolveOperand(addr, type, result->operands))
-    return true;
+    return failure();
 
   result->attributes = attrs;
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -367,7 +367,7 @@ static void printBitcastOp(OpAsmPrinter *p, BitcastOp &op) {
 }
 
 // <operation> ::= `llvm.bitcast` ssa-use attribute-dict? `:` type `to` type
-static bool parseBitcastOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseBitcastOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType arg;
   Type sourceType, type;
@@ -376,11 +376,11 @@ static bool parseBitcastOp(OpAsmParser *parser, OperationState *result) {
       parser->parseColonType(sourceType) || parser->parseKeyword("to") ||
       parser->parseType(type) ||
       parser->resolveOperand(arg, sourceType, result->operands))
-    return true;
+    return failure();
 
   result->attributes = attrs;
   result->addTypes(type);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -438,7 +438,7 @@ static void printCallOp(OpAsmPrinter *p, CallOp &op) {
 
 // <operation> ::= `llvm.call` (function-id | ssa-use) `(` ssa-use-list `)`
 //                 attribute-dict? `:` function-type
-static bool parseCallOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   SmallVector<OpAsmParser::OperandType, 8> operands;
   Type type;
@@ -450,19 +450,19 @@ static bool parseCallOp(OpAsmParser *parser, OperationState *result) {
   // direct call, there will be no operands and the parser will stop at the
   // function identifier without complaining.
   if (parser->parseOperandList(operands))
-    return true;
+    return failure();
   bool isDirect = operands.empty();
 
   // Optionally parse a function identifier.
   if (isDirect)
     if (parser->parseFunctionName(calleeName, calleeLoc))
-      return true;
+      return failure();
 
   if (parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
                                OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
       parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
-    return true;
+    return failure();
 
   auto funcType = type.dyn_cast<FunctionType>();
   if (!funcType)
@@ -471,14 +471,14 @@ static bool parseCallOp(OpAsmParser *parser, OperationState *result) {
     // Add the direct callee as an Op attribute.
     Function *func;
     if (parser->resolveFunctionName(calleeName, funcType, calleeLoc, func))
-      return true;
+      return failure();
     auto funcAttr = parser->getBuilder().getFunctionAttr(func);
     attrs.push_back(parser->getBuilder().getNamedAttr("callee", funcAttr));
 
     // Make sure types match.
     if (parser->resolveOperands(operands, funcType.getInputs(),
                                 parser->getNameLoc(), result->operands))
-      return true;
+      return failure();
     result->addTypes(funcType.getResults());
   } else {
     // Construct the LLVM IR Dialect function type that the first operand
@@ -528,13 +528,13 @@ static bool parseCallOp(OpAsmParser *parser, OperationState *result) {
                                result->operands) ||
         parser->resolveOperands(funcArguments, funcType.getInputs(),
                                 parser->getNameLoc(), result->operands))
-      return true;
+      return failure();
 
     result->addTypes(wrappedResultType);
   }
 
   result->attributes = attrs;
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -601,7 +601,8 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
 // <operation> ::= `llvm.extractvalue` ssa-use
 //                 `[` integer-literal (`,` integer-literal)* `]`
 //                 attribute-dict? `:` type
-static bool parseExtractValueOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseExtractValueOp(OpAsmParser *parser,
+                                       OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType container;
   Type containerType;
@@ -615,16 +616,16 @@ static bool parseExtractValueOp(OpAsmParser *parser, OperationState *result) {
       parser->getCurrentLocation(&trailingTypeLoc) ||
       parser->parseType(containerType) ||
       parser->resolveOperand(container, containerType, result->operands))
-    return true;
+    return failure();
 
   auto elementType = getInsertExtractValueElementType(
       parser, containerType, positionAttr, attributeLoc, trailingTypeLoc);
   if (!elementType)
-    return true;
+    return failure();
 
   result->attributes = attrs;
   result->addTypes(elementType);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -641,7 +642,8 @@ static void printInsertValueOp(OpAsmPrinter *p, InsertValueOp &op) {
 // <operation> ::= `llvm.insertvaluevalue` ssa-use `,` ssa-use
 //                 `[` integer-literal (`,` integer-literal)* `]`
 //                 attribute-dict? `:` type
-static bool parseInsertValueOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseInsertValueOp(OpAsmParser *parser,
+                                      OperationState *result) {
   OpAsmParser::OperandType container, value;
   Type containerType;
   Attribute positionAttr;
@@ -654,19 +656,19 @@ static bool parseInsertValueOp(OpAsmParser *parser, OperationState *result) {
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
       parser->parseType(containerType))
-    return true;
+    return failure();
 
   auto valueType = getInsertExtractValueElementType(
       parser, containerType, positionAttr, attributeLoc, trailingTypeLoc);
   if (!valueType)
-    return true;
+    return failure();
 
   if (parser->resolveOperand(container, containerType, result->operands) ||
       parser->resolveOperand(value, valueType, result->operands))
-    return true;
+    return failure();
 
   result->addTypes(containerType);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -682,7 +684,7 @@ static void printSelectOp(OpAsmPrinter *p, SelectOp &op) {
 
 // <operation> ::= `llvm.select` ssa-use `,` ssa-use `,` ssa-use
 //                 attribute-dict? `:` type, type
-static bool parseSelectOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType condition, trueValue, falseValue;
   Type conditionType, argType;
 
@@ -692,15 +694,15 @@ static bool parseSelectOp(OpAsmParser *parser, OperationState *result) {
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(conditionType) || parser->parseComma() ||
       parser->parseType(argType))
-    return true;
+    return failure();
 
   if (parser->resolveOperand(condition, conditionType, result->operands) ||
       parser->resolveOperand(trueValue, argType, result->operands) ||
       parser->resolveOperand(falseValue, argType, result->operands))
-    return true;
+    return failure();
 
   result->addTypes(argType);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -715,15 +717,15 @@ static void printBrOp(OpAsmPrinter *p, BrOp &op) {
 
 // <operation> ::= `llvm.br` bb-id (`[` ssa-use-and-type-list `]`)?
 // attribute-dict?
-static bool parseBrOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseBrOp(OpAsmParser *parser, OperationState *result) {
   Block *dest;
   SmallVector<Value *, 4> operands;
   if (parser->parseSuccessorAndUseList(dest, operands) ||
       parser->parseOptionalAttributeDict(result->attributes))
-    return true;
+    return failure();
 
   result->addSuccessor(dest, operands);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -741,7 +743,7 @@ static void printCondBrOp(OpAsmPrinter *p, CondBrOp &op) {
 // <operation> ::= `llvm.cond_br` ssa-use `,`
 //                  bb-id (`[` ssa-use-and-type-list `]`)? `,`
 //                  bb-id (`[` ssa-use-and-type-list `]`)? attribute-dict?
-static bool parseCondBrOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCondBrOp(OpAsmParser *parser, OperationState *result) {
   Block *trueDest;
   Block *falseDest;
   SmallVector<Value *, 4> trueOperands;
@@ -760,11 +762,11 @@ static bool parseCondBrOp(OpAsmParser *parser, OperationState *result) {
       parser->parseSuccessorAndUseList(falseDest, falseOperands) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->resolveOperand(condition, i1Type, result->operands))
-    return true;
+    return failure();
 
   result->addSuccessor(trueDest, trueOperands);
   result->addSuccessor(falseDest, falseOperands);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -784,20 +786,20 @@ static void printReturnOp(OpAsmPrinter *p, ReturnOp &op) {
 
 // <operation> ::= `llvm.return` ssa-use-list attribute-dict? `:`
 //                 type-list-no-parens
-static bool parseReturnOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 1> operands;
   Type type;
 
   if (parser->parseOperandList(operands) ||
       parser->parseOptionalAttributeDict(result->attributes))
-    return true;
+    return failure();
   if (operands.empty())
-    return false;
+    return success();
 
   if (parser->parseColonType(type) ||
       parser->resolveOperand(operands[0], type, result->operands))
-    return true;
-  return false;
+    return failure();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -811,15 +813,15 @@ static void printUndefOp(OpAsmPrinter *p, UndefOp &op) {
 }
 
 // <operation> ::= `llvm.undef` attribute-dict? : type
-static bool parseUndefOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseUndefOp(OpAsmParser *parser, OperationState *result) {
   Type type;
 
   if (parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))
-    return true;
+    return failure();
 
   result->addTypes(type);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -845,7 +847,8 @@ static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
 }
 
 // <operation> ::= `llvm.constant` `(` attribute `)` attribute-list? : type
-static bool parseConstantOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseConstantOp(OpAsmParser *parser,
+                                   OperationState *result) {
   Attribute valueAttr;
   Type type;
 
@@ -854,10 +857,10 @@ static bool parseConstantOp(OpAsmParser *parser, OperationState *result) {
       parser->parseRParen() ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))
-    return true;
+    return failure();
 
   result->addTypes(type);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

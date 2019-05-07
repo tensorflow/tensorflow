@@ -89,7 +89,7 @@ LogicalResult linalg::ViewOp::verify() {
   return success();
 }
 
-bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType memRefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
@@ -98,7 +98,7 @@ bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
                                OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
-    return true;
+    return failure();
 
   if (types.size() != 2 + indexingsInfo.size())
     return parser->emitError(parser->getNameLoc(),
@@ -120,12 +120,13 @@ bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(memRefType.getRank()) +
                                  " indexing types");
-  return parser->resolveOperand(memRefInfo, memRefType, result->operands) ||
-         (!indexingsInfo.empty() &&
-          parser->resolveOperands(indexingsInfo, indexingTypes,
-                                  indexingsInfo.front().location,
-                                  result->operands)) ||
-         parser->addTypeToList(viewType, result->types);
+  return failure(
+      parser->resolveOperand(memRefInfo, memRefType, result->operands) ||
+      (!indexingsInfo.empty() &&
+       parser->resolveOperands(indexingsInfo, indexingTypes,
+                               indexingsInfo.front().location,
+                               result->operands)) ||
+      parser->addTypeToList(viewType, result->types));
 }
 
 // A ViewOp prints as:

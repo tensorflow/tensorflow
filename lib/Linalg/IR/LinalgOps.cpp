@@ -58,18 +58,19 @@ void mlir::BufferAllocOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *size() << " : " << getType();
 }
 
-bool mlir::BufferAllocOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult mlir::BufferAllocOp::parse(OpAsmParser *parser,
+                                       OperationState *result) {
   OpAsmParser::OperandType sizeInfo;
   BufferType bufferType;
   auto indexTy = parser->getBuilder().getIndexType();
   if (parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType))
-    return true;
+    return failure();
   if (bufferType.getElementType() != parser->getBuilder().getF32Type())
     return parser->emitError(
         parser->getNameLoc(),
         "Only buffer<f32> supported until mlir::Parser pieces are exposed");
-  return parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
-         parser->addTypeToList(bufferType, result->types);
+  return failure(parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
+                 parser->addTypeToList(bufferType, result->types));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -95,11 +96,13 @@ void mlir::BufferDeallocOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *getBuffer() << " : " << getBufferType();
 }
 
-bool mlir::BufferDeallocOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult mlir::BufferDeallocOp::parse(OpAsmParser *parser,
+                                         OperationState *result) {
   OpAsmParser::OperandType sizeInfo;
   BufferType bufferType;
-  return parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType) ||
-         parser->resolveOperands(sizeInfo, bufferType, result->operands);
+  return failure(
+      parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType) ||
+      parser->resolveOperands(sizeInfo, bufferType, result->operands));
 }
 //////////////////////////////////////////////////////////////////////////////
 // RangeOp
@@ -131,15 +134,16 @@ void mlir::RangeOp::print(OpAsmPrinter *p) {
      << " : " << getType();
 }
 
-bool mlir::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult mlir::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
   RangeType type;
   auto affineIntTy = parser->getBuilder().getIndexType();
-  return parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
-         parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
-         parser->parseOperand(rangeInfo[2]) || parser->parseColonType(type) ||
-         parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
-         parser->addTypeToList(type, result->types);
+  return failure(
+      parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
+      parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
+      parser->parseOperand(rangeInfo[2]) || parser->parseColonType(type) ||
+      parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
+      parser->addTypeToList(type, result->types));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -189,7 +193,7 @@ LogicalResult mlir::SliceOp::verify() {
   return success();
 }
 
-bool mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType baseInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
@@ -198,7 +202,7 @@ bool mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
                                OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
-    return true;
+    return failure();
 
   if (types.size() != 2 + indexingsInfo.size())
     return parser->emitError(parser->getNameLoc(),
@@ -221,12 +225,13 @@ bool mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(baseViewType.getRank()) +
                                  " indexing types");
-  return parser->resolveOperand(baseInfo, baseViewType, result->operands) ||
-         (!indexingsInfo.empty() &&
-          parser->resolveOperands(indexingsInfo, indexingTypes,
-                                  indexingsInfo.front().location,
-                                  result->operands)) ||
-         parser->addTypeToList(viewType, result->types);
+  return failure(
+      parser->resolveOperand(baseInfo, baseViewType, result->operands) ||
+      (!indexingsInfo.empty() &&
+       parser->resolveOperands(indexingsInfo, indexingTypes,
+                               indexingsInfo.front().location,
+                               result->operands)) ||
+      parser->addTypeToList(viewType, result->types));
 }
 
 // A SliceOp prints as:
@@ -306,7 +311,7 @@ LogicalResult mlir::ViewOp::verify() {
   return success();
 }
 
-bool mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType bufferInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   Type type;
@@ -315,7 +320,7 @@ bool mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
                                OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))
-    return true;
+    return failure();
 
   ViewType viewType = type.dyn_cast<ViewType>();
   if (!viewType)
@@ -324,15 +329,15 @@ bool mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "expected" + Twine(viewType.getRank()) +
                                  " range indexings");
-  return parser->resolveOperand(
-             bufferInfo,
-             BufferType::get(type.getContext(), viewType.getElementType()),
-             result->operands) ||
-         (!indexingsInfo.empty() &&
-          parser->resolveOperands(indexingsInfo,
-                                  RangeType::get(type.getContext()),
-                                  result->operands)) ||
-         parser->addTypeToList(viewType, result->types);
+  return failure(
+      parser->resolveOperand(
+          bufferInfo,
+          BufferType::get(type.getContext(), viewType.getElementType()),
+          result->operands) ||
+      (!indexingsInfo.empty() &&
+       parser->resolveOperands(indexingsInfo, RangeType::get(type.getContext()),
+                               result->operands)) ||
+      parser->addTypeToList(viewType, result->types));
 }
 
 // A ViewOp prints as:
@@ -354,9 +359,9 @@ void mlir::ViewOp::print(OpAsmPrinter *p) {
 namespace mlir {
 namespace impl {
 void printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op);
-bool parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result);
 void printBufferSizeOp(mlir::OpAsmPrinter *p, Operation *op);
-bool parseBufferSizeOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseBufferSizeOp(OpAsmParser *parser, OperationState *result);
 } // namespace impl
 
 /// Buffer size prints as:
@@ -372,16 +377,16 @@ void mlir::impl::printBufferSizeOp(mlir::OpAsmPrinter *p, Operation *op) {
   *p << " : " << op->getOperand(0)->getType();
 }
 
-bool mlir::impl::parseBufferSizeOp(OpAsmParser *parser,
-                                   OperationState *result) {
+ParseResult mlir::impl::parseBufferSizeOp(OpAsmParser *parser,
+                                          OperationState *result) {
   OpAsmParser::OperandType op;
   Type type;
-  return parser->parseOperand(op) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonType(type) ||
-         parser->resolveOperand(op, type, result->operands) ||
-         parser->addTypeToList(parser->getBuilder().getIndexType(),
-                               result->types);
+  return failure(parser->parseOperand(op) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(op, type, result->operands) ||
+                 parser->addTypeToList(parser->getBuilder().getIndexType(),
+                                       result->types));
 }
 
 #define GET_OP_CLASSES
@@ -415,15 +420,16 @@ void mlir::impl::printLinalgLibraryOp(mlir::OpAsmPrinter *p, Operation *op) {
       [&](mlir::Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
 }
 
-bool mlir::impl::parseLinalgLibraryOp(OpAsmParser *parser,
-                                      OperationState *result) {
+ParseResult mlir::impl::parseLinalgLibraryOp(OpAsmParser *parser,
+                                             OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
-  return parser->parseOperandList(ops, -1, OpAsmParser::Delimiter::Paren) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonTypeList(types) ||
-         parser->resolveOperands(ops, types, parser->getNameLoc(),
-                                 result->operands);
+  return failure(
+      parser->parseOperandList(ops, -1, OpAsmParser::Delimiter::Paren) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types) ||
+      parser->resolveOperands(ops, types, parser->getNameLoc(),
+                              result->operands));
 }
 
 // Ideally this should all be Tablegen'd but there is no good story for

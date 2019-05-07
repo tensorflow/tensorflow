@@ -131,7 +131,7 @@ void AffineApplyOp::build(Builder *builder, OperationState *result,
   result->addAttribute("map", builder->getAffineMapAttr(map));
 }
 
-bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   auto affineIntTy = builder.getIndexType();
 
@@ -140,7 +140,7 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   if (parser->parseAttribute(mapAttr, "map", result->attributes) ||
       parseDimAndSymbolList(parser, result->operands, numDims) ||
       parser->parseOptionalAttributeDict(result->attributes))
-    return true;
+    return failure();
   auto map = mapAttr.getValue();
 
   if (map.getNumDims() != numDims ||
@@ -150,7 +150,7 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   }
 
   result->types.append(map.getNumResults(), affineIntTy);
-  return false;
+  return success();
 }
 
 void AffineApplyOp::print(OpAsmPrinter *p) {
@@ -801,10 +801,12 @@ LogicalResult AffineForOp::verify() {
 }
 
 /// Parse a for operation loop bounds.
-static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
+static ParseResult parseBound(bool isLower, OperationState *result,
+                              OpAsmParser *p) {
   // 'min' / 'max' prefixes are generally syntactic sugar, but are required if
   // the map has multiple results.
-  bool failedToParsedMinMax = p->parseOptionalKeyword(isLower ? "max" : "min");
+  bool failedToParsedMinMax =
+      failed(p->parseOptionalKeyword(isLower ? "max" : "min"));
 
   auto &builder = p->getBuilder();
   auto boundAttrName = isLower ? AffineForOp::getLowerBoundAttrName()
@@ -813,7 +815,7 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
   // Parse ssa-id as identity map.
   SmallVector<OpAsmParser::OperandType, 1> boundOpInfos;
   if (p->parseOperandList(boundOpInfos))
-    return true;
+    return failure();
 
   if (!boundOpInfos.empty()) {
     // Check that only one operand was parsed.
@@ -825,14 +827,14 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
     // Currently it is 'use of value ... expects different type than prior uses'
     if (p->resolveOperand(boundOpInfos.front(), builder.getIndexType(),
                           result->operands))
-      return true;
+      return failure();
 
     // Create an identity map using symbol id. This representation is optimized
     // for storage. Analysis passes may expand it into a multi-dimensional map
     // if desired.
     AffineMap map = builder.getSymbolIdentityMap();
     result->addAttribute(boundAttrName, builder.getAffineMapAttr(map));
-    return false;
+    return success();
   }
 
   // Get the attribute location.
@@ -842,14 +844,14 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
   Attribute boundAttr;
   if (p->parseAttribute(boundAttr, builder.getIndexType(), boundAttrName,
                         result->attributes))
-    return true;
+    return failure();
 
   // Parse full form - affine map followed by dim and symbol list.
   if (auto affineMapAttr = boundAttr.dyn_cast<AffineMapAttr>()) {
     unsigned currentNumOperands = result->operands.size();
     unsigned numDims;
     if (parseDimAndSymbolList(p, result->operands, numDims))
-      return true;
+      return failure();
 
     auto map = affineMapAttr.getValue();
     if (map.getNumDims() != numDims)
@@ -874,7 +876,7 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
       return p->emitError(attrLoc, "upper loop bound affine map with multiple "
                                    "results requires 'min' prefix");
     }
-    return false;
+    return success();
   }
 
   // Parse custom assembly form.
@@ -883,7 +885,7 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
     result->addAttribute(
         boundAttrName, builder.getAffineMapAttr(
                            builder.getConstantAffineMap(integerAttr.getInt())));
-    return false;
+    return success();
   }
 
   return p->emitError(
@@ -891,18 +893,18 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
       "expected valid affine map representation for loop bounds");
 }
 
-bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   OpAsmParser::OperandType inductionVariable;
   // Parse the induction variable followed by '='.
   if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
-    return true;
+    return failure();
 
   // Parse loop bounds.
   if (parseBound(/*isLower=*/true, result, parser) ||
       parser->parseKeyword("to", " between bounds") ||
       parseBound(/*isLower=*/false, result, parser))
-    return true;
+    return failure();
 
   // Parse the optional loop step, we default to 1 if one is not present.
   if (parser->parseOptionalKeyword("step")) {
@@ -915,7 +917,7 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
     if (parser->getCurrentLocation(&stepLoc) ||
         parser->parseAttribute(stepAttr, builder.getIndexType(),
                                getStepAttrName().data(), result->attributes))
-      return true;
+      return failure();
 
     if (stepAttr.getValue().getSExtValue() < 0)
       return parser->emitError(
@@ -926,17 +928,17 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the body region.
   Region *body = result->addRegion();
   if (parser->parseRegion(*body, inductionVariable, builder.getIndexType()))
-    return true;
+    return failure();
 
   ensureAffineTerminator(*body, builder, result->location);
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
-    return true;
+    return failure();
 
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
-  return false;
+  return success();
 }
 
 static void printBound(AffineMapAttr boundMap,
@@ -1253,14 +1255,14 @@ LogicalResult AffineIfOp::verify() {
   return success();
 }
 
-bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the condition attribute set.
   IntegerSetAttr conditionAttr;
   unsigned numDims;
   if (parser->parseAttribute(conditionAttr, getConditionAttrName(),
                              result->attributes) ||
       parseDimAndSymbolList(parser, result->operands, numDims))
-    return true;
+    return failure();
 
   // Verify the condition operands.
   auto set = conditionAttr.getValue();
@@ -1281,21 +1283,21 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Parse the 'then' region.
   if (parser->parseRegion(*thenRegion, {}, {}))
-    return true;
+    return failure();
   ensureAffineTerminator(*thenRegion, parser->getBuilder(), result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
   if (!parser->parseOptionalKeyword("else")) {
     if (parser->parseRegion(*elseRegion, {}, {}))
-      return true;
+      return failure();
     ensureAffineTerminator(*elseRegion, parser->getBuilder(), result->location);
   }
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
-    return true;
+    return failure();
 
-  return false;
+  return success();
 }
 
 void AffineIfOp::print(OpAsmPrinter *p) {

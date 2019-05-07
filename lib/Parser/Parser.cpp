@@ -45,17 +45,6 @@ using llvm::MemoryBuffer;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-/// Simple wrapper class around LogicalResult that allows for explicit
-/// conversion to bool. This allows for the parser to chain together parse rules
-/// without the clutter of "failed/succeeded".
-class ParseResult : public LogicalResult {
-public:
-  ParseResult(LogicalResult result = success()) : LogicalResult(result) {}
-
-  /// Failure is true in a boolean context.
-  explicit operator bool() const { return failed(*this); }
-};
-
 namespace {
 class Parser;
 
@@ -2266,8 +2255,8 @@ public:
   ParseResult parseFunctionBody(bool hadNamedArguments);
 
   /// Parse a single operation successor and it's operand list.
-  bool parseSuccessorAndUseList(Block *&dest,
-                                SmallVectorImpl<Value *> &operands);
+  ParseResult parseSuccessorAndUseList(Block *&dest,
+                                       SmallVectorImpl<Value *> &operands);
 
   /// Parse a comma-separated list of operation successors in brackets.
   ParseResult
@@ -2809,11 +2798,12 @@ Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
 ///   successor ::= block-id branch-use-list?
 ///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
 ///
-bool FunctionParser::parseSuccessorAndUseList(
-    Block *&dest, SmallVectorImpl<Value *> &operands) {
+ParseResult
+FunctionParser::parseSuccessorAndUseList(Block *&dest,
+                                         SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::caret_identifier))
-    return emitError("expected block name"), true;
+    return emitError("expected block name");
   dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
   consumeToken();
 
@@ -2821,10 +2811,10 @@ bool FunctionParser::parseSuccessorAndUseList(
   if (consumeIf(Token::l_paren) &&
       (parseOptionalSSAUseAndTypeList(operands) ||
        parseToken(Token::r_paren, "expected ')' to close argument list"))) {
-    return true;
+    return failure();
   }
 
-  return false;
+  return success();
 }
 
 /// Parse a comma-separated list of operation successors in brackets.
@@ -2840,10 +2830,10 @@ ParseResult FunctionParser::parseSuccessors(
   auto parseElt = [this, &destinations, &operands]() {
     Block *dest;
     SmallVector<Value *, 4> destOperands;
-    bool r = parseSuccessorAndUseList(dest, destOperands);
+    auto res = parseSuccessorAndUseList(dest, destOperands);
     destinations.push_back(dest);
     operands.push_back(destOperands);
-    return r ? failure() : success();
+    return res;
   };
   return parseCommaSeparatedListUntil(Token::r_square, parseElt,
                                       /*allowEmptyList=*/false);
@@ -3105,10 +3095,10 @@ public:
   CustomOpAsmParser(SMLoc nameLoc, StringRef opName, FunctionParser &parser)
       : nameLoc(nameLoc), opName(opName), parser(parser) {}
 
-  bool parseOperation(const AbstractOperation *opDefinition,
-                      OperationState *opState) {
+  ParseResult parseOperation(const AbstractOperation *opDefinition,
+                             OperationState *opState) {
     if (opDefinition->parseAssembly(this, opState))
-      return true;
+      return failure();
 
     // Check that none of the operands of the current operation reference an
     // entry block argument for any of the region.
@@ -3116,53 +3106,53 @@ public:
       if (llvm::is_contained(opState->operands, entryArg))
         return emitError(nameLoc, "operand use before it's defined");
 
-    return false;
+    return success();
   }
 
   //===--------------------------------------------------------------------===//
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
 
-  bool getCurrentLocation(llvm::SMLoc *loc) override {
+  ParseResult getCurrentLocation(llvm::SMLoc *loc) override {
     *loc = parser.getToken().getLoc();
-    return false;
+    return success();
   }
-  bool parseComma() override {
-    return failed(parser.parseToken(Token::comma, "expected ','"));
+  ParseResult parseComma() override {
+    return parser.parseToken(Token::comma, "expected ','");
   }
-  bool parseColon() override {
-    return failed(parser.parseToken(Token::colon, "expected ':'"));
+  ParseResult parseColon() override {
+    return parser.parseToken(Token::colon, "expected ':'");
   }
-  bool parseEqual() override {
-    return failed(parser.parseToken(Token::equal, "expected '='"));
-  }
-
-  bool parseType(Type &result) override {
-    return !(result = parser.parseType());
+  ParseResult parseEqual() override {
+    return parser.parseToken(Token::equal, "expected '='");
   }
 
-  bool parseColonType(Type &result) override {
-    return parser.parseToken(Token::colon, "expected ':'") ||
-           !(result = parser.parseType());
+  ParseResult parseType(Type &result) override {
+    return failure(!(result = parser.parseType()));
   }
 
-  bool parseColonTypeList(SmallVectorImpl<Type> &result) override {
+  ParseResult parseColonType(Type &result) override {
+    return failure(parser.parseToken(Token::colon, "expected ':'") ||
+                   !(result = parser.parseType()));
+  }
+
+  ParseResult parseColonTypeList(SmallVectorImpl<Type> &result) override {
     if (parser.parseToken(Token::colon, "expected ':'"))
-      return true;
+      return failure();
 
     do {
       if (auto type = parser.parseType())
         result.push_back(type);
       else
-        return true;
+        return failure();
 
     } while (parser.consumeIf(Token::comma));
-    return false;
+    return success();
   }
 
-  bool parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
-                                int requiredOperandCount,
-                                Delimiter delimiter) override {
+  ParseResult parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
+                                       int requiredOperandCount,
+                                       Delimiter delimiter) override {
     if (parser.getToken().is(Token::comma)) {
       parseComma();
       return parseOperandList(result, requiredOperandCount, delimiter);
@@ -3170,101 +3160,105 @@ public:
     if (requiredOperandCount != -1)
       return emitError(parser.getToken().getLoc(),
                        "expected " + Twine(requiredOperandCount) + " operands");
-    return false;
+    return success();
   }
 
-  bool parseOptionalComma() override { return !parser.consumeIf(Token::comma); }
+  ParseResult parseOptionalComma() override {
+    return success(parser.consumeIf(Token::comma));
+  }
 
   /// Parse an optional keyword.
-  bool parseOptionalKeyword(const char *keyword) override {
+  ParseResult parseOptionalKeyword(const char *keyword) override {
     // Check that the current token is a bare identifier or keyword.
     if (parser.getToken().isNot(Token::bare_identifier) &&
         !parser.getToken().isKeyword())
-      return true;
+      return failure();
 
     if (parser.getTokenSpelling() == keyword) {
       parser.consumeToken();
-      return false;
+      return success();
     }
-    return true;
+    return failure();
   }
 
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
-  bool parseAttribute(Attribute &result, Type type, StringRef attrName,
-                      SmallVectorImpl<NamedAttribute> &attrs) override {
+  ParseResult parseAttribute(Attribute &result, Type type, StringRef attrName,
+                             SmallVectorImpl<NamedAttribute> &attrs) override {
     result = parser.parseAttribute(type);
     if (!result)
-      return true;
+      return failure();
 
     attrs.push_back(parser.builder.getNamedAttr(attrName, result));
-    return false;
+    return success();
   }
 
   /// Parse an arbitrary attribute and return it in result.  This also adds
   /// the attribute to the specified attribute list with the specified name.
-  bool parseAttribute(Attribute &result, StringRef attrName,
-                      SmallVectorImpl<NamedAttribute> &attrs) override {
+  ParseResult parseAttribute(Attribute &result, StringRef attrName,
+                             SmallVectorImpl<NamedAttribute> &attrs) override {
     return parseAttribute(result, Type(), attrName, attrs);
   }
 
   /// If a named attribute list is present, parse is into result.
-  bool
+  ParseResult
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
-      return false;
-    return failed(parser.parseAttributeDict(result));
+      return success();
+    return parser.parseAttributeDict(result);
   }
 
   /// Parse a function name like '@foo' and return the name in a form that can
   /// be passed to resolveFunctionName when a function type is available.
-  virtual bool parseFunctionName(StringRef &result, llvm::SMLoc &loc) {
+  virtual ParseResult parseFunctionName(StringRef &result, llvm::SMLoc &loc) {
     if (parseOptionalFunctionName(result, loc))
       return emitError(loc, "expected function name");
-    return false;
+    return success();
   }
 
   /// Parse a function name like '@foo` if present and return the name without
   /// the sigil in `result`.  Return true if the next token is not a function
   /// name and keep `result` unchanged.
-  bool parseOptionalFunctionName(StringRef &result, llvm::SMLoc &loc) override {
+  ParseResult parseOptionalFunctionName(StringRef &result,
+                                        llvm::SMLoc &loc) override {
     loc = parser.getToken().getLoc();
 
     if (parser.getToken().isNot(Token::at_identifier))
-      return true;
+      return failure();
 
     result = parser.getTokenSpelling();
     parser.consumeToken(Token::at_identifier);
-    return false;
+    return success();
   }
 
-  bool parseOperand(OperandType &result) override {
+  ParseResult parseOperand(OperandType &result) override {
     FunctionParser::SSAUseInfo useInfo;
     if (parser.parseSSAUse(useInfo))
-      return true;
+      return failure();
 
     result = {useInfo.loc, useInfo.name, useInfo.number};
-    return false;
+    return success();
   }
 
-  bool parseSuccessorAndUseList(Block *&dest,
-                                SmallVectorImpl<Value *> &operands) override {
+  ParseResult
+  parseSuccessorAndUseList(Block *&dest,
+                           SmallVectorImpl<Value *> &operands) override {
     // Defer successor parsing to the function parsers.
     return parser.parseSuccessorAndUseList(dest, operands);
   }
 
-  bool parseLParen() override {
-    return failed(parser.parseToken(Token::l_paren, "expected '('"));
+  ParseResult parseLParen() override {
+    return parser.parseToken(Token::l_paren, "expected '('");
   }
 
-  bool parseRParen() override {
-    return failed(parser.parseToken(Token::r_paren, "expected ')'"));
+  ParseResult parseRParen() override {
+    return parser.parseToken(Token::r_paren, "expected ')'");
   }
 
-  bool parseOperandList(SmallVectorImpl<OperandType> &result,
-                        int requiredOperandCount = -1,
-                        Delimiter delimiter = Delimiter::None) override {
+  ParseResult parseOperandList(SmallVectorImpl<OperandType> &result,
+                               int requiredOperandCount = -1,
+                               Delimiter delimiter = Delimiter::None) override {
     auto startLoc = parser.getToken().getLoc();
 
     // Handle delimiters.
@@ -3284,19 +3278,19 @@ public:
       return emitError(startLoc, "invalid operand");
     case Delimiter::OptionalParen:
       if (parser.getToken().isNot(Token::l_paren))
-        return false;
+        return success();
       LLVM_FALLTHROUGH;
     case Delimiter::Paren:
       if (parser.parseToken(Token::l_paren, "expected '(' in operand list"))
-        return true;
+        return failure();
       break;
     case Delimiter::OptionalSquare:
       if (parser.getToken().isNot(Token::l_square))
-        return false;
+        return success();
       LLVM_FALLTHROUGH;
     case Delimiter::Square:
       if (parser.parseToken(Token::l_square, "expected '[' in operand list"))
-        return true;
+        return failure();
       break;
     }
 
@@ -3305,7 +3299,7 @@ public:
       do {
         OperandType operand;
         if (parseOperand(operand))
-          return true;
+          return failure();
         result.push_back(operand);
       } while (parser.consumeIf(Token::comma));
     }
@@ -3318,32 +3312,32 @@ public:
     case Delimiter::OptionalParen:
     case Delimiter::Paren:
       if (parser.parseToken(Token::r_paren, "expected ')' in operand list"))
-        return true;
+        return failure();
       break;
     case Delimiter::OptionalSquare:
     case Delimiter::Square:
       if (parser.parseToken(Token::r_square, "expected ']' in operand list"))
-        return true;
+        return failure();
       break;
     }
 
     if (requiredOperandCount != -1 && result.size() != requiredOperandCount)
       return emitError(startLoc,
                        "expected " + Twine(requiredOperandCount) + " operands");
-    return false;
+    return success();
   }
 
   /// Resolve a parse function name and a type into a function reference.
-  virtual bool resolveFunctionName(StringRef name, FunctionType type,
-                                   llvm::SMLoc loc, Function *&result) {
+  virtual ParseResult resolveFunctionName(StringRef name, FunctionType type,
+                                          llvm::SMLoc loc, Function *&result) {
     result = parser.resolveFunctionReference(name, loc, type);
-    return result == nullptr;
+    return failure(result == nullptr);
   }
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
   /// effectively defines the SSA values of `arguments` and assignes their type.
-  bool parseRegion(Region &region, ArrayRef<OperandType> arguments,
-                   ArrayRef<Type> argTypes) override {
+  ParseResult parseRegion(Region &region, ArrayRef<OperandType> arguments,
+                          ArrayRef<Type> argTypes) override {
     assert(arguments.size() == argTypes.size() &&
            "mismatching number of arguments and types");
 
@@ -3359,26 +3353,26 @@ public:
       // references to region arguments.
       Value *value = parser.resolveSSAUse(operandInfo, type);
       if (!value)
-        return true;
+        return failure();
       parsedRegionEntryArgumentPlaceholders.emplace_back(value);
     }
 
-    return failed(parser.parseOperationRegion(region, regionArguments));
+    return parser.parseOperationRegion(region, regionArguments);
   }
 
   /// Parse a region argument.  Region arguments define new values, so this also
   /// checks if the values with the same name has not been defined yet.  The
   /// type of the argument will be resolved later by a call to `parseRegion`.
-  bool parseRegionArgument(OperandType &argument) {
+  ParseResult parseRegionArgument(OperandType &argument) {
     // Use parseOperand to fill in the OperandType structure.
     if (parseOperand(argument))
-      return true;
+      return failure();
     if (auto defLoc = parser.getDefinitionLoc(argument.name, argument.number)) {
       parser.emitError(argument.location,
                        "redefinition of SSA value '" + argument.name + "'");
-      return parser.emitError(*defLoc, "previously defined here"), true;
+      return parser.emitError(*defLoc, "previously defined here");
     }
-    return false;
+    return success();
   }
 
   //===--------------------------------------------------------------------===//
@@ -3389,22 +3383,22 @@ public:
 
   llvm::SMLoc getNameLoc() const override { return nameLoc; }
 
-  bool resolveOperand(const OperandType &operand, Type type,
-                      SmallVectorImpl<Value *> &result) override {
+  ParseResult resolveOperand(const OperandType &operand, Type type,
+                             SmallVectorImpl<Value *> &result) override {
     FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                               operand.location};
     if (auto *value = parser.resolveSSAUse(operandInfo, type)) {
       result.push_back(value);
-      return false;
+      return success();
     }
-    return true;
+    return failure();
   }
 
-  /// Emit a diagnostic at the specified location and return true.
-  bool emitError(llvm::SMLoc loc, const Twine &message) override {
-    parser.emitError(loc, "custom op '" + Twine(opName) + "' " + message);
+  /// Emit a diagnostic at the specified location and return failure.
+  ParseResult emitError(llvm::SMLoc loc, const Twine &message) override {
     emittedError = true;
-    return true;
+    return parser.emitError(loc,
+                            "custom op '" + Twine(opName) + "' " + message);
   }
 
   bool didEmitError() const { return emittedError; }

@@ -54,6 +54,18 @@ template <typename OpType> struct IsSingleResult {
       OpType *, OpTrait::OneResult<typename OpType::ConcreteOpType> *>::value;
 };
 
+/// This class represents success/failure for operation parsing. It is
+/// essentially a simple wrapper class around LogicalResult that allows for
+/// explicit conversion to bool. This allows for the parser to chain together
+/// parse rules without the clutter of "failed/succeeded".
+class ParseResult : public LogicalResult {
+public:
+  ParseResult(LogicalResult result = success()) : LogicalResult(result) {}
+
+  /// Failure is true in a boolean context.
+  explicit operator bool() const { return failed(*this); }
+};
+
 /// This is the concrete base class that holds the operation pointer and has
 /// non-generic methods that only depend on State (to avoid having them
 /// instantiated on template types that don't affect them.
@@ -132,10 +144,9 @@ protected:
   LogicalResult verify() { return success(); }
 
   /// Unless overridden, the custom assembly form of an op is always rejected.
-  /// Op implementations should implement this to return true on failure.
-  /// On success, they should return false and fill in result with the fields to
-  /// use.
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  /// Op implementations should implement this to return failure.
+  /// On success, they should fill in result with the fields to use.
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
 
   // The fallback for the printer is to print it the generic assembly form.
   void print(OpAsmPrinter *p);
@@ -768,9 +779,10 @@ public:
 
   /// This is the hook used by the AsmParser to parse the custom form of this
   /// op from an .mlir file.  Op implementations should provide a parse method,
-  /// which returns boolean true on failure.  On success, they should return
-  /// false and fill in result with the fields to use.
-  static bool parseAssembly(OpAsmParser *parser, OperationState *result) {
+  /// which returns failure.  On success, they should return fill in result with
+  /// the fields to use.
+  static ParseResult parseAssembly(OpAsmParser *parser,
+                                   OperationState *result) {
     return ConcreteType::parse(parser, result);
   }
 
@@ -854,7 +866,7 @@ private:
 namespace impl {
 void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
                    Value *rhs);
-bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseBinaryOp(OpAsmParser *parser, OperationState *result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
@@ -866,7 +878,7 @@ void printBinaryOp(Operation *op, OpAsmPrinter *p);
 namespace impl {
 void buildCastOp(Builder *builder, OperationState *result, Value *source,
                  Type destType);
-bool parseCastOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseCastOp(OpAsmParser *parser, OperationState *result);
 void printCastOp(Operation *op, OpAsmPrinter *p);
 Value *foldCastOp(Operation *op);
 } // namespace impl
@@ -888,7 +900,7 @@ public:
                     Type destType) {
     impl::buildCastOp(builder, result, source, destType);
   }
-  static bool parse(OpAsmParser *parser, OperationState *result) {
+  static ParseResult parse(OpAsmParser *parser, OperationState *result) {
     return impl::parseCastOp(parser, result);
   }
   void print(OpAsmPrinter *p) {

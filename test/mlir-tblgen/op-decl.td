@@ -51,7 +51,7 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:   static void build(Value *val);
 // CHECK:   static void build(Builder *, OperationState *tblgen_state, Type r, ArrayRef<Type> s, Value *a, ArrayRef<Value *> b, IntegerAttr attr1, /*optional*/FloatAttr attr2);
 // CHECK:   static void build(Builder *, OperationState *tblgen_state, ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes);
-// CHECK:   static bool parse(OpAsmParser *parser, OperationState *result);
+// CHECK:   static ParseResult parse(OpAsmParser *parser, OperationState *result);
 // CHECK:   void print(OpAsmPrinter *p);
 // CHECK:   LogicalResult verify();
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);

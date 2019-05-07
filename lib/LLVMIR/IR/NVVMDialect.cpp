@@ -53,15 +53,15 @@ static void printNVVMSpecialRegisterOp(OpAsmPrinter *p, Operation *op) {
 }
 
 // <operation> ::= `llvm.nvvm.XYZ` : type
-static bool parseNVVMSpecialRegisterOp(OpAsmParser *parser,
-                                       OperationState *result) {
+static ParseResult parseNVVMSpecialRegisterOp(OpAsmParser *parser,
+                                              OperationState *result) {
   Type type;
   if (parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))
-    return true;
+    return failure();
 
   result->addTypes(type);
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

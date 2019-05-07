@@ -43,7 +43,7 @@ public:
   static llvm::StringRef getOperationName() { return "linalg.buffer_alloc"; }
   static void build(Builder *b, OperationState *result, Type type, Value *size);
   LogicalResult verify();
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
   // Op-specific functionality.
@@ -67,7 +67,7 @@ public:
   static llvm::StringRef getOperationName() { return "linalg.buffer_dealloc"; }
   static void build(Builder *b, OperationState *result, Value *buffer);
   LogicalResult verify();
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
   // Op-specific functionality.
@@ -94,7 +94,7 @@ public:
   static void build(Builder *b, OperationState *result, Value *min, Value *max,
                     Value *step);
   LogicalResult verify();
-  static bool parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
   // Op-specific functionality.
@@ -156,7 +156,8 @@ public:
   static void build(mlir::Builder *b, mlir::OperationState *result,
                     mlir::Value *base, llvm::ArrayRef<mlir::Value *> indexings);
   mlir::LogicalResult verify();
-  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
+  static ParseResult parse(mlir::OpAsmParser *parser,
+                           mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
   // Op-specific functionality.
@@ -207,7 +208,8 @@ public:
                     mlir::Value *buffer,
                     llvm::ArrayRef<mlir::Value *> indexings);
   mlir::LogicalResult verify();
-  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
+  static ParseResult parse(mlir::OpAsmParser *parser,
+                           mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
   // Op-specific functionality.
