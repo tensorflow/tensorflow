@@ -24,7 +24,6 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"

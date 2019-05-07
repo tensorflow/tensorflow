@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
