@@ -572,7 +572,7 @@ cc_library(
 tf_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = if_cuda_is_configured(tf_cuda_tests_tags()) + ["no_rocm"],
     deps = [
         ":redzone_allocator",
         "//tensorflow/compiler/xla:status_macros",
