@@ -586,6 +586,12 @@ def mark_as_return(outputs, acd):
       return_tensor._keras_mask = acd.mark_as_return(tensor._keras_mask)
     else:
       return_tensor._keras_mask = None
+
+    # Handle TensorFlow Probability attached metadata.
+    # TODO(b/132076537): Remove this once TFP uses `CompositeTensor`.
+    if getattr(tensor, '_tfp_distribution', None):
+      return_tensor._tfp_distribution = tensor._tfp_distribution
+
     return return_tensor
     # pylint: enable=protected-access
 
