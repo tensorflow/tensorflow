@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",  # @unused
     "tf_cc_test",  # @unused
+    "py_test",
 )
 
 licenses(["notice"])  # Apache 2.0
