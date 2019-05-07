@@ -73,18 +73,18 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     if (input.data() == output.data()) {
       GpuLaunchConfig config =
           GetGpuLaunchConfig(batch_size * minsize, device);
-      GPU_LAUNCH_KERNEL(MatrixSetDiagKernel<Scalar>,
+      TF_CHECK_OK(GpuLaunchKernel(MatrixSetDiagKernel<Scalar>,
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           device.stream(),
           config.virtual_thread_count, m, n, minsize, diag.data(),
-          output.data());
+          output.data()));
     } else {
       GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
-      GPU_LAUNCH_KERNEL(MatrixCopyInputAndSetDiagKernel<Scalar>,
+      TF_CHECK_OK(GpuLaunchKernel(MatrixCopyInputAndSetDiagKernel<Scalar>,
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           device.stream(),
           config.virtual_thread_count, m, n, minsize, input.data(),
-          diag.data(), output.data());
+          diag.data(), output.data()));
     }
   }
 };

@@ -116,11 +116,11 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
 
     const int32 work_items = batch_size * num_samples * num_classes;
     GpuLaunchConfig config = GetGpuLaunchConfig(work_items, d);
-    GPU_LAUNCH_KERNEL(MultinomialKernel<OutputType>,
+    TF_CHECK_OK(GpuLaunchKernel(MultinomialKernel<OutputType>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         d.stream(),
         config.virtual_thread_count, num_classes, num_samples, scores.data(),
-        maxima.data(), output.data());
+        maxima.data(), output.data()));
   }
 };
 
