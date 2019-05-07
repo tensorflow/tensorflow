@@ -598,6 +598,62 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims);
 }
 
+struct GemmlowpOutputPipeline {
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToUint8>
+      Pipeline;
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
+    ColVectorMap bias_vector(bias_data, output_rows);
+    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+    bias_addition_stage.bias_vector = bias_vector;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
+    quantize_down_stage.result_offset_after_shift = output_offset;
+    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
+    quantize_down_stage.result_exponent = output_left_shift;
+    gemmlowp::OutputStageClamp clamp_stage;
+    clamp_stage.min = output_activation_min;
+    clamp_stage.max = output_activation_max;
+    gemmlowp::OutputStageSaturatingCastToUint8 saturating_cast_stage;
+    return std::make_tuple(bias_addition_stage, quantize_down_stage,
+                           clamp_stage, saturating_cast_stage);
+  }
+};
+
+struct GemmlowpOutputPipelineInt8 {
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToInt8>
+      Pipeline;
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
+    ColVectorMap bias_vector(bias_data, output_rows);
+    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+    bias_addition_stage.bias_vector = bias_vector;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
+    quantize_down_stage.result_offset_after_shift = output_offset;
+    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
+    quantize_down_stage.result_exponent = output_left_shift;
+    gemmlowp::OutputStageClamp clamp_stage;
+    clamp_stage.min = output_activation_min;
+    clamp_stage.max = output_activation_max;
+    gemmlowp::OutputStageSaturatingCastToInt8 saturating_cast_stage;
+    return std::make_tuple(bias_addition_stage, quantize_down_stage,
+                           clamp_stage, saturating_cast_stage);
+  }
+};
+
 #ifdef USE_NEON
 struct LegacyFullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   LegacyFullyConnectedAsGEMVWorkerTask(
@@ -1283,10 +1339,9 @@ inline void FullyConnected(
       input_data, filter_cols, batches, filter_cols);
   gemmlowp::MatrixMap<int8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline =
-      optimized_integer_ops::GemmlowpOutputPipelineInt8::MakeExp(
-          bias_data, output_rows, output_offset, output_multiplier,
-          output_shift, output_activation_min, output_activation_max);
+  const auto& output_pipeline = GemmlowpOutputPipelineInt8::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+      output_activation_min, output_activation_max);
 
   gemmlowp::GemmWithOutputPipeline<
       int8, int8, gemmlowp::SignedL8R8WithLhsNonzeroBitDepthParams>(
