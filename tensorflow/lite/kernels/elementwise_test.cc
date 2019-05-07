@@ -132,5 +132,36 @@ TEST(ElementWise, LogicalNot) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, FloorSingleDim) {
+  ElementWiseOpFloatModel model(BuiltinOperator_FLOOR, {2});
+  model.PopulateTensor<float>(model.input(), {8.5, 0.0});
+  model.Invoke();
+  EXPECT_THAT(model.ExtractVector<float>(model.output()),
+              ElementsAreArray({8, 0}));
+  EXPECT_THAT(model.GetTensorShape(model.output()),
+              ElementsAreArray({2}));
+}
+
+TEST(ElementWise, FloorMultiDims) {
+  ElementWiseOpFloatModel model(BuiltinOperator_FLOOR, {2, 1, 1, 5});
+  model.PopulateTensor<float>(model.input(), {
+                                                 0.0001,
+                                                 8.0001,
+                                                 0.9999,
+                                                 9.9999,
+                                                 0.5,
+                                                 -0.0001,
+                                                 -8.0001,
+                                                 -0.9999,
+                                                 -9.9999,
+                                                 -0.5,
+                                             });
+  model.Invoke();
+  EXPECT_THAT(model.ExtractVector<float>(model.output()),
+              ElementsAreArray({0, 8, 0, 9, 0, -1, -9, -1, -10, -1}));
+  EXPECT_THAT(model.GetTensorShape(model.output()),
+              ElementsAreArray({2, 1, 1, 5}));
+}
+
 }  // namespace
 }  // namespace tflite

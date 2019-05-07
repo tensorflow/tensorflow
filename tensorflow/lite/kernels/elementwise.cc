@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -24,6 +25,14 @@ namespace ops {
 namespace builtin {
 namespace elementwise {
 namespace {
+
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
+
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
 
 bool IsNumericSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32;
@@ -107,6 +116,27 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalLogical(context, node, [](bool v) { return !v; });
 }
 
+inline TfLiteStatus EvalOptimized(TfLiteContext* context, TfLiteNode* node,
+    void func(const RuntimeShape&, const float*, const RuntimeShape&, float*)) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  func(GetTensorShape(input), GetTensorData<float>(input),
+                       GetTensorShape(output), GetTensorData<float>(output));
+  return kTfLiteOk;
+}
+
+template <KernelType type>
+TfLiteStatus FloorEval(TfLiteContext* context, TfLiteNode* node) {
+  if (type == kReference) {
+    return EvalNumeric(context, node, [](float f) { return std::floor(f); });
+  } else if (type == kGenericOptimized) {
+    return EvalOptimized(context, node, optimized_ops::Floor);
+  } else {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace
 }  // namespace elementwise
 
@@ -171,6 +201,22 @@ TfLiteRegistration* Register_LOGICAL_NOT() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsLogicalSupportedType>,
       elementwise::LogicalNotEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_FLOOR_REF() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::FloorEval<elementwise::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_FLOOR() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::FloorEval<elementwise::kGenericOptimized>};
   return &r;
 }
 

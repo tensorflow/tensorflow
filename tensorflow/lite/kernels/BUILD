@@ -399,7 +399,6 @@ cc_library(
         "expand_dims.cc",
         "fake_quant.cc",
         "fill.cc",
-        "floor.cc",
         "floor_div.cc",
         "floor_mod.cc",
         "fully_connected.cc",
@@ -851,20 +850,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "floor_test",
-    size = "small",
-    srcs = ["floor_test.cc"],
-    tags = ["tflite_nnapi"],
-    deps = [
-        ":builtin_ops",
-        ":test_main",
-        ":test_util",
-        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )
