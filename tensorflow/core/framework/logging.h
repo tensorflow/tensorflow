@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_LOGGING_H_
+#define TENSORFLOW_CORE_FRAMEWORK_LOGGING_H_
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include <string>
 
 namespace tensorflow {
 
@@ -27,7 +26,12 @@ namespace logging {
 // Returns true if it is successfully registered.
 bool RegisterListener(void (*listener)(const char*));
 
+// Log string to active listeners. Returns true if any listeners were
+// registered.
+bool LogToListeners(std::string msg, std::string end = "\n");
+
 }  // namespace logging
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_LOGGING_H_

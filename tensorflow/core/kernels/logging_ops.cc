@@ -13,16 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/logging_ops.h"
-
 #include <iostream>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -50,22 +47,6 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
 }
 
 }  // namespace
-
-namespace logging {
-
-typedef std::vector<void (*)(const char*)> Listeners;
-
-Listeners* GetListeners() {
-  static Listeners* listeners = new Listeners;
-  return listeners;
-}
-
-bool RegisterListener(void (*listener)(const char*)) {
-  GetListeners()->push_back(listener);
-  return true;
-}
-
-}  // end namespace logging
 
 class AssertOp : public OpKernel {
  public:
@@ -180,12 +161,12 @@ class PrintV2Op : public OpKernel {
                      AppendStringToFile(file_path_, ended_msg, ctx->env()));
       return;
     }
-    auto listeners = logging::GetListeners();
-    if (!listeners->empty()) {
-      for (auto& listener : *listeners) {
-        listener(ended_msg.c_str());
-      }
-    } else if (output_stream_ == "stdout") {
+
+    if (logging::LogToListeners(ended_msg, "")) {
+      return;
+    }
+
+    if (output_stream_ == "stdout") {
       std::cout << ended_msg << std::flush;
     } else if (output_stream_ == "stderr") {
       std::cerr << ended_msg << std::flush;

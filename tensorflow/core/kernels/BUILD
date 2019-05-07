@@ -5869,7 +5869,6 @@ filegroup(
         "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
-        "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
