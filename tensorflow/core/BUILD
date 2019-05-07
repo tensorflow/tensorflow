@@ -1884,7 +1884,6 @@ cc_library(
     srcs = if_emscripten([":mobile_srcs_no_runtime"]),
     copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
     defines = ["TENSORFLOW_LITE_PROTOS"],
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
