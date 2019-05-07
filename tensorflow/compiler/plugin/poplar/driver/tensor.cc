@@ -790,26 +790,28 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   const auto& name = GetDebugName(src.first);
   poplar::Tensor out;
 
-  auto target = resources.annotations.tensor_allocation_map.find(src);
-  if (target != resources.annotations.tensor_allocation_map.end()) {
-    const auto* tgt = target->second.tgt;
-    auto tshape = tgt->operand(target->second.input_index)->shape();
-    const auto optional_layout = target->second.layout;
-    const auto optional_layout_output_idx = target->second.layout_output_idx;
-    const auto forward_path = target->second.forward_path;
+  auto tensor_target = resources.annotations.tensor_allocation_map.find(src);
+  if (tensor_target != resources.annotations.tensor_allocation_map.end()) {
+    const auto* target = tensor_target->second.tgt;
+    const auto input_index = tensor_target->second.input_index;
+    auto tshape = target->operand(input_index)->shape();
+    const auto optional_layout = tensor_target->second.layout;
+    const auto optional_layout_output_idx =
+        tensor_target->second.layout_output_idx;
+    const auto forward_path = tensor_target->second.forward_path;
 
-    if (IsPopOpsElementwiseBinary(tgt) && !IsPopOpsBiasAdd(tgt)) {
+    if (IsPopOpsElementwiseBinary(target) && !IsPopOpsBiasAdd(target)) {
       TF_ASSIGN_OR_RETURN(
           out, AddElementwiseBinary(graph, name, *optional_layout,
                                     *optional_layout_output_idx, forward_path,
                                     tensor_map));
     } else {
-      switch (tgt->opcode()) {
+      switch (target->opcode()) {
         case HloOpcode::kBatchNormInference:
         case HloOpcode::kBatchNormTraining: {
           const unsigned feature_dimension =
-              Cast<HloBatchNormInstruction>(tgt)->feature_index();
-          switch (target->second.input_index) {
+              Cast<HloBatchNormInstruction>(target)->feature_index();
+          switch (input_index) {
             case 1: {
               TF_ASSIGN_OR_RETURN(
                   out, AddNormScaleTensor(graph, name, *optional_layout,
@@ -834,15 +836,15 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           break;
         }
         case HloOpcode::kConvolution: {
-          switch (target->second.input_index) {
+          switch (input_index) {
             case 0: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddConvolutionInput(graph, name, tgt, resources));
+                  out, AddConvolutionInput(graph, name, target, resources));
               break;
             }
             case 1: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddConvolutionWeights(graph, name, tgt, resources));
+                  out, AddConvolutionWeights(graph, name, target, resources));
               break;
             }
             default:
@@ -853,15 +855,15 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           break;
         }
         case HloOpcode::kDot: {
-          switch (target->second.input_index) {
+          switch (input_index) {
             case 0: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddLeftMatMul(graph, name, tshape, tgt, resources));
+                  out, AddLeftMatMul(graph, name, tshape, target, resources));
               break;
             }
             case 1: {
               TF_ASSIGN_OR_RETURN(
-                  out, AddRightMatMul(graph, name, tshape, tgt, resources));
+                  out, AddRightMatMul(graph, name, tshape, target, resources));
               break;
             }
             default:
@@ -872,70 +874,69 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           break;
         }
         case HloOpcode::kDynamicSlice: {
-          if (target->second.input_index == 0) {
-            TF_ASSIGN_OR_RETURN(
-                out, AddDynamicSliceTensor(graph, name, tshape,
-                                           target->second.tgt->shape()));
+          if (input_index == 0) {
+            TF_ASSIGN_OR_RETURN(out, AddDynamicSliceTensor(graph, name, tshape,
+                                                           target->shape()));
           } else {
             TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
           }
           break;
         }
         case HloOpcode::kDynamicUpdateSlice: {
-          if (target->second.input_index == 0) {
+          if (input_index == 0) {
             TF_ASSIGN_OR_RETURN(
                 out, AddDynamicSliceTensor(graph, name, tshape,
-                                           target->second.tgt->shape()));
+                                           target->operand(1)->shape()));
           } else {
             TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
           }
           break;
         }
         case HloOpcode::kScatter: {
-          auto scatter = Cast<HloScatterInstruction>(tgt);
-          const auto updateWindowDims =
-              scatter->scatter_dimension_numbers().update_window_dims();
-          const auto insertedWindowDims =
-              scatter->scatter_dimension_numbers().inserted_window_dims();
+          auto scatter = Cast<HloScatterInstruction>(target);
 
-          if (target->second.input_index == 0) {
-            xla::Shape sliceShape = tgt->operand(0)->shape();
+          if (input_index == 0) {
+            const auto inserted_window_dims =
+                scatter->scatter_dimension_numbers().inserted_window_dims();
+            xla::Shape slice_shape = target->operand(0)->shape();
             for (int i = 0; i < tshape.rank(); ++i) {
-              if (absl::c_binary_search(insertedWindowDims, i)) {
-                sliceShape.set_dimensions(i, 1);
+              if (absl::c_binary_search(inserted_window_dims, i)) {
+                slice_shape.set_dimensions(i, 1);
               }
             }
 
             TF_ASSIGN_OR_RETURN(
-                out, AddScatterTensor(graph, name, tshape, sliceShape));
-          } else if (target->second.input_index == 2) {
-            xla::Shape sliceShape = tgt->operand(2)->shape();
+                out, AddScatterTensor(graph, name, tshape, slice_shape));
+          } else if (input_index == 2) {
+            const auto update_window_dims =
+                scatter->scatter_dimension_numbers().update_window_dims();
+            xla::Shape slice_shape = target->operand(2)->shape();
             for (int i = 0; i < tshape.rank(); ++i) {
-              if (!absl::c_binary_search(updateWindowDims, i)) {
-                sliceShape.set_dimensions(i, 1);
+              if (!absl::c_binary_search(update_window_dims, i)) {
+                slice_shape.set_dimensions(i, 1);
               }
             }
 
             TF_ASSIGN_OR_RETURN(
-                out, AddScatterTensor(graph, name, tshape, sliceShape));
+                out, AddScatterTensor(graph, name, tshape, slice_shape));
           } else {
             TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
           }
           break;
         }
         case HloOpcode::kFusion: {
-          const HloComputation* comp = tgt->fused_instructions_computation();
+          const HloComputation* comp = target->fused_instructions_computation();
           if (IsPopOpsFusion(comp)) {
             if (IsPopOpsFusion(comp, "depthwise_conv")) {
-              switch (target->second.input_index) {
+              switch (input_index) {
                 case 0: {
                   TF_ASSIGN_OR_RETURN(
-                      out, AddConvolutionInput(graph, name, tgt, resources));
+                      out, AddConvolutionInput(graph, name, target, resources));
                   break;
                 }
                 case 1: {
-                  TF_ASSIGN_OR_RETURN(
-                      out, AddConvolutionWeights(graph, name, tgt, resources));
+                  TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(
+                                               graph, name, target, resources));
                   break;
                 }
                 default:
@@ -964,24 +965,25 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           break;
         }
         case HloOpcode::kCustomCall: {
-          if (IsPoplibsHloCustomOp(tgt)) {
-            TF_ASSIGN_OR_RETURN(out, AllocatePoplibsOpTensor(
-                                         graph, resources, name, target->second,
-                                         shape, tensor_map));
+          if (IsPoplibsHloCustomOp(target)) {
+            TF_ASSIGN_OR_RETURN(
+                out, AllocatePoplibsOpTensor(graph, resources, name,
+                                             tensor_target->second, shape,
+                                             tensor_map));
           } else {
-            LOG(FATAL) << "Unsupported custom call " << tgt->name();
+            LOG(FATAL) << "Unsupported custom call " << target->name();
           }
           break;
         }
         default:
           return xla::FailedPrecondition("Unknown tensor target for %s: %s",
                                          src.first->name().c_str(),
-                                         tgt->name().c_str());
+                                         target->name().c_str());
       }
     }
 
     TF_ASSIGN_OR_RETURN(
-        out, PathTransform(graph, out, target->second.backward_path));
+        out, PathTransform(graph, out, tensor_target->second.backward_path));
 
   } else {
     TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, shape));
