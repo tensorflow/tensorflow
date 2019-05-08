@@ -66,6 +66,7 @@ py_test(
         # related reasons (Not enough memory to allocatea), causing variable uninitialized
         "no_rocm",
         "no_cuda",
+        "no_pip",  # b/131697937
     ],
     deps = [
         "//tensorflow:tensorflow_py",

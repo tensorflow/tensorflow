@@ -43,6 +43,18 @@ class KernelDefBuilder {
   // particular type or list(type) attr (a further restriction than
   // what the Op allows).
   // Returns *this.
+  template <typename T>
+  KernelDefBuilder& AttrConstraint(const char* attr_name,
+                                   gtl::ArraySlice<T> allowed);
+
+  // Like AttrConstraint above but supports just a single value.
+  template <typename T>
+  KernelDefBuilder& AttrConstraint(const char* attr_name, T allowed);
+
+  // Specify that this kernel supports a limited set of values for a
+  // particular type or list(type) attr (a further restriction than
+  // what the Op allows).
+  // Returns *this.
   KernelDefBuilder& TypeConstraint(const char* attr_name,
                                    gtl::ArraySlice<DataType> allowed);
 

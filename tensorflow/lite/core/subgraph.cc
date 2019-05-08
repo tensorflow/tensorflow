@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/core/subgraph.h"
+
+#include <complex>
+
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/nnapi_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -675,18 +678,11 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
 
-  if (nnapi_delegate_) {
-    if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
-      TF_LITE_ENSURE_OK(context_, nnapi_delegate_->Invoke(this));
-      return kTfLiteOk;
-    } else {
-      // TODO(aselle): In the future, we would like this to be an
-      // automatic tflite CPU fallback.
-      ReportError(
-          "NNAPI was requested, but dependent sized tensors "
-          "being used.\n");
-      return kTfLiteError;
-    }
+  // This is only needed for UseNNAPI(true);
+  if (should_apply_nnapi_delegate_ && !applied_nnapi_delegate_) {
+    TF_LITE_ENSURE_OK(context_, ModifyGraphWithDelegate(NnApiDelegate()));
+    // only need to modify the graph once upon the first invocation.
+    applied_nnapi_delegate_ = true;
   }
 
   // Invocations are always done in node order.
@@ -970,14 +966,12 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Subgraph::UseNNAPI(bool enable) {
-  // TODO(aselle): This is a workaround for finding if NNAPI exists.
-  // We also need to make sure getLibraryHandle() is renamed to be NNAPI
-  // prefixed.
-  if (!NNAPIDelegate::IsSupported()) enable = false;
-  if (!enable) {
-    nnapi_delegate_.reset();
-  } else if (!nnapi_delegate_) {
-    nnapi_delegate_.reset(new NNAPIDelegate);
+  // Note that there is no way to disable the delegate once it modified the
+  // graph.
+  if (applied_nnapi_delegate_ && !enable) {
+    ReportError("Attempting to disable NNAPI delegate after it's applied.");
+  } else {
+    should_apply_nnapi_delegate_ = enable;
   }
 }
 

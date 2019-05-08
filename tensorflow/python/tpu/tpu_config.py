@@ -82,7 +82,7 @@ class TPUConfig(
       `True` or `PER_HOST_V1` mode. In `PER_HOST_V2` mode, it is
       `train_batch_size` // #cores. In `BROADCAST` mode, `input_fn` is only
       invoked once on host 0 and the tensors are broadcasted to all other
-      replicas. The batch size equals to train_batch_size`. With the per-core
+      replicas. The batch size equals to `train_batch_size`. With the per-core
       input pipeline configuration, the shard batch size is also
       `train_batch_size` // #cores.
       Note: per_host_input_for_training==PER_SHARD_V1 only supports mode.TRAIN.

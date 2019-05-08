@@ -135,7 +135,8 @@ class ControlFlowTest(converter_testing.TestCase):
         test_fn, control_flow, {'TestClass': TestClass}) as result:
       # The tested function would require `tc` to become part of the while loop
       # state, but TensorFlow doesn't support classes at the moment.
-      with self.assertRaisesRegexp(ValueError, 'must.*initialize.*Tensor.*tc'):
+      with self.assertRaisesRegexp(
+          ValueError, 'must be defined before the loop:.*tc.*'):
         result.test_fn(constant_op.constant(5))
 
   @test_util.run_deprecated_v1

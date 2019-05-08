@@ -94,7 +94,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                   llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitRoundNearestAfz(PrimitiveType prim_type,
-                                             llvm::Value* value) override;
+                                  llvm::Value* value);
 
   llvm::Value* EmitThreadId() override;
 

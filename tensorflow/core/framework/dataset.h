@@ -154,7 +154,7 @@ class GraphDefBuilderWrapper {
   }
 
   // Adds a node corresponding to the `DatasetType` to the Graph.
-  // Return value of `DatasetType::op_name()` is used as the op type for the
+  // Return value of `DatasetType::type_string()` is used as the op type for the
   // node.
   // Values for the output_types and output_shapes node attributes are also
   // written if those attributes are defined in the OpDef.
@@ -549,7 +549,7 @@ class IteratorBase {
   }
 
  private:
-  friend class DatasetBase;  // for access to `AddCleanupFunction`
+  friend class DatasetBase;          // for access to `AddCleanupFunction`
   friend class DatasetBaseIterator;  // for access to `node_`
 
   // Registers a cleanup function to be called upon object destruction.
@@ -683,6 +683,7 @@ class DatasetBase : public core::RefCounted {
  protected:
   friend Status AsGraphDef(
       OpKernelContext* ctx, const DatasetBase* dataset,
+      SerializationContext&& serialization_ctx,
       GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 

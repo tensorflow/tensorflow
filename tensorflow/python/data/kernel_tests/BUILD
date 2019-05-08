@@ -24,6 +24,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -108,6 +109,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "enumerate_test",
+    size = "small",
+    srcs = ["enumerate_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
@@ -183,6 +199,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
     grpc_enabled = True,
 )
@@ -267,6 +284,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -424,6 +442,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -553,7 +572,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
@@ -695,6 +714,8 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 

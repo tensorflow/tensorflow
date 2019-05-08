@@ -78,11 +78,20 @@ struct AllocatorStats {
   // is known.
   absl::optional<int64> bytes_limit;
 
+  // Stats for reserved memory usage.
+  int64 bytes_reserved;       // Number of bytes reserved.
+  int64 peak_bytes_reserved;  // The peak number of bytes reserved.
+  // The upper limit on the number bytes of reservable memory,
+  // if such a limit is known.
+  absl::optional<int64> bytes_reservable_limit;
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
-        largest_alloc_size(0) {}
+        largest_alloc_size(0),
+        bytes_reserved(0),
+        peak_bytes_reserved(0) {}
 
   string DebugString() const;
 };

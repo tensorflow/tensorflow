@@ -103,15 +103,17 @@ class Backend(object):
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None):
+  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
       xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+      asynchronous: A boolean; should we enable asynchronous execution?
+        (Experimental.)
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(xla_platform_id)
+    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -1607,11 +1609,11 @@ class ComputationBuilder(object):
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
-    return ops.Sort(operand, [], dimension)
+    return ops.Sort(self._builder, [operand], dimension)
 
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
-    return ops.Sort(keys, [values], dimension)
+    return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""
@@ -1649,6 +1651,13 @@ class ComputationBuilder(object):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers)
+
+  def Fft(self, operand, fft_type, fft_lengths):
+    """Enqueues a FFT operation onto the computation."""
+    return ops.Fft(operand, fft_type, fft_lengths)
+
+
+FftType = _xla.FftType
 
 
 _UNARY_OPS = [

@@ -80,7 +80,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     A tensor which if evaluated will compute and return the new moving average.
   """
 
-  def update_fn(v, value, decay=decay):
+  def update_delta_fn(v, value, decay=decay):
     decay = ops.convert_to_tensor(1.0 - decay, name="decay")
     if decay.dtype != v.dtype.base_dtype:
       decay = math_ops.cast(decay, v.dtype.base_dtype)
@@ -88,6 +88,9 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       update_delta = _zero_debias(v, value, decay)
     else:
       update_delta = (v - value) * decay
+    return update_delta
+
+  def update_fn(v, update_delta):
     return state_ops.assign_sub(v, update_delta, name=scope)
 
   with ops.name_scope(name, "AssignMovingAvg",
@@ -99,12 +102,14 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       def merge_fn(strategy, v, value):
         value = strategy.extended.reduce_to(ds_reduce_util.ReduceOp.MEAN, value,
                                             v)
-        return strategy.extended.update(v, update_fn, args=(value,))
+        update_delta = update_delta_fn(v, value)
+        return strategy.extended.update(v, update_fn, args=(update_delta,))
 
       return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
       strategy = distribution_strategy_context.get_cross_replica_context()
-      return strategy.extended.update(variable, update_fn, args=(value,))
+      update_delta = update_delta_fn(variable, value)
+      return strategy.extended.update(variable, update_fn, args=(update_delta,))
 
 
 def weighted_moving_average(value,
@@ -206,54 +211,57 @@ def _zero_debias(unbiased_var, value, decay):
   with variable_scope.variable_scope(
       unbiased_var.name[:-len(":0")], values=[unbiased_var, value,
                                               decay]) as scope:
-    with ops.colocate_with(unbiased_var):
-      with ops.init_scope():
-        biased_initializer = init_ops.zeros_initializer()
-        local_step_initializer = init_ops.zeros_initializer()
+    with ops.init_scope():
+      biased_initializer = init_ops.zeros_initializer()
+      local_step_initializer = init_ops.zeros_initializer()
 
-      def _maybe_get_unique(name):
-        """Get name for a unique variable, if not `reuse=True`."""
-        if variable_scope.get_variable_scope().reuse:
-          return name
-        vs_vars = [
-            x.op.name
-            for x in variable_scope.get_variable_scope().global_variables()
-        ]
-        full_name = variable_scope.get_variable_scope().name + "/" + name
-        if full_name not in vs_vars:
-          return name
-        idx = 1
-        while full_name + ("_%d" % idx) in vs_vars:
-          idx += 1
-        return name + ("_%d" % idx)
+    def _maybe_get_unique(name):
+      """Get name for a unique variable, if not `reuse=True`."""
+      if variable_scope.get_variable_scope().reuse:
+        return name
+      vs_vars = [
+          x.op.name
+          for x in variable_scope.get_variable_scope().global_variables()
+      ]
+      full_name = variable_scope.get_variable_scope().name + "/" + name
+      if full_name not in vs_vars:
+        return name
+      idx = 1
+      while full_name + ("_%d" % idx) in vs_vars:
+        idx += 1
+      return name + ("_%d" % idx)
 
+    strategy = distribution_strategy_context.get_strategy()
+    with strategy.extended.colocate_vars_with(unbiased_var):
       biased_var = variable_scope.get_variable(
           _maybe_get_unique("biased"),
           initializer=biased_initializer,
           shape=unbiased_var.get_shape(),
           dtype=unbiased_var.dtype,
-          trainable=False)
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
       local_step = variable_scope.get_variable(
           _maybe_get_unique("local_step"),
           shape=[],
           dtype=unbiased_var.dtype,
           initializer=local_step_initializer,
-          trainable=False)
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
 
-      # Get an update ops for both shadow variables.
-      update_biased = state_ops.assign_sub(
-          biased_var, (biased_var - value) * decay, name=scope.name)
-      update_local_step = local_step.assign_add(1)
+    # Get an update ops for both shadow variables.
+    update_biased = state_ops.assign_sub(
+        biased_var, (biased_var - value) * decay, name=scope.name)
+    update_local_step = local_step.assign_add(1)
 
-      # Compute the value of the delta to update the unbiased EMA. Make sure to
-      # use the new values of the biased variable and the local step.
-      with ops.control_dependencies([update_biased, update_local_step]):
-        # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
-        unbiased_ema_delta = (
-            unbiased_var - biased_var.read_value() /
-            (1 - math_ops.pow(1.0 - decay, local_step.read_value())))
+    # Compute the value of the delta to update the unbiased EMA. Make sure to
+    # use the new values of the biased variable and the local step.
+    with ops.control_dependencies([update_biased, update_local_step]):
+      # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
+      unbiased_ema_delta = (
+          unbiased_var - biased_var.read_value() /
+          (1 - math_ops.pow(1.0 - decay, local_step.read_value())))
 
-      return unbiased_ema_delta
+    return unbiased_ema_delta
 
 
 @tf_export("train.ExponentialMovingAverage")

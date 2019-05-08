@@ -78,7 +78,7 @@ class XrtBackend(xla_client.Backend):
     return c_buffer.DestructureTuple()
 
   def make_tuple(self, buffers, device_ordinal):
-    raise NotImplementedError("make_tuple not implemented for XRT")
+    return _xla.xrt.XrtBuffer.MakeTuple(self.context, buffers)
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access

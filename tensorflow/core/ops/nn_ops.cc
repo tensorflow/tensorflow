@@ -327,7 +327,8 @@ REGISTER_OP("_FusedConv2D")
     .Attr("T: {float, double}")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -335,7 +336,7 @@ REGISTER_OP("_FusedConv2D")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
     // ---------------------------------------------------------------------- //
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.

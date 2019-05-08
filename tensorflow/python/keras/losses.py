@@ -117,8 +117,7 @@ class Loss(object):
     # If we are wrapping a lambda function strip '<>' from the name as it is not
     # accepted in scope name.
     scope_name = 'lambda' if self.name == '<lambda>' else self.name
-    with ops.name_scope(scope_name, format(self.__class__.__name__),
-                        (y_pred, y_true, sample_weight)):
+    with K.name_scope(scope_name or self.__class__.__name__):
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())

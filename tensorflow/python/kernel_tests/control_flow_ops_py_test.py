@@ -1044,7 +1044,6 @@ class ControlFlowTest(test.TestCase):
       result = gradients_impl.gradients(z, x)[0]
       self.assertEqual(1.0, self.evaluate(result))
 
-  @test_util.disable_control_flow_v2("b/113327884")
   @test_util.run_v1_only("b/120545219")
   def testCondGrad_Gather(self):
     with self.cached_session() as sess:

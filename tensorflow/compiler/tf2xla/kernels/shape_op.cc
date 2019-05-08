@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -227,21 +228,30 @@ class ZerosLikeOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     if (IsTensorListInput(ctx, 0)) {
       // Input is a TensorList.
-      // TODO(b/124707753): support nested TensorList.
-      xla::XlaOp tensor_list = ctx->Input(0);
-      TensorShape shape;
-      OP_REQUIRES_OK(ctx, GetTensorListBufferShape(tensor_list, &shape));
-      xla::PrimitiveType type;
-      OP_REQUIRES_OK(ctx, GetTensorListPrimitiveType(tensor_list, &type));
-      xla::XlaOp buffer;
-      OP_REQUIRES_OK(ctx, CreateZerosList(ctx, shape, type, &buffer));
+
+      // Check the TensorList input is initialized.
+      xla::XlaOp list = ctx->Input(0);
+      bool is_initialized;
+      OP_REQUIRES_OK(ctx, IsTensorListInitialized(list, &is_initialized));
+      OP_REQUIRES(
+          ctx, is_initialized,
+          errors::InvalidArgument(
+              "TensorList input for ZerosLike op is an uninitialized list"));
+
+      auto list_shape_or = ctx->builder()->GetShape(list);
+      OP_REQUIRES_OK(ctx, list_shape_or.status());
+      xla::XlaOp new_list;
+      OP_REQUIRES_OK(
+          ctx, CreateZerosTensorListWithShape(
+                   ctx->builder(), list_shape_or.ValueOrDie(), &new_list));
 
       xla::XlaOp push_index;
-      OP_REQUIRES_OK(ctx, GetTensorListPushIndex(tensor_list, &push_index));
+      OP_REQUIRES_OK(ctx, GetTensorListPushIndex(list, &push_index));
 
-      xla::XlaOp output_list;
-      OP_REQUIRES_OK(ctx, BuildTensorList(buffer, push_index, &output_list));
-      ctx->SetTensorListOutput(0, output_list);
+      xla::XlaOp result;
+      OP_REQUIRES_OK(ctx,
+                     SetTensorListPushIndex(new_list, push_index, &result));
+      ctx->SetTensorListOutput(0, result);
     } else {
       const TensorShape input_shape = ctx->InputShape(0);
 

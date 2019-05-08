@@ -266,6 +266,14 @@ DirectSession::DirectSession(const SessionOptions& options,
                                true /* owned */);
   } else {
     thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
+    // Run locally if environment value of TF_NUM_INTEROP_THREADS is negative
+    // and config.inter_op_parallelism_threads is unspecified or negative.
+    static const int env_num_threads = NumInterOpThreadsFromEnvironment();
+    if (options_.config.inter_op_parallelism_threads() < 0 ||
+        (options_.config.inter_op_parallelism_threads() == 0 &&
+         env_num_threads < 0)) {
+      run_in_caller_thread_ = true;
+    }
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -566,6 +574,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       run_options.inter_op_thread_pool() >= 0
           ? thread_pools_[run_options.inter_op_thread_pool()].first
           : nullptr;
+  if (run_in_caller_thread_) {
+    pool = nullptr;
+  }
 
   if (pool == nullptr) {
     // We allow using the caller thread only when having a single executor

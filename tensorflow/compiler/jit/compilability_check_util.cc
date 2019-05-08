@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -228,6 +228,10 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
                                      "resource variable op in called function");
   }
 
+  if (!op_filter_.allow_svd_op && node.type_string() == "Svd") {
+    return LogNotCompilableAndReturn(node, "Svd ops disabled");
+  }
+
   return true;
 }
 
@@ -244,6 +248,7 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
       registration.elide_assert_and_checknumerics;
   op_filter.allow_ops_producing_or_consuming_variant =
       registration.cluster_variant_ops;
+  op_filter.allow_svd_op = registration.cluster_svd_op;
   return op_filter;
 }
 
