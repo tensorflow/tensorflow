@@ -180,6 +180,7 @@ cc_library(
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
         "optimized/integer_ops/depthwise_conv.h",
+        "optimized/integer_ops/depthwise_conv_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
