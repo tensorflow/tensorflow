@@ -24,11 +24,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
-#if GPU_VERSION >= 7050
-#include "cuda/include/cuda_fp16.h"
-#define TF_HAS_GPU_FP16
-#endif
-
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
@@ -49,16 +44,24 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
-#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
-
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
-#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
+
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* gpuGetErrorString(cudaError_t error){
+  return cudaGetErrorString(error);
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* gpuGetErrorString(hipError_t error){
+   return hipGetErrorString(error);
+#endif
+}
 
 namespace tensorflow {
 // Launches a GPU kernel through cudaLaunchKernel in Cuda environment, or

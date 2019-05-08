@@ -100,7 +100,7 @@ void MyDriverFunc(const Eigen::GpuDevice &d) {
 
 // See the test for this for more example:
 //
-https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/gpu_kernel_helper_test.cu.cc
 
 */
 
@@ -310,12 +310,12 @@ Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-  // XXX FIXME re-enable this after hipOccupancyMaxPotentialBlockSize is
+  // ROCM FIXME re-enable this after hipOccupancyMaxPotentialBlockSize is
   // implemented
-  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  // hipError_t err = hipOccupancyMaxPotentialBlockSize(
   //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
   //    block_size_limit);
-  //CHECK_EQ(err, hipSuccess);
+  // CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count =
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
