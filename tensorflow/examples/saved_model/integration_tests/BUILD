@@ -55,6 +55,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_pip",  # b/131697937 and b/132196869
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
