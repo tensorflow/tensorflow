@@ -27,5 +27,5 @@ def if_cuda_is_configured(x):
     --config=cuda. Used to allow non-CUDA code to depend on CUDA libraries.
     """
     if cuda_is_configured():
-        return select({"//conditions:default": x})
-    return select({"//conditions:default": []})
+        return x
+    return []
