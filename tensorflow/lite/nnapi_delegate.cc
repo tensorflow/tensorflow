@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace tflite {
 
+constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
+
 void logError(const char* format, ...) {
   // stderr is convenient for native tests, but is not captured for apps
   va_list args_for_stderr;
@@ -822,11 +824,16 @@ TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) {
         tensor->bytes));
   }
 
-  // Currently use blocking compute.
-  ANeuralNetworksEvent* event = nullptr;
-  CHECK_NN(nnapi->ANeuralNetworksExecution_startCompute(execution, &event));
-  CHECK_NN(nnapi->ANeuralNetworksEvent_wait(event));
-  nnapi->ANeuralNetworksEvent_free(event);
+  // Currently use blocking compute
+  if (nnapi->android_sdk_version < kMinSdkVersionForNNAPI12) {
+    ANeuralNetworksEvent* event = nullptr;
+    CHECK_NN(nnapi->ANeuralNetworksExecution_startCompute(execution, &event));
+    CHECK_NN(nnapi->ANeuralNetworksEvent_wait(event));
+    nnapi->ANeuralNetworksEvent_free(event);
+  } else {
+    CHECK_NN(nnapi->ANeuralNetworksExecution_compute(execution));
+  }
+
   nnapi->ANeuralNetworksExecution_free(execution);
 
 #if 0
