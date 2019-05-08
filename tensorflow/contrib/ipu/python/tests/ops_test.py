@@ -9,12 +9,12 @@ from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib.ipu import ipu_compiler
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.keras import layers
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
@@ -338,6 +338,56 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
       e = sess.run(events)
       self.assertEqual(len(e), 2)  # compile begin/end, no load/execute
+
+  def testVarsInitializedByStreamsAreLoggedAsOnDevice(self):
+    # This verifies that when an initialization graph has no ops in it (it is
+    # a pass through of streaming inputs to initialized resources) then the
+    # resources are logged as resources on the device so that a future execution
+    # sees them as valid and on device
+    w_val1 = np.array([1, 2, 3, 4])
+    w_val2 = np.array([4, 3, 2, 1])
+    w_val3 = np.array([9, 0, 9, 0])
+    with ops.device("/device:IPU:1"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        w1 = variable_scope.get_variable(
+            "w1",
+            shape=[4],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                w_val1, dtype=np.float32))
+        w2 = variable_scope.get_variable(
+            "w2",
+            shape=[4],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                w_val2, dtype=np.float32))
+        w3 = variable_scope.get_variable(
+            "w3",
+            shape=[4],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                w_val3, dtype=np.float32))
+
+      y = w1 + w2 + w3
+
+    ipu.utils.move_variable_initialization_to_cpu()
+
+    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      xs = [
+          np.array([7, 3, 5, 9], dtype=np.float32),
+          np.array([1, 8, 3, 4], dtype=np.float32),
+          np.array([9, 2, 2, 6], dtype=np.float32)
+      ]
+      for x in xs:
+        out = sess.run(y)
+        self.assertAllClose(out, w_val1 + w_val2 + w_val3)
 
   def testMultiScopeTest(self):
     with ops.device('cpu'):

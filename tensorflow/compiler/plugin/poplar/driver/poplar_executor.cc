@@ -989,11 +989,11 @@ se::DeviceMemoryBase PoplarExecutor::ConstantOutputAllocation::GetAllocation(
     xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
     const int64 output_index, int64& flat_tensor_index, const Args&,
     const InputOutputAliasingMap::OutputInfo&, const ArgsHandleMap&,
-    const int) const {
+    const int ordinal) const {
   const auto& constant = constants_[output_index][flat_tensor_index];
   const int64 size(xla::ShapeUtil::ByteSizeOf(shape));
   se::DeviceMemoryBase allocated =
-      allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+      allocator->Allocate(ordinal, size, false).ConsumeValueOrDie().Forget();
   TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
   tc->size = size;
   tc->on_device = false;
@@ -1009,7 +1009,7 @@ se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
     xla::DeviceMemoryAllocator* allocator, const xla::Shape&,
     const int64 output_index, int64& flat_tensor_index, const Args& args,
     const InputOutputAliasingMap::OutputInfo&, const ArgsHandleMap& args_map,
-    const int) const {
+    const int ordinal) const {
   const auto& remap_idx = remap_map_[output_index];
   auto it = args_map.find(GetInputCopyHandle(remap_idx, flat_tensor_index));
   if (it == args_map.end()) {
@@ -1030,7 +1030,9 @@ se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
   if (make_a_copy) {
     TensorControl* orig = it->second.tc;
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, orig->size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal, orig->size, false)
+            .ConsumeValueOrDie()
+            .Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     if (orig->on_device) {
@@ -1096,7 +1098,7 @@ se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal_, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     void** buf = reinterpret_cast<void**>(tc->data);
@@ -1146,7 +1148,7 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
   }
   if (shape.IsTuple()) {
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal_, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     void** buf = reinterpret_cast<void**>(tc->data);
     for (void* ptr : ptrs) {
@@ -1206,6 +1208,7 @@ StatusOr<bool> PoplarExecutor::CheckMoveHostToDeviceRequired(
   // b) resource is not on the device
   // c) resource is on the device, but in the wrong place
   bool do_host_to_device = false;
+
   for (const auto& arg : args_map_) {
     if (!arg.second.streamed) {
       auto it =
