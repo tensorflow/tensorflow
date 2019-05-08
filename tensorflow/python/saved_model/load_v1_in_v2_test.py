@@ -23,6 +23,7 @@ import shutil
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -332,6 +333,30 @@ class LoadTest(test.TestCase):
     path = self._signature_with_no_inputs()
     imported = load.load(path)
     self.assertEqual([2], imported.signatures["key"]()["value"].shape)
+
+  def _unfed_placeholder_signature(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      x = array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+      output = x * random_ops.random_normal([2])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={
+                "key": signature_def_utils.build_signature_def(
+                    {}, dict(value=utils_impl.build_tensor_info(output)))})
+        b.save()
+    return path
+
+  def test_unfed_placeholder_exception(self):
+    path = self._unfed_placeholder_signature()
+    with self.assertRaisesRegexp(
+        lift_to_graph.UnliftableError,
+        "signature needs an input for each placeholder.*\n\nUnable to lift"):
+      load.load(path)
 
 if __name__ == "__main__":
   test.main()

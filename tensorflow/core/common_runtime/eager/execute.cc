@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -29,14 +34,15 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
-#endif
+#endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -676,11 +682,13 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
+  ctx->Ref();
   return [ctx, eager_client, context_id, op_id, output_num]() {
+    auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
     if (!ctx->HasActiveRemoteContext(context_id)) {
       // This means that this tensor was pointing to a remote device, which
       // has been changed out from under us. Simply return since there is
@@ -714,7 +722,7 @@ std::function<void()> GetRemoteTensorDestructor(
     return tensorflow::Status::OK();
   };
 }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
 // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
@@ -726,10 +734,10 @@ std::function<void()> GetRemoteTensorDestructor(
 // *on the receiver*.
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              Device* recv_device, TensorHandle** result) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
-      "Eager's remote execution is not available on Android devices.");
-#else
+      "Eager's remote execution is not available on mobile devices.");
+#else  // !IS_MOBILE_PLATFORM
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -786,15 +794,15 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   actual_handle->Unref();
 
   return Status::OK();
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                           int* num_retvals) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
-      "Eager's remote execution is not available on Android devices.");
-#else
+      "Eager's remote execution is not available on mobile devices.");
+#else  // !IS_MOBILE_PLATFORM
   EagerContext* ctx = op->EagerContext();
 
   eager::EagerClient* eager_client;
@@ -929,7 +937,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   }
 
   return Status::OK();
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 // These ops are not pinnable since they generate data. It can be slower to

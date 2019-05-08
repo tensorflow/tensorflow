@@ -52,11 +52,11 @@ class DatasetOpsTestBase : public ::testing::Test {
   static Status ExpectEqual(const Tensor& a, const Tensor& b);
 
   // The method validates whether the two tensor vectors have the same tensors.
-  // If `expect_items_equal` is true, the method will only evaluate the two
+  // If `compare_order` is false, the method will only evaluate whether the two
   // vectors have the same elements regardless of order.
   static Status ExpectEqual(std::vector<Tensor> produced_tensors,
                             std::vector<Tensor> expected_tensors,
-                            bool expect_items_equal);
+                            bool compare_order);
 
   // Creates a tensor with the specified dtype, shape, and value.
   template <typename T>
@@ -74,6 +74,15 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Creates a new dataset.
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
                        DatasetBase** const dataset);
+
+  // Restores the state of the input iterator. It resets the iterator before
+  // restoring it to make sure the input iterator does not hold any
+  // resources or tasks. Otherwise, restoring an existing iterator may cause
+  // the timeout issue or duplicated elements.
+  Status RestoreIterator(IteratorContext* ctx, IteratorStateReader* reader,
+                         const string& output_prefix,
+                         const DatasetBase& dataset,
+                         std::unique_ptr<IteratorBase>* iterator);
 
   // Creates a new RangeDataset op kernel. `T` specifies the output dtype of the
   // op kernel.
@@ -197,6 +206,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::function<void(std::function<void()>)> runner_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<checkpoint::TensorSliceReaderCacheWrapper>
       slice_reader_cache_;

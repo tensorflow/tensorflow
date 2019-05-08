@@ -377,52 +377,10 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(y_np_1, y_np_2, atol=1e-4)
 
   def test_rnn_cell_with_constants_layer(self):
-
-    class RNNCellWithConstants(keras.layers.Layer):
-
-      def __init__(self, units, **kwargs):
-        self.units = units
-        self.state_size = units
-        super(RNNCellWithConstants, self).__init__(**kwargs)
-
-      def build(self, input_shape):
-        if not isinstance(input_shape, list):
-          raise TypeError('expects constants shape')
-        [input_shape, constant_shape] = input_shape
-        # will (and should) raise if more than one constant passed
-
-        self.input_kernel = self.add_weight(
-            shape=(input_shape[-1], self.units),
-            initializer='uniform',
-            name='kernel')
-        self.recurrent_kernel = self.add_weight(
-            shape=(self.units, self.units),
-            initializer='uniform',
-            name='recurrent_kernel')
-        self.constant_kernel = self.add_weight(
-            shape=(constant_shape[-1], self.units),
-            initializer='uniform',
-            name='constant_kernel')
-        self.built = True
-
-      def call(self, inputs, states, constants):
-        [prev_output] = states
-        [constant] = constants
-        h_input = keras.backend.dot(inputs, self.input_kernel)
-        h_state = keras.backend.dot(prev_output, self.recurrent_kernel)
-        h_const = keras.backend.dot(constant, self.constant_kernel)
-        output = h_input + h_state + h_const
-        return output, [output]
-
-      def get_config(self):
-        config = {'units': self.units}
-        base_config = super(RNNCellWithConstants, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
     # Test basic case.
     x = keras.Input((None, 5))
     c = keras.Input((3,))
-    cell = RNNCellWithConstants(32)
+    cell = RNNCellWithConstants(32, constant_size=3)
     layer = keras.layers.RNN(cell)
     y = layer(x, constants=c)
 
@@ -462,8 +420,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Test stacking.
     cells = [keras.layers.recurrent.GRUCell(8),
-             RNNCellWithConstants(12),
-             RNNCellWithConstants(32)]
+             RNNCellWithConstants(12, constant_size=3),
+             RNNCellWithConstants(32, constant_size=3)]
     layer = keras.layers.recurrent.RNN(cells)
     y = layer(x, constants=c)
     model = keras.models.Model([x, c], y)
@@ -506,54 +464,40 @@ class RNNTest(keras_parameterized.TestCase):
     y_np_2 = model.predict([x_np, c_np])
     self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
+  def test_rnn_cell_with_non_keras_constants(self):
+    # Test basic case.
+    x = keras.Input((None, 5))
+    c = array_ops.zeros([6, 3], dtype=dtypes.float32)
+    cell = RNNCellWithConstants(32, constant_size=3)
+    layer = keras.layers.RNN(cell)
+    y = layer(x, constants=c)
+
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
+    # Test stacking.
+    cells = [keras.layers.recurrent.GRUCell(8),
+             RNNCellWithConstants(12, constant_size=3),
+             RNNCellWithConstants(32, constant_size=3)]
+    layer = keras.layers.recurrent.RNN(cells)
+    y = layer(x, constants=c)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
   def test_rnn_cell_with_constants_layer_passing_initial_state(self):
-
-    class RNNCellWithConstants(keras.layers.Layer):
-
-      def __init__(self, units, **kwargs):
-        self.units = units
-        self.state_size = units
-        super(RNNCellWithConstants, self).__init__(**kwargs)
-
-      def build(self, input_shape):
-        if not isinstance(input_shape, list):
-          raise TypeError('expects constants shape')
-        [input_shape, constant_shape] = input_shape
-        # will (and should) raise if more than one constant passed
-
-        self.input_kernel = self.add_weight(
-            shape=(input_shape[-1], self.units),
-            initializer='uniform',
-            name='kernel')
-        self.recurrent_kernel = self.add_weight(
-            shape=(self.units, self.units),
-            initializer='uniform',
-            name='recurrent_kernel')
-        self.constant_kernel = self.add_weight(
-            shape=(constant_shape[-1], self.units),
-            initializer='uniform',
-            name='constant_kernel')
-        self.built = True
-
-      def call(self, inputs, states, constants):
-        [prev_output] = states
-        [constant] = constants
-        h_input = keras.backend.dot(inputs, self.input_kernel)
-        h_state = keras.backend.dot(prev_output, self.recurrent_kernel)
-        h_const = keras.backend.dot(constant, self.constant_kernel)
-        output = h_input + h_state + h_const
-        return output, [output]
-
-      def get_config(self):
-        config = {'units': self.units}
-        base_config = super(RNNCellWithConstants, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
     # Test basic case.
     x = keras.Input((None, 5))
     c = keras.Input((3,))
     s = keras.Input((32,))
-    cell = RNNCellWithConstants(32)
+    cell = RNNCellWithConstants(32, constant_size=3)
     layer = keras.layers.RNN(cell)
     y = layer(x, initial_state=s, constants=c)
     model = keras.models.Model([x, s, c], y)
@@ -595,6 +539,38 @@ class RNNTest(keras_parameterized.TestCase):
     model.set_weights(weights)
     y_np_3 = model.predict([x_np, s_np, c_np])
     self.assertAllClose(y_np, y_np_3, atol=1e-4)
+
+  def test_rnn_cell_with_non_keras_constants_and_initial_state(self):
+    # Test basic case.
+    x = keras.Input((None, 5))
+    c = array_ops.zeros([6, 3], dtype=dtypes.float32)
+    s = array_ops.zeros([6, 32], dtype=dtypes.float32)
+    cell = RNNCellWithConstants(32, constant_size=3)
+    layer = keras.layers.RNN(cell)
+    y = layer(x, initial_state=s, constants=c)
+
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
+    # Test stacking.
+    cells = [keras.layers.recurrent.GRUCell(8),
+             RNNCellWithConstants(12, constant_size=3),
+             RNNCellWithConstants(32, constant_size=3)]
+    layer = keras.layers.recurrent.RNN(cells)
+    s = [array_ops.zeros([6, 8], dtype=dtypes.float32),
+         array_ops.zeros([6, 12], dtype=dtypes.float32),
+         array_ops.zeros([6, 32], dtype=dtypes.float32)]
+    y = layer(x, initial_state=s, constants=c)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_stacked_rnn_attributes(self):
     if context.executing_eagerly():
@@ -1335,6 +1311,74 @@ class RNNTest(keras_parameterized.TestCase):
 
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, None))
+
+  @parameterized.parameters(
+      [keras.layers.SimpleRNNCell, keras.layers.GRUCell, keras.layers.LSTMCell])
+  def test_state_spec_with_stack_cell(self, cell):
+    # See https://github.com/tensorflow/tensorflow/issues/27817 for more detail.
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    output_dim = 8
+
+    def create_cell():
+      return [cell(output_dim),
+              cell(output_dim),
+              cell(output_dim)]
+
+    inputs = keras.Input((timesteps, input_dim))
+    encoder_output = keras.layers.RNN(create_cell(), return_state=True)(inputs)
+
+    states = encoder_output[1:]
+
+    decoder_output = keras.layers.RNN(
+        create_cell())(inputs, initial_state=states)
+
+    model = keras.models.Model(inputs, decoder_output)
+    model.compile(optimizer='rmsprop', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)),
+        np.zeros((batch, output_dim)))
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
+
+class RNNCellWithConstants(keras.layers.Layer):
+
+  def __init__(self, units, constant_size, **kwargs):
+    self.units = units
+    self.state_size = units
+    self.constant_size = constant_size
+    super(RNNCellWithConstants, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    self.input_kernel = self.add_weight(
+        shape=(input_shape[-1], self.units),
+        initializer='uniform',
+        name='kernel')
+    self.recurrent_kernel = self.add_weight(
+        shape=(self.units, self.units),
+        initializer='uniform',
+        name='recurrent_kernel')
+    self.constant_kernel = self.add_weight(
+        shape=(self.constant_size, self.units),
+        initializer='uniform',
+        name='constant_kernel')
+    self.built = True
+
+  def call(self, inputs, states, constants):
+    [prev_output] = states
+    [constant] = constants
+    h_input = keras.backend.dot(inputs, self.input_kernel)
+    h_state = keras.backend.dot(prev_output, self.recurrent_kernel)
+    h_const = keras.backend.dot(constant, self.constant_kernel)
+    output = h_input + h_state + h_const
+    return output, [output]
+
+  def get_config(self):
+    config = {'units': self.units, 'constant_size': self.constant_size}
+    base_config = super(RNNCellWithConstants, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class Minimal2DRNNCell(keras.layers.Layer):

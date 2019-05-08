@@ -27,7 +27,8 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
                   Distribution dist, int64 output_size, int64 alg_tag_skip,
                   ScopedUnlockUnrefVar* state_var_guard, Tensor* state_tensor,
-                  typename Distribution::ResultElementType* output_data) {
+                  typename Distribution::ResultElementType* output_data)
+      UNLOCK_FUNCTION() {
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
     auto state_data = state_tensor_flat.data();
     // Delegates to PhiloxRandom to do the actual increasing.
@@ -39,6 +40,33 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
         ctx, device, philox, output_data, output_size, dist);
   }
 };
+
+Status CheckState(const Tensor& state) {
+  if (state.dtype() != STATE_ELEMENT_DTYPE) {
+    return errors::InvalidArgument("dtype of RNG state variable must be ",
+                                   DataTypeString(STATE_ELEMENT_DTYPE),
+                                   ", not ", DataTypeString(state.dtype()));
+  }
+  if (state.dims() != 1) {
+    return errors::InvalidArgument(
+        "RNG state must have one and only one dimension, not ", state.dims());
+  }
+  return Status::OK();
+}
+
+Status CheckPhiloxState(const Tensor& state, int64 alg_tag_skip = 0) {
+  static_assert(std::is_same<StateElementType, int64>::value,
+                "StateElementType must be int64");
+  static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
+                "PhiloxRandom::ResultElementType must be uint32");
+  if (state.NumElements() < alg_tag_skip + PHILOX_MIN_STATE_SIZE) {
+    return errors::InvalidArgument(
+        "For the Philox algorithm, the size of state"
+        " must be at least ",
+        alg_tag_skip + PHILOX_MIN_STATE_SIZE, "; got ", state.NumElements());
+  }
+  return Status::OK();
+}
 
 template <typename Device, typename Distribution>
 Status UpdateVariableAndFill(
@@ -54,17 +82,7 @@ Status UpdateVariableAndFill(
   // filling.
   ScopedUnlockUnrefVar state_var_guard(var);
   Tensor* var_tensor = var->tensor();
-  if (var_tensor->dtype() != STATE_ELEMENT_DTYPE) {
-    return errors::InvalidArgument("dtype of RNG state variable must be ",
-                                   DataTypeString(STATE_ELEMENT_DTYPE),
-                                   ", not ",
-                                   DataTypeString(var_tensor->dtype()));
-  }
-  if (var_tensor->dims() != 1) {
-    return errors::InvalidArgument(
-        "RNG state must have one and only one dimension, not ",
-        var_tensor->dims());
-  }
+  TF_RETURN_IF_ERROR(CheckState(*var_tensor));
   auto var_tensor_flat = var_tensor->flat<StateElementType>();
   int64 alg_tag_skip = 0;
   if (read_alg_from_state) {
@@ -75,17 +93,7 @@ Status UpdateVariableAndFill(
     alg = var_tensor_flat(0);
   }
   if (alg == RNG_ALG_PHILOX) {
-    static_assert(std::is_same<StateElementType, int64>::value,
-                  "StateElementType must be int64");
-    static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
-                  "PhiloxRandom::ResultElementType must be uint32");
-    if (var_tensor_flat.size() < alg_tag_skip + PHILOX_MIN_STATE_SIZE) {
-      return errors::InvalidArgument(
-          "For the Philox algorithm, the size of state"
-          " must be at least ",
-          alg_tag_skip + PHILOX_MIN_STATE_SIZE, "; got ",
-          var_tensor_flat.size());
-    }
+    TF_RETURN_IF_ERROR(CheckPhiloxState(*var_tensor, alg_tag_skip));
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, StateElementType>(
         ctx, var_tensor, var->copy_on_read_mode.load()));
     UpdateVariableAndFill_Philox<Device, Distribution>()(
@@ -124,18 +132,20 @@ class StatefulRandomOp : public OpKernel {
   }
 };
 
-Status GetAlgorithm(OpKernelContext* ctx, int alg_input_idx, Algorithm* alg) {
-  const Tensor& alg_tensor = ctx->input(alg_input_idx);
-  if (alg_tensor.dims() != 0) {
-    return errors::InvalidArgument("algorithm must be of shape [], not ",
-                                   alg_tensor.shape().DebugString());
+template <typename T>
+Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
+  auto dtype = DataTypeToEnum<T>::v();
+  if (tensor.dims() != 0) {
+    return errors::InvalidArgument("input ", std::to_string(input_idx),
+                                   " (0-based) must have shape [], not ",
+                                   tensor.shape().DebugString());
   }
-  if (alg_tensor.dtype() != ALGORITHM_DTYPE) {
-    return errors::InvalidArgument("algorithm's dtype must be ",
-                                   DataTypeString(ALGORITHM_DTYPE), ", not ",
-                                   DataTypeString(alg_tensor.dtype()));
+  if (tensor.dtype() != dtype) {
+    return errors::InvalidArgument("dtype of input ", std::to_string(input_idx),
+                                   " (0-based) must be ", DataTypeString(dtype),
+                                   ", not ", DataTypeString(tensor.dtype()));
   }
-  *alg = alg_tensor.flat<Algorithm>()(0);
+  *result = tensor.flat<T>()(0);
   return Status::OK();
 }
 
@@ -146,7 +156,7 @@ class StatefulRandomOpV2 : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlgorithm(ctx, /*alg_input_idx=*/1, &alg));
+    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
     StatefulRandomCompute<Device>(ctx, Distribution(), /*state_input_idx=*/0,
                                   /*shape_input_idx=*/2,
                                   /*read_alg_from_state=*/false, alg);
@@ -160,7 +170,7 @@ class StatefulUniformIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlgorithm(ctx, /*alg_input_idx=*/1, &alg));
+    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
     const Tensor& minval = ctx->input(3);
     const Tensor& maxval = ctx->input(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
@@ -197,12 +207,51 @@ class StatefulUniformFullIntOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Algorithm alg;
-    OP_REQUIRES_OK(ctx, GetAlgorithm(ctx, /*alg_input_idx=*/1, &alg));
+    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
     StatefulRandomCompute<Device>(
         ctx,
         random::UniformFullIntDistribution<random::PhiloxRandom, IntType>(),
         /*state_input_idx=*/0, /*shape_input_idx=*/2,
         /*read_alg_from_state=*/false, alg);
+  }
+};
+
+template <>
+struct RngSkip_Philox<CPUDevice> {
+  void operator()(const CPUDevice& device, int64 delta, Tensor* state_tensor) {
+    auto state_data = state_tensor->flat<StateElementType>().data();
+    // Delegates to PhiloxRandom to do the actual increasing.
+    auto philox = GetPhiloxRandomFromMem(state_data);
+    UpdateMemWithPhiloxRandom(philox, delta, state_data);
+  }
+};
+
+template <typename Device>
+class RngSkipOp : public OpKernel {
+ public:
+  explicit RngSkipOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    auto state_input_idx = 0;
+    Algorithm alg;
+    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(1), 1, &alg));
+    int64 delta;
+    OP_REQUIRES_OK(ctx, GetScalar(ctx->input(2), 2, &delta));
+    Var* var = nullptr;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
+    ScopedUnlockUnrefVar state_var_guard(var);
+    Tensor* var_tensor = var->tensor();
+    OP_REQUIRES_OK(ctx, CheckState(*var_tensor));
+    if (alg == RNG_ALG_PHILOX) {
+      OP_REQUIRES_OK(ctx, CheckPhiloxState(*var_tensor));
+      OP_REQUIRES_OK(ctx, PrepareToUpdateVariable<Device, StateElementType>(
+                              ctx, var_tensor, var->copy_on_read_mode.load()));
+      RngSkip_Philox<Device>()(ctx->eigen_device<Device>(), delta, var_tensor);
+    } else {
+      OP_REQUIRES(ctx, false,
+                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
+    }
   }
 };
 
@@ -334,6 +383,16 @@ TF_CALL_int64(REGISTER_StatefulUniformFullInt_CPU);
 TF_CALL_uint32(REGISTER_StatefulUniformFullInt_CPU);
 TF_CALL_uint64(REGISTER_StatefulUniformFullInt_CPU);
 
+#define REGISTER_RngSkip(DEVICE)                       \
+  REGISTER_KERNEL_BUILDER(Name("RngSkip")              \
+                              .Device(DEVICE_##DEVICE) \
+                              .HostMemory("resource")  \
+                              .HostMemory("algorithm") \
+                              .HostMemory("delta"),    \
+                          RngSkipOp<DEVICE##Device>);
+
+REGISTER_RngSkip(CPU);
+
 #if GOOGLE_CUDA
 
 TF_CALL_half(REGISTER_FloatOps_GPU);
@@ -345,6 +404,7 @@ TF_CALL_int32(REGISTER_StatefulUniformFullInt_GPU);
 TF_CALL_int64(REGISTER_StatefulUniformFullInt_GPU);
 TF_CALL_uint32(REGISTER_StatefulUniformFullInt_GPU);
 TF_CALL_uint64(REGISTER_StatefulUniformFullInt_GPU);
+REGISTER_RngSkip(GPU);
 
 #endif  // GOOGLE_CUDA
 

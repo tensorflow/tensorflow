@@ -577,8 +577,6 @@ class _GraphTensorArrayV2(object):
           element_dtype=self._dtype,
           element_shape=element_shape,
           name=name)
-      if self._element_shape:
-        value.set_shape(self._element_shape[0].dims)
       return value
 
   @tf_should_use.should_use_result
@@ -610,8 +608,6 @@ class _GraphTensorArrayV2(object):
           input_handle=self._flow,
           element_dtype=self._dtype,
           element_shape=element_shape)
-      if self._element_shape and self._element_shape[0].dims is not None:
-        value.set_shape([None] + self._element_shape[0].dims)
       return value
 
   def gather(self, indices, name=None):
@@ -626,8 +622,6 @@ class _GraphTensorArrayV2(object):
         element_dtype=self._dtype,
         element_shape=element_shape,
         name=name)
-    if self._element_shape and self._element_shape[0].dims is not None:
-      value.set_shape([None] + self._element_shape[0].dims)
     return value
 
   def concat(self, name=None):
@@ -877,7 +871,12 @@ class _EagerTensorArray(object):
       # TODO(b/129870929): Fix after all callers provide proper init dtype.
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
-    _check_dtypes(value, self._dtype)
+
+    if self._dtype != value.dtype:
+      raise errors_impl.InvalidArgumentError(
+          None, None,
+          "TensorArray dtype is %s but Op is trying to write dtype %s" %
+          (self._dtype.name, value.dtype.name))
 
     if self._infer_shape:
       if not self._element_shape.is_compatible_with(value.shape):
@@ -886,11 +885,6 @@ class _EagerTensorArray(object):
       else:
         self._element_shape = self._element_shape.merge_with(value.shape)
 
-    if self._dtype != value.dtype:
-      raise errors_impl.InvalidArgumentError(
-          None, None,
-          "TensorArray dtype is %s but Op is trying to write dtype %s" %
-          (self._dtype.name, value.dtype.name))
     self._tensor_array[index] = value
 
   def write(self, index, value, name=None):
@@ -1179,7 +1173,6 @@ class TensorArray(object):
     """
     return self._implementation.read(index, name=name)
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray.
 

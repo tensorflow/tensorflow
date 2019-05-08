@@ -98,8 +98,10 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -203,9 +205,9 @@ tf_cuda_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:recent_request_ids",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
 
@@ -431,6 +433,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 

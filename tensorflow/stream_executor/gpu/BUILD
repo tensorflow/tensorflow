@@ -98,6 +98,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -126,6 +127,7 @@ cc_library(
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

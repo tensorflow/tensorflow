@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -2045,7 +2047,7 @@ inline void DepthwiseConvImpl(
 }
 
 template <typename T, typename TS>
-struct DepthwiseConvWorkerTask : public gemmlowp::Task {
+struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   DepthwiseConvWorkerTask(const DepthwiseParams& params,
                           const RuntimeShape& input_shape, const T* input_data,
                           const RuntimeShape& filter_shape,
@@ -2106,7 +2108,7 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context = nullptr) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -2128,7 +2130,7 @@ inline void DepthwiseConv(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
+  const int max_threads = cpu_backend_context->max_num_threads();
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
@@ -2137,18 +2139,21 @@ inline void DepthwiseConv(
                       output_data, /*thread_start=*/0,
                       /*thread_end=*/output_rows, /*thread_dim=*/1);
   } else {
-    std::vector<gemmlowp::Task*> tasks(thread_count);
+    std::vector<DepthwiseConvWorkerTask<uint8, int32>> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(thread_count);
     int thread_start = 0;
     for (int i = 0; i < thread_count; ++i) {
       int thread_end =
           thread_start + (thread_dim_size - thread_start) / (thread_count - i);
-      tasks[i] = new DepthwiseConvWorkerTask<uint8, int32>(
-          params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, thread_start,
-          thread_end, thread_dim);
+      tasks.emplace_back(params, input_shape, input_data, filter_shape,
+                         filter_data, bias_shape, bias_data, output_shape,
+                         output_data, thread_start, thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
   }
 }
 

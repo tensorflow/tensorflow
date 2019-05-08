@@ -90,12 +90,15 @@ class ShapedBuffer {
   void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
     CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
     buffers_ = std::move(buffers);
+    buffers_.replace_shape_ptr(&on_device_shape_);
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the
   // ShapedBuffer.
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
   ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
+
+  StatusOr<ShapedBuffer> SubShapedBuffer(const ShapeIndex& index) const;
 
   // Set all device memory pointers in the object to null.
   void clear();

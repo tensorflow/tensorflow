@@ -225,7 +225,8 @@ class Iterator(trackable.Trackable):
 
     This method allows you to define a "feedable" iterator where you can choose
     between concrete iterators by feeding a value in a `tf.Session.run` call.
-    In that case, `string_handle` would be a `tf.placeholder`, and you would
+    In that case, `string_handle` would be a `tf.compat.v1.placeholder`, and you
+    would
     feed it with the value of `tf.data.Iterator.string_handle` in each step.
 
     For example, if you had two iterators that marked the current position in
@@ -239,7 +240,7 @@ class Iterator(trackable.Trackable):
     test_iterator = tf.data.Dataset(...).make_one_shot_iterator()
     test_iterator_handle = sess.run(test_iterator.string_handle())
 
-    handle = tf.placeholder(tf.string, shape=[])
+    handle = tf.compat.v1.placeholder(tf.string, shape=[])
     iterator = tf.data.Iterator.from_string_handle(
         handle, train_iterator.output_types)
 
@@ -251,8 +252,8 @@ class Iterator(trackable.Trackable):
     ```
 
     Args:
-      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
-        to a handle produced by the `Iterator.string_handle()` method.
+      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates to
+        a handle produced by the `Iterator.string_handle()` method.
       output_types: A nested structure of `tf.DType` objects corresponding to
         each component of an element of this dataset.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
@@ -387,10 +388,10 @@ class Iterator(trackable.Trackable):
 
     # Build a TensorFlow graph that does something with each element.
     loss = model_function(next_element)
-    optimizer = ...  # A `tf.train.Optimizer` object.
+    optimizer = ...  # A `tf.compat.v1.train.Optimizer` object.
     train_op = optimizer.minimize(loss)
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       try:
         while True:
           sess.run(train_op)
@@ -719,7 +720,7 @@ def get_next_as_optional(iterator):
   will have no value.
 
   Args:
-    iterator: A `tf.data.Iterator` object.
+    iterator: A `tf.compat.v1.data.Iterator` object.
 
   Returns:
     An `Optional` object representing the next value from the iterator (if it

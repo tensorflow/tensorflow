@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
+
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -39,9 +41,10 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  HloModuleConfig config;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, kRedzoneSize,
-                             kRedzonePattern);
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, kRedzonePattern);
 
   se::Stream stream(stream_exec);
   stream.Init();
@@ -51,10 +54,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   TF_EXPECT_OK(allocator.CheckRedzones(&stream));
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
-  se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize,
-                                   /*is_sub_buffer=*/true);
-  se::DeviceMemoryBase rhs_redzone(buf_addr + kAllocSize, kRedzoneSize,
-                                   /*is_sub_buffer=*/true);
+  se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
+  se::DeviceMemoryBase rhs_redzone(buf_addr + kAllocSize, kRedzoneSize);
 
   // Check that the redzones are in fact filled with kRedzonePattern.
   auto check_redzone = [&](se::DeviceMemoryBase redzone,
@@ -86,8 +87,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
                             absl::string_view name) {
     SCOPED_TRACE(absl::StrCat(name, ", offset=", offset));
     se::DeviceMemoryBase redzone_at_offset(
-        reinterpret_cast<char*>(redzone.opaque()) + offset, 1,
-        /*is_sub_buffer=*/true);
+        reinterpret_cast<char*>(redzone.opaque()) + offset, 1);
     char old_redzone_value = 0;
     {
       XLA_SCOPED_LOGGING_TIMER("Checking redzones");

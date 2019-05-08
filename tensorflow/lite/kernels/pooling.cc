@@ -81,24 +81,12 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto compute_out_size = [padding](int image_size, int filter_size,
-                                    int stride) -> int {
-    return padding == kTfLitePaddingSame
-               ? (image_size + stride - 1) / stride
-               : padding == kTfLitePaddingValid
-                     ? (image_size - filter_size + stride) / stride
-                     : 0;
-  };
+  int out_width, out_height;
 
-  int out_width =
-      compute_out_size(width, params->filter_width, params->stride_width);
-  int out_height =
-      compute_out_size(height, params->filter_height, params->stride_height);
-
-  data->padding.height = ComputePadding(params->stride_height, 1, height,
-                                        params->filter_height, out_height);
-  data->padding.width = ComputePadding(params->stride_width, 1, width,
-                                       params->filter_width, out_width);
+  data->padding = ComputePaddingHeightWidth(
+      params->stride_height, params->stride_width, 1, 1, height, width,
+      params->filter_height, params->filter_width, padding, &out_height,
+      &out_width);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (pool_type == kAverage || pool_type == kMax) {

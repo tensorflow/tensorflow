@@ -1919,6 +1919,7 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
   new_producer->AddUser(user);
+  // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
@@ -2754,7 +2755,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
   // Calculating the instruction count within a module can be expensive on large
   // models so only do it if the visit state is empty. This will help when the
   // same visitor is reused across many computations of a single module.
-  if (visitor->VisitStateSize() == 0) {
+  if (visitor->VisitStateCapacity() == 0) {
     visitor->ReserveVisitStates(root->GetModule()->instruction_count());
   }
 

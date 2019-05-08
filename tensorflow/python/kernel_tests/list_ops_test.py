@@ -25,6 +25,7 @@ import numpy as np  # pylint: disable=unused-import
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -287,6 +288,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         element_dtype=dtypes.float32, element_shape=None, num_elements=3)
     t = gen_list_ops.tensor_list_stack(
         l, element_dtype=dtypes.float32, element_shape=[])
+    if context.executing_eagerly():
+      self.assertEqual(t.shape.as_list(), [3])
+    else:
+      self.assertEqual(t.shape.as_list(), [None])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
@@ -453,6 +458,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         element_dtype=dtypes.float32, element_shape=None, num_elements=3)
     t = gen_list_ops.tensor_list_gather(
         l, [0, 1, 2], element_dtype=dtypes.float32, element_shape=[])
+    self.assertEqual(t.shape.as_list(), [3])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
   def testScatterOutputListSize(self):
@@ -607,6 +613,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         l, 0, element_shape=[], element_dtype=dtypes.float32)
     e1 = gen_list_ops.tensor_list_get_item(
         l, 1, element_shape=[2, 3], element_dtype=dtypes.float32)
+    self.assertEqual(e0.shape.as_list(), [])
+    self.assertEqual(e1.shape.as_list(), [2, 3])
     self.assertEqual(self.evaluate(e0), 0.)
     self.assertAllEqual(self.evaluate(e1), np.zeros((2, 3)))
 
@@ -628,9 +636,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[None, 2], num_elements=3)
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        r"Incompatible shapes during merge: \[1,3\] vs. \[\?,2\]"):
+
+    # In eager mode the shape mismatch is caught in the TensorListGetItem
+    # kernel which raises an InvalidArgumentError.
+    # In graph mode the shape mismatch is caught in the C++ shape inference
+    # which raises a ValueError.
+    if context.executing_eagerly():
+      error_type = errors.InvalidArgumentError
+    else:
+      error_type = ValueError
+    with self.assertRaisesRegexp(error_type, r"shapes"):
       e0 = gen_list_ops.tensor_list_get_item(
           l, 0, element_dtype=dtypes.float32, element_shape=[1, 3])
       self.evaluate(e0)
@@ -825,10 +840,6 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(element_shape), -1)
 
   def testSerializeListWithMaxNumElements(self):
-    if test_util.is_gpu_available():
-      # TODO(b/119151861): Enable on GPU.
-      return
-
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):
@@ -1546,6 +1557,19 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     grad = gradients_impl.gradients(t1, t)[0]
     self.assertAllEqual(self.evaluate(grad), [1., 1., 1.])
+
+  def testHandleDataAcrossFunctionCall(self):
+
+    @def_function.function
+    def func():
+      t = constant_op.constant([1., 2., 3.])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      return l
+
+    tensor_list = func()
+    element = list_ops.tensor_list_get_item(
+        tensor_list, 0, element_dtype=dtypes.float32)
+    self.assertAllEqual(element.shape.as_list(), [])
 
 
 if __name__ == "__main__":

@@ -145,23 +145,6 @@ py_test(
 )
 
 py_test(
-    name = "enumerate_dataset_test",
-    size = "small",
-    srcs = ["enumerate_dataset_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/experimental/ops:enumerate_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_test(
     name = "get_single_element_test",
     size = "small",
     srcs = ["get_single_element_test.py"],
@@ -234,21 +217,6 @@ py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:error_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "indexed_dataset_ops_test",
-    srcs = ["indexed_dataset_ops_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/data/experimental/ops:indexed_dataset_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -404,11 +372,7 @@ py_test(
     size = "medium",
     srcs = ["parallel_interleave_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-        "notap",
-    ],
+    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -495,6 +459,7 @@ py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -635,6 +600,24 @@ py_test(
 )
 
 py_test(
+    name = "snapshot_test",
+    srcs = ["snapshot_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":reader_dataset_ops_test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "stats_dataset_ops_test",
     size = "large",
     srcs = ["stats_dataset_ops_test.py"],
@@ -731,6 +714,7 @@ py_test(
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

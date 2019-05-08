@@ -178,7 +178,8 @@ void TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
     const TransferMetadata* transfer_metadata) {
-  if (!ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape)) {
+  if (!Shape::Equal().MinorToMajorOnlyInLayout()(HostShapeToDeviceShape(shape),
+                                                 shape)) {
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
@@ -285,7 +286,7 @@ Status TransferManager::TransferBufferFromDevice(
     void* destination) {
   if (source.size() < size) {
     return FailedPrecondition(
-        "Source allocation on device not large enough for data tranfer: "
+        "Source allocation on device not large enough for data transfer: "
         "%d < %d",
         source.size(), size);
   }
@@ -298,7 +299,7 @@ Status TransferManager::TransferBufferToDevice(
     se::DeviceMemoryBase* destination) {
   if (destination->size() < size) {
     return FailedPrecondition(
-        "Destination allocation on device not large enough for data tranfer: "
+        "Destination allocation on device not large enough for data transfer: "
         "%d < %d",
         destination->size(), size);
   }
@@ -334,6 +335,11 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
   }
 
   return std::move(shaped_buffer);
+}
+
+StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
+    const Shape& host_shape) const {
+  return LayoutUtil::GetWithDefaultLayout(host_shape);
 }
 
 }  // namespace xla

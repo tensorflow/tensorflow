@@ -48,9 +48,11 @@ struct NcclManager::NcclStream {
  public:
   NcclStream() {}
   ~NcclStream() {
+    VLOG(2) << "Entered ~NcclStream " << this;
     mutex_lock l(mu);
     shutdown_requested = true;
     cv.notify_all();
+    VLOG(2) << "Done ~NcclStream " << this;
   }
 
   se::StreamExecutor* executor = nullptr;
@@ -74,8 +76,8 @@ struct NcclManager::CommunicatorMember {
   ~CommunicatorMember() {
     if (nccl_comm != nullptr) ncclCommDestroy(nccl_comm);
   }
-  ncclComm_t nccl_comm;
 
+  ncclComm_t nccl_comm = nullptr;
   // Owned by NcclManager::device_to_comm_streams_.
   NcclStream* nccl_stream = nullptr;
 };
@@ -179,8 +181,8 @@ struct NcclManager::Collective {
   Status status;
 };
 
-NcclManager::NcclManager() {}
-NcclManager::~NcclManager() {}
+NcclManager::NcclManager() { VLOG(2) << "New NcclManager " << this; }
+NcclManager::~NcclManager() { VLOG(2) << "~NcclManager " << this; }
 NcclManager* NcclManager::instance() {
   static NcclManager* instance = new NcclManager();
   return instance;
@@ -203,11 +205,12 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
 
   mutex_lock l(mu_);
 
-  if (collective->single_node) {
-    // For single-node collectives, we identify a communicator uniquely by the
-    // set of devices participating in the collective.  For example, if a
-    // collective is for GPUs 0, 1, and 2 then this will scan to find the
-    // communicator for GPUs 0, 1, and 2.
+  if (collective->communicator_key.empty()) {
+    // For single-node collectives, when the caller does not specify a
+    // `communicator_key`, we identify a communicator uniquely by the set of
+    // devices participating in the collective.  For example, if a collective is
+    // for GPUs 0, 1, and 2 then this will scan to find the communicator for
+    // GPUs 0, 1, and 2.
     //
     // Note that each executor identifies a context on one device, so this is
     // the same as getting the communicator connecting the devices in the
@@ -414,12 +417,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
     }
 
     // Check `collective` is correct and consistent.
-    if (collective->status.ok() && collective->single_node &&
-        !collective->communicator_key.empty()) {
-      collective->status =
-          errors::Internal("Collective ", reduction_op,
-                           " is single node but has communicator_key of size ",
-                           collective->communicator_key.size());
+    if (collective->status.ok() && !collective->single_node &&
+        collective->communicator_key.empty()) {
+      collective->status = errors::Internal(
+          "Collective ", reduction_op, " is multi node with num_local_devices=",
+          collective->num_local_devices,
+          " and num_global_devices=", collective->num_global_devices,
+          " but has an empty communicator_key");
     }
     if (collective->status.ok() && collective->communicator_key.size() !=
                                        context.communicator_key.size()) {
@@ -548,6 +552,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     // Find collective to run.
     std::pair<Collective*, int> next_launch;
     {
+      VLOG(2) << "Locking mutex nccl_stream " << nccl_stream;
       mutex_lock l(nccl_stream->mu);
       while (nccl_stream->pending_launches_.empty()) {
         if (nccl_stream->shutdown_requested) {

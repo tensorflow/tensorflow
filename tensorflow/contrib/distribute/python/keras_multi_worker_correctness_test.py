@@ -54,21 +54,6 @@ def get_num_workers():
   return 1
 
 
-def batch_and_maybe_shard_dataset(dataset, global_batch_size):
-  """Shard the dataset if running in multi-node environment."""
-
-  cluster_resolver = TFConfigClusterResolver()
-  cluster_spec = cluster_resolver.cluster_spec().as_dict()
-  if cluster_spec:
-    task_type = cluster_resolver.task_type
-    task_id = cluster_resolver.task_id
-    num_workers = int(multi_worker_util.worker_count(cluster_spec, task_type))
-    id_in_cluster = int(
-        multi_worker_util.id_in_cluster(cluster_spec, task_type, task_id))
-    dataset = dataset.shard(num_workers, id_in_cluster)
-  return dataset.batch(global_batch_size)
-
-
 class Bias(keras.layers.Layer):
 
   def build(self, input_shape):
@@ -89,17 +74,20 @@ class SimpleBiasTest(
       # Make sure Session is cleared at the start of each run.
       keras.backend._SESSION.session = None
 
-      x = ops.convert_to_tensor([[0.], [1.], [2.], [0.], [1.], [2.]])
-      y = ops.convert_to_tensor([[0.5], [2.], [3.5], [0.5], [2.], [3.5]])
+      x = ops.convert_to_tensor([[0.], [1.], [2.], [0.], [1.], [2.], [0.],
+                                 [1.]])
+      y = ops.convert_to_tensor([[0.5], [2.], [3.5], [0.5], [2.], [3.5], [0.5],
+                                 [2.]])
       ds = dataset_ops.Dataset.from_tensor_slices((x, y))
-      ds = batch_and_maybe_shard_dataset(ds, global_batch_size=6)
+      ds = ds.batch(8)
       model = keras.Sequential([Bias(input_shape=(1,))])
       model.compile(
           keras.optimizer_v2.gradient_descent.SGD(0.1), 'mae', metrics=['mae'])
       history = model.fit(ds, epochs=5)
-      self.assertAllClose(history.history['loss'], [1., 0.9, 0.8, 0.7, 0.6])
+      self.assertAllClose(history.history['loss'],
+                          [0.9375, 0.8375, 0.7375, 0.6375, 0.5375])
       self.assertAllClose(history.history['mean_absolute_error'],
-                          [1., 0.9, 0.8, 0.7, 0.6])
+                          [0.9375, 0.8375, 0.7375, 0.6375, 0.5375])
 
       results = {'training': history.history}
       if results_without_ds:
@@ -161,9 +149,7 @@ def make_lstm_model(initial_weights=None):
 
 
 def make_embedding_model(initial_weights=None):
-  # TODO(b/130231718): Remove batch_size here.
-  inputs = keras.layers.Input(
-      batch_size=64 // get_num_workers(), shape=(1,), dtype='int32')
+  inputs = keras.layers.Input(shape=(1,), dtype='int32')
   embeddings = keras.layers.Embedding(100, 5)(inputs)
   outputs = keras.layers.Dense(1, activation='softmax')(embeddings)
   model = keras.Model(inputs, outputs)
@@ -182,7 +168,7 @@ class ModelCorrectnessTest(
 
   def make_dataset(self, inputs, targets, batch_size=64):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = batch_and_maybe_shard_dataset(dataset, batch_size)
+    dataset = dataset.batch(batch_size)
     return dataset
 
   @combinations.generate(

@@ -30,13 +30,14 @@ def get_single_element(dataset):
   """Returns the single element in `dataset` as a nested structure of tensors.
 
   This function enables you to use a `tf.data.Dataset` in a stateless
-  "tensor-in tensor-out" expression, without creating a `tf.data.Iterator`.
+  "tensor-in tensor-out" expression, without creating a
+  `tf.compat.v1.data.Iterator`.
   This can be useful when your preprocessing transformations are expressed
   as a `Dataset`, and you want to use the transformation at serving time.
   For example:
 
   ```python
-  input_batch = tf.placeholder(tf.string, shape=[BATCH_SIZE])
+  input_batch = tf.compat.v1.placeholder(tf.string, shape=[BATCH_SIZE])
 
   def preprocessing_fn(input_str):
     # ...
@@ -46,7 +47,7 @@ def get_single_element(dataset):
              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
              .batch(BATCH_SIZE))
 
-  image_batch, label_batch = tf.contrib.data.get_single_element(dataset)
+  image_batch, label_batch = tf.data.experimental.get_single_element(dataset)
   ```
 
   Args:
@@ -70,7 +71,8 @@ def reduce_dataset(dataset, reducer):
 
   Args:
     dataset: A `tf.data.Dataset` object.
-    reducer: A `tf.contrib.data.Reducer` object representing the reduce logic.
+    reducer: A `tf.data.experimental.Reducer` object representing the reduce
+      logic.
 
   Returns:
     A nested structure of `tf.Tensor` objects, corresponding to the result

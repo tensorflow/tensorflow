@@ -30,6 +30,11 @@ cc_proto_library(
     deps = ["evaluation_stages_proto"],
 )
 
+java_proto_library(
+    name = "evaluation_stages_java_proto",
+    deps = ["evaluation_stages_proto"],
+)
+
 proto_library(
     name = "evaluation_config_proto",
     srcs = [
@@ -41,5 +46,10 @@ proto_library(
 
 cc_proto_library(
     name = "evaluation_config_cc_proto",
+    deps = ["evaluation_config_proto"],
+)
+
+java_proto_library(
+    name = "evaluation_config_java_proto",
     deps = ["evaluation_config_proto"],
 )

@@ -34,9 +34,10 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as colle
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -49,6 +50,23 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+
+# TODO(b/130375202): remove this class which is a temporary solution before we
+# get rid of configure method.
+class ParameterServerStrategy(distribute_lib.Strategy):
+  """Temporarily mock the original strategy to bypass cluster_spec check."""
+
+  def __init__(self, cluster_resolver=None):
+    """Initializes this strategy."""
+    # The `cluster_resolver` must be set so that
+    # `ParameterServerStrategyExtended` will keep num_gpus for `configure`
+    # method.
+    if cluster_resolver is None:
+      cluster_resolver = TFConfigClusterResolver()
+    extended = parameter_server_strategy.ParameterServerStrategyExtended(
+        self, cluster_resolver=cluster_resolver)
+    super(ParameterServerStrategy, self).__init__(extended)
 
 
 def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
@@ -278,14 +296,6 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
       cluster_spec=cluster_spec)
 
 
-def get_strategy_object(strategy_cls):
-  if strategy_cls == mirrored_strategy.MirroredStrategy:
-    return strategy_cls(mirrored_strategy.all_local_devices())
-  else:
-    # CollectiveAllReduceStrategy and ParameterServerStrategy.
-    return strategy_cls()
-
-
 class KerasMultiWorkerTestStandaloneClient(test.TestCase,
                                            parameterized.TestCase):
 
@@ -300,8 +310,7 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
-              mirrored_strategy.MirroredStrategy,
-              parameter_server_strategy.ParameterServerStrategy,
+              ParameterServerStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -314,7 +323,7 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
     # multi-worker training.
     # The logic should be much clearer once standalone client is merged into
     # core Keras as well.
-    strategy = get_strategy_object(strategy_cls)
+    strategy = strategy_cls()
 
     _run_standalone_client(self, strategy, self._cluster_spec)
 
@@ -326,7 +335,6 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
-              mirrored_strategy.MirroredStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -345,7 +353,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       """Simulates an Independent Worker inside of a thread."""
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
-        strategy = get_strategy_object(strategy_cls)
+        strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
         batch_size = 64
@@ -371,7 +379,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
         verification_callback=verification_callback)
 
     threads_to_join = []
-    strategy = get_strategy_object(strategy_cls)
+    strategy = strategy_cls()
     if strategy.extended.experimental_between_graph:
       for ts in threads.values():
         threads_to_join.extend(ts)
@@ -383,7 +391,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
-          strategy_cls=[parameter_server_strategy.ParameterServerStrategy],
+          strategy_cls=[ParameterServerStrategy],
           required_gpus=[0, 1]))
   def testSimpleModelIndependentWorkerAsync(self, strategy_cls):
     num_workers = 2

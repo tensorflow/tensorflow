@@ -210,6 +210,18 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertTrue(test_model.uses_custom_build, 'Model should use user '
                                                   'defined build when called.')
 
+  def test_attribute_conflict_error(self):
+
+    class ModelWithProperty(keras.Model):
+
+      @property
+      def read_only(self):
+        return 1.
+
+    m = ModelWithProperty()
+    with self.assertRaisesRegexp(AttributeError, 'read_only'):
+      m.read_only = 2.
+
   def test_custom_build_with_fit(self):
 
     class DummyModel(keras.Model):
@@ -512,7 +524,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
 
     m.dense.trainable = False
     self.assertEqual(
-        [m.var, m.dense.kernel, m.dense.bias, m.not_trainable_var],
+        [m.dense.kernel, m.dense.bias, m.var, m.not_trainable_var],
         m.variables)
     self.assertEqual([m.var], m.trainable_variables)
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],

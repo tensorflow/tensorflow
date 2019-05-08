@@ -78,13 +78,15 @@ def partition_or_replicate_on_host(tensor, dims):
                 x, num_or_size_splits=num_or_size_splits, axis=axis))
       output = new_output
     else:
-      output = [array_ops.split(x, dim, axis=axis) for x in output]
+      output = [array_ops.split(x, int(dim), axis=axis) for x in output]
     output = nest.flatten(output)
   return output
 
 
 def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
   """Tags appropriate XLA sharding attribute to the dequeued tensor.
+
+  The sharding attribute of the dequeued tensor will be a tuple.
 
   Args:
     tensor: The dequeued tensor on TPU.
@@ -94,12 +96,15 @@ def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
     The same tensor with the xla_sharding attribute.
   """
   if dims is None:
-    return xla_sharding.replicate(tensor)
+    return xla_sharding.replicate(tensor, assign_tuple_sharding=True)
   elif np.prod(dims) == 1:
-    return xla_sharding.assign_device(tensor, 0)
+    return xla_sharding.assign_device(tensor, 0, assign_tuple_sharding=True)
   else:
     tile_assignment = np.arange(np.prod(dims)).reshape(dims)
-    return xla_sharding.tile(tensor=tensor, tile_assignment=tile_assignment)
+    return xla_sharding.tile(
+        tensor=tensor,
+        tile_assignment=tile_assignment,
+        assign_tuple_sharding=True)
 
 
 def tag_sharding_attribute_for_dequeued_tensors(dequeues, dims):

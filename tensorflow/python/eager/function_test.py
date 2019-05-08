@@ -40,6 +40,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import sparse_tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -64,6 +66,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -100,11 +105,21 @@ class DefunnedMiniModel(MiniModel):
     return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
+def _example_indexed_slices_with_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]),
+      constant_op.constant([2]))
+
+
+def _example_indexed_slices_without_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]))
+
+
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
@@ -222,7 +237,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # matmul to fail, due to incompatible dims.  What would have been a graph
     # build time error (layer would complain about the inner dim being 4).
     with self.captureWritesToStream(sys.stderr) as printed:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r'Matrix size-incompatible'):
         fn(array_ops.ones((3, 4)))
 
   def testNestedShapeFunctionRelaxation(self):
@@ -275,8 +291,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -287,8 +302,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedInputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -302,8 +316,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -332,8 +345,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().shape, ())
 
   def testBasicGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -347,8 +359,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -367,8 +378,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
 
   def testNestedInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(mats):
@@ -462,8 +472,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(), x)
 
   def testNestedInputsGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -480,8 +489,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -912,66 +920,79 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  def testReturningIndexedSlicesWithDefun(self):
+  @parameterized.parameters([
+      (_example_indexed_slices_with_dense_shape,),
+      (_example_indexed_slices_without_dense_shape,),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+  ])  # pyformat: disable
+  def testReturnCompositeTensorWithDefun(self,
+                                         factory_fn,
+                                         factory_kwargs={},
+                                         input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    def validate(indexed_slice):
-      @def_function.function
-      def f():
-        return indexed_slice
+    @def_function.function(input_signature=input_signature)
+    def f():
+      return input_ct
 
-      output = f()
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(indexed_slice.values, output.values)
-      self.assertAllEqual(indexed_slice.indices, output.indices)
-      self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
+    output_ct = f()
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-      self.assertEqual(
-          f.get_concrete_function().output_shapes,
-          indexed_slice.values.shape)
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=constant_op.constant([2]))
-    validate(arg)
+  @parameterized.parameters([
+      (_example_indexed_slices_with_dense_shape,),
+      (_example_indexed_slices_without_dense_shape,),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
+       [ragged_tensor_spec.ragged_tensor_spec([None, None], dtypes.int32)]),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
+       [ragged_tensor_spec.ragged_tensor_spec([None, None, None],
+                                              dtypes.int32)]),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
+       [sparse_tensor_spec.sparse_tensor_spec([None], dtypes.int32)]),
+  ])  # pyformat: disable
+  def testCompositeAsArgumentTensorWithDefun(self,
+                                             factory_fn,
+                                             factory_kwargs={},
+                                             input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=None)
-    validate(arg)
+    @def_function.function(input_signature=input_signature)
+    def f(x):
+      return x
 
-  def testIndexedSliceAsArgumentWithDefun(self):
+    output_ct = f(input_ct)
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-    @def_function.function
-    def f(indexed_slice):
-      return indexed_slice
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    def validate(arg):
-      output = f(arg)
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(arg.values, output.values)
-      self.assertAllEqual(arg.indices, output.indices)
-      self.assertAllEqual(arg.dense_shape, output.dense_shape)
-
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=constant_op.constant([1]))
-    validate(indexed_slice)
-
-    # Test that `f` works even when `dense_shape` is None.
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=None)
-    validate(indexed_slice)
 
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):
     x = constant_op.constant([1.]).gpu()
-    # TODO(b/121134877): Remove the autograph override.
-    f = def_function.function(math_ops.add, autograph=False)
+    f = def_function.function(math_ops.add)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
@@ -1035,8 +1056,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionHandlesInputsOnDifferentDevices(self):
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).cpu()
@@ -1045,8 +1065,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
@@ -1105,9 +1124,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
-    # TODO(b/121134877): Remove the autograph override.
-    clip_by_global_norm = def_function.function(
-        clip_ops.clip_by_global_norm, autograph=False)
+    clip_by_global_norm = def_function.function(clip_ops.clip_by_global_norm)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
@@ -1695,7 +1712,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
   def testInputSignatureWithPartialFunction(self):
-    self.skipTest('b/124441704')
     def full_function(a, b, c=3.0):
       return a, b, c
 
@@ -1759,21 +1775,56 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
-  def testInputSignatureWithKeywordArgsFails(self):
-
-    def foo(a, **kwargs):
-      del a
+  def testInputSignatureWithKeywordArgs(self):
+    def foo(a, b, **kwargs):
       del kwargs
+      return a, b
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Cannot define a TensorFlow function from a Python '
-        'function with keyword arguments when input_signature.*'):
-      function.defun(
-          foo,
-          input_signature=[
-              tensor_spec.TensorSpec([], dtypes.float32),
-              tensor_spec.TensorSpec([], dtypes.int64)
-          ])
+    x = function.defun(
+        foo,
+        input_signature=[
+            tensor_spec.TensorSpec([], dtypes.float32),
+            tensor_spec.TensorSpec([], dtypes.int32)
+        ]).get_concrete_function()
+    result = x(constant_op.constant(5.0), constant_op.constant(5))
+    self.assertAllEqual(result, [5.0, 5])
+
+  def testInputSignatureWithCompositeTensors(self):
+    def f(rt):
+      self.assertEqual(rt.values.shape.as_list(), [None])
+      self.assertEqual(rt.row_splits.shape.as_list(), [4])
+      return rt
+
+    signature = [ragged_tensor_spec.ragged_tensor_spec(
+        shape=[3, None], dtype=dtypes.int32)]
+    defined = function.defun(f, input_signature=signature)
+    rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
+    out1 = defined(rt1)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out1.values, rt1.values)
+    self.assertAllEqual(out1.row_splits, rt1.row_splits)
+
+    # Changing the row lengths shouldn't create a new function.
+    rt2 = ragged_factory_ops.constant([[1, 2], [3, 4], [5]])
+    out2 = defined(rt2)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out2.values, rt2.values)
+    self.assertAllEqual(out2.row_splits, rt2.row_splits)
+
+    # Different number of rows
+    rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
+    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+      defined(rt3)
+
+    # Different dtype
+    rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
+    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+      defined(rt4)
+
+    # Different rank
+    rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
+    with self.assertRaisesRegexp(ValueError, 'do not match'):
+      defined(rt5)
 
   def testTensorKeywordArguments(self):
 
@@ -2564,6 +2615,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
 
+  def testLimitedRetracingWithCompositeTensors(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(x):
+      trace_count[0] += 1
+      return x
+
+    for i in range(10):
+      f(ragged_factory_ops.constant([[1, 2], [i]]))
+      f(ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]]))
+      f(ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]]))
+      self.assertEqual(trace_count[0], 3)
+
   def test_concrete_function_shape_mismatch(self):
 
     @def_function.function
@@ -2921,6 +2986,32 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
         layer_variables = layer.trainable_variables
         gradients = tape.gradient(loss, layer_variables)
         optimizer.apply_gradients(zip(gradients, layer_variables))
+
+    train()
+
+  def testEarlyStoppingTrainingLoopInFunction(self):
+    layer = core.Dense(2)
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
+        .repeat(10)
+        .batch(32))
+    optimizer = adam.Adam()
+
+    @def_function.function
+    def train():
+      for x, y in dataset:
+        with backprop.GradientTape() as tape:
+          out = layer(x)
+          loss = math_ops.reduce_mean(
+              nn_ops.sparse_softmax_cross_entropy_with_logits(
+                  logits=out, labels=y))
+        layer_variables = layer.trainable_variables
+        gradients = tape.gradient(loss, layer_variables)
+        optimizer.apply_gradients(zip(gradients, layer_variables))
+        if optimizer.iterations > 3:
+          break
 
     train()
 

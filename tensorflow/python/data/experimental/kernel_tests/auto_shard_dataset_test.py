@@ -141,6 +141,17 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  def testDirectFilenameTFRecordReaderPipeline(self):
+    dataset = core_readers.TFRecordDataset(self.test_filenames)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, expected)
+
   @parameterized.parameters(True, False)
   def testValidPipelineWithRangeDataset(self, shuffle):
     dataset = dataset_ops.Dataset.range(self._num_files)
@@ -237,6 +248,18 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
 
+  def testShardOutOfRange(self):
+    dataset = dataset_ops.Dataset.range(5)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = distribute._AutoShardDataset(dataset, 10, 0)
+      self.evaluate(self.getNext(dataset)())
+
+  def testShardOutOfRangeEmptyDataset(self):
+    dataset = dataset_ops.Dataset.range(0)
+    with self.assertRaises(errors.OutOfRangeError):
+      dataset = distribute._AutoShardDataset(dataset, 10, 0)
+      self.evaluate(self.getNext(dataset)())
+
   def testNoReaderPipelines(self):
     dataset = dataset_ops.Dataset.range(1024)
     dataset = distribute._AutoShardDataset(dataset, 2, 0)
@@ -264,6 +287,29 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = distribute._AutoShardDataset(dataset, 2, 2)
       self.evaluate(self.getNext(dataset)())
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class AutoShardTextLineDatasetTest(
+    reader_dataset_ops_test_base.TextLineDatasetTestBase,
+    parameterized.TestCase):
+
+  def setUp(self):
+    super(AutoShardTextLineDatasetTest, self).setUp()
+    self._num_files = 10
+    self._num_records = 10
+    self.test_filenames = self._createFiles(self._num_files, self._num_records)
+
+  def testDirectFilenameTextLineReaderPipeline(self):
+    dataset = core_readers.TextLineDataset(self.test_filenames)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"%d: %d" % (f, r)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, expected)
 
 
 if __name__ == "__main__":

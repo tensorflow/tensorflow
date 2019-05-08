@@ -61,9 +61,6 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
-using tensorflow::Env;
-using tensorflow::WriteStringToFile;
-using tensorflow::io::JoinPath;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -120,7 +117,7 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE_TYPE) ||
       ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }

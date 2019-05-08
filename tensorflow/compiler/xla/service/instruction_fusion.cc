@@ -250,67 +250,63 @@ InstructionFusion::ComputeGloballyUnfusible(
   HloInstructionSet do_not_duplicate;
   absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>
       can_fuse_on_all_paths_result_cache;
-  for (HloInstruction* consumer : post_order) {
-    for (HloInstruction* producer : consumer->operands()) {
-      if (do_not_duplicate.count(producer) > 0) {
-        continue;
-      }
-
-      // If the producer is effectively not more than unary, duplicating it
-      // will not increase the number of relevant inputs read, as the fusion
-      // node will only need to read at most 1 relevant input (the input of
-      // the producer). In that case, we do not forbid fusion of the operation
-      // here.
-      if (EffectivelyAtMostUnary(producer)) {
-        continue;
-      }
-
-      // If the total size of the inputs is less than or equal to the total size
-      // of the outputs for the producer then duplicating it won't increase the
-      // memory traffic. In that case, we do not forbid fusion of the operation
-      // here.
-      auto total_size = [](const Shape& shape) {
-        int64 size = 0;
-        ShapeUtil::ForEachSubshape(
-            shape,
-            [&size](const Shape& subshape, const ShapeIndex& shape_index) {
-              if (subshape.IsArray()) {
-                size += ShapeUtil::ElementsIn(subshape);
-              }
-            });
-        return size;
-      };
-      int64 operands_size = 0;
-      for (const HloInstruction* op : producer->operands()) {
-        operands_size += total_size(op->shape());
-      }
-      if (operands_size <= total_size(producer->shape())) {
-        continue;
-      }
-
-      // Otherwise we will forbid fusing the op unless we can fuse it into
-      // all of its consumers on all paths.
-      //
-      // That means, that for:
-      // A --> B (fusible)
-      //   \-> C (non-fusible)
-      // A will be not allowed to be fused into B, as it cannot be fused into C.
-      //
-      // Similarly, for:
-      // A -------------> B
-      //   \-> C -> D -/
-      // If:
-      // - A is fusible into B and C, and D is fusible into B
-      // - C is *not* fusible into D
-      // A will be not allowed to be fused into B, as it cannot be fused via
-      // all paths.
-      if (producer->IsFusible() &&
-          CanFuseOnAllPaths(producer, consumer, do_not_duplicate,
-                            &can_fuse_on_all_paths_result_cache)) {
-        continue;
-      }
-      do_not_duplicate.insert(producer);
+  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+    HloInstruction* producer = *it;
+    // If the producer is effectively not more than unary, duplicating it
+    // will not increase the number of relevant inputs read, as the fusion
+    // node will only need to read at most 1 relevant input (the input of
+    // the producer). In that case, we do not forbid fusion of the operation
+    // here.
+    if (EffectivelyAtMostUnary(producer)) {
+      continue;
     }
+
+    // If the total size of the inputs is less than or equal to the total size
+    // of the outputs for the producer then duplicating it won't increase the
+    // memory traffic. In that case, we do not forbid fusion of the operation
+    // here.
+    auto total_size = [](const Shape& shape) {
+      int64 size = 0;
+      ShapeUtil::ForEachSubshape(
+          shape, [&size](const Shape& subshape, const ShapeIndex& shape_index) {
+            if (subshape.IsArray()) {
+              size += ShapeUtil::ElementsIn(subshape);
+            }
+          });
+      return size;
+    };
+    int64 operands_size = 0;
+    for (const HloInstruction* op : producer->operands()) {
+      operands_size += total_size(op->shape());
+    }
+    if (operands_size <= total_size(producer->shape())) {
+      continue;
+    }
+
+    // Otherwise we will forbid fusing the op unless we can fuse it into
+    // all of its consumers on all paths.
+    //
+    // That means, that for:
+    // A --> B (fusible)
+    //   \-> C (non-fusible)
+    // A will be not allowed to be fused into B, as it cannot be fused into C.
+    //
+    // Similarly, for:
+    // A -------------> B
+    //   \-> C -> D -/
+    // If:
+    // - A is fusible into B and C, and D is fusible into B
+    // - C is *not* fusible into D
+    // A will be not allowed to be fused into B, as it cannot be fused via
+    // all paths.
+    if (producer->IsFusible() &&
+        absl::c_all_of(producer->users(), [&](HloInstruction* consumer) {
+          return CanFuseOnAllPaths(producer, consumer, do_not_duplicate,
+                                   &can_fuse_on_all_paths_result_cache);
+        })) {
+      continue;
+    }
+    do_not_duplicate.insert(producer);
   }
 
   return do_not_duplicate;
@@ -409,13 +405,11 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       }
       sorted_operand_numbers.push_back(i);
     }
-    absl::c_sort(
-        sorted_operand_numbers, [&](int64 i, int64 j) {
-          // Instructions with higher priority in the queue come first.
-          return (
-              FindOrDie(post_order_index_, instruction->mutable_operand(i)) >
+    absl::c_sort(sorted_operand_numbers, [&](int64 i, int64 j) {
+      // Instructions with higher priority in the queue come first.
+      return (FindOrDie(post_order_index_, instruction->mutable_operand(i)) >
               FindOrDie(post_order_index_, instruction->mutable_operand(j)));
-        });
+    });
     return std::make_pair(instruction, sorted_operand_numbers);
   }
 

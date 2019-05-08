@@ -16,7 +16,6 @@ cc_library(
     name = "platform",
     textual_hdrs = [
         "logging.h",
-        "mutex.h",
         "platform.h",
         "port.h",
         "thread_annotations.h",

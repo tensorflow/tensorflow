@@ -865,7 +865,7 @@ class PlaceholderTest(test.TestCase):
     # Load graph generated from earlier version of TF where
     # placeholder shape was not set.
     #
-    # a = tf.placeholder(tf.float32)
+    # a = tf.compat.v1.placeholder(tf.float32)
     # b = a + 1.0
     #
     # Older graph's default shape is 'shape {}', not 'shape {

@@ -50,6 +50,7 @@ REGISTER_OP("PrintV2")
     .Input("input: string")
     .SetIsStateful()
     .Attr("output_stream: string = 'stderr'")
+    .Attr("end: string = '\n'")
     .SetShapeFn([](InferenceContext* c) {
       // Make sure that the input is a scalar.
       if (c->Rank(c->input(0)) != 0) {

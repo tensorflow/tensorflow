@@ -159,15 +159,12 @@ cc_library(
         "stderr_reporter.cc",
     ] + select({
         "//tensorflow:android": [
-            "nnapi_delegate.cc",
             "mmap_allocation.cc",
         ],
         "//tensorflow:windows": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation.cc",
         ],
     }),
@@ -181,7 +178,6 @@ cc_library(
         "interpreter.h",
         "model.h",
         "mutable_op_resolver.h",
-        "nnapi_delegate.h",
         "op_resolver.h",
         "optional_debug_tools.h",
         "stderr_reporter.h",
@@ -198,6 +194,7 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",

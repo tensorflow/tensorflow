@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -122,6 +121,8 @@ def boolean_mask(data, mask, keepdims=False, name=None):
     data = ragged_tensor.convert_to_tensor_or_ragged_tensor(data, name='data')
     mask = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         mask, dtypes.bool, name='mask')
+    row_splits_dtype, (data, mask) = ragged_tensor.match_row_splits_dtypes(
+        data, mask, return_dtype=True)
 
     # Get static rank of mask.
     if mask.shape.ndims is None:
@@ -132,8 +133,9 @@ def boolean_mask(data, mask, keepdims=False, name=None):
     # If mask is ragged, then recurse with a non-ragged mask.
     if ragged_tensor.is_ragged(mask):
       if not ragged_tensor.is_ragged(data):
-        data = ragged_conversion_ops.from_tensor(
-            data, ragged_rank=mask.ragged_rank)
+        data = ragged_tensor.RaggedTensor.from_tensor(
+            data, ragged_rank=mask.ragged_rank,
+            row_splits_dtype=mask.row_splits.dtype)
       # Check that mask.nested_row_splits is a prefix of
       # data.nested_row_splits.
       splits_list = [
@@ -152,7 +154,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
             # Count the number of True mask values in each row to find the
             # lengths of the filtered rows; then convert to splits.
             int_mask = ragged_functional_ops.map_flat_values(
-                math_ops.cast, mask, dtype=dtypes.int64)
+                math_ops.cast, mask, dtype=row_splits_dtype)
             masked_row_lengths = ragged_math_ops.reduce_sum(int_mask, axis=1)
             splits.append(ragged_util.lengths_to_splits(masked_row_lengths))
           mask = mask.values
@@ -164,7 +166,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
         # Add the ragged `splits` back to the result.
         if keepdims:
           masked_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
-              masked_values, splits)
+              masked_values, splits, validate=False)
 
         return masked_values
 
@@ -187,13 +189,15 @@ def boolean_mask(data, mask, keepdims=False, name=None):
       masked_values = boolean_mask(data.values, segment_mask, keepdims=False)
 
       return ragged_tensor.RaggedTensor.from_row_splits(masked_values,
-                                                        masked_splits)
+                                                        masked_splits,
+                                                        validate=False)
 
     # If mask is non-ragged and has rank>1, then convert it to be ragged,
     # with a ragged rank matching data.
     if ragged_tensor.is_ragged(data):
-      mask = ragged_conversion_ops.from_tensor(
-          mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1))
+      mask = ragged_tensor.RaggedTensor.from_tensor(
+          mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
+          row_splits_dtype=data.row_splits.dtype)
       return boolean_mask(data, mask, keepdims)
 
     # Otherwise, data and mask are both `Tensor`s.
@@ -206,20 +210,21 @@ def boolean_mask(data, mask, keepdims=False, name=None):
         # number of values it contains.  Then flatten that to get a list of
         # cell lengths, and convert it to splits.  Finally, combine the splits
         # and values to get the innermost ragged tensor.
-        masked_lengths = math_ops.count_nonzero(mask, axis=-1)
+        masked_lengths = math_ops.count_nonzero(mask, axis=-1,
+                                                dtype=row_splits_dtype)
         flattened_masked_lengths = array_ops.reshape(masked_lengths, [-1])
         masked_values = ragged_tensor.RaggedTensor.from_row_lengths(
-            masked_values, flattened_masked_lengths)
+            masked_values, flattened_masked_lengths, validate=False)
 
         # Wrap remaining ragged dimensions.
         if mask.shape.ndims > 2 and keepdims:
-          mask_shape = array_ops.shape(mask, out_type=dtypes.int64)
+          mask_shape = array_ops.shape(mask, out_type=row_splits_dtype)
           split_size = math_ops.cumprod(mask_shape) + 1
           for dim in range(mask.shape.ndims - 3, -1, -1):
             elt_size = mask_shape[dim + 1]
             masked_splits = math_ops.range(split_size[dim]) * elt_size
             masked_values = ragged_tensor.RaggedTensor.from_row_splits(
-                masked_values, masked_splits)
+                masked_values, masked_splits, validate=False)
 
       return masked_values
 
@@ -254,11 +259,11 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
   with ops.name_scope(name, 'RaggedTile', [input, multiples]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         input, name='input')
-    multiples = ragged_util.convert_to_int_tensor(
-        multiples, name='multiples', dtype=dtypes.int64)
-    multiples.shape.assert_has_rank(1)
     if not ragged_tensor.is_ragged(input):
       return array_ops.tile(input, multiples, name)
+    multiples = ragged_util.convert_to_int_tensor(
+        multiples, name='multiples', dtype=input.row_splits.dtype)
+    multiples.shape.assert_has_rank(1)
 
     # If the constant value of `multiples` is available, then we can use it
     # to skip tiling dimensions where `multiples=1`.
@@ -266,7 +271,8 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
 
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
         _tile_ragged_values(input, multiples, const_multiples),
-        _tile_ragged_splits(input, multiples, const_multiples))
+        _tile_ragged_splits(input, multiples, const_multiples),
+        validate=False)
 
 
 def _tile_ragged_values(rt_input, multiples, const_multiples=None):
@@ -343,7 +349,7 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
       dimensions where `multiples=1`.
 
   Returns:
-    A list of 1-D `int64` `Tensor`s (one for each ragged dimension in
+    A list of 1-D integer `Tensor`s (one for each ragged dimension in
     `rt_input`).
 
   #### Example:
@@ -481,7 +487,8 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
       values = expand_dims(input.values, axis - 1)
       splits = input.row_splits
 
-    return ragged_tensor.RaggedTensor.from_row_splits(values, splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(values, splits,
+                                                      validate=False)
 
 
 #===============================================================================
@@ -512,40 +519,6 @@ def size(input, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-
     return array_ops.size(input.flat_values, out_type=out_type, name=name)
   else:
     return array_ops.size(input, out_type=out_type, name=name)
-
-
-#===============================================================================
-# Internal Helper Functions
-#===============================================================================
-
-
-def _increase_ragged_rank_to(rt_input, ragged_rank):
-  """Adds ragged dimensions to `rt_input` so it has the desired ragged rank."""
-  if ragged_rank > 0:
-    if not ragged_tensor.is_ragged(rt_input):
-      rt_input = ragged_conversion_ops.from_tensor(rt_input)
-    if rt_input.ragged_rank < ragged_rank:
-      rt_input = rt_input.with_values(
-          _increase_ragged_rank_to(rt_input.values, ragged_rank - 1))
-  return rt_input
-
-
-def _concat_ragged_splits(splits_list):
-  """Concatenates a list of RaggedTensor splits to form a single splits."""
-  pieces = [splits_list[0]]
-  splits_offset = splits_list[0][-1]
-  for splits in splits_list[1:]:
-    pieces.append(splits[1:] + splits_offset)
-    splits_offset += splits[-1]
-  return array_ops.concat(pieces, axis=0)
-
-
-def _nrows(rt_input, out_type=dtypes.int64, name=None):
-  if isinstance(rt_input, ragged_tensor.RaggedTensor):
-    return rt_input.nrows(out_type=out_type, name=name)
-  else:
-    with ops.name_scope(name, 'RaggedNRows', [rt_input]):
-      return array_ops.shape(rt_input, out_type=out_type)[0]
 
 
 #===============================================================================

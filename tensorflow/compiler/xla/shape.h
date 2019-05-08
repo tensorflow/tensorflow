@@ -56,7 +56,7 @@ class Shape {
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
-  bool IsOpaque() const { return element_type() == OPAQUE; }
+  bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.

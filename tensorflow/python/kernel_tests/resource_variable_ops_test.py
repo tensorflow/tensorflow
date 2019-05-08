@@ -1067,9 +1067,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with copy_to_graph.as_default():  # Intentionally testing v1 behavior
       copied = resource_variable_ops.copy_to_graph_uninitialized(v)
       self.assertEqual(v.name, copied.name)
-      with self.session(copy_to_graph) as session:
-        with self.assertRaises(errors.InvalidArgumentError):
-          session.run(copied.initializer)
+      self.assertIsNone(copied.initializer)
 
   def create_variant_shape_and_type_data(self):
     variant_shape_and_type_data = (
@@ -1144,7 +1142,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
                     [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
 
-      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      # batch_dims=indices.shape.ndims - 1 (equivalent to
+      # tf.compat.v1.batch_gather)
       dict(  # 2D indices (1 batch dim)
           batch_dims=1,
           params=[[10, 11, 12, 13], [20, 21, 22, 23]],

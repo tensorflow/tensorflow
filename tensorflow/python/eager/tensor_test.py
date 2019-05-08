@@ -356,8 +356,9 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNumpyScalar(self):
-    x = ops.convert_to_tensor([np.asscalar(np.array(321, dtype=np.int)),
-                               np.asscalar(np.array(16, dtype=np.int))])
+    x = ops.convert_to_tensor(
+        [np.array(321, dtype=np.int).item(),
+         np.array(16, dtype=np.int).item()])
     self.assertAllEqual(x, [321, 16])
 
   def testEagerTensorError(self):
@@ -366,6 +367,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         "Cannot convert provided value to EagerTensor. "
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
+  def testEagerLargeConstant(self):
+    for t in [dtypes.uint64, dtypes.uint32, dtypes.int32, dtypes.int64]:
+      self.assertEqual(
+          constant_op.constant(t.max, dtype=t).numpy(), t.max)
+      self.assertEqual(
+          constant_op.constant(t.min, dtype=t).numpy(), t.min)
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
@@ -478,6 +486,11 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
+
+  def test_numpyIsView(self):
+    t = constant_op.constant([0.0])
+    t._numpy()[0] = 42.0
+    self.assertAllClose(t, constant_op.constant([42.0]))
 
 
 if __name__ == "__main__":

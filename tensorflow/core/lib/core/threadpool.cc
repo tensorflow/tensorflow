@@ -210,6 +210,7 @@ void ThreadPool::SetStealPartitions(
 }
 
 Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() {
+  DCHECK(impl_ != nullptr);
   return impl_.get();
 }
 }  // namespace thread

@@ -80,6 +80,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
 
+    verify_captures(true_graph, false_graph)
     return _build_cond(pred, true_graph, false_graph,
                        true_graph.external_captures,
                        false_graph.external_captures,
@@ -114,7 +115,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(skyewm): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -478,7 +479,7 @@ def _make_inputs_match(true_graph, false_graph, true_inputs, false_inputs):
 
 
 def _make_output_composite_tensors_match(true_graph, false_graph):
-  """Rewrites {true,false}_graph's outputs to use the same _TensorLike classes.
+  """Modifies true_graph and false_graph so they have the same output signature.
 
   Currently the only transformation implemented is turning a Tensor into an
   equivalent IndexedSlices if the other branch returns an IndexedSlices.
@@ -598,6 +599,21 @@ def _get_output_shapes(true_graph_outputs, false_graph_outputs):
   return output_shapes
 
 
+def verify_captures(true_graph, false_graph):
+  """Verify that a true_fn tensor is not accessed in false_fn and vice-versa."""
+  for t in false_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is true_graph:
+      raise ValueError("Tensor {} in true_fn is accessed from false_fn.".format(
+          t.name))
+  # Note: This is technically not possible right now because `false_graph`
+  # is built "after" `true_graph` but we add this check for completeness and to
+  # guard against potential future changes.
+  for t in true_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is false_graph:
+      raise ValueError("Tensor {} in false_fn is accessed from true_fn.".format(
+          t.name))
+
+
 class _CondGradFuncGraph(util.CondBranchFuncGraph):
   """FuncGraph for the gradient function of the branch of an If op.
 
@@ -640,7 +656,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         tensor in self._forward_graph.outputs):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
       if tensor not in self.captures:

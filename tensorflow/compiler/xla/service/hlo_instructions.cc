@@ -1580,6 +1580,9 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
+  if (IsCustomFusion()) {
+    return Status::OK();
+  }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
   for (int i = 0; i < operand_count(); ++i) {

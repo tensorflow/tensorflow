@@ -42,7 +42,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
   $$mean_square_t = rho * mean_square{t-1} + (1-rho) * gradient ** 2$$
   $$mom_t = momentum * mom_{t-1} + learning_rate * gradient / \sqrt{ /
       mean_square_t + \epsilon}$$
-  $$variable_t := variable_{t-1} - mom_t
+  $$variable_t := variable_{t-1} - mom_t$$
 
   This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
@@ -53,7 +53,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
   $$mean_square_t = rho * mean_square_{t-1} + (1-rho) * gradient ** 2$$
   $$mom_t = momentum * mom_{t-1} + learning_rate * gradient /
       sqrt(mean_square_t - mean_grad_t**2 + epsilon)$$
-  $$variable_t := variable_{t-1} - mom_t
+  $$variable_t := variable_{t-1} - mom_t$$
 
   References
     See ([pdf]

@@ -50,8 +50,7 @@ def set_cpu0(device_string):
     A device string.
   """
   parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
+  parsed_device = parsed_device.replace(device_type="CPU", device_index=0)
   return parsed_device.to_string()
 
 
@@ -82,7 +81,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if isinstance(var, ops.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
-    elif isinstance(var, resource_variable_ops.ResourceVariable):
+    elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
         def f():

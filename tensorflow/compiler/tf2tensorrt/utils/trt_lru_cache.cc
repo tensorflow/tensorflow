@@ -30,6 +30,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+Logger& TRTEngineCacheResource::GetLogger() {
+  static Logger* logger = new Logger();
+  return *logger;
+}
+
 TRTEngineCacheResource::TRTEngineCacheResource(OpKernelContext* ctx,
                                                size_t capacity)
     : cache_(capacity) {
