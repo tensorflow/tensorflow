@@ -60,7 +60,8 @@ class XrtBackend(xla_client.Backend):
     tf_device_type: the type of TensorFlow device to use for XRT (e.g. `"TPU"`).
   """
 
-  def __init__(self, tf_context, tf_device_type):
+  def __init__(self, tf_context, tf_device_type, platform="tpu"):
+    super(XrtBackend, self).__init__(platform)
     self.tf_device_type = tf_device_type
 
     self.context = _xla.xrt.XrtContext.Create(tf_context, tf_device_type)
