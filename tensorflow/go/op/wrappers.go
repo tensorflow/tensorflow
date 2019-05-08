@@ -40360,6 +40360,17 @@ func LearnedUnigramCandidateSampler(scope *Scope, true_classes tf.Output, num_tr
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// PrefetchDatasetAttr is an optional argument to PrefetchDataset.
+type PrefetchDatasetAttr func(optionalAttr)
+
+// PrefetchDatasetSlackPeriod sets the optional slack_period attribute to value.
+// If not specified, defaults to 0
+func PrefetchDatasetSlackPeriod(value int64) PrefetchDatasetAttr {
+	return func(m optionalAttr) {
+		m["slack_period"] = value
+	}
+}
+
 // Creates a dataset that asynchronously prefetches elements from `input_dataset`.
 //
 // Arguments:
@@ -40368,11 +40379,14 @@ func LearnedUnigramCandidateSampler(scope *Scope, true_classes tf.Output, num_tr
 // this dataset.
 //
 //
-func PrefetchDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func PrefetchDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...PrefetchDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "PrefetchDataset",
 		Input: []tf.Input{
