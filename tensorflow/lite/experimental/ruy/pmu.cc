@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
+
 #ifdef __linux__
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
@@ -54,7 +56,7 @@ class PerfEvent {
 
   void Stop() {
     ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
-    read(fd_, &count_, sizeof(count_));
+    RUY_CHECK_NE(read(fd_, &count_, sizeof(count_)), -1);
     close(fd_);
   }
 
