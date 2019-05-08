@@ -207,6 +207,7 @@ cc_library(
         "graph_utils.h",
     ],
     deps = [
+        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

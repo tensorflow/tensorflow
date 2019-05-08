@@ -280,10 +280,10 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
 
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
   TF_RETURN_IF_ERROR(
-      RecursivelyHandleOp(sink_node, num_workers, &flib, &graph));
+      RecursivelyHandleOp(*sink_node, num_workers, &flib, &graph));
   *output->mutable_library() = flib.ToProto();
   return Status::OK();
 }
