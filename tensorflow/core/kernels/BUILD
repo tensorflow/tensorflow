@@ -1734,6 +1734,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
