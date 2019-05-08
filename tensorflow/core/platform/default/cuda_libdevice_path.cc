@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #if !defined(PLATFORM_GOOGLE)
-#include "third_party/gpus/cuda/cuda_config.h"
+#include "cuda/cuda_config.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 

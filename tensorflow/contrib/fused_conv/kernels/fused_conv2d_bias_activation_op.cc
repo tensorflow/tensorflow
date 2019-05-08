@@ -42,7 +42,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "google/protobuf/duration.pb.h"
 #include "absl/time/time.h"
-#include "third_party/gpus/cudnn/cudnn.h"
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/stream_executor.h"

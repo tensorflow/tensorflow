@@ -50,8 +50,8 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 #ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "cuda/include/cuda.h"
+#include "cuda/include/cuda_runtime_api.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

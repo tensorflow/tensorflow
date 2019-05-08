@@ -19,7 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#include "cuda/include/cuda_fp16.h"
 #endif
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"

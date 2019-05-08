@@ -18,9 +18,9 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cudnn/cudnn.h"
+#include "cuda/include/cuda.h"
+#include "cuda/include/cuda_runtime_api.h"
+#include "cuda/include/cudnn.h"
 #endif
 
 #if TENSORFLOW_USE_ROCM

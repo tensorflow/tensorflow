@@ -784,11 +784,8 @@ def _create_dummy_repository(repository_ctx):
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
             "%{cusparse_lib}": lib_name("cusparse", cpu_value),
-            "%{copy_rules}": """
-filegroup(name="cuda-include")
-filegroup(name="cublas-include")
-filegroup(name="cudnn-include")
-""",
+            "%{copy_rules}": "",
+            "%{cuda_headers}": "",
         },
     )
 
@@ -986,21 +983,25 @@ def _create_local_cuda_repository(repository_ctx):
             out_dir = "cuda/extras/CUPTI/include",
         ),
     ]
+    included_files = _read_dir(repository_ctx, cuda_include_path)
 
-    copy_rules.append(make_copy_files_rule(
-        repository_ctx,
-        name = "cublas-include",
-        srcs = [
-            cublas_include_path + "/cublas.h",
-            cublas_include_path + "/cublas_v2.h",
-            cublas_include_path + "/cublas_api.h",
-        ],
-        outs = [
-            "cublas/include/cublas.h",
-            "cublas/include/cublas_v2.h",
-            "cublas/include/cublas_api.h",
-        ],
-    ))
+    if not any([file.endswith("cublas.h") for file in included_files]):
+        copy_rules.append(make_copy_files_rule(
+            repository_ctx,
+            name = "cublas-include",
+            srcs = [
+                cublas_include_path + "/cublas.h",
+                cublas_include_path + "/cublas_v2.h",
+                cublas_include_path + "/cublas_api.h",
+            ],
+            outs = [
+                "cuda/include/cublas.h",
+                "cuda/include/cublas_v2.h",
+                "cuda/include/cublas_api.h",
+            ],
+        ))
+    else:
+        copy_rules.append("filegroup(name = 'cublas-include')\n")
 
     cuda_libs = _find_libs(repository_ctx, cuda_config)
     cuda_lib_srcs = []
@@ -1022,12 +1023,16 @@ def _create_local_cuda_repository(repository_ctx):
         out_dir = "cuda/bin",
     ))
 
-    copy_rules.append(make_copy_files_rule(
-        repository_ctx,
-        name = "cudnn-include",
-        srcs = [cudnn_header_dir + "/cudnn.h"],
-        outs = ["cudnn/include/cudnn.h"],
-    ))
+    # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
+    if not any([file.endswith("cudnn.h") for file in included_files]):
+        copy_rules.append(make_copy_files_rule(
+            repository_ctx,
+            name = "cudnn-include",
+            srcs = [cudnn_header_dir + "/cudnn.h"],
+            outs = ["cuda/include/cudnn.h"],
+        ))
+    else:
+        copy_rules.append("filegroup(name = 'cudnn-include')\n")
 
     # Set up BUILD file for cuda/
     _tpl(
@@ -1057,6 +1062,11 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cupti_lib}": cuda_libs["cupti"].basename,
             "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
+            "%{cuda_headers}": (
+                '":cuda-include",\n' +
+                '        ":cublas-include",' +
+                '        ":cudnn-include",'
+            ),
         },
         "cuda/BUILD",
     )
