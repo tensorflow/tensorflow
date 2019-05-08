@@ -126,6 +126,9 @@ def path_to_str(path):
   Converts from any python constant representation of a `PathLike` object to
   a string. If the input is not a `PathLike` object, simply returns the input.
 
+  Returns the file system path representation of a `PathLike` object,
+  else returns it as it is.
+
   Args:
     path: An object that can be converted to path representation.
 
@@ -138,10 +141,10 @@ def path_to_str(path):
 
   Examples:
   ```python3
-  >>> tf.compat.path_to_str('C:\\XYZ\\tensorflow\\./.././tensorflow')
-  'C:\\XYZ\\tensorflow\\./.././tensorflow' # Windows OS
+  >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+  'C:\\XYZ\tensorflow\\./.././tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
-  'C:\\XYZ\\tensorflow\\..\\tensorflow' # Windows OS
+  'C:\\XYZ\tensorflow\\..\\tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('./corpus'))
   'corpus' # Linux OS
   >>> tf.compat.path_to_str('./.././Corpus')
@@ -150,8 +153,8 @@ def path_to_str(path):
   '../Corpus' # Linux OS
   >>> tf.compat.path_to_str(Path('./..////../'))
   '../..' # Linux OS
-
   ```
+
   """
   if hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())
