@@ -1045,12 +1045,17 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config.algorithm());
 
     // TODO: allow the user to choose an algorithm.
+    int unified_size = hidden_size;
     if (c_size != 0 && hidden_size < c_size) {
-      RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
-          cudnn.handle(), /*rnnDesc=*/rnn_desc.get(), /*hiddenSize=*/c_size,
-          /*numLayers=*/num_layers, /*dropoutDesc=*/dropout_desc.handle(),
-          /*inputMode=*/input_mode, /*direction=*/direction_mode,
-          /*mode=*/rnn_mode, /*algo=*/rnn_algo, /*dataType=*/compute_type));
+      unified_size = c_size;
+    }
+    RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
+        cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
+        /*hiddenSize=*/unified_size, /*numLayers=*/num_layers,
+        /*dropoutDesc=*/dropout_desc.handle(), /*inputMode=*/input_mode,
+        /*direction=*/direction_mode, /*mode=*/rnn_mode, /*algo=*/rnn_algo,
+        /*dataType=*/compute_type));
+    if (c_size != 0 && hidden_size < c_size) {
 #if CUDNN_VERSION >= 7101
       RETURN_IF_CUDNN_ERROR(cudnnSetRNNProjectionLayers(
           cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
@@ -1060,13 +1065,6 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                           "No supported cudnnSetRNNProjectionLayers when "
                           "CUDNN_VERSION < 7.1.1");
 #endif
-    } else {
-      RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
-          cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
-          /*hiddenSize=*/hidden_size, /*numLayers=*/num_layers,
-          /*dropoutDesc=*/dropout_desc.handle(), /*inputMode=*/input_mode,
-          /*direction=*/direction_mode, /*mode=*/rnn_mode, /*algo=*/rnn_algo,
-          /*dataType=*/compute_type));
     }
 
     // TODO: For now, we only use cudnnRNN**Ex API to process padded inputs.
@@ -1155,6 +1153,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   int num_layers_;
   int hidden_size_;
   int input_size_;
+  // c_size_ is the size of cell state, which will be different from
+  // hidden_size_ if the projection is used. 
   int c_size_;
   // batch_size_ is set to -1 when not using CUDNN_RNN_ALGO_PERSIST_DYNAMIC
   // algorithm.
@@ -1172,6 +1172,66 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 };
 
 namespace {
+
+port::Status CheckAndFetchProjectionWeights(
+    const CudnnHandle& cudnn, cudnnRNNDescriptor_t rnn_desc, int layer,
+    TensorDescriptor& input_desc, FilterDescriptor& filter_desc,
+    FilterDescriptor& region_desc_handle,
+    dnn::RnnDescriptor::ParamsRegions& weights) {
+#if CUDNN_VERSION >= 7101
+    int hidden_size_v;
+    int num_layers_v;
+    cudnnDropoutDescriptor_t dropout_desc;
+    cudnnRNNInputMode_t input_mode;
+    cudnnDirectionMode_t direction;
+    cudnnRNNMode_t mode;
+    cudnnRNNAlgo_t algo;
+    cudnnDataType_t data_type;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+        /*hiddenSize=*/&hidden_size_v,
+        /*numLayers=*/&num_layers_v,
+        /*dropoutDesc=*/&dropout_desc,
+        /*inputMode=*/&input_mode,
+        /*direction=*/&direction,
+        /*mode=*/&mode,
+        /*algo=*/&algo,
+        /*dataType=*/&data_type));
+    int rec_proj_size_v;
+    int out_proj_size_v;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNProjectionLayers(
+        /*handle=*/cudnn.handle(),
+        /*rnnDesc=*/rnn_desc,
+        /*recProjSize*/ &rec_proj_size_v,
+        /*outProjSize*/ &out_proj_size_v));
+    if (rec_proj_size_v != hidden_size_v) {
+      void* offset = nullptr;
+      int region_id = 8;
+      RETURN_IF_CUDNN_ERROR(cudnnGetRNNLinLayerMatrixParams(
+          /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+          /*layer=*/layer, /*xDesc=*/input_desc.get(),
+          /*wDesc=*/filter_desc.get(),
+          /*w=*/nullptr, /*linLayerID=*/region_id,
+          /*linLayerMatDesc=*/region_desc_handle.get(),
+          /*linLayerMat or linLayerBias=*/&offset));
+      int dims[] = {1, 1, 1};
+      cudnnDataType_t data_type;
+      cudnnTensorFormat_t tensor_format;
+      int n_dims;
+      RETURN_IF_CUDNN_ERROR(cudnnGetFilterNdDescriptor(
+          /*filterDesc=*/region_desc_handle.get(),
+          /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
+          /*dataType=*/&data_type, /*format=*/&tensor_format,
+          /*nbDims=*/&n_dims, /*filterDimA=*/dims));
+      int64 size =
+          dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
+      dnn::RnnDescriptor::ParamsRegion region = {
+          reinterpret_cast<int64>(offset), size};
+      weights.push_back(region);
+    }
+#endif // CUDNN_VERSION >= 7101
+  return port::Status::OK();
+}
 
 port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
     const CudnnHandle& cudnn, int input_size, cudnnDataType_t data_type,
@@ -1260,62 +1320,10 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
         (type == 0 ? weights : biases).push_back(region);
       }
     }
-    int hidden_size_v;
-    int num_layers_v;
-    cudnnDropoutDescriptor_t dropout_desc;
-    cudnnRNNInputMode_t input_mode;
-    cudnnDirectionMode_t direction;
-    cudnnRNNMode_t mode;
-    cudnnRNNAlgo_t algo;
-    cudnnDataType_t data_dype;
-    RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
-        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
-        /*hiddenSize=*/&hidden_size_v,
-        /*numLayers=*/&num_layers_v,
-        /*dropoutDesc=*/&dropout_desc,
-        /*inputMode=*/&input_mode,
-        /*direction=*/&direction,
-        /*mode=*/&mode,
-        /*algo=*/&algo,
-        /*dataType=*/&data_type));
-    int rec_proj_size_v;
-    int out_proj_size_v;
-#if CUDNN_VERSION >= 7101
-    RETURN_IF_CUDNN_ERROR(cudnnGetRNNProjectionLayers(
-        /*handle=*/cudnn.handle(),
-        /*rnnDesc=*/rnn_desc,
-        /*recProjSize*/ &rec_proj_size_v,
-        /*outProjSize*/ &out_proj_size_v));
-#else
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "No supported cudnnGetRNNProjectionLayers when "
-                        "CUDNN_VERSION < 7.1.1");
-#endif
-    if (rec_proj_size_v != hidden_size_v) {
-      void* offset = nullptr;
-      int region_id = 8;
-      RETURN_IF_CUDNN_ERROR(cudnnGetRNNLinLayerMatrixParams(
-          /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
-          /*layer=*/layer, /*xDesc=*/input_desc.get(),
-          /*wDesc=*/filter_desc.get(),
-          /*w=*/nullptr, /*linLayerID=*/region_id,
-          /*linLayerMatDesc=*/region_desc_handle.get(),
-          /*linLayerMat or linLayerBias=*/&offset));
-      int dims[] = {1, 1, 1};
-      cudnnDataType_t data_type;
-      cudnnTensorFormat_t tensor_format;
-      int n_dims;
-      RETURN_IF_CUDNN_ERROR(cudnnGetFilterNdDescriptor(
-          /*filterDesc=*/region_desc_handle.get(),
-          /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
-          /*dataType=*/&data_type, /*format=*/&tensor_format,
-          /*nbDims=*/&n_dims, /*filterDimA=*/dims));
-      int64 size =
-          dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
-      dnn::RnnDescriptor::ParamsRegion region = {
-          reinterpret_cast<int64>(offset), size};
-      weights.push_back(region);
-    }
+    TF_RETURN_IF_ERROR(CheckAndFetchProjectionWeights(cudnn, rnn_desc, layer,
+                                                      input_desc, filter_desc,
+                                                      region_desc_handle,
+                                                      weights));
   }
 
   return CudnnRnnParamsDescriptor(std::move(filter_desc), params_size_in_bytes,
