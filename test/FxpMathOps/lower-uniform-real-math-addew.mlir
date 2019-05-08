@@ -28,7 +28,7 @@ func @real_addew_fixedpoint_isomorphic(%arg0 : !type_lhs, %arg1: !type_rhs) -> !
 !type_rhs = type tensor<4x!quant.uniform<i8:f32, 6.25e-2:-5>>
 !type_result = type tensor<4x!quant.uniform<i8:f32, 6.25e-2:-5>>
 func @real_addew_affine_isomorphic(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_result {
-  // CHECK-NEXT: %cst = constant splat<tensor<4xi16>, 5> : tensor<4xi16>
+  // CHECK-NEXT: %cst = constant splat<tensor<4xi16>, 5>
   // CHECK-NEXT: %0 = "quant.scast"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 6.250000e-02:-5>>) -> tensor<4xi8>
   // CHECK-NEXT: %1 = "quant.scast"(%arg1) : (tensor<4x!quant.uniform<i8:f32, 6.250000e-02:-5>>) -> tensor<4xi8>
   // CHECK-NEXT: %2 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi16>

@@ -1127,9 +1127,7 @@ static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
 
   if (op.getAttrs().size() > 1)
     *p << ' ';
-  *p << op.getValue();
-  if (!op.getValue().isa<FunctionAttr>())
-    *p << " : " << op.getType();
+  p->printAttributeAndType(op.getValue());
 }
 
 static ParseResult parseConstantOp(OpAsmParser *parser,
@@ -1141,19 +1139,8 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
       parser->parseAttribute(valueAttr, "value", result->attributes))
     return failure();
 
-  // 'constant' taking a function reference doesn't get a redundant type
-  // specifier.  The attribute itself carries it.
-  if (auto fnAttr = valueAttr.dyn_cast<FunctionAttr>())
-    return parser->addTypeToList(fnAttr.getValue()->getType(), result->types);
-
-  if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
-    type = intAttr.getType();
-  } else if (auto fpAttr = valueAttr.dyn_cast<FloatAttr>()) {
-    type = fpAttr.getType();
-  } else if (parser->parseColonType(type)) {
-    return failure();
-  }
-  return parser->addTypeToList(type, result->types);
+  // Add the attribute type to the list.
+  return parser->addTypeToList(valueAttr.getType(), result->types);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it

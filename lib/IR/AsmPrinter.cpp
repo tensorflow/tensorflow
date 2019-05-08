@@ -526,8 +526,8 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     bool isSigned = intAttr.getType().isIndex() ||
                     intAttr.getType().getIntOrFloatBitWidth() != 1;
     intAttr.getValue().print(os, isSigned);
-    // Print type unless i64 (parser defaults i64 in absence of type).
-    if (includeType && !intAttr.getType().isInteger(64)) {
+    // Print the type.
+    if (includeType) {
       os << " : ";
       printType(intAttr.getType());
     }
@@ -536,8 +536,8 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   case Attribute::Kind::Float: {
     auto floatAttr = attr.cast<FloatAttr>();
     printFloatValue(floatAttr.getValue(), os);
-    // Print type unless f64 (parser defaults to f64 in absence of type).
-    if (includeType && !floatAttr.getType().isF64()) {
+    // Print the type.
+    if (includeType) {
       os << " : ";
       printType(floatAttr.getType());
     }

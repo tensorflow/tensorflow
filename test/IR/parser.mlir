@@ -348,7 +348,7 @@ func @attributes() {
   // CHECK: "foo"()
   "foo"(){} : ()->()
 
-  // CHECK: "foo"() {a: 1, b: -423, c: [true, false], d: 1.600000e+01}  : () -> ()
+  // CHECK: "foo"() {a: 1 : i64, b: -423 : i64, c: [true, false], d: 1.600000e+01 : f64}  : () -> ()
   "foo"() {a: 1, b: -423, c: [true, false], d: 16.0 } : () -> ()
 
   // CHECK: "foo"() {map1: #map{{[0-9]+}}}
@@ -369,14 +369,11 @@ func @attributes() {
   // CHECK: "foo"() {set12: [#set{{[0-9]+}}, #set{{[0-9]+}}]}
   "foo"() {set12: [#set1, #set2]} : () -> ()
 
-  // CHECK: "foo"() {d: 1.000000e-09, func: [], i123: 7, if: "foo"} : () -> ()
+  // CHECK: "foo"() {d: 1.000000e-09 : f64, func: [], i123: 7 : i64, if: "foo"} : () -> ()
   "foo"() {if: "foo", func: [], i123: 7, d: 1.e-9} : () -> ()
 
   // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
   "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
-
-  // CHECK: "foo"() {int: 0} : () -> ()
-  "foo"() {int: 0 : i64} : () -> ()
 
   // CHECK: "foo"() {int: 0 : i42} : () -> ()
   "foo"() {int: 0 : i42} : () -> ()
@@ -524,14 +521,14 @@ func @unitAttrs() -> () {
 // CHECK-LABEL: func @floatAttrs
 func @floatAttrs() -> () {
 ^bb0:
-  // CHECK: "foo"() {a: 4.000000e+00, b: 2.000000e+00, c: 7.100000e+00, d: -0.000000e+00} : () -> ()
+  // CHECK: "foo"() {a: 4.000000e+00 : f64, b: 2.000000e+00 : f64, c: 7.100000e+00 : f64, d: -0.000000e+00 : f64} : () -> ()
   "foo"(){a: 4.0, b: 2.0, c: 7.1, d: -0.0} : () -> ()
   return
 }
 
 // CHECK-LABEL: func @externalfuncattr
 func @externalfuncattr() -> ()
-  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00, dialect.c: tensor<*xf32>}
+  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00 : f64, dialect.c: tensor<*xf32>}
   attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>}
 
 // CHECK-LABEL: func @funcattrempty
@@ -540,7 +537,7 @@ func @funcattrempty() -> ()
 
 // CHECK-LABEL: func @funcattr
 func @funcattr() -> ()
-  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00, dialect.c: tensor<*xf32>}
+  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00 : f64, dialect.c: tensor<*xf32>}
   attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>} {
 ^bb0:
   return
@@ -843,11 +840,11 @@ func @dialect_attrs()
 // CHECK-LABEL: func @_valid.function$name
 func @_valid.function$name()
 
-// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr: 10}, i32)
-func @external_func_arg_attrs(i32, i1 {dialect.attr: 10}, i32)
+// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
+func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
 
-// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr: 10})
-func @func_arg_attrs(%arg0: i1 {dialect.attr: 10}) {
+// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr: 10 : i64})
+func @func_arg_attrs(%arg0: i1 {dialect.attr: 10 : i64}) {
   return
 }
 
