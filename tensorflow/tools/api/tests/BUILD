@@ -28,7 +28,10 @@ py_test(
         "//tensorflow/tools/api/tests:README.txt",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
