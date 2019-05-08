@@ -28,17 +28,9 @@
 #include <memory>
 
 namespace mlir {
+struct ClassID;
 class Dialect;
 class MLIRContext;
-
-/// TypeID is used to provide a unique address identifier for derived Type
-/// classes.
-struct TypeID {
-  template <typename T> static TypeID *getID() {
-    static TypeID id;
-    return &id;
-  }
-};
 
 //===----------------------------------------------------------------------===//
 // TypeStorage
@@ -123,7 +115,7 @@ private:
 
   /// Get the dialect that registered the type with the provided typeid.
   static const Dialect &lookupDialectForType(MLIRContext *ctx,
-                                             const TypeID *const typeID);
+                                             const ClassID *const typeID);
 };
 } // namespace detail
 

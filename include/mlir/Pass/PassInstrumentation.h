@@ -19,11 +19,12 @@
 #define MLIR_PASS_PASSINSTRUMENTATION_H_
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
-struct AnalysisID;
+using AnalysisID = ClassID;
 class Pass;
 
 namespace detail {

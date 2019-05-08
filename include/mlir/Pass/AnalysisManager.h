@@ -28,12 +28,7 @@
 namespace mlir {
 /// A special type used by analyses to provide an address that identifies a
 /// particular analysis set or a concrete analysis type.
-struct AnalysisID {
-  template <typename AnalysisT> static AnalysisID *getID() {
-    static AnalysisID id;
-    return &id;
-  }
-};
+using AnalysisID = ClassID;
 
 //===----------------------------------------------------------------------===//
 // Analysis Preservation and Concept Modeling

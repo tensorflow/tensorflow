@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 
@@ -135,7 +136,7 @@ public:
     using ImplType = StorageType;
 
     /// Return a unique identifier for the concrete type.
-    static TypeID *getTypeID() { return TypeID::getID<ConcreteType>(); }
+    static ClassID *getTypeID() { return ClassID::getID<ConcreteType>(); }
 
   protected:
     /// Get or create a new ConcreteType instance within the context. This

@@ -324,7 +324,7 @@ public:
   llvm::StringMap<AbstractOperation> registeredOperations;
 
   /// This is a mapping from type identifier to Dialect for registered types.
-  DenseMap<const TypeID *, Dialect *> registeredTypes;
+  DenseMap<const ClassID *, Dialect *> registeredTypes;
 
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
@@ -553,7 +553,7 @@ void Dialect::addOperation(AbstractOperation opInfo) {
 }
 
 /// Register a dialect-specific type with the current context.
-void Dialect::addType(const TypeID *const typeID) {
+void Dialect::addType(const ClassID *const typeID) {
   auto &impl = context->getImpl();
 
   // Lock access to the context registry.
@@ -822,7 +822,7 @@ StorageUniquer &MLIRContext::getTypeUniquer() { return getImpl().typeUniquer; }
 
 /// Get the dialect that registered the type with the provided typeid.
 const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
-                                                 const TypeID *const typeID) {
+                                                 const ClassID *const typeID) {
   auto &impl = ctx->getImpl();
   auto it = impl.registeredTypes.find(typeID);
   assert(it != impl.registeredTypes.end() && "typeID is not registered.");

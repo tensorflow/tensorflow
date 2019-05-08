@@ -63,6 +63,14 @@ inline void interleaveComma(const Container<T> &c, raw_ostream &os) {
   interleave(c.begin(), c.end(), [&](T a) { os << a; }, [&]() { os << ", "; });
 }
 
+/// A special type used to provide an address for a given class that can act as
+/// a unique identifier during pass registration.
+struct alignas(8) ClassID {
+  template <typename T> static ClassID *getID() {
+    static ClassID id;
+    return &id;
+  }
+};
 } // end namespace mlir
 
 // Allow tuples to be usable as DenseMap keys.

@@ -194,7 +194,7 @@ protected:
   };
 
   // Register a type with its given unqiue type identifer.
-  void addType(const TypeID *const typeID);
+  void addType(const ClassID *const typeID);
 
   // Enable support for unregistered operations.
   void allowUnknownOperations(bool allow = true) { allowUnknownOps = allow; }
