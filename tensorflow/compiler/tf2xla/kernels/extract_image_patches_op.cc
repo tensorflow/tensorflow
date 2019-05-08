@@ -17,7 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -99,23 +101,22 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // The following code is equivalent to:
     // eye = np.eye(kH * kW * D).reshape([kH, kW, D, kH * kW * kD])
     int64 kernel_size = 1;
-    std::vector<int64> lhs_shape(num_dims, 1);
+    std::vector<int64> kernel_shape(num_dims, 1);
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      lhs_shape[i] = ksizes_[input_dim];
+      kernel_shape[i] = ksizes_[input_dim];
       kernel_size *= ksizes_[input_dim];
     }
-    lhs_shape[num_spatial_dims] = depth;
-    lhs_shape[num_spatial_dims + 1] = 1;
-
-    // Builds an identity matrix as a broadcast equality of iotas.
-    // iota = np.arange(np.prod(ksize), depth)
-    // filter = np.equal(np.reshape(iota, [-1, 1]), iota).astype(np.float32)
-    xla::XlaOp iota = xla::Iota(builder, xla::S32, kernel_size * depth);
-
-    auto lhs = xla::Reshape(iota, lhs_shape);
-    auto filter = xla::ConvertElementType(
-        xla::Eq(lhs, iota, {num_spatial_dims + 1}), type);
+    kernel_shape[num_spatial_dims] = 1;
+    kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
+    xla::Shape iota_kernel_shape =
+        xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
+    xla::XlaOp filter =
+        xla::Reshape(xla::ConvertElementType(
+                         xla::Eq(xla::Iota(builder, iota_kernel_shape, 0),
+                                 xla::Iota(builder, iota_kernel_shape, 2)),
+                         type),
+                     kernel_shape);
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64> window_strides(num_spatial_dims);
@@ -148,7 +149,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
     xla::XlaOp conv =
         xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
-                                lhs_dilation, rhs_dilation, dims);
+                                lhs_dilation, rhs_dilation, dims, depth);
     ctx->SetOutput(0, conv);
   }
 
