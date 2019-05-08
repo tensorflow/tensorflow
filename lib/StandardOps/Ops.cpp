@@ -1164,22 +1164,21 @@ static LogicalResult verify(ConstantOp &op) {
     return op.emitOpError("requires a 'value' attribute");
 
   auto type = op.getType();
-  if (type.isa<IntegerType>() || type.isIndex()) {
-    auto intAttr = value.dyn_cast<IntegerAttr>();
-    if (!intAttr)
-      return op.emitOpError(
-          "requires 'value' to be an integer for an integer result type");
+  if (type != value.getType())
+    return op.emitOpError() << "requires attribute's type (" << value.getType()
+                            << ") to match op's return type (" << type << ")";
 
+  if (type.isa<IndexType>())
+    return success();
+
+  if (auto intAttr = value.dyn_cast<IntegerAttr>()) {
     // If the type has a known bitwidth we verify that the value can be
     // represented with the given bitwidth.
-    if (!type.isIndex()) {
-      auto bitwidth = type.cast<IntegerType>().getWidth();
-      auto intVal = intAttr.getValue();
-      if (!intVal.isSignedIntN(bitwidth) && !intVal.isIntN(bitwidth))
-        return op.emitOpError(
-            "requires 'value' to be an integer within the range "
-            "of the integer result type");
-    }
+    auto bitwidth = type.cast<IntegerType>().getWidth();
+    auto intVal = intAttr.getValue();
+    if (!intVal.isSignedIntN(bitwidth) && !intVal.isIntN(bitwidth))
+      return op.emitOpError("requires 'value' to be an integer within the "
+                            "range of the integer result type");
     return success();
   }
 
@@ -1200,10 +1199,6 @@ static LogicalResult verify(ConstantOp &op) {
       return op.emitOpError("requires 'value' to be a function reference");
     return success();
   }
-
-  if (value.getType() != type)
-    return op.emitOpError("requires the type of the 'value' attribute to match "
-                          "that of the operation result");
 
   return op.emitOpError(
       "requires a result type that aligns with the 'value' attribute");

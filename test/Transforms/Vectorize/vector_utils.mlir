@@ -17,7 +17,7 @@ func @vector_add_2d(%arg0: index, %arg1: index) -> f32 {
   // CHECK:matched: {{.*}} constant splat{{.*}} with shape ratio: 1, 3, 7, 2, 1
   %cst_a = constant splat<vector<1x3x7x8x8xf32>, 1.000000e+00> : vector<1x3x7x8x8xf32>
   // CHECK-NOT:matched: {{.*}} constant splat{{.*}} with shape ratio: 1, 3, 7, 1{{.*}}
-  %cst_b = constant splat<vector<1x3x7x4x4xf32>, 1.000000e+00> : vector<1x3x7x8x8xf32>
+  %cst_b = constant splat<vector<1x3x7x4x4xf32>, 1.000000e+00> : vector<1x3x7x4x4xf32>
   // TEST-3x4x5x8:matched: {{.*}} constant splat{{.*}} with shape ratio: 3, 2, 1, 4
   %cst_c = constant splat<vector<3x4x5x8xf32>, 1.000000e+00> : vector<3x4x5x8xf32>
   // TEST-3x4x4x8-NOT:matched: {{.*}} constant splat{{.*}} with shape ratio{{.*}}

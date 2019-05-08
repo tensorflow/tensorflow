@@ -26,7 +26,7 @@ func @dim3(tensor<1xf32>) {
 
 func @constant() {
 ^bb:
-  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{'std.constant' op requires 'value' to be an integer for an integer result type}}
+  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{requires attribute's type (none) to match op's return type (i32)}}
   return
 }
 
@@ -34,15 +34,22 @@ func @constant() {
 
 func @constant_out_of_range() {
 ^bb:
-  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{'std.constant' op requires 'value' to be an integer within the range of the integer result type}}
+  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{requires attribute's type (i64) to match op's return type (i1)}}
   return
 }
 
 // -----
 
+func @constant_wrong_type() {
+^bb:
+  %x = "std.constant"(){value: 10.} : () -> f32 // expected-error {{requires attribute's type (f64) to match op's return type (f32)}}
+  return
+}
+
+// -----
 func @affine_apply_no_map() {
 ^bb0:
-  %i = "std.constant"() {value: 0} : () -> index
+  %i = constant 0 : index
   %x = "affine.apply" (%i) { } : (index) -> (index) //  expected-error {{'affine.apply' op requires an affine map}}
   return
 }
@@ -51,7 +58,7 @@ func @affine_apply_no_map() {
 
 func @affine_apply_wrong_operand_count() {
 ^bb0:
-  %i = "std.constant"() {value: 0} : () -> index
+  %i = constant 0 : index
   %x = "affine.apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine.apply' op operand count and affine map dimension and symbol count must match}}
   return
 }
@@ -60,8 +67,8 @@ func @affine_apply_wrong_operand_count() {
 
 func @affine_apply_wrong_result_count() {
 ^bb0:
-  %i = "std.constant"() {value: 0} : () -> index
-  %j = "std.constant"() {value: 1} : () -> index
+  %i = constant 0 : index
+  %j = constant 1 : index
   %x = "affine.apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine.apply' op mapping must produce one value}}
   return
 }
@@ -86,7 +93,7 @@ func @unknown_std_op() {
 
 func @bad_alloc_wrong_dynamic_dim_count() {
 ^bb0:
-  %0 = "std.constant"() {value: 7} : () -> index
+  %0 = constant 7 : index
   // Test alloc with wrong number of dynamic dimensions.
   %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{custom op 'alloc' dimension operand count does not equal memref dynamic dimension count}}
   return
@@ -96,7 +103,7 @@ func @bad_alloc_wrong_dynamic_dim_count() {
 
 func @bad_alloc_wrong_symbol_count() {
 ^bb0:
-  %0 = "std.constant"() {value: 7} : () -> index
+  %0 = constant 7 : index
   // Test alloc with wrong number of symbols
   %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{operand count does not equal dimension plus symbol operand count}}
   return
@@ -107,8 +114,8 @@ func @bad_alloc_wrong_symbol_count() {
 func @test_store_zero_results() {
 ^bb0:
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
-  %1 = "std.constant"() {value: 0} : () -> index
-  %2 = "std.constant"() {value: 1} : () -> index
+  %1 = constant 0 : index
+  %2 = constant 1 : index
   %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
   // Test that store returns zero results.
   %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}
@@ -136,20 +143,6 @@ func @intlimit2() {
 ^bb:
   %0 = "std.constant"() {value: 0} : () -> i4096
   %1 = "std.constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
-  return
-}
-
-// -----
-
-func @func_constant() {
-  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{'std.constant' op requires 'value' to be an integer for an integer result type}}
-  return
-}
-
-// -----
-
-func @func_constant_out_of_range() {
-  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{'std.constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
 }
 
