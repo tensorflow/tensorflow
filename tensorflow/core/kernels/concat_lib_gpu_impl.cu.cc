@@ -148,14 +148,14 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                                       output->dimension(0), gpu_device);
 
   if (fixed_size) {
-    GPU_LAUNCH_KERNEL((concat_fixed_kernel<T, IntType>),
+    TF_CHECK_OK(GpuLaunchKernel((concat_fixed_kernel<T, IntType>),
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         gpu_device.stream(),
         input_ptrs,
         split_size,
         static_cast<int>(output->dimension(0)),
         static_cast<int>(output->dimension(1)),
-        output->data());
+        output->data()));
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
@@ -165,21 +165,21 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
-      GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, true>),
+      TF_CHECK_OK(GpuLaunchKernel((concat_variable_kernel<T, IntType, true>),
           dim3(config.block_count), dim3(config.thread_per_block), smem_usage,
           gpu_device.stream(),
           input_ptrs, output_scan,
 	  static_cast<IntType>(output->dimension(0)),
 	  static_cast<IntType>(output->dimension(1)),
-	  output->data());
+	  output->data()));
     } else {
-      GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, false>),
+      TF_CHECK_OK(GpuLaunchKernel((concat_variable_kernel<T, IntType, false>),
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           gpu_device.stream(),
           input_ptrs, output_scan,
 	  static_cast<IntType>(output->dimension(0)),
 	  static_cast<IntType>(output->dimension(1)),
-          output->data());
+          output->data()));
     }
   }
 }

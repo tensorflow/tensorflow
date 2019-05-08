@@ -67,11 +67,11 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(UpperBoundKernel<T, OutType>,
+    TF_CHECK_OK(GpuLaunchKernel(UpperBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,
-           values.data(), output->data());
+           values.data(), output->data()));
 
     return Status::OK();
   }
@@ -88,11 +88,11 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(LowerBoundKernel<T, OutType>,
+    TF_CHECK_OK(GpuLaunchKernel(LowerBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
            device.stream(),
            sorted_inputs.data(), batch_size, num_inputs, num_values,
-           values.data(), output->data());
+           values.data(), output->data()));
 
     return Status::OK();
   }

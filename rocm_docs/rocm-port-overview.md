@@ -56,7 +56,7 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
 - **XXX** removed dependency to CUPTI
 - **gpu_util.h**, **gpu_util.cc**
   - added `DnnScratchAllocator` as a replacement for `CudnnScratchAllocator`
-  
+
 ---
 ## GPU kernel implementation
 
@@ -71,8 +71,8 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
   - in certain kernels these macros are used to distinguish different logic be used on CUDA or ROCm platform
 - introduced `EIGEN_USE_HIP` in kernels where Eigen is used
   - guarded with `TENSORFLOW_USE_ROCM` macro so they won't be enabled on CUDA platform
-- replaced CUDA `<<< >>>` kernel launch syntax with `GPU_LAUNCH_KERNEL` macro
-- added `GPU_LAUNCH_KERNEL` in **util/gpu_kernel_helper.h**
+- replaced CUDA `<<< >>>` kernel launch syntax with `GpuLaunchKernel` macro
+- added `GpuLaunchKernel` in **util/gpu_kernel_helper.h**
 - renamed `CudaLaunchConfig` to `GpuLaunchConfig`
 - renamed macros with perfix CUDA/Cuda to GPU/Gpu shall they are usable on ROCm platform
 - Eigen is downloaded and [patched](https://github.com/ROCmSoftwarePlatform/tensorflow/blob/rocm-v1/third_party/eigen3/eigen.patch) to support HIP and ROCm platform
@@ -141,7 +141,7 @@ By default you will only see a single message durung runtime that indicates that
 Setting the env var `TF_CPP_MIN_VLOG_LEVEL` to `2` will enable the display of verbose ROCm fusion details.
 
 
-For the Convolution+Bias+Activation and BatchNorm+Activation fusion nodes, it is possible that the runtime is unable to create a custom kernel implementation for the fused node, and errors out. Should this happen, you will need to disable the fusion 
+For the Convolution+Bias+Activation and BatchNorm+Activation fusion nodes, it is possible that the runtime is unable to create a custom kernel implementation for the fused node, and errors out. Should this happen, you will need to disable the fusion
 
 When ROCm Fusion is enabled, the following env-vars can be used to disable individual fusions
 

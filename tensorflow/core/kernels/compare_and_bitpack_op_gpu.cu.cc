@@ -123,9 +123,9 @@ __global__ void CompareAndBitpackKernel<double>(const int size,
     int64 total_count = output.size();                                    \
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);        \
                                                                           \
-    GPU_LAUNCH_KERNEL(CompareAndBitpackKernel<T>,                         \
+    TF_CHECK_OK(GpuLaunchKernel(CompareAndBitpackKernel<T>,                         \
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(), \
-            total_count, threshold.data(), input.data(), output.data());  \
+            total_count, threshold.data(), input.data(), output.data()));  \
   }
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS)

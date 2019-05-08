@@ -66,9 +66,9 @@ struct CheckNumericsLaunch {
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
-    GPU_LAUNCH_KERNEL(CheckNumericsKernel<T>, dim3(num_blocks),
+    TF_CHECK_OK(GpuLaunchKernel(CheckNumericsKernel<T>, dim3(num_blocks),
                       dim3(block_size), 0, d.stream(), data, size,
-                      abnormal_detected);
+                      abnormal_detected));
   }
 };
 
