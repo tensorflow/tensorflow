@@ -512,6 +512,7 @@ class BatchResource : public ResourceBase {
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();
     opts.stats_collector = last_task_context->stats_collector();
+    opts.trace_collector = last_task_context->trace_collector();
     opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
 
