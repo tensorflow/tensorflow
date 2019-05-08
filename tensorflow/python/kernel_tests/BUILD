@@ -3484,7 +3484,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
