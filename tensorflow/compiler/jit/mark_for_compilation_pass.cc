@@ -270,7 +270,7 @@ class MarkForCompilationPassImpl {
   StatusOr<bool> ShouldCompileCluster(const Cluster& cluster);
 
   StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
-      const Cluster& to);
+      const Cluster& from, const Cluster& to);
 
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
@@ -698,7 +698,7 @@ Status MarkForCompilationPassImpl::DumpDebugInfo() {
 
 StatusOr<bool>
 MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
-    const Cluster& cluster_to) {
+    const Cluster& cluster_from, const Cluster& cluster_to) {
   // If any of the consumer's producers are on a different device, do not
   // cluster these nodes. This prevents other work on this device from being
   // delayed by work on other devices. We consider predecessors of the entire
@@ -719,6 +719,11 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
     if (cluster_in) {
       TF_ASSIGN_OR_RETURN(bool devices_compatible,
                           AreDevicesCompatible(cluster_to, *cluster_in));
+      if (!devices_compatible) {
+        return true;
+      }
+      TF_ASSIGN_OR_RETURN(devices_compatible,
+                          AreDevicesCompatible(cluster_from, *cluster_in));
       if (!devices_compatible) {
         return true;
       }
@@ -1026,7 +1031,7 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   }
 
   TF_ASSIGN_OR_RETURN(bool will_introduce_cross_device_dependency,
-                      ClusteringWillIntroduceInterDeviceDependency(*to));
+                      ClusteringWillIntroduceInterDeviceDependency(*from, *to));
 
   if (will_introduce_cross_device_dependency) {
     return LogNotContractableAndReturnFalse(
