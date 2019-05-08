@@ -4111,6 +4111,7 @@ tf_kernel_library(
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
         ":fill_functor",
+        "//tensorflow/core:stream_executor",
     ],
 )
 
