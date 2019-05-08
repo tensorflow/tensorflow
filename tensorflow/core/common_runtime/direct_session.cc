@@ -528,13 +528,16 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-  DeviceTracer* tracer = nullptr;
+  // DeviceTracer* tracer = nullptr;
+  std::unique_ptr<DeviceTracer> tracer = nullptr;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
+    // std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
+    tracer = CreateDeviceTracer();
     // tracer may be NULL on platforms without accelerators.
-    if (trptr) {
-      tracer = trptr.get();
+    if (tracer) {
+      //tracer = trptr.get();
       Status s = tracer->Start();
+      args.trace_collector = static_cast<tracing::TraceCollector*>(tracer.get());
       if (!s.ok()) {
         run_state.executors_done.Notify();
         delete barrier;
@@ -542,7 +545,6 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       }
     }
   }
-  args.trace_collector = static_cast<tracing::TraceCollector*>(tracer);
 
   if (run_options.inter_op_thread_pool() < -1 ||
       run_options.inter_op_thread_pool() >=
