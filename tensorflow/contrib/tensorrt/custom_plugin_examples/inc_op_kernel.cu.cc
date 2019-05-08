@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #define EIGEN_USE_GPU
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/gpu_launch_config.h"

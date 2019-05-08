@@ -22,7 +22,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 // Needed for CUDA_VERSION macro.
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
