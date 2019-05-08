@@ -1178,7 +1178,10 @@ tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
     ],
-    deps = [":protos_all_cc"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_gen_op_libs(

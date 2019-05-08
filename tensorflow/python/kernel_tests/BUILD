@@ -468,6 +468,15 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "fingerprint_op_test",
+    size = "small",
+    srcs = ["fingerprint_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "fractional_avg_pool_op_test",
     size = "small",
     srcs = ["fractional_avg_pool_op_test.py"],
