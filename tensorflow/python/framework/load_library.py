@@ -134,7 +134,7 @@ def load_library(library_location):
   """Loads a TensorFlow plugin.
 
   "library_location" can be a path to a specific shared object, or a folder.
-  If it is a folder, all sahred objects that are named "libtfkernel*" will be
+  If it is a folder, all shared objects that are named "libtfkernel*" will be
   loaded. When the library is loaded, kernels registered in the library via the
   `REGISTER_*` macros are made available in the TensorFlow process.
 
