@@ -894,16 +894,25 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
     //
     // This is to workaround a problem with the following use pattern,
-    //     op0 : VarHandleOp
-    //     op1 : Switch op0, pred
-    //     op2 : ReadVariableOp op1
-    //     op3 : AssignVariableOp op0, val
     //
-    //  If op2 and op3 are clustered, the op0 and op1 are inputs,
-    //  and they are both considered as resources, and
-    //  op1 and op0 happen to point to the same resource, and
-    //  this will cause an execution error since the resource is
-    //  not allowed to be initialized (locked) twice.
+    // digraph {
+    //     subgraph cluster_0 {
+    //         Add
+    //         AssignVariable
+    //     }
+    //     VarHandle -> Switch
+    //     Switch -> Add
+    //     Add -> AssignVariable
+    //     VarHandle -> AssignVariable
+    // }
+    //
+    //  The cluster_0 has two resource inputs, VarHandle and Switch, which
+    //  point to the same resource. this will cause an execution error since
+    //  the resource is not allowed to be initialized (locked) twice.
+    //
+    //  Since clustering is considered an optimization, the workaround here
+    //  should not cause correctness issue, but it may prevent it from forming
+    //  a larger cluster.
     //
     if (HasResourceInputFromSwitch(*node)) {
       continue;
