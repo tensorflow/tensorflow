@@ -1278,19 +1278,15 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   DeviceSet devices = cluster_a.devices();
   devices.UnionWith(cluster_b.devices());
 
-  // First check if we will even be able to pick a device for the larger
-  // combined cluster.
   TF_ASSIGN_OR_RETURN(
-      bool can_pick_device,
-      CanPickDeviceForXla(device_info_cache_, devices,
-                          /*allow_mixing_unknown_and_cpu=*/false));
-  if (!can_pick_device) {
+      absl::optional<jit::DeviceId> maybe_chosen_device,
+      MaybePickDeviceForXla(device_info_cache_, devices,
+                            /*allow_mixing_unknown_and_cpu=*/false));
+  if (!maybe_chosen_device.has_value()) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceId chosen_device,
-                      PickDeviceForXla(device_info_cache_, devices,
-                                       /*allow_mixing_unknown_and_cpu=*/false));
+  jit::DeviceId chosen_device = *maybe_chosen_device;
 
   // If we are able to pick a device `chosen_device` for the larger cluster, the
   // resource operations in `cluster_a` and `cluster_b` must be placed on the
