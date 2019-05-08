@@ -528,14 +528,10 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     args.stats_collector = run_state.collector.get();
   }
 
-  // DeviceTracer* tracer = nullptr;
   std::unique_ptr<DeviceTracer> tracer = nullptr;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    // std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
     tracer = CreateDeviceTracer();
-    // tracer may be NULL on platforms without accelerators.
     if (tracer) {
-      //tracer = trptr.get();
       Status s = tracer->Start();
       args.trace_collector = static_cast<tracing::TraceCollector*>(tracer.get());
       if (!s.ok()) {
