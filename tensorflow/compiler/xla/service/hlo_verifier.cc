@@ -987,7 +987,7 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   if (computation->num_parameters() != layout.parameter_count()) {
     return InternalError(
         "Number of parameters in entry computation layout (%d) must be same "
-        "as number of parameters of entry computation computation (%d)",
+        "as number of parameters of entry computation (%d)",
         layout.parameter_count(), computation->num_parameters());
   }
 
