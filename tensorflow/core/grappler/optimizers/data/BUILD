@@ -27,6 +27,7 @@ cc_library(
         ":noop_elimination",
         ":parallel_batch",
         ":shuffle_and_repeat_fusion",
+        ":slack",
     ],
 )
 
@@ -697,6 +698,45 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "slack",
+    srcs = ["slack.cc"],
+    hdrs = [
+        "slack.h",
+    ],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "slack_test",
+    srcs = ["slack_test.cc"],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":slack",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/kernels/data",
     ],
 )
 

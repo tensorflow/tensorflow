@@ -238,7 +238,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       if t_options.private_threadpool_size is not None:
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
-    static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    static_optimizations = options._static_optimizations()
+    static_optimization_configs = options._static_optimization_configs()
+    # pylint: enable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
         warnings.warn(
@@ -249,7 +252,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
             ", ".join(static_optimizations))
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations,
-                                   options._static_optimization_configs())  # pylint: disable=protected-access
+                                   static_optimization_configs)
 
     autotune = True
     cpu_budget = 0  # Indicates that all CPU cores should be used.
@@ -2087,6 +2090,15 @@ class Options(options_lib.OptionsBase):
       "`tf.data.experimental.OptimizationOptions` for more details.",
       default_factory=optimization_options.OptimizationOptions)
 
+  experimental_slack = options_lib.create_option(
+      name="experimental_slack",
+      ty=bool,
+      docstring="Whether to introduce 'slack' in the last `prefetch` of the "
+      "input pipeline, if it exists. This may reduce CPU contention with "
+      "accelerator host-side activity at the start of a step. The slack "
+      "frequency is determined by the number of devices attached to this "
+      "input pipeline. If None, defaults to False.")
+
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
       ty=stats_options.StatsOptions,
@@ -2114,11 +2126,23 @@ class Options(options_lib.OptionsBase):
     exp_stats_options = self.experimental_stats
     if exp_stats_options and exp_stats_options.latency_all_edges:
       result.append("latency_all_edges")
+    if self.experimental_slack:
+      result.append("slack")
     return result
 
   def _static_optimization_configs(self):
     """Produces the list of configurations for enabled static optimizations."""
-    return self.experimental_optimization._static_optimization_configs()  # pylint: disable=protected-access
+    result = []
+    if self.experimental_optimization:
+      result.extend(
+          self.experimental_optimization._static_optimization_configs())  # pylint: disable=protected-access
+
+    if self.experimental_slack:
+      num_devices = self.experimental_distribute.num_devices
+      if num_devices is None:
+        num_devices = 1
+      result.append("slack:slack_period:%d" % num_devices)
+    return result
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
