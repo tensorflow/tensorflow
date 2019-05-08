@@ -528,7 +528,9 @@ XlaOp Asin(XlaOp x) {
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 
-XlaOp Tan(XlaOp x) { return Sin(x) / Cos(x); }
+XlaOp Tan(XlaOp x) {
+  return DoWithUpcastToF32(x, {F16}, [](XlaOp x) { return Sin(x) / Cos(x); });
+}
 
 // Hyperbolic trigonometric functions.
 
