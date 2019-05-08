@@ -402,6 +402,10 @@ StatusOr<poplar::program::Program> CreateScatter(
     CompilerResources& res, const HloScatterInstruction* inst,
     TensorMap& tensor_map);
 
+StatusOr<poplar::program::Sequence> CreateGather(
+    CompilerResources& res, const HloGatherInstruction* inst,
+    TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool IsPoplibsPool(const HloInstruction*, const HloComputation*);

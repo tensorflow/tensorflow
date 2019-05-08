@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <map>
@@ -26,8 +27,17 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 namespace {
-// We currently don't support any gathers - TODO T5742.
-bool IsSupportedGather(const HloInstruction* gather_inst) { return false; }
+
+bool IsSupportedGather(const HloInstruction* gather_inst) {
+  // Let ZeroSizedHloElimination handle the empty cases...
+  for (int64_t i = 0; i < gather_inst->operand_count(); ++i) {
+    if (ShapeUtil::IsZeroElementArray(gather_inst->operand(i)->shape())) {
+      return false;
+    }
+  }
+
+  return true;
+}
 }  // namespace
 
 StatusOr<bool> NotSupportedGatherExpander::Run(HloModule* module) {

@@ -52,6 +52,12 @@ StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
                                           const xla::Shape& shape_xla,
                                           const xla::Shape& slice_shape_xla);
 
+StatusOr<poplar::Tensor> AddGatherTensor(poplar::Graph& graph,
+                                         const std::string& debug_name,
+                                         const xla::Shape& shape_xla,
+                                         std::vector<std::size_t> slice_sizes,
+                                         std::vector<unsigned> start_index_map);
+
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const std::string& debug_name,
                                         const xla::Shape& shape,

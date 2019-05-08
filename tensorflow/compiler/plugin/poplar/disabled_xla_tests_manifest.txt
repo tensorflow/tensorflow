@@ -263,8 +263,8 @@ TupleHloTest.BitcastAfterGTE POPLAR
 
 DotOperationTest.DotOfInputTupleElem POPLAR // dot of a tuple
 
-GatherOperationTest POPLAR // don't support Gather
-GatherClientLibraryTest POPLAR
+GatherOperationTest.OutOfBoundsIndex POPLAR
+GatherOperationTest.OutOfBoundsUnsignedIndex POPLAR
 
 TrivialCrossReplicaSumTest POPLAR // Don't support cross-replica-sum
 

@@ -390,5 +390,17 @@ Status FullVisitor::Postprocess(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status FullVisitor::HandleGather(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(
+      auto prog,
+      CreateGather(resources_, Cast<HloGatherInstruction>(inst), tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

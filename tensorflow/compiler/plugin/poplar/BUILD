@@ -251,6 +251,7 @@ cc_library(
         "driver/ops/custom_ops/poputil/replication_factor.cc",
         "driver/ops/dot_graph_caching.cc",
         "driver/ops/graph_caching_util.cc",
+        "driver/ops/gather_ops.cc",
         "driver/ops/map_ops.cc",
         "driver/ops/maths_ops.cc",
         "driver/ops/norm_graph_caching.cc",
