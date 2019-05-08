@@ -171,6 +171,8 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   }
 };
 
+#ifndef INTEL_MKL
+
 TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
   // Tests that Rewrite of program with parallel unary Ops is done as
   // anticipated.
@@ -197,8 +199,8 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
     std::unordered_set<string> expected = {"scoped_allocator_concat_1_1", "s1",
                                            "s2"};
     for (auto it : nd_set) {
-      ASSERT_NE(expected.find(it->name()), expected.end())
-          << "Failed to find " << it->name();
+      ASSERT_NE(expected.find(it->name()), expected.end()) << "Failed to find "
+                                                           << it->name();
     }
   }
   {
@@ -272,6 +274,8 @@ TEST_F(ScopedAllocatorOptimizerTest, ForwardInputToOutput) {
   std::vector<float> expected_r2({4, 4, 3, 2});
   ValidateValues(outputs, expected_r1, expected_r2);
 }
+
+#endif  // INTEL_MKL
 
 }  // namespace
 }  // namespace grappler
