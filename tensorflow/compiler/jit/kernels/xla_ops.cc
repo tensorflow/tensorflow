@@ -62,7 +62,7 @@ XlaPlatformInfo PlatformInfoFromContext(OpKernelConstruction* ctx) {
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   std::unique_ptr<XlaAllocator> xla_allocator;
-  xla::DeviceMemoryAllocator* device_allocator = nullptr;
+  se::DeviceMemoryAllocator* device_allocator = nullptr;
 
   if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
     platform_id = se::host::kHostPlatformId;

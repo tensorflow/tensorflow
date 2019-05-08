@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_OWNING_DEVICE_MEMORY_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_OWNING_DEVICE_MEMORY_H_
 
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace xla {
+namespace stream_executor {
 
 // Break circular dependency between this file and device_memory_allocator.h.
 class DeviceMemoryAllocator;
@@ -43,7 +41,7 @@ class OwningDeviceMemory {
  public:
   OwningDeviceMemory() : device_ordinal_(-1), allocator_(nullptr) {}
 
-  explicit OwningDeviceMemory(se::DeviceMemoryBase mem, int device_ordinal,
+  explicit OwningDeviceMemory(DeviceMemoryBase mem, int device_ordinal,
                               DeviceMemoryAllocator* allocator)
       : mem_(mem), device_ordinal_(device_ordinal), allocator_(allocator) {
     CHECK(allocator != nullptr) << "allocator cannot be null.";
@@ -53,7 +51,7 @@ class OwningDeviceMemory {
       : mem_(other.mem_),
         device_ordinal_(other.device_ordinal_),
         allocator_(other.allocator_) {
-    other.mem_ = se::DeviceMemoryBase();
+    other.mem_ = DeviceMemoryBase();
     other.allocator_ = nullptr;
   }
 
@@ -65,7 +63,7 @@ class OwningDeviceMemory {
     device_ordinal_ = other.device_ordinal_;
     allocator_ = other.allocator_;
 
-    other.mem_ = se::DeviceMemoryBase();
+    other.mem_ = DeviceMemoryBase();
     other.allocator_ = nullptr;
     return *this;
   }
@@ -100,25 +98,25 @@ class OwningDeviceMemory {
   // !is_null() is sufficient but not necessary to imply `this` is active.
   bool is_null() const { return mem_.is_null(); }
 
-  se::DeviceMemoryBase AsDeviceMemoryBase() const {
+  DeviceMemoryBase AsDeviceMemoryBase() const {
     // This const_cast is necessary because DeviceMemoryBase's constructor
     // doesn't accept a const void*.  This isn't ideal, but it's better than the
     // alternative of making a AsDeviceMemoryBase non-const member function.
     //
     // This is safe (i.e. not UB) because the casted pointer is derived from a
     // non-const pointer, namely mem_.opaque().
-    return se::DeviceMemoryBase(const_cast<void*>(opaque()), size());
+    return DeviceMemoryBase(const_cast<void*>(opaque()), size());
   }
 
   // Returns the wrapped DeviceMemoryBase without freeing it, and deactivates
   // this object.  Precondition: `this` is active.
-  TF_MUST_USE_RESULT se::DeviceMemoryBase Forget() {
+  TF_MUST_USE_RESULT DeviceMemoryBase Forget() {
     CHECK(allocator_ != nullptr)
         << "Can't call Forget() on an inactive (i.e. moved from, Forget()'ten, "
            "or Free()'ed) instance.";
     allocator_ = nullptr;
-    se::DeviceMemoryBase mem(mem_);
-    mem_ = se::DeviceMemoryBase();
+    DeviceMemoryBase mem(mem_);
+    mem_ = DeviceMemoryBase();
     return mem;
   }
 
@@ -127,11 +125,11 @@ class OwningDeviceMemory {
   void Free();
 
  private:
-  se::DeviceMemoryBase mem_;
+  DeviceMemoryBase mem_;
   int device_ordinal_;
   DeviceMemoryAllocator* allocator_;  // Null if this object is inactive.
 };
 
-}  // namespace xla
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_OWNING_DEVICE_MEMORY_H_

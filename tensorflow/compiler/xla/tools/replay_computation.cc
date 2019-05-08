@@ -271,7 +271,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // Run the computation num_runs times, and return the result from the last
   // execution.
   const bool xla_hlo_profile = GetDebugOptionsFromFlags().xla_hlo_profile();
-  StreamExecutorMemoryAllocator allocator(
+  se::StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
   absl::optional<ScopedShapedBuffer> final_result;

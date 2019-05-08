@@ -212,7 +212,7 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
 static StatusOr<PyLocalBuffer> TransferHostToDeviceAsync(
     const PythonBufferTree& tree, int device_ordinal, PyLocalClient* client,
     const Device& device) {
-  DeviceMemoryAllocator* allocator =
+  se::DeviceMemoryAllocator* allocator =
       client->client()->backend().memory_allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
@@ -367,7 +367,7 @@ PyLocalBuffer::FromPythonValues(
     host_shapes.push_back(buffer.on_host_shape());
     device_buffers.push_back(buffer.device_buffer());
   }
-  DeviceMemoryAllocator* allocator =
+  se::DeviceMemoryAllocator* allocator =
       client->client()->backend().memory_allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
