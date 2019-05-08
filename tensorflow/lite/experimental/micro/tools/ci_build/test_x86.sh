@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,25 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility to create a single py_binary that can call multiple py_binaries.
+#
+# Tests the microcontroller code using native x86 execution.
 
-This simulates executing a python script by importing a module name by the
-environment 'SCRIPT_NAME' and executing its main via `app.run`.
-"""
+set -e
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR=${SCRIPT_DIR}/../../../../../..
+cd ${ROOT_DIR}
+pwd
 
-import importlib
-import os
-import sys
-
-from absl import app
-
-
-if __name__ == '__main__':
-  # Append current path to import path and execute `SCRIPT_NAME` main.
-  sys.path.extend([os.path.dirname(__file__)])
-  module_name = os.environ['SCRIPT_NAME']
-  app.run(importlib.import_module(module_name).main)
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test

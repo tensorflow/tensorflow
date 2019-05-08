@@ -8,7 +8,17 @@ licenses(["notice"])  # Apache 2.0
 
 cc_library(
     name = "nnapi_delegate",
-    srcs = ["nnapi_delegate.cc"],
+    srcs = select({
+        "//tensorflow:ios": [
+            "nnapi_delegate_disabled.cc",
+        ],
+        "//tensorflow:windows": [
+            "nnapi_delegate_disabled.cc",
+        ],
+        "//conditions:default": [
+            "nnapi_delegate.cc",
+        ],
+    }),
     hdrs = ["nnapi_delegate.h"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -23,6 +33,7 @@ cc_test(
     size = "small",
     srcs = ["nnapi_delegate_test.cc"],
     tags = [
+        "no_windows",
         # TODO(b/122987564): Enable on Android after resolving API 27 failures.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

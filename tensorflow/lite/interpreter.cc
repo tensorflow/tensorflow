@@ -256,11 +256,11 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
   return kTfLiteOk;
 }
 
-void Interpreter::SetProfiler(profiling::Profiler* profiler) {
+void Interpreter::SetProfiler(Profiler* profiler) {
   for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
 }
 
-profiling::Profiler* Interpreter::GetProfiler() {
+Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 

@@ -1310,6 +1310,14 @@ class TensorBoard(Callback):
       profile_batch: Profile the batch to sample compute characteristics. By
         default, it will profile the second batch. Set profile_batch=0 to
         disable profiling. Must run in TensorFlow eager mode.
+      embeddings_freq: frequency (in epochs) at which embedding layers will
+        be visualized. If set to 0, embeddings won't be visualized.
+      embeddings_metadata: a dictionary which maps layer name to a file name in
+        which metadata for this embedding layer is saved. See the
+        [details](
+          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
+        about metadata files format. In case if the same metadata file is
+        used for all embedding layers, string can be passed.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1324,6 +1332,8 @@ class TensorBoard(Callback):
                write_images=False,
                update_freq='epoch',
                profile_batch=2,
+               embeddings_freq=0,
+               embeddings_metadata=None,
                **kwargs):
     super(TensorBoard, self).__init__()
     self._validate_kwargs(kwargs)
@@ -1336,6 +1346,8 @@ class TensorBoard(Callback):
       self.update_freq = 1
     else:
       self.update_freq = update_freq
+    self.embeddings_freq = embeddings_freq
+    self.embeddings_metadata = embeddings_metadata
 
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
@@ -1364,17 +1376,21 @@ class TensorBoard(Callback):
     if kwargs.get('write_grads', False):
       logging.warning('`write_grads` will be ignored in TensorFlow 2.0 '
                       'for the `TensorBoard` Callback.')
-    if kwargs.get('embeddings_freq', False):
-      logging.warning('Embeddings will be ignored in TensorFlow 2.0 '
-                      'for the `TensorBoard` Callback.')
     if kwargs.get('batch_size', False):
       logging.warning('`batch_size` is no longer needed in the '
                       '`TensorBoard` Callback and will be ignored '
                       'in TensorFlow 2.0.')
+    if kwargs.get('embeddings_layer_names', False):
+      logging.warning('`embeddings_layer_names` is not supported in '
+                      'TensorFlow 2.0. Instead, all `Embedding` layers '
+                      'will be visualized.')
+    if kwargs.get('embeddings_data', False):
+      logging.warning('`embeddings_data` is not supported in TensorFlow '
+                      '2.0. Instead, all `Embedding` variables will be '
+                      'visualized.')
 
     unrecognized_kwargs = set(kwargs.keys()) - {
-        'write_grads', 'embeddings_freq', 'embeddings_layer_names',
-        'embeddings_metadata', 'embeddings_data', 'batch_size'
+        'write_grads', 'embeddings_layer_names', 'embeddings_data', 'batch_size'
     }
 
     # Only allow kwargs that were supported in V1.
@@ -1398,6 +1414,48 @@ class TensorBoard(Callback):
                 self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
             if summary_writable:
               summary_ops_v2.keras_model('keras', self.model, step=0)
+
+    if self.embeddings_freq:
+      self._configure_embeddings()
+
+  def _configure_embeddings(self):
+    """Configure the Projector for embeddings."""
+    # TODO(omalleyt): Add integration tests.
+    from tensorflow.python.keras.layers import embeddings
+    try:
+      from tensorboard.plugins import projector
+    except ImportError:
+      raise ImportError('Failed to import TensorBoard. Please make sure that '
+                        'TensorBoard integration is complete."')
+    config = projector.ProjectorConfig()
+    for layer in self.model.layers:
+      if isinstance(layer, embeddings.Embedding):
+        embedding = config.embeddings.add()
+        embedding.tensor_name = layer.embeddings.name
+
+        if self.embeddings_metadata is not None:
+          if isinstance(self.embeddings_metadata, str):
+            embedding.metadata_path = self.embeddings_metadata
+          else:
+            if layer.name in embedding.metadata_path:
+              embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
+
+    if self.embeddings_metadata:
+      raise ValueError('Unrecognized `Embedding` layer names passed to '
+                       '`keras.callbacks.TensorBoard` `embeddings_metadata` '
+                       'argument: ' + str(self.embeddings_metadata.keys()))
+
+    class DummyWriter(object):
+      """Dummy writer to conform to `Projector` API."""
+
+      def __init__(self, logdir):
+        self.logdir = logdir
+
+      def get_logdir(self):
+        return self.logdir
+
+    writer = DummyWriter(self.log_dir)
+    projector.visualize_embeddings(writer, config)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.
@@ -1463,6 +1521,9 @@ class TensorBoard(Callback):
 
     if self.histogram_freq and epoch % self.histogram_freq == 0:
       self._log_weights(epoch)
+
+    if self.embeddings_freq and epoch % self.embeddings_freq == 0:
+      self._log_embeddings(epoch)
 
   def on_train_end(self, logs=None):
     if self._is_tracing:
@@ -1568,6 +1629,11 @@ class TensorBoard(Callback):
     if len(shape) == 4 and shape[-1] in [1, 3, 4]:
       summary_ops_v2.image(weight_name, w_img, step=epoch)
 
+  def _log_embeddings(self, epoch):
+    embeddings_ckpt = os.path.join(self.log_dir, 'train',
+                                   'keras_embedding.ckpt-{}'.format(epoch))
+    self.model.save_weights(embeddings_ckpt)
+
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
@@ -1588,22 +1654,20 @@ class ReduceLROnPlateau(Callback):
 
   Arguments:
       monitor: quantity to be monitored.
-      factor: factor by which the learning rate will
-          be reduced. new_lr = lr * factor
-      patience: number of epochs with no improvement
-          after which learning rate will be reduced.
+      factor: factor by which the learning rate will be reduced. new_lr = lr *
+        factor
+      patience: number of epochs with no improvement after which learning rate
+        will be reduced.
       verbose: int. 0: quiet, 1: update messages.
-      mode: one of {auto, min, max}. In `min` mode,
-          lr will be reduced when the quantity
-          monitored has stopped decreasing; in `max`
-          mode it will be reduced when the quantity
-          monitored has stopped increasing; in `auto`
-          mode, the direction is automatically inferred
-          from the name of the monitored quantity.
-      min_delta: threshold for measuring the new optimum,
-          to only focus on significant changes.
-      cooldown: number of epochs to wait before resuming
-          normal operation after lr has been reduced.
+      mode: one of {auto, min, max}. In `min` mode, lr will be reduced when the
+        quantity monitored has stopped decreasing; in `max` mode it will be
+        reduced when the quantity monitored has stopped increasing; in `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      min_delta: threshold for measuring the new optimum, to only focus on
+        significant changes.
+      cooldown: number of epochs to wait before resuming normal operation after
+        lr has been reduced.
       min_lr: lower bound on the learning rate.
   """
 

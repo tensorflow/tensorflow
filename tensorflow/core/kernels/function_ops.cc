@@ -250,7 +250,6 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
@@ -352,7 +351,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   FunctionLibraryRuntime::Options opts;
-  opts.step_id = ctx->step_id();
   opts.runner = ctx->runner();
   opts.source_device = source_device;
   if (opts.source_device != target_device) {

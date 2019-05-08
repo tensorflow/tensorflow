@@ -259,7 +259,6 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
-  opts.step_id = ctx->step_id();
   opts.rendezvous = ctx->rendezvous();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.runner = ctx->runner();

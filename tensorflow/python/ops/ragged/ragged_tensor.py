@@ -40,7 +40,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
-
 # pylint: enable=protected-access
 
 #===============================================================================
@@ -1862,6 +1861,9 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   @property
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
+
+  def consumers(self):
+    return self._consumers()
 
 
 def is_ragged(value):

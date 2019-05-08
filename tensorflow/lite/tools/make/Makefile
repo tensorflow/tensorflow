@@ -149,13 +149,12 @@ ifeq ($(TARGET),rpi)
 	BUILD_WITH_NNAPI=false
 endif
 ifeq ($(BUILD_WITH_NNAPI),true)
+	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
 else
+	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation_disabled.cc
 endif
-
-# this is needed as UseNNAPI() is implementated on top of nnapi_delegate.
-CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 
 ifeq ($(TARGET),ios)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc

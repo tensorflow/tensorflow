@@ -739,17 +739,19 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     // TODO(iga): Fail gracefully if the set of devices corresponds
     // to more than one address space.
     const string& target = pair.first;
+    FunctionLibraryRuntime* target_flr = GetFLR(target);
+    const string& device_type = target_flr->device()->device_type();
     Graph* subgraph = pair.second.get();
 
     ComponentFunctionData* comp_data = &data->glue_[target];
     TF_RETURN_IF_ERROR(UpdateArgAndRetvalMetadata(
-        subgraph, &comp_data->arg_indices_, &comp_data->ret_indices_,
-        &comp_data->arg_alloc_attrs_, &comp_data->ret_alloc_attrs_));
+        subgraph, device_type, &comp_data->arg_indices_,
+        &comp_data->ret_indices_, &comp_data->arg_alloc_attrs_,
+        &comp_data->ret_alloc_attrs_));
     FunctionDef shard;
     string unique_name = name_generator.GetName();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
-    FunctionLibraryRuntime* target_flr = GetFLR(target);
     TF_RETURN_IF_ERROR(data->lib_def_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.executor_type = options.executor_type;

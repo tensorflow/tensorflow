@@ -13,21 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+namespace tflite {
 
-namespace tensorflow {
+// Return a non-functional NN API Delegate struct.
+TfLiteDelegate* NnApiDelegate() {
+  static TfLiteDelegate delegate = [] {
+    TfLiteDelegate delegate = TfLiteDelegateCreate();
+    delegate.Prepare = [](TfLiteContext* context,
+                          TfLiteDelegate* delegate) -> TfLiteStatus {
+      // Silently succeed without modifying the graph.
+      return kTfLiteOk;
+    };
+    return delegate;
+  }();
 
-namespace logging {
+  return &delegate;
+}
 
-// Register a listener method to call on any printed messages.
-// Returns true if it is successfully registered.
-bool RegisterListener(void (*listener)(const char*));
-
-}  // namespace logging
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
+}  // namespace tflite

@@ -23,6 +23,7 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
+using tensorflow::Thread;
 using tensorflow::thread::ThreadPool;
 
 }  // namespace port

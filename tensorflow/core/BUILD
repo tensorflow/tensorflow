@@ -911,6 +911,7 @@ tf_cuda_library(
         "framework/kernel_def_builder.h",
         "framework/kernel_def_util.h",
         "framework/log_memory.h",
+        "framework/logging.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
         "framework/node_def_builder.h",

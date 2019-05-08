@@ -27,9 +27,6 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "public/gemmlowp.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
-
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
@@ -37,9 +34,11 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
@@ -93,6 +92,7 @@ using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
+using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
@@ -277,22 +277,6 @@ void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
     gemmlowp::ScopedProfilingLabel label("GEMM");
     result->noalias() = lhs * rhs;
   }
-}
-
-inline void optimized_ops_preload_l1_stream(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
-#endif
-}
-
-inline void optimized_ops_preload_l1_keep(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
-#endif
 }
 
 #ifdef GEMMLOWP_NEON
@@ -1111,7 +1095,7 @@ inline void FullyConnectedAsGEMV(
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+  const int thread_count = LegacyHowManyThreads<kKernelRows>(
       cpu_backend_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
@@ -1130,8 +1114,8 @@ inline void FullyConnectedAsGEMV(
   // TODO(b/131746020) don't create new heap allocations every time.
   // At least we make it a single heap allocation by using reserve().
   tasks.reserve(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_rows, thread_count));
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
@@ -1147,34 +1131,6 @@ inline void FullyConnectedAsGEMV(
                                   cpu_backend_context);
 }
 #endif  // USE_NEON
-
-struct GemmlowpOutputPipeline {
-  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
-      ColVectorMap;
-  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
-                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
-                     gemmlowp::OutputStageClamp,
-                     gemmlowp::OutputStageSaturatingCastToUint8>
-      Pipeline;
-  static Pipeline MakeExp(const int32* bias_data, int output_rows,
-                          int32 output_offset, int32 output_multiplier,
-                          int output_left_shift, int32 output_activation_min,
-                          int32 output_activation_max) {
-    ColVectorMap bias_vector(bias_data, output_rows);
-    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-    bias_addition_stage.bias_vector = bias_vector;
-    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
-    quantize_down_stage.result_offset_after_shift = output_offset;
-    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_exponent = output_left_shift;
-    gemmlowp::OutputStageClamp clamp_stage;
-    clamp_stage.min = output_activation_min;
-    clamp_stage.max = output_activation_max;
-    gemmlowp::OutputStageSaturatingCastToUint8 saturating_cast_stage;
-    return std::make_tuple(bias_addition_stage, quantize_down_stage,
-                           clamp_stage, saturating_cast_stage);
-  }
-};
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
@@ -1741,9 +1697,9 @@ inline void ShuffledFullyConnected(
   }
 
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      cpu_backend_context->max_num_threads(), output_depth, batches,
-      accum_depth);
+  const int thread_count =
+      LegacyHowManyThreads<kKernelRows>(cpu_backend_context->max_num_threads(),
+                                        output_depth, batches, accum_depth);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1760,8 +1716,8 @@ inline void ShuffledFullyConnected(
   // TODO(b/131746020) don't create new heap allocations every time.
   // At least we make it a single heap allocation by using reserve().
   tasks.reserve(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_depth, thread_count));
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);

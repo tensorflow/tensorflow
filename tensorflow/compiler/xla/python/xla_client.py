@@ -103,15 +103,17 @@ class Backend(object):
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None):
+  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
       xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+      asynchronous: A boolean; should we enable asynchronous execution?
+        (Experimental.)
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(xla_platform_id)
+    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -157,10 +159,18 @@ class LocalBackend(Backend):
     return executable.ExecutePerReplica(per_replica_args)
 
 
+def _cpu_backend_factory():
+  return LocalBackend(platform='cpu', xla_platform_id='Host', asynchronous=True)
+
+
+def _gpu_backend_factory():
+  return LocalBackend(platform='gpu', xla_platform_id='CUDA')
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
-    ('cpu', lambda: LocalBackend(platform='cpu', xla_platform_id='Host')),
-    ('gpu', lambda: LocalBackend(platform='gpu', xla_platform_id='CUDA')),
+    ('cpu', _cpu_backend_factory),
+    ('gpu', _gpu_backend_factory),
 ])
 
 

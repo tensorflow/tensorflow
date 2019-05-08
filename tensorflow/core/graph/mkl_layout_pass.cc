@@ -1181,12 +1181,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
           DataType type;
           TF_CHECK_OK(GetNodeAttr(perm_node->def(), "dtype", &type));
-          if (type != DT_INT32 && type != DT_INT64) return false;
 
           Tensor tensor;
-          DCHECK(tensor.FromProto(*proto))
-              << "Could not construct Tensor from TensorProto in node: "
-              << node->name();
+          if (!tensor.FromProto(*proto)) {
+            TF_CHECK_OK(errors::InvalidArgument(
+                "Could not construct Tensor from TensorProto in node: ",
+                node->name()));
+            return false;
+          }
           DCHECK_EQ(tensor.dims(), 1);
           DCHECK_EQ(tensor.dim_size(0), perm.size());
           if (type == DT_INT32) {
@@ -3402,6 +3404,16 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   DataType T;
   if (!GetNodeAttr(n->def(), "T", &T).ok()) {
     return nullptr;
+  }
+
+  // We make an exception for Conv2D, as the corresponding MKL ops
+  // currently do not support the case of padding == EXPLICIT yet.
+  if (n->type_string() == csinfo_.conv2d ||
+      n->type_string() == csinfo_.conv2d_grad_input ||
+      n->type_string() == csinfo_.conv2d_grad_filter) {
+    string padding;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "padding", &padding));
+    if (padding == "EXPLICIT") return nullptr;
   }
 
   // We make an exception for __MklDummyConv2DWithBias,

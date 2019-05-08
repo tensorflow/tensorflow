@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
@@ -148,15 +150,13 @@ Status EagerContext::SetAsyncForThread(bool async) {
   return Status::OK();
 }
 
-Status EagerContext::ClearCaches() {
+void EagerContext::ClearCaches() {
   // The executor stores pointers to kernels, so we need to make sure that no
   // async eager ops are still executing. We lock the cache during this time as
   // well.
   mutex_lock ml(cache_mu_);
-  TF_RETURN_IF_ERROR(executor_.WaitForAllPendingNodes());
+  executor_.WaitForAllPendingNodes().IgnoreError();
   gtl::STLDeleteValues(&kernel_cache_);
-
-  return Status::OK();
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -208,6 +208,8 @@ void EagerContext::CloseRemoteContexts() {
 
 EagerContext::~EagerContext() {
 #if !defined(IS_MOBILE_PLATFORM)
+  ClearCaches();
+
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
@@ -225,8 +227,6 @@ EagerContext::~EagerContext() {
   CloseRemoteContexts();
 #endif  // !IS_MOBILE_PLATFORM
 
-  executor_.WaitForAllPendingNodes().IgnoreError();
-  ClearCaches().IgnoreError();
   rendezvous_->Unref();
 
   for (auto& thread : child_threads_) {
@@ -452,7 +452,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   devices_map_.clear();
 
   InitDeviceMapAndAsync();
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
 
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
@@ -517,12 +517,11 @@ Status EagerContext::InitializeRemote(
 
   InitDeviceMapAndAsync();
 
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
+  executor_.ClearError();
 
   keep_alive_secs_ = keep_alive_secs;
-
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
-
   // Only schedule a single closure.
   if (keep_alive_thread_ == nullptr) {
     keep_alive_thread_.reset(

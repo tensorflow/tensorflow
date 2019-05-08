@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 
+#define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 

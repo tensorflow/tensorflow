@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+#include "tensorflow/core/grappler/utils/canonicalizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -96,18 +97,6 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
-}
-
-Status CompressConstants(GraphDef* graph) {
-  for (int i = 0; i < graph->node_size(); ++i) {
-    NodeDef* node = graph->mutable_node(i);
-    if ((IsConstant(*node) || IsHostConstant(*node)) &&
-        HasNodeAttr(*node, "value")) {
-      AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
-    }
-  }
-  return Status::OK();
 }
 
 // A helper function to decide whether to enable the automatic mixed precision
@@ -389,6 +378,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                           reinterpret_cast<uintptr_t>(optimized_graph)),
           *optimized_graph);
     }
+
     for (const auto& optimizer : optimizers) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
@@ -447,9 +437,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     optimized_graph, &optimization_result));
   }
 
-  // Compress the constants in the final graph.
-  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
-
   bool is_optimized = std::find_if(optimization_result.results.begin(),
                                    optimization_result.results.end(),
                                    [](const OptimizerResult& result) {
@@ -460,6 +447,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimization_results_.push_back(optimization_result);
 
   if (is_optimized) {
+    // Compress the constants in the graph.
+    CompressConstants(optimized_graph);
+
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.

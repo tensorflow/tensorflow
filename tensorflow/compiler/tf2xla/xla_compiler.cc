@@ -106,7 +106,6 @@ ComputeArgAndRetvalCores(const Graph& graph) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
-      TF_ASSIGN_OR_RETURN(retval_cores[index], get_sharding_for_node(n));
       retval_cores[index] = core;
     }
   }

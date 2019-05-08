@@ -1771,6 +1771,9 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
 
+  def consumers(self):
+    return self._consumers()
+
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])

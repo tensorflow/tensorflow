@@ -110,7 +110,7 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
 // Code must compile for the oldest GPU XLA may be compiled for.
 static const char* redzone_checker_ptx = R"(
 .version 4.2
-.target sm_20
+.target sm_30
 .address_size 64
 
 .visible .entry redzone_checker(
@@ -152,37 +152,6 @@ LBB6_3:
 // in the specified order.
 using ComparisonKernelT = se::TypedKernel<se::DeviceMemory<uint8>, uint8,
                                           uint64, se::DeviceMemory<uint64>>;
-
-// Compile PTX in redzone_checker_ptx, or get a cached compiled version (for a
-// given stream executor and a given CUDA directory specified by an XLA flag).
-static StatusOr<absl::Span<const uint8>> CompileRedzoneCheckPtxOrGetCached(
-    se::StreamExecutor* executor, const HloModuleConfig& hlo_module_config) {
-  // Cache for storing the compiled PTX for redzone checking.
-  // The cache key is a stream executor, as it determines the supported
-  // CUDA compute capability, and PtxCompilationOptions.
-  using PtxCacheKey =
-      std::pair<se::StreamExecutor*, PtxCompilationOptions::PtxOptionsTuple>;
-  static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
-  static auto& redzone_check_ptx_cache GUARDED_BY(ptx_cache_mutex) =
-      *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
-
-  tensorflow::mutex_lock lock(ptx_cache_mutex);
-  PtxCompilationOptions compilation_options(hlo_module_config);
-  PtxCacheKey cache_key{executor, compilation_options.ToTuple()};
-  auto it = redzone_check_ptx_cache.find(cache_key);
-  if (it != redzone_check_ptx_cache.end()) {
-    return {it->second};
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<uint8> compiled,
-      CompilePtx(executor, redzone_checker_ptx, compilation_options));
-
-  auto insert_result =
-      redzone_check_ptx_cache.emplace(cache_key, std::move(compiled));
-  CHECK(insert_result.second);
-  return {insert_result.first->second};
-}
 
 // Check that redzones weren't overwritten on a host.
 //
@@ -297,7 +266,8 @@ Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
 
   TF_ASSIGN_OR_RETURN(
       absl::Span<const uint8> compiled_ptx,
-      CompileRedzoneCheckPtxOrGetCached(executor, hlo_module_config_));
+      CompilePtxOrGetCached(executor, redzone_checker_ptx,
+                            PtxCompilationOptions(hlo_module_config_)));
 
   se::ScopedDeviceMemory<uint64> out_param =
       executor->AllocateOwnedScalar<uint64>();
@@ -305,8 +275,7 @@ Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
 
   auto typed_or = CreateTypedKernel<se::DeviceMemory<uint8>, uint8, uint64,
                                     se::DeviceMemory<uint64>>(
-      "redzone_checker",
-      /*num_args=*/4, redzone_checker_ptx, compiled_ptx, executor);
+      "redzone_checker", redzone_checker_ptx, compiled_ptx, executor);
 
   // TF_ASSIGN_OR_RETURN does not work due to complex template.
   if (!typed_or.ok()) {

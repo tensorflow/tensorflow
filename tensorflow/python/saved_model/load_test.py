@@ -37,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
@@ -1546,6 +1547,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         original,
         root.model.traced_call(array_ops.zeros([1, 1])).numpy())
+
+  def test_version_info(self, cycles):
+    root = util.Checkpoint()
+    root = self.cycle(root, cycles)
+    self.assertEqual(versions.__version__, root.tensorflow_version)
+    self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)

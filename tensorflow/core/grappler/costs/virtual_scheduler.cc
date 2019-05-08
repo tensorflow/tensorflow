@@ -116,7 +116,7 @@ FirstReadyManager::FirstReadyManager() : ReadyNodeManager() {
   std::make_heap(nodes_.begin(), nodes_.end());
 }
 
-void FirstReadyManager::Init(
+Status FirstReadyManager::Init(
     const std::unordered_map<const NodeDef*, NodeState>* node_map) {
   // Reset the node state since different instances of the scheduler can reuse
   // the same node_manager.
@@ -133,6 +133,7 @@ void FirstReadyManager::Init(
       return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
     }
   };
+  return Status::OK();
 }
 
 const NodeDef* FirstReadyManager::GetCurrNode() {
@@ -172,12 +173,13 @@ void FirstReadyManager::DrainWaitingQueue() {
 CompositeNodeManager::CompositeNodeManager()
     : ReadyNodeManager(), send_manager_(), recv_manager_() {}
 
-void CompositeNodeManager::Init(
-    const std::unordered_map<const NodeDef*, NodeState>* node_state) {
-  node_state_ = node_state;
-  send_manager_.Init(node_state);
-  recv_manager_.Init(node_state);
+Status CompositeNodeManager::Init(
+    const std::unordered_map<const NodeDef*, NodeState>* node_map) {
+  node_map_ = node_map;
+  TF_RETURN_IF_ERROR(send_manager_.Init(node_map));
+  TF_RETURN_IF_ERROR(recv_manager_.Init(node_map));
   curr_node_ = nullptr;
+  return Status::OK();
 }
 
 void CompositeNodeManager::AddNode(const NodeDef* node) {
@@ -186,7 +188,7 @@ void CompositeNodeManager::AddNode(const NodeDef* node) {
   } else if (IsRecv(*node)) {
     recv_manager_.AddNode(node);
   } else {
-    const auto& device = node_state_->at(node).device_name;
+    const auto& device = node_map_->at(node).device_name;
     ops_lifo_map_[device].AddNode(node);
   }
 }
@@ -203,16 +205,16 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
   for (auto& ops_lifo : ops_lifo_map_) {
     if (!ops_lifo.second.Empty()) {
       const auto* op = ops_lifo.second.GetCurrNode();
-      candidates.emplace_back(op, node_state_->at(op).time_ready);
+      candidates.emplace_back(op, node_map_->at(op).time_ready);
     }
   }
   if (!send_manager_.Empty()) {
     const auto* send = send_manager_.GetCurrNode();
-    candidates.emplace_back(send, node_state_->at(send).time_ready);
+    candidates.emplace_back(send, node_map_->at(send).time_ready);
   }
   if (!recv_manager_.Empty()) {
     const auto* recv = recv_manager_.GetCurrNode();
-    candidates.emplace_back(recv, node_state_->at(recv).time_ready);
+    candidates.emplace_back(recv, node_map_->at(recv).time_ready);
   }
   CHECK(!candidates.empty());
   auto first_ready = std::min_element(
@@ -251,7 +253,7 @@ void CompositeNodeManager::RemoveCurrNode() {
   } else if (IsRecv(*node)) {
     recv_manager_.RemoveCurrNode();
   } else {
-    const auto device = node_state_->at(node).device_name;
+    const auto device = node_map_->at(node).device_name;
     ops_lifo_map_[device].RemoveCurrNode();
   }
   // Reset curr_node_ so that GetCurrNode() finds another node.
@@ -300,9 +302,6 @@ VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
 }
 
 Status VirtualScheduler::Init(const GrapplerItem* item) {
-  grappler_item_ = item;
-  graph_properties_ = absl::make_unique<GraphProperties>(*item);
-
   initialized_ = false;
 
   // Clear all internal states so that the VirtualScheduler is reusable for
@@ -322,9 +321,10 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   // necessary information for emulating tensorflow op scheduling and
   // construct internal data structures (NodeState and DeviceState) for virtual
   // scheduling.
-  ready_nodes_->Init(GetNodeStates());
+  TF_RETURN_IF_ERROR(ready_nodes_->Init(GetNodeStates()));
 
-  // Construct graph properties.
+  // Constructs graph properties and performs shape inference.
+  graph_properties_ = absl::make_unique<GraphProperties>(*item);
   if (use_static_shapes_) {
     TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
         true, use_aggressive_shape_inference_));
@@ -332,6 +332,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
 
+  grappler_item_ = item;
   const auto& graph = grappler_item_->graph;
   const auto& fetch_nodes = grappler_item_->fetch;
   std::set<string> feed_nodes;

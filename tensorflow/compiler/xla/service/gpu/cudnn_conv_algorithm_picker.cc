@@ -392,7 +392,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, allocator, reference_result_buffer, result_buffer);
+          &stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
@@ -420,21 +420,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       }
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
-      auto comp =
-          BufferComparator::Create(result_shape, stream.parent(), compiler_);
-      if (comp.ok()) {
-        comparator.emplace(comp.ConsumeValueOrDie());
-        reference_result_buffer = result_buffer;
-        TF_ASSIGN_OR_RETURN(result_buffer,
-                            input_output_allocator.AllocateBytes(
-                                &stream, reference_result_buffer.size()));
-        initialize_buffer(result_buffer);
-        first_algorithm = alg;
-      } else {
-        LOG(ERROR) << "Fail to initialize buffer comparator: " << comp.status()
-                   << ", instruction: " << instr->ToString();
-        CHECK(!crash_on_checking_failure);
-      }
+      comparator.emplace(result_shape, hlo_module_config);
+      reference_result_buffer = result_buffer;
+      TF_ASSIGN_OR_RETURN(result_buffer,
+                          input_output_allocator.AllocateBytes(
+                              &stream, reference_result_buffer.size()));
+      initialize_buffer(result_buffer);
+      first_algorithm = alg;
     }
   }
 
