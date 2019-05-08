@@ -338,8 +338,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   opts.step_id = ctx->step_id();
   opts.runner = ctx->runner();
   opts.source_device = source_device;
-  opts.stats_collector = ctx->stats_collector();
-  opts.trace_collector = ctx->trace_collector();
   if (opts.source_device != target_device) {
     opts.remote_execution = true;
   }

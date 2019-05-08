@@ -211,8 +211,6 @@ Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
   // will be required to plumb it through the `IteratorContext`.
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
-  f_opts.stats_collector = ctx->stats_collector();
-  f_opts.trace_collector = ctx->trace_collector();
 
   OwnedArgsCallFrame frame(std::move(args), &captured_inputs_, ret_types_);
   Notification n;
