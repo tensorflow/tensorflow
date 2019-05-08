@@ -5795,121 +5795,104 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
-    const int depth = function_params->output_depth;
-    const int depth_micro_repeats = function_params->depth_micro_repeats;
-    const int bias_increment = function_params->bias_increment;
+    // Note that argument registers may be reused after parameter loading.
+    // x0 %[filter_data]
+    // x1 %[bias_data]
+    // x2 %[shuffled_filter_data]
+    // x3 %[adjusted_bias_data]
+    // x4 %[function_params]
 
-    constexpr int kSymmetricZeroPoint = 128;
-    constexpr uint8 kSignBit = 0x80;
-    const int32 input_offset = function_params->input_offset;
-    TFLITE_DCHECK_GE(input_offset, -255);
-    TFLITE_DCHECK_LE(input_offset, 0);
-    const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
-    const int8x16_t ones_vector = vdupq_n_s8(1);
-
-    // Simulate NEON-register transposition of subset of filter.
-    int8x16_t input_0_a;
-    int8x16_t input_0_b;
-    int8x16_t input_0_c;
-    int8x16_t input_1_a;
-    int8x16_t input_1_b;
-    int8x16_t input_1_c;
-    int8x16_t input_2_a;
-    int8x16_t input_2_b;
-    int8x16_t input_2_c;
-
-    int8x16_t filter_0_a;
-    int8x16_t filter_0_b;
-    int8x16_t filter_1_a;
-    int8x16_t filter_1_b;
-    int8x16_t filter_2_a;
-    int8x16_t filter_2_b;
-
-    // Register pairs for each height.
-    // Effect subtraction of zero-point = 128 by XOR of sign bit.
-    const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
-
-    const uint8* filter_block = filter_data;
-    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
-      // Filter data is provided as filter_block[3][3][depth/8][2][4].
-      // height 3, width 3, micro-blocks, sub-block 0 or 1, depth 4.
-      // filter_bank[3][2][4][4]; Sub-block, height 3, depth 4, width 4.
-
-      const uint8* filter_block_ptr = filter_block;
-      input_0_a = vld1q_lane_s8x8(filter_block_ptr, input_0_a, 0);
-      filter_block_ptr += depth;
-      input_0_b = vld1q_lane_s8x8(filter_block_ptr, input_0_b, 0);
-      filter_block_ptr += depth;
-      input_0_c = vld1q_lane_s8x8(filter_block_ptr, input_0_c, 0);
-      filter_block_ptr += depth;
-      input_1_a = vld1q_lane_s8x8(filter_block_ptr, input_1_a, 0);
-      filter_block_ptr += depth;
-      input_1_b = vld1q_lane_s8x8(filter_block_ptr, input_1_b, 0);
-      filter_block_ptr += depth;
-      input_1_c = vld1q_lane_s8x8(filter_block_ptr, input_1_c, 0);
-      filter_block_ptr += depth;
-      input_2_a = vld1q_lane_s8x8(filter_block_ptr, input_2_a, 0);
-      filter_block_ptr += depth;
-      input_2_b = vld1q_lane_s8x8(filter_block_ptr, input_2_b, 0);
-      filter_block_ptr += depth;
-      input_2_c = vld1q_lane_s8x8(filter_block_ptr, input_2_c, 0);
-
-      filter_0_a = vzip1q_s8(input_0_a, input_0_b);
-      filter_0_b = vzip1q_s8(input_0_c, sign_bit);
-      filter_1_a = vzip1q_s8(input_1_a, input_1_b);
-      filter_1_b = vzip1q_s8(input_1_c, sign_bit);
-      filter_2_a = vzip1q_s8(input_2_a, input_2_b);
-      filter_2_b = vzip1q_s8(input_2_c, sign_bit);
-      filter_0_a = veorq_s8(filter_0_a, sign_bit);
-      filter_0_b = veorq_s8(filter_0_b, sign_bit);
-      filter_1_a = veorq_s8(filter_1_a, sign_bit);
-      filter_1_b = veorq_s8(filter_1_b, sign_bit);
-      filter_2_a = veorq_s8(filter_2_a, sign_bit);
-      filter_2_b = veorq_s8(filter_2_b, sign_bit);
-      vzipq_s8x2_in_place(&filter_0_a, &filter_0_b);
-      vzipq_s8x2_in_place(&filter_1_a, &filter_1_b);
-      vzipq_s8x2_in_place(&filter_2_a, &filter_2_b);
-
-      vst1q_s8(shuffled_filter_data, filter_0_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_0_b);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_1_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_1_b);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_2_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_2_b);
-      shuffled_filter_data += 16;
-
-      int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
-      bias_data += bias_increment;
-      int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
-      bias_data += bias_increment;
-      // For instance, if input_offset == 128, no adjustment is needed.
-
-      int32x4_t filter_sum_a = vdupq_n_s32(0);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_0_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_1_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_2_a, ones_vector);
-      int32x4_t filter_sum_b = vdupq_n_s32(0);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_0_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_1_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_2_b, ones_vector);
-
-      adjusted_bias_data_a = vmlaq_n_s32(adjusted_bias_data_a, filter_sum_a,
-                                         input_offset_difference);
-      adjusted_bias_data_b = vmlaq_n_s32(adjusted_bias_data_b, filter_sum_b,
-                                         input_offset_difference);
-
-      vst1q_s32(adjusted_bias_data, adjusted_bias_data_a);
-      adjusted_bias_data += 4;
-      vst1q_s32(adjusted_bias_data, adjusted_bias_data_b);
-      adjusted_bias_data += 4;
-
-      filter_block += 8;
-    }
+    asm volatile(
+        // %bb.0:
+        "ldp    w12, w11, [%[function_params], #" STR(DP_OFFSET_BIAS_INCREMENT) "]\n"
+        "ldrsw  x9, [%[function_params], #" STR(DP_OFFSET_OUTPUT_DEPTH) "]\n"
+        "ldr    w10, [%[function_params], #" STR(DP_OFFSET_DEPTH_MICRO_REPEATS) "]\n"
+        "mov    x8, xzr\n"
+        "add    w11, w11, #128\n"  // =128
+        "sxtw   x12, w12\n"
+        "movi   v0.16b, #128\n"
+        "dup    v1.4s, w11\n"
+        "lsl    x11, x12, #3\n"
+        "lsl    x12, x12, #2\n"
+        "movi   v2.16b, #1\n"
+        // implicit-def: $q3
+        // implicit-def: $q4
+        // implicit-def: $q5
+        // implicit-def: $q6
+        // implicit-def: $q7
+        // implicit-def: $q16
+        // implicit-def: $q17
+        // implicit-def: $q18
+        // implicit-def: $q19
+        "b      DC_PER_DEPTH_2\n"
+        "   DC_PER_DEPTH_1:\n"  // in Loop: Header=BB177_2 Depth=1
+        "add    x13, %[filter_data], x8, lsl #3\n"
+        "ld1    { v19.d }[0], [x13], x9\n"
+        "movi   v21.2d, #0\n"
+        "movi   v20.2d, #0\n"
+        "add    x8, x8, #1\n"  // =1
+        "ld1    { v18.d }[0], [x13], x9\n"
+        "ld1    { v17.d }[0], [x13], x9\n"
+        "zip1   v22.16b, v19.16b, v18.16b\n"
+        "eor    v22.16b, v22.16b, v0.16b\n"
+        "ld1    { v16.d }[0], [x13], x9\n"
+        "zip1   v23.16b, v17.16b, v0.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "zip1   v24.8h, v22.8h, v23.8h\n"
+        "ld1    { v7.d }[0], [x13], x9\n"
+        "zip2   v22.8h, v22.8h, v23.8h\n"
+        "sdot   v21.4s, v22.16b, v2.16b\n"
+        "sdot   v20.4s, v24.16b, v2.16b\n"
+        "ld1    { v6.d }[0], [x13], x9\n"
+        "zip1   v23.16b, v16.16b, v7.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "ld1    { v5.d }[0], [x13], x9\n"
+        "zip1   v25.16b, v6.16b, v0.16b\n"
+        "eor    v25.16b, v25.16b, v0.16b\n"
+        "zip1   v26.8h, v23.8h, v25.8h\n"
+        "ld1    { v4.d }[0], [x13], x9\n"
+        "zip2   v23.8h, v23.8h, v25.8h\n"
+        "sdot   v21.4s, v23.16b, v2.16b\n"
+        "sdot   v20.4s, v26.16b, v2.16b\n"
+        "ld1    { v3.d }[0], [x13]\n"
+        "zip1   v25.16b, v5.16b, v4.16b\n"
+        "stp    q26, q23, [%[shuffled_filter_data], #32]\n"
+        "stp    q24, q22, [%[shuffled_filter_data]]\n"
+        "zip1   v23.16b, v3.16b, v0.16b\n"
+        "eor    v22.16b, v25.16b, v0.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "zip1   v24.8h, v22.8h, v23.8h\n"
+        "zip2   v22.8h, v22.8h, v23.8h\n"
+        "stp    q24, q22, [%[shuffled_filter_data], #64]\n"
+        "sdot   v21.4s, v22.16b, v2.16b\n"
+        "ldr    q22, [%[bias_data]]\n"
+        "ldr    q23, [%[bias_data], x12]\n"
+        "sdot   v20.4s, v24.16b, v2.16b\n"
+        "add    %[shuffled_filter_data], x2, #96\n"  // =96
+        "mla    v22.4s, v20.4s, v1.4s\n"
+        "mla    v23.4s, v21.4s, v1.4s\n"
+        "add    %[bias_data], x1, x11\n"
+        "stp    q22, q23, [%[adjusted_bias_data]], #32\n"
+        "   DC_PER_DEPTH_2:\n"  // =>This Inner Loop Header: Depth=1
+        "cmp    w8, w10\n"
+        "b.lt   DC_PER_DEPTH_1\n"
+        :
+        // Outputs.
+        [ filter_data ] "+r"(filter_data),
+        [ bias_data ] "+r"(bias_data),
+        [ shuffled_filter_data ] "+r"(shuffled_filter_data),
+        [ adjusted_bias_data ] "+r"(adjusted_bias_data)
+        :
+        // Inputs.
+        [ function_params ] "r"(function_params)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27",
+        // We use these general-purpose registers.
+        "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x15", "x16");
   }
 
   static inline void Run(const uint8* filter_data, const int32* bias_data,
