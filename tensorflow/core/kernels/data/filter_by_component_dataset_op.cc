@@ -134,7 +134,7 @@ class FilterByLastComponentDatasetOp : public UnaryDatasetOpKernel {
           if (last_component.NumElements() != 1 ||
               last_component.dtype() != DT_BOOL) {
             return errors::InvalidArgument(
-                "Last component must be a bool tensor with only one element.");
+                "Last component must be a bool scalar.");
           }
           matched = last_component.scalar<bool>()();
           out_tensors->pop_back();
