@@ -4473,19 +4473,15 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
       inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
   if (params->validation_only) return Status::OK();
 
-  // Subtract x - y twice.
-  nvinfer1::IElementWiseLayer* sub_l =
+  // Subtract x - y.
+  nvinfer1::IElementWiseLayer* sub =
       params->converter->network()->addElementWise(
           *tensor_l, *tensor_r, nvinfer1::ElementWiseOperation::kSUB);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(sub_l, node_def.name());
-  nvinfer1::IElementWiseLayer* sub_r =
-      params->converter->network()->addElementWise(
-          *tensor_l, *tensor_r, nvinfer1::ElementWiseOperation::kSUB);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(sub_r, node_def.name());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sub, node_def.name());
   // Multiply (x - y) * (x - y).
   nvinfer1::IElementWiseLayer* mul =
       params->converter->network()->addElementWise(
-          *sub_l->getOutput(0), *sub_r->getOutput(0),
+          *sub->getOutput(0), *sub->getOutput(0),
           nvinfer1::ElementWiseOperation::kPROD);
   TFTRT_RETURN_ERROR_IF_NULLPTR(mul, node_def.name());
 
