@@ -241,6 +241,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
+    opts.trace_collector = ctx->trace_collector();
     opts.step_container = ctx->step_container();
     opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;

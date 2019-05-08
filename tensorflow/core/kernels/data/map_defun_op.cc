@@ -32,6 +32,7 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
   opts->cancellation_manager = ctx->cancellation_manager();
   if (always_collect_stats) {
     opts->stats_collector = ctx->stats_collector();
+    opts->trace_collector = ctx->trace_collector();
   }
   opts->runner = ctx->runner();
 }

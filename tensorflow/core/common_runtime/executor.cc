@@ -1584,6 +1584,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
+  params.trace_collector = trace_collector_;
 
   tracing::SetTraceCollector(trace_collector_);
   Status s;

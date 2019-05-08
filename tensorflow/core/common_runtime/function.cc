@@ -309,6 +309,7 @@ class CallOp : public AsyncOpKernel {
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
+    opts.trace_collector = ctx->trace_collector();
     opts.runner = ctx->runner();
     opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
@@ -839,6 +840,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->step_id = run_opts.step_id;
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
+  exec_args->trace_collector = run_opts.trace_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
   exec_args->step_container = run_opts.step_container;
   exec_args->runner = *run_opts.runner;
@@ -930,6 +932,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->step_id = run_opts.step_id;
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
+  exec_args->trace_collector = run_opts.trace_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
   exec_args->collective_executor = run_opts.collective_executor;
   exec_args->step_container = run_opts.step_container;

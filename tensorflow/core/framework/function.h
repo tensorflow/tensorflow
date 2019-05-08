@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -533,6 +534,7 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    tracing::TraceCollector* trace_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
