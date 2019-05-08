@@ -271,9 +271,6 @@ class Network(base_layer.Layer):
     self._base_init(name=name, **kwargs)
     self._validate_graph_inputs_and_outputs()
 
-    self._compute_previous_mask = (
-        'mask' in tf_inspect.getfullargspec(self.call).args or
-        hasattr(self, 'compute_mask'))
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
@@ -515,6 +512,10 @@ class Network(base_layer.Layer):
       weights += layer.weights
     weights += (self._trainable_weights + self._non_trainable_weights)
     return weights
+
+  @property
+  def _should_compute_mask(self):
+    return self._is_graph_network and super(Network, self)._should_compute_mask
 
   def compute_mask(self, inputs, mask):
     if not self._is_graph_network:

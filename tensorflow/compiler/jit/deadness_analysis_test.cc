@@ -1067,5 +1067,25 @@ TEST(DeadnessAnalysisTest, ConstantFalseSwitchCondition) {
   EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "#false");
 }
 
+TEST(DeadnessAnalysisTest, RefBoolSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output condition_ref_var =
+      ops::Variable(root.WithOpName("cond_ref"), TensorShape({}), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, condition_ref_var);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "~*cond_ref:0");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "*cond_ref:0");
+}
+
 }  // namespace
 }  // namespace tensorflow

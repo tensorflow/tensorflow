@@ -3231,6 +3231,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    tags = ["no_oss"],  # b/124474135
     xla_enable_strict_auto_jit = True,
 )
 

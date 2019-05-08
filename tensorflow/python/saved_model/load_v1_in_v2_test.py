@@ -28,6 +28,8 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -50,7 +52,7 @@ class LoadTest(test.TestCase):
     export_graph = ops.Graph()
     with export_graph.as_default():
       start = array_ops.placeholder(
-          shape=[None], dtype=dtypes.float32, name="start")
+          shape=None, dtype=dtypes.float32, name="start")
       if use_resource:
         distractor = variables.RefVariable(-1., name="distractor")
         v = resource_variable_ops.ResourceVariable(3., name="v")
@@ -80,17 +82,20 @@ class LoadTest(test.TestCase):
             legacy_init_op=local_variable.initializer)
     return path
 
+  @test_util.run_in_graph_and_eager_modes
   def test_resource_variable_import(self):
     imported = load.load(self._v1_single_metagraph_saved_model(
         use_resource=True))
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.local_variables_initializer())
     fn = imported.signatures["serving_default"]
     self.assertEqual({"output": 6.},
                      self.evaluate(fn(constant_op.constant(2.))))
     self.assertAllEqual([3., 1.], self.evaluate(imported.variables))
-    imported.variables[0].assign(4.)
+    self.evaluate(imported.variables[0].assign(4.))
     self.assertEqual({"output": 8.},
                      self.evaluate(fn(start=constant_op.constant(2.))))
-    imported.variables[1].assign(2.)
+    self.evaluate(imported.variables[1].assign(2.))
     self.assertEqual({"output": 24.},
                      self.evaluate(fn(start=constant_op.constant(3.))))
     self.assertTrue(imported.variables[0].trainable)
@@ -98,7 +103,9 @@ class LoadTest(test.TestCase):
     with backprop.GradientTape() as tape:
       output = fn(start=constant_op.constant(4.))
     self.assertEqual(imported.variables[:1], list(tape.watched_variables()))
-    self.assertEqual(8., tape.gradient(output, imported.variables[0]).numpy())
+    self.assertEqual(
+        8.,
+        self.evaluate(tape.gradient(output, imported.variables[0])))
 
   def test_ref_variable_import(self):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
@@ -184,9 +191,11 @@ class LoadTest(test.TestCase):
     file_io.delete_file(vocab_path)
     return path
 
+  @test_util.run_in_graph_and_eager_modes
   def test_asset_loading(self):
     first_path = self._v1_asset_saved_model()
     imported = load.load(first_path)
+    self.evaluate(lookup_ops.tables_initializer())
     fn = imported.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
@@ -194,7 +203,9 @@ class LoadTest(test.TestCase):
                                str(ops.uid()))
     save.save(imported, second_path, signatures=imported.signatures)
     shutil.rmtree(first_path)
+    del ops.get_collection_ref(ops.GraphKeys.TABLE_INITIALIZERS)[:]
     second_import = load.load(second_path)
+    self.evaluate(lookup_ops.tables_initializer())
     fn = second_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
@@ -203,7 +214,9 @@ class LoadTest(test.TestCase):
                               str(ops.uid()))
     save.save(second_import, third_path, signatures=second_import.signatures)
     shutil.rmtree(second_path)
+    del ops.get_collection_ref(ops.GraphKeys.TABLE_INITIALIZERS)[:]
     third_import = load.load(third_path)
+    self.evaluate(lookup_ops.tables_initializer())
     fn = third_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
@@ -294,8 +307,8 @@ class LoadTest(test.TestCase):
   def _no_signatures_model(self):
     export_graph = ops.Graph()
     with export_graph.as_default():
-      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
-
+      inp = array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+      array_ops.identity(inp + 1., name="out")
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
         b = builder_impl.SavedModelBuilder(path)
@@ -334,6 +347,13 @@ class LoadTest(test.TestCase):
     imported = load.load(path)
     self.assertEqual([2], imported.signatures["key"]()["value"].shape)
 
+  def test_version_info(self):
+    path = self._signature_with_no_inputs()
+    imported = load.load(path)
+    self.assertEqual(versions.__version__, imported.tensorflow_version)
+    self.assertEqual(versions.__git_version__,
+                     imported.tensorflow_git_version)
+
   def _unfed_placeholder_signature(self):
     export_graph = ops.Graph()
     with export_graph.as_default():
@@ -358,5 +378,13 @@ class LoadTest(test.TestCase):
         "signature needs an input for each placeholder.*\n\nUnable to lift"):
       load.load(path)
 
+  def test_custom_pruning(self):
+    path = self._no_signatures_model()
+    root = load.load(path)
+    fn = root.prune("x:0", "out:0")
+    self.assertEqual(2., self.evaluate(fn(x=array_ops.ones([]))))
+    root.graph.as_graph_element("x:0")
+
 if __name__ == "__main__":
   test.main()
+

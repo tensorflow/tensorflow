@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 from absl.testing import parameterized
 
 from tensorflow.python.framework import composite_tensor
@@ -324,6 +325,23 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = [CT([True, True], metadata='A'), False]
     self.assertEqual(result, expected)
 
+  def testMemoryIsFreed(self):
+    # Note: map_structure exercises flatten, pack_sequence_as, and
+    # assert_same_structure.
+    func = lambda x, y: x + y
+
+    object_count = [None, None]
+    for i in range(2):
+      gc.collect()
+      ct1 = CT([1, 2, 3], metadata=({'no': 'leaks'}))
+      ct2 = CT([4, 5, 6], metadata=({'no': 'leaks'}))
+      ct3 = nest.map_structure(func, ct1, ct2, expand_composites=True)
+      del ct1, ct2, ct3
+      gc.collect()
+      object_count[i] = len(gc.get_objects())
+
+    self.assertEqual(object_count[0], object_count[1])
+    self.assertEmpty(gc.garbage)
 
 if __name__ == '__main__':
   googletest.main()

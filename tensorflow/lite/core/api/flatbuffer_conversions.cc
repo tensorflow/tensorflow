@@ -61,9 +61,8 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       *type = kTfLiteFloat32;
       break;
     case TensorType_FLOAT16:
-      error_reporter->Report("Unimplemented data type float16 in tensor\n",
-                             tensor_type);
-      return kTfLiteError;
+      *type = kTfLiteFloat16;
+      break;
     case TensorType_INT16:
       *type = kTfLiteInt16;
       break;

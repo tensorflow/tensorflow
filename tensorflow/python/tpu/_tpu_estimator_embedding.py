@@ -364,3 +364,19 @@ def _get_weights_from_features(weight_key_name, features):
     if weights.dtype is not dtypes.float32:
       weights = math_ops.to_float(weights)
   return weights
+
+
+def get_tpu_embedding_columns(feature_columns):
+  """Get feature columns meant to use TPU embedding.
+
+  Args:
+    feature_columns: a list of feature columns.
+
+  Returns:
+    A list of feature columns which can be placed on TPU embedding.
+  """
+  tpu_embedding_columns = []
+  for column in feature_columns:
+    if isinstance(column, _TPU_EMBEDDING_COLUMN_CLASSES):
+      tpu_embedding_columns.append(column)
+  return tpu_embedding_columns

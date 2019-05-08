@@ -27,7 +27,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -1914,23 +1914,25 @@ inline void LstmCell(
 // aiming for 16-bit fixed-point quantization of these internal nodes here.
 //
 template <int StateIntegerBits>
-inline void LstmCell(
-    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
-    const uint8* input_data_uint8,
-    const RuntimeShape& unextended_prev_activ_shape,
-    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
-    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
-    const int32* bias_data_int32,
-    const RuntimeShape& unextended_prev_state_shape,
-    const int16* prev_state_data_int16,
-    const RuntimeShape& unextended_output_state_shape,
-    int16* output_state_data_int16,
-    const RuntimeShape& unextended_output_activ_shape,
-    uint8* output_activ_data_uint8,
-    const RuntimeShape& unextended_concat_temp_shape,
-    uint8* concat_temp_data_uint8,
-    const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
+inline void LstmCell(const LstmCellParams& params,
+                     const RuntimeShape& unextended_input_shape,
+                     const uint8* input_data_uint8,
+                     const RuntimeShape& unextended_prev_activ_shape,
+                     const uint8* prev_activ_data_uint8,
+                     const RuntimeShape& weights_shape,
+                     const uint8* weights_data_uint8,
+                     const RuntimeShape& unextended_bias_shape,
+                     const int32* bias_data_int32,
+                     const RuntimeShape& unextended_prev_state_shape,
+                     const int16* prev_state_data_int16,
+                     const RuntimeShape& unextended_output_state_shape,
+                     int16* output_state_data_int16,
+                     const RuntimeShape& unextended_output_activ_shape,
+                     uint8* output_activ_data_uint8,
+                     const RuntimeShape& unextended_concat_temp_shape,
+                     uint8* concat_temp_data_uint8,
+                     const RuntimeShape& unextended_activ_temp_shape,
+                     int16* activ_temp_data_int16, void* gemmlowp_context) {
   (void)gemmlowp_context;  // only used in optimized code.
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;

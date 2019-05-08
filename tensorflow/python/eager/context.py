@@ -1194,6 +1194,9 @@ class Context(object):
 
   @log_device_placement.setter
   def log_device_placement(self, enabled):
+    if self._log_device_placement == enabled:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
           "Device placement logging must be set at program startup")

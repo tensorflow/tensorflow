@@ -31,14 +31,18 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+// Determines the fraction of slack time by which to delay prefetching of data.
+constexpr double kSleepFactor = 0.2;
 constexpr char kDatasetName[] = "Prefetch";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size)
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
+          int64 slack_period)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
-        buffer_size_(buffer_size) {
+        buffer_size_(buffer_size),
+        slack_period_(slack_period) {
     input_->Ref();
   }
 
@@ -70,8 +74,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-    TF_RETURN_IF_ERROR(
-        b->AddDataset(this, {input_graph_node, buffer_size}, output));
+    AttrValue slack_period_attr;
+    b->BuildAttrValue(slack_period_, &slack_period_attr);
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, {input_graph_node, buffer_size},
+        {std::make_pair("slack_period", slack_period_attr)}, output));
     return Status::OK();
   }
 
@@ -80,7 +87,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          auto_tuner_(params.dataset->buffer_size_) {}
+          auto_tuner_(params.dataset->buffer_size_) {
+      slack_us_ = 0;
+    }
 
     ~Iterator() override {
       // Signal the prefetch thread to terminate it. We will then
@@ -226,6 +235,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> value;
+      int64 created_us;
     };
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -248,6 +258,20 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
+        if (dataset()->slack_period_ > 0 &&
+            (num_elements() + 1) % dataset()->slack_period_ == 0) {
+          // TODO(rachelim): Consider doing something more sophisticated
+          // to decide how long to sleep for; e.g. using a kalman filter.
+          int64 slack_us =
+              Env::Default()->NowMicros() - buffer_.front().created_us;
+          // Every slack_period_-th element, update the most recent slack time,
+          // measured by the duration between when the element is prefetched
+          // and when it is consumed. We add kSleepFactor * slack_us_ to the
+          // measurement because we slept for that duration before prefetching
+          // the element.
+          slack_us_ = kSleepFactor * slack_us_ + slack_us;
+          VLOG(2) << "Setting slack_us_: " << slack_us_;
+        }
         *out_tensors = std::move(buffer_.front().value);
         RecordBufferDequeue(ctx, *out_tensors);
       }
@@ -282,6 +306,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
+      // Keep track of where we are in an iteration "burst"
+      int num_produced = 0;
       while (true) {
         // 1. Wait for a slot in the buffer.
         {
@@ -295,6 +321,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           if (cancelled_) {
             return;
           }
+        }
+
+        if (dataset()->slack_period_ > 0 &&
+            num_produced % dataset()->slack_period_ == 0) {
+          // For the first element in the "burst", sleep for a bit if there is
+          // slack.
+          VLOG(2) << "Sleeping for: " << slack_us_ * kSleepFactor;
+          ctx->env()->SleepForMicroseconds(slack_us_ * kSleepFactor);
         }
 
         // 2. Read the next element.
@@ -319,9 +353,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
+          buffer_element.created_us = ctx->env()->NowMicros();
           buffer_.push_back(std::move(buffer_element));
           cond_var_.notify_all();
         }
+        ++num_produced;
       }
     }
 
@@ -375,9 +411,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);
     bool cancelled_ GUARDED_BY(mu_) = false;
     bool prefetch_thread_finished_ GUARDED_BY(mu_) = false;
+
+    std::atomic<int64> slack_us_;
   };
   const DatasetBase* const input_;
   const int64 buffer_size_;
+
+  // If non-zero, determines the period between injecting "slack" into the
+  // execution.
+  const int64 slack_period_;
 };
 
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -396,7 +438,7 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     metrics::RecordTFDataAutotune(kDatasetName);
   }
 
-  *output = new Dataset(ctx, input, buffer_size);
+  *output = new Dataset(ctx, input, buffer_size, slack_period_);
 }
 
 namespace {

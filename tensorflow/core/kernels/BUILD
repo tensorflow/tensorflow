@@ -5869,7 +5869,6 @@ filegroup(
         "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
-        "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
@@ -6150,6 +6149,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
     "gemm_functors.h",
     "mirror_pad_op_cpu_impl.h",

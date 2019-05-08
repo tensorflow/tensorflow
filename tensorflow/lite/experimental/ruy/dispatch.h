@@ -141,14 +141,27 @@ template <Path ThePath, typename LhsScalar, typename RhsScalar,
 void PopulateTrMulParams(TrMulParams* params) {
   static_assert((ThePath & Path::kReference) == Path::kNone,
                 "Path::kReference should not do TrMul");
-  // The optimized code paths only handle a very specific set of layouts.
-  // Fall back to Path::kStandardCpp if needed.
+  // The optimized code paths don't handle the full generality of Ruy's API.
+  // Fall back to Path::kStandardCpp if necessary.
+  bool fallback_to_standard_cpp = false;
   if (ThePath != Path::kStandardCpp) {
+    // The optimized code paths currently only handle the case of all matrices
+    // being column major.
     if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
-      PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
-                          Spec>(params);
-      return;
+      fallback_to_standard_cpp = true;
     }
+
+    // If DstScalar is std::int32_t, means user want to get from accumulator
+    // results directly, fallback to Path::kStandardCpp.
+    if (std::is_same<DstScalar, std::int32_t>::value) {
+      fallback_to_standard_cpp = true;
+    }
+  }
+
+  if (fallback_to_standard_cpp) {
+    PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
+                        Spec>(params);
+    return;
   }
 
   using PackedLhsScalar = PackedType<ThePath, LhsScalar>;

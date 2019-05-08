@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -628,8 +630,13 @@ class FunctionLibraryRuntime {
   // In the cross-process scenario, runner isn't used for making the Async
   // RPC calls.
   struct Options {
-    // The id of the step that is calling this function.
-    int64 step_id = 0;
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;

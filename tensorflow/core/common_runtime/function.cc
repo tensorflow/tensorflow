@@ -498,7 +498,6 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();

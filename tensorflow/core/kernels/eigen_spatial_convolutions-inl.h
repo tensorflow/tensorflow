@@ -920,8 +920,8 @@ class TensorContractionSubMapper<
   partialPacketNoPadding(const Index depth, const Index baseIndex,
                          Index num_coeffs) const {
     const Index inputIndex = depth + baseIndex;
-    return m_base_mapper.m_impl.template partialPacket(
-        inputIndex, mask<PacketT>(0, num_coeffs));
+    return m_base_mapper.m_impl.partialPacket(inputIndex,
+                                              mask<PacketT>(0, num_coeffs));
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {

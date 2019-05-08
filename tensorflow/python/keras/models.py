@@ -406,12 +406,8 @@ def _in_place_subclassed_model_reset(model):
       attributes_to_cache = [
           'inputs',
           'outputs',
-          '_feed_output_names',
-          '_feed_output_shapes',
-          '_feed_loss_fns',
           'loss_weights_list',
-          'targets',
-          '_feed_targets',
+          '_training_targets',
           '_sample_weight_modes',
           'total_loss',
           'sample_weights',

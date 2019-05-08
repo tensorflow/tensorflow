@@ -43,6 +43,7 @@ from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -80,7 +81,7 @@ ops.NotDifferentiable("ReduceDataset")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable):
+class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -237,7 +238,10 @@ class DatasetV2(tracking_base.Trackable):
       if t_options.private_threadpool_size is not None:
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
-    static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    static_optimizations = options._static_optimizations()
+    static_optimization_configs = options._static_optimization_configs()
+    # pylint: enable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
         warnings.warn(
@@ -248,7 +252,7 @@ class DatasetV2(tracking_base.Trackable):
             ", ".join(static_optimizations))
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations,
-                                   options._static_optimization_configs())  # pylint: disable=protected-access
+                                   static_optimization_configs)
 
     autotune = True
     cpu_budget = 0  # Indicates that all CPU cores should be used.
@@ -299,6 +303,24 @@ class DatasetV2(tracking_base.Trackable):
     output_types = str(output_types).replace("'", "")
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
+
+  def _to_components(self):
+    return [self._variant_tensor]
+
+  def _component_metadata(self):
+    return self._element_structure
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    return _VariantDataset(components[0], metadata)
+
+  def _shape_invariant_to_components(self, shape=None):
+    del shape  # not used
+    return tensor_shape.TensorShape([])  # dataset component is always a scalar.
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._variant_tensor, "graph")
 
   @staticmethod
   def from_tensors(tensors):
@@ -2068,6 +2090,15 @@ class Options(options_lib.OptionsBase):
       "`tf.data.experimental.OptimizationOptions` for more details.",
       default_factory=optimization_options.OptimizationOptions)
 
+  experimental_slack = options_lib.create_option(
+      name="experimental_slack",
+      ty=bool,
+      docstring="Whether to introduce 'slack' in the last `prefetch` of the "
+      "input pipeline, if it exists. This may reduce CPU contention with "
+      "accelerator host-side activity at the start of a step. The slack "
+      "frequency is determined by the number of devices attached to this "
+      "input pipeline. If None, defaults to False.")
+
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
       ty=stats_options.StatsOptions,
@@ -2095,11 +2126,23 @@ class Options(options_lib.OptionsBase):
     exp_stats_options = self.experimental_stats
     if exp_stats_options and exp_stats_options.latency_all_edges:
       result.append("latency_all_edges")
+    if self.experimental_slack:
+      result.append("slack")
     return result
 
   def _static_optimization_configs(self):
     """Produces the list of configurations for enabled static optimizations."""
-    return self.experimental_optimization._static_optimization_configs()  # pylint: disable=protected-access
+    result = []
+    if self.experimental_optimization:
+      result.extend(
+          self.experimental_optimization._static_optimization_configs())  # pylint: disable=protected-access
+
+    if self.experimental_slack:
+      num_devices = self.experimental_distribute.num_devices
+      if num_devices is None:
+        num_devices = 1
+      result.append("slack:slack_period:%d" % num_devices)
+    return result
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -2276,6 +2319,14 @@ class DatasetStructure(structure_lib.Structure):
 
   def __init__(self, element_structure):
     self._element_structure = element_structure
+
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, DatasetStructure) and
+            self._element_structure == other._element_structure)
+
+  def __hash__(self):
+    return hash(self._element_structure)
 
   @property
   def _flat_shapes(self):
@@ -2725,6 +2776,7 @@ class RangeDataset(DatasetSource):
   def __init__(self, *args):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
+    self._structure = structure_lib.TensorStructure(dtypes.int64, [])
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -2754,7 +2806,7 @@ class RangeDataset(DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure_lib.TensorStructure(dtypes.int64, [])
+    return self._structure
 
 
 class CacheDataset(UnaryUnchangedStructureDataset):
