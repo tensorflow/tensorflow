@@ -202,71 +202,9 @@ inline void AddBiasAndEvalActivationFunction(float output_activation_min,
                                              const float* bias_data,
                                              const RuntimeShape& array_shape,
                                              float* array_data) {
-#ifdef USE_NEON
-  gemmlowp::ScopedProfilingLabel label("AddBiasAndEvalActivationFunction");
-  const int bias_size = bias_shape.FlatSize();
-  const int array_size = array_shape.FlatSize();
-  TFLITE_DCHECK_EQ((array_size % bias_size), 0);
-  float* array_ptr = array_data;
-  float* array_end_ptr = array_ptr + array_size;
-  const auto activation_min = vdupq_n_f32(output_activation_min);
-  const auto activation_max = vdupq_n_f32(output_activation_max);
-  for (; array_ptr != array_end_ptr; array_ptr += bias_size) {
-    int i = 0;
-    for (; i <= bias_size - 16; i += 16) {
-      auto b0 = vld1q_f32(bias_data + i);
-      auto b1 = vld1q_f32(bias_data + i + 4);
-      auto b2 = vld1q_f32(bias_data + i + 8);
-      auto b3 = vld1q_f32(bias_data + i + 12);
-      auto a0 = vld1q_f32(array_ptr + i);
-      auto a1 = vld1q_f32(array_ptr + i + 4);
-      auto a2 = vld1q_f32(array_ptr + i + 8);
-      auto a3 = vld1q_f32(array_ptr + i + 12);
-      auto x0 = vaddq_f32(a0, b0);
-      auto x1 = vaddq_f32(a1, b1);
-      auto x2 = vaddq_f32(a2, b2);
-      auto x3 = vaddq_f32(a3, b3);
-      x0 = vmaxq_f32(activation_min, x0);
-      x1 = vmaxq_f32(activation_min, x1);
-      x2 = vmaxq_f32(activation_min, x2);
-      x3 = vmaxq_f32(activation_min, x3);
-      x0 = vminq_f32(activation_max, x0);
-      x1 = vminq_f32(activation_max, x1);
-      x2 = vminq_f32(activation_max, x2);
-      x3 = vminq_f32(activation_max, x3);
-      vst1q_f32(array_ptr + i, x0);
-      vst1q_f32(array_ptr + i + 4, x1);
-      vst1q_f32(array_ptr + i + 8, x2);
-      vst1q_f32(array_ptr + i + 12, x3);
-    }
-    for (; i <= bias_size - 4; i += 4) {
-      auto b = vld1q_f32(bias_data + i);
-      auto a = vld1q_f32(array_ptr + i);
-      auto x = vaddq_f32(a, b);
-      x = vmaxq_f32(activation_min, x);
-      x = vminq_f32(activation_max, x);
-      vst1q_f32(array_ptr + i, x);
-    }
-    for (; i < bias_size; i++) {
-      array_ptr[i] = ActivationFunctionWithMinMax(array_ptr[i] + bias_data[i],
-                                                  output_activation_min,
-                                                  output_activation_max);
-    }
-  }
-#else  // not NEON
-  gemmlowp::ScopedProfilingLabel label("AddBiasAndEvalActivationFunction");
-  const int bias_size = bias_shape.FlatSize();
-  const int array_size = array_shape.FlatSize();
-  TFLITE_DCHECK_EQ((array_size % bias_size), 0);
-  for (int array_offset = 0; array_offset < array_size;
-       array_offset += bias_size) {
-    for (int i = 0; i < bias_size; i++) {
-      array_data[array_offset + i] = ActivationFunctionWithMinMax(
-          array_data[array_offset + i] + bias_data[i], output_activation_min,
-          output_activation_max);
-    }
-  }
-#endif
+  BiasAndClamp(output_activation_min, output_activation_max,
+               bias_shape.FlatSize(), bias_data, array_shape.FlatSize(),
+               array_data);
 }
 
 #ifdef GEMMLOWP_NEON
@@ -1980,6 +1918,12 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(3);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
+
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
   // The following code computes matrix multiplication c = a * transponse(b)
   // with CBLAS, where:
   // * `a` is a matrix with dimensions (m, k).
@@ -1989,12 +1933,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const float* a = gemm_input_data;
   const float* b = filter_data;
   float* c = output_data;
-  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
-  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
-  int n = output_shape.Dims(3);
-  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
-
-#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
   // The stride of matrix a, b and c respectively.
   int stride_a = k;
   int stride_b = k;
@@ -2002,36 +1940,32 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
 
   cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1.0f, a,
               stride_a, b, stride_b, 0.0f, c, stride_c);
-#else
-  // When an optimized CBLAS implementation is not available, fall back
-  // to using Eigen.
-  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      Matrix;
-  typedef Eigen::Map<Matrix> MatrixRef;
-  typedef Eigen::Map<const Matrix> ConstMatrixRef;
-
-  MatrixRef matrix_c(c, m, n);
-  ConstMatrixRef matrix_a(a, m, k);
-  ConstMatrixRef matrix_b(b, n, k);
-
-  // The following special casing for when a or b is a vector is required
-  // as Eigen seem to fail to make this optimization on its own.
-  if (n == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
-  } else if (m == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
-  } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
-    matrix_c.noalias() = matrix_a * matrix_b.transpose();
-  }
-
-#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
-
   optimized_ops::AddBiasAndEvalActivationFunction(
       output_activation_min, output_activation_max, bias_shape, bias_data,
       output_shape, output_data);
+#else
+  // When an optimized CBLAS implementation is not available, fall back
+  // to using cpu_backend_gemm.
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n;
+  lhs_params.cols = k;
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = k;
+  rhs_params.cols = m;
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n;
+  dst_params.cols = m;
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
+#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 }
 
 inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
