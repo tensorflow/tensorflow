@@ -55,18 +55,29 @@ namespace toco {
   }
 
   const auto* relu_input_op = GetOpWithOutput(*model, add_op->inputs[0]);
-  if (relu_input_op == nullptr || relu_input_op->type != OperatorType::kRelu ||
-      relu_input_op->inputs.size() != 1 ||
+  const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
+  // this can be commutative so we need to find which operator is relu and which
+  // one is mul.
+  if (mul_op == nullptr || relu_input_op == nullptr) {
+    return ::tensorflow::Status::OK();
+  }
+
+  if (relu_input_op->type == OperatorType::kMul &&
+      mul_op->type == OperatorType::kRelu) {
+    std::swap(relu_input_op, mul_op);
+  }
+  if (relu_input_op->type != OperatorType::kRelu ||
+      mul_op->type != OperatorType::kMul) {
+    return ::tensorflow::Status::OK();
+  }
+
+  if (relu_input_op->inputs.size() != 1 ||
       relu_input_op->fused_activation_function !=
           FusedActivationFunctionType::kNone) {
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(ycling): Both Add and Mul are commutative. Support the case where
-  // the position of operands are exchanged.
-  const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
-  if (mul_op == nullptr || mul_op->type != OperatorType::kMul ||
-      mul_op->inputs.size() != 2 ||
+  if (mul_op->inputs.size() != 2 ||
       mul_op->fused_activation_function != FusedActivationFunctionType::kNone) {
     return ::tensorflow::Status::OK();
   }
@@ -75,8 +86,7 @@ namespace toco {
 
   const auto* relu_neg_input_op = GetOpWithOutput(*model, mul_op->inputs[1]);
 
-  if (relu_neg_input_op == nullptr ||
-      relu_neg_input_op->inputs.size() != 1) {
+  if (relu_neg_input_op == nullptr || relu_neg_input_op->inputs.size() != 1) {
     return ::tensorflow::Status::OK();
   }
 
@@ -91,8 +101,8 @@ namespace toco {
     const auto* neg_input_op =
         GetOpWithOutput(*model, relu_neg_input_op->inputs[0]);
     if (neg_input_op == nullptr || neg_input_op->inputs.size() != 1 ||
-        relu_neg_input_op->type != OperatorType::kRelu ||
-        relu_neg_input_op->fused_activation_function !=
+        neg_input_op->type != OperatorType::kRelu ||
+        neg_input_op->fused_activation_function !=
             FusedActivationFunctionType::kNone) {
       return ::tensorflow::Status::OK();
     }
@@ -111,11 +121,6 @@ namespace toco {
       AvailableArrayName(*model, neg_alpha_tensor_name + "_neg");
   model->GetOrCreateArray(alpha_tensor_name);
 
-  auto* neg_neg_alpha_op = new NegOperator;
-  neg_neg_alpha_op->inputs = {neg_alpha_tensor_name};
-  neg_neg_alpha_op->outputs = {alpha_tensor_name};
-  model->operators.emplace(add_op_it, neg_neg_alpha_op);
-
   auto* prelu_op = new PReluOperator;
   prelu_op->inputs = {input_tensor_name, alpha_tensor_name};
   prelu_op->outputs = {output_tensor_name};
@@ -126,9 +131,12 @@ namespace toco {
   DeleteArrayIfUsedOnce(add_op->inputs[0], model);
   DeleteArrayIfUsedOnce(add_op->inputs[1], model);
   DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
-  // Remove the existing Add op that outputs the final result. If the other
-  // intermediate tensors aren't used by other ops, those will be removed by
-  // other graph transformation rules.
+  // Remove the existing Add, mul, neg and relu op that outputs the final
+  // result. If the other intermediate tensors aren't used by other ops, those
+  // will be removed by other graph transformation rules.
+  model->operators.erase(FindOp(*model, relu_neg_input_op));
+  model->operators.erase(FindOp(*model, relu_input_op));
+  model->operators.erase(FindOp(*model, mul_op));
   model->operators.erase(FindOp(*model, add_op));
   *modified = true;
   return ::tensorflow::Status::OK();
