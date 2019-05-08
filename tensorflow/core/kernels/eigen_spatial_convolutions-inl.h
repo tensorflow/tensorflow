@@ -23,8 +23,8 @@ namespace internal {
 
 // TensorEvaluatorHasPartialPacket<TensorEvaluatorType, PacketType, IndexType>
 // provides `value` that is true if TensorEvaluatorType has `PacketType
-// partialPacket(IndexType, unpacket_traits<PacketType>::mask_t) const` and if
-// the PacketType supports masked load.
+// partialPacket<PacketType>(IndexType, unpacket_traits<PacketType>::mask_t)
+// const` and if the PacketType supports masked load.
 //
 // Partial packets are used to:
 //
@@ -42,12 +42,13 @@ class TensorEvaluatorHasPartialPacket {
   static auto functionExistsSfinae(
       typename std::enable_if<
           unpacket_traits<PacketT>::masked_load_available &&
-          std::is_same<
-              PacketT,
-              decltype(std::declval<const TensorEvaluatorT>().partialPacket(
-                  std::declval<IndexT>(),
-                  std::declval<typename unpacket_traits<PacketT>::mask_t>()))>::
-              value>::type*) -> std::true_type;
+          std::is_same<PacketT,
+                       decltype(std::declval<const TensorEvaluatorT>()
+                                    .template partialPacket<PacketT>(
+                                        std::declval<IndexT>(),
+                                        std::declval<typename unpacket_traits<
+                                            PacketT>::mask_t>()))>::value>::
+          type*) -> std::true_type;
 
   template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
   static auto functionExistsSfinae(...) -> std::false_type;
@@ -435,8 +436,8 @@ class TensorContractionInputMapper<
       const Index depth = patchId - patchOffsets[0] * patchDepth();
       const Index inputIndex = depth + inputRows[0] * m_rowInputStride +
                                inputCol * m_colInputStride + otherIndex;
-      return m_impl.partialPacket(inputIndex - span[0],
-                                  mask<Packet>(span[0], span[1] + 1));
+      return m_impl.template partialPacket<Packet>(
+          inputIndex - span[0], mask<Packet>(span[0], span[1] + 1));
     } else {
       // Using slow path for this partial packet.
       // We need to load elements starting from index span[0] all the way upto
@@ -920,8 +921,8 @@ class TensorContractionSubMapper<
   partialPacketNoPadding(const Index depth, const Index baseIndex,
                          Index num_coeffs) const {
     const Index inputIndex = depth + baseIndex;
-    return m_base_mapper.m_impl.partialPacket(inputIndex,
-                                              mask<PacketT>(0, num_coeffs));
+    return m_base_mapper.m_impl.template partialPacket<PacketT>(
+        inputIndex, mask<PacketT>(0, num_coeffs));
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
