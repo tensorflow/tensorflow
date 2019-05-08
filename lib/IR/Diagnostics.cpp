@@ -113,16 +113,22 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
 /// Allow an inflight diagnostic to be converted to 'failure', otherwise
 /// 'success' if this is an empty diagnostic.
 InFlightDiagnostic::operator LogicalResult() const {
-  return failure(isInFlight());
+  return failure(isActive());
 }
 
 /// Reports the diagnostic to the engine.
 void InFlightDiagnostic::report() {
+  // If this diagnostic is still inflight and it hasn't been abandoned, then
+  // report it.
   if (isInFlight()) {
     owner->emit(*impl);
-    impl.reset();
+    owner = nullptr;
   }
+  impl.reset();
 }
+
+/// Abandons this diagnostic.
+void InFlightDiagnostic::abandon() { owner = nullptr; }
 
 //===----------------------------------------------------------------------===//
 // DiagnosticEngineImpl

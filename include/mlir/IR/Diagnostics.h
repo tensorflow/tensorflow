@@ -24,6 +24,7 @@
 
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
 #include <functional>
@@ -180,7 +181,8 @@ public:
 
   /// Stream operator for inserting new diagnostic arguments.
   template <typename Arg>
-  typename std::enable_if<!std::is_convertible<Arg, StringRef>::value,
+  typename std::enable_if<!std::is_convertible<Arg, Twine>::value ||
+                              std::is_integral<Arg>::value,
                           Diagnostic &>::type
   operator<<(Arg &&val) {
     arguments.push_back(DiagnosticArgument(std::forward<Arg>(val)));
@@ -190,14 +192,51 @@ public:
     arguments.push_back(DiagnosticArgument(val));
     return *this;
   }
+  Diagnostic &operator<<(char val) { return *this << Twine(val); }
   Diagnostic &operator<<(const Twine &val) {
-    llvm::SmallString<0> str;
-    arguments.push_back(DiagnosticArgument(val.toStringRef(str)));
-    stringArguments.emplace_back(std::move(str), arguments.size());
+    // Allocate memory to hold this string.
+    llvm::SmallString<0> data;
+    auto strRef = val.toStringRef(data);
+    strings.push_back(std::unique_ptr<char[]>(new char[strRef.size()]));
+    memcpy(&strings.back()[0], strRef.data(), strRef.size());
+
+    // Add the new string to the argument list.
+    strRef = StringRef(&strings.back()[0], strRef.size());
+    arguments.push_back(DiagnosticArgument(strRef));
     return *this;
   }
+
   /// Stream in an Identifier.
   Diagnostic &operator<<(Identifier val);
+
+  /// Stream in a range.
+  template <typename T> Diagnostic &operator<<(llvm::iterator_range<T> range) {
+    return appendRange(range);
+  }
+  template <typename T> Diagnostic &operator<<(llvm::ArrayRef<T> range) {
+    return appendRange(range);
+  }
+
+  /// Append a range to the diagnostic. The default delimiter between elements
+  /// is ','.
+  template <typename T, template <typename> class Container>
+  Diagnostic &appendRange(const Container<T> &c, const char *delim = ", ") {
+    interleave(
+        c, [&](T a) { *this << a; }, [&]() { *this << delim; });
+    return *this;
+  }
+
+  /// Append arguments to the diagnostic.
+  template <typename Arg1, typename Arg2, typename... Args>
+  Diagnostic &append(Arg1 &&arg1, Arg2 &&arg2, Args &&... args) {
+    append(std::forward<Arg1>(arg1));
+    return append(std::forward<Arg2>(arg2), std::forward<Args>(args)...);
+  }
+  /// Append one argument to the diagnostic.
+  template <typename Arg> Diagnostic &append(Arg &&arg) {
+    *this << std::forward<Arg>(arg);
+    return *this;
+  }
 
   /// Outputs this diagnostic to a stream.
   void print(raw_ostream &os) const;
@@ -234,10 +273,9 @@ private:
   /// The current list of arguments.
   SmallVector<DiagnosticArgument, 4> arguments;
 
-  /// A list of string values used as arguments and the corresponding index of
-  /// those arguments. This is used to guarantee the liveness of non-constant
-  /// strings used in diagnostics.
-  std::vector<std::pair<llvm::SmallString<0>, unsigned>> stringArguments;
+  /// A list of string values used as arguments. This is used to guarantee the
+  /// liveness of non-constant strings used in diagnostics.
+  std::vector<std::unique_ptr<char[]>> strings;
 
   /// A list of attached notes.
   NoteVector notes;
@@ -262,6 +300,7 @@ public:
       : owner(rhs.owner), impl(std::move(rhs.impl)) {
     // Reset the rhs diagnostic.
     rhs.impl.reset();
+    rhs.abandon();
   }
   ~InFlightDiagnostic() {
     if (isInFlight())
@@ -280,19 +319,19 @@ public:
 
   /// Attaches a note to this diagnostic.
   Diagnostic &attachNote(llvm::Optional<Location> noteLoc = llvm::None) {
-    assert(isInFlight() && "diagnostic not inflight");
+    assert(isActive() && "diagnostic not active");
     return impl->attachNote(noteLoc);
   }
 
   /// Reports the diagnostic to the engine.
   void report();
 
+  /// Abandons this diagnostic so that it will no longer be reported.
+  void abandon();
+
   /// Allow an inflight diagnostic to be converted to 'failure', otherwise
   /// 'success' if this is an empty diagnostic.
   operator LogicalResult() const;
-
-  /// Returns if the diagnostic is still in flight.
-  bool isInFlight() const { return impl.hasValue(); }
 
 private:
   InFlightDiagnostic &operator=(const InFlightDiagnostic &) = delete;
@@ -302,9 +341,16 @@ private:
 
   /// Add an argument to the internal diagnostic.
   template <typename Arg> void appendArgument(Arg &&arg) {
-    assert(isInFlight() && "diagnostic not inflight");
-    *impl << std::forward<Arg>(arg);
+    assert(isActive() && "diagnostic not active");
+    if (isInFlight())
+      *impl << std::forward<Arg>(arg);
   }
+
+  /// Returns if the diagnostic is still active, i.e. it has a live diagnostic.
+  bool isActive() const { return impl.hasValue(); }
+
+  /// Returns if the diagnostic is still in flight to be reported.
+  bool isInFlight() const { return owner; }
 
   // Allow access to the constructor.
   friend DiagnosticEngine;

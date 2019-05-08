@@ -62,6 +62,9 @@ class ParseResult : public LogicalResult {
 public:
   ParseResult(LogicalResult result = success()) : LogicalResult(result) {}
 
+  // Allow diagnostics emitted during parsing to be converted to failure.
+  ParseResult(const InFlightDiagnostic &) : LogicalResult(failure()) {}
+
   /// Failure is true in a boolean context.
   explicit operator bool() const { return failed(*this); }
 };

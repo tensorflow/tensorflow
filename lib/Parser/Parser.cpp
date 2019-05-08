@@ -122,10 +122,10 @@ public:
   }
 
   /// Emit an error and return failure.
-  ParseResult emitError(const Twine &message) {
+  InFlightDiagnostic emitError(const Twine &message = {}) {
     return emitError(state.curToken.getLoc(), message);
   }
-  ParseResult emitError(SMLoc loc, const Twine &message);
+  InFlightDiagnostic emitError(SMLoc loc, const Twine &message = {});
 
   /// Advance the current lexer onto the next token.
   void consumeToken() {
@@ -240,14 +240,14 @@ private:
 // Helper methods.
 //===----------------------------------------------------------------------===//
 
-ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
+InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
+  auto diag = getContext()->emitError(getEncodedSourceLocation(loc), message);
+
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
-    return failure();
-
-  getContext()->emitError(getEncodedSourceLocation(loc), message);
-  return failure();
+    diag.abandon();
+  return diag;
 }
 
 /// Consume the specified token if present and return success.  On failure,
@@ -1328,16 +1328,12 @@ Attribute Parser::parseAttribute(Type type) {
       auto sameElementNum =
           indicesType.getDimSize(0) == valuesType.getDimSize(0);
       if (!sameShape || !sameElementNum) {
-        std::string str;
-        llvm::raw_string_ostream s(str);
-        s << "expected shape ([";
-        interleaveComma(type.getShape(), s);
-        s << "]); inferred shape of indices literal ([";
-        interleaveComma(indicesType.getShape(), s);
-        s << "]); inferred shape of values literal ([";
-        interleaveComma(valuesType.getShape(), s);
-        s << "])";
-        return (emitError(s.str()), nullptr);
+        emitError() << "expected shape ([" << type.getShape()
+                    << "]); inferred shape of indices literal (["
+                    << indicesType.getShape()
+                    << "]); inferred shape of values literal (["
+                    << valuesType.getShape() << "])";
+        return nullptr;
       }
 
       if (parseToken(Token::greater, "expected '>'"))
@@ -1398,14 +1394,10 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
     return nullptr;
 
   if (literalParser.getShape() != type.getShape()) {
-    std::string str;
-    llvm::raw_string_ostream s(str);
-    s << "inferred shape of elements literal ([";
-    interleaveComma(literalParser.getShape(), s);
-    s << "]) does not match type ([";
-    interleaveComma(type.getShape(), s);
-    s << "])";
-    return (emitError(s.str()), nullptr);
+    emitError() << "inferred shape of elements literal (["
+                << literalParser.getShape() << "]) does not match type (["
+                << type.getShape() << "])";
+    return nullptr;
   }
 
   return builder.getDenseElementsAttr(type, literalParser.getValues())
@@ -2038,7 +2030,7 @@ ParseResult AffineParser::parseIdentifierDefinition(AffineExpr idExpr) {
   auto name = getTokenSpelling();
   for (auto entry : dimsAndSymbols) {
     if (entry.first == name)
-      return emitError("redefinition of identifier '" + Twine(name) + "'");
+      return emitError("redefinition of identifier '" + name + "'");
   }
   consumeToken(Token::bare_identifier);
 
@@ -2743,8 +2735,8 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
     return failure();
 
   if (valueIDs.size() != types.size())
-    return emitError("expected " + Twine(valueIDs.size()) +
-                     " types to match operand list");
+    return emitError("expected ")
+           << valueIDs.size() << " types to match operand list";
 
   results.reserve(valueIDs.size());
   for (unsigned i = 0, e = valueIDs.size(); i != e; ++i) {
@@ -2946,9 +2938,9 @@ ParseResult FunctionParser::parseOperation() {
     if (op->getNumResults() == 0)
       return emitError(loc, "cannot name an operation with no results");
     if (numExpectedResults != op->getNumResults())
-      return emitError(loc, "operation defines " + Twine(op->getNumResults()) +
-                                " results but was provided " +
-                                Twine(numExpectedResults) + " to bind");
+      return emitError(loc, "operation defines ")
+             << op->getNumResults() << " results but was provided "
+             << numExpectedResults << " to bind";
 
     // If the number of result names matches the number of operation results, we
     // can directly use the provided names.
@@ -3066,9 +3058,9 @@ Operation *FunctionParser::parseGenericOperation() {
   auto operandTypes = fnType.getInputs();
   if (operandTypes.size() != operandInfos.size()) {
     auto plural = "s"[operandInfos.size() == 1];
-    return (emitError(typeLoc, "expected " + llvm::utostr(operandInfos.size()) +
-                                   " operand type" + plural + " but had " +
-                                   llvm::utostr(operandTypes.size())),
+    return (emitError(typeLoc, "expected ")
+                << operandInfos.size() << " operand type" << plural
+                << " but had " << operandTypes.size(),
             nullptr);
   }
 
@@ -3158,8 +3150,8 @@ public:
       return parseOperandList(result, requiredOperandCount, delimiter);
     }
     if (requiredOperandCount != -1)
-      return emitError(parser.getToken().getLoc(),
-                       "expected " + Twine(requiredOperandCount) + " operands");
+      return emitError(parser.getToken().getLoc(), "expected ")
+             << requiredOperandCount << " operands";
     return success();
   }
 
@@ -3322,8 +3314,8 @@ public:
     }
 
     if (requiredOperandCount != -1 && result.size() != requiredOperandCount)
-      return emitError(startLoc,
-                       "expected " + Twine(requiredOperandCount) + " operands");
+      return emitError(startLoc, "expected ")
+             << requiredOperandCount << " operands";
     return success();
   }
 
@@ -3369,8 +3361,10 @@ public:
       return failure();
     if (auto defLoc = parser.getDefinitionLoc(argument.name, argument.number)) {
       parser.emitError(argument.location,
-                       "redefinition of SSA value '" + argument.name + "'");
-      return parser.emitError(*defLoc, "previously defined here");
+                       "redefinition of SSA value '" + argument.name + "'")
+              .attachNote(parser.getEncodedSourceLocation(*defLoc))
+          << "previously defined here";
+      return failure();
     }
     return success();
   }
@@ -3395,10 +3389,9 @@ public:
   }
 
   /// Emit a diagnostic at the specified location and return failure.
-  ParseResult emitError(llvm::SMLoc loc, const Twine &message) override {
+  InFlightDiagnostic emitError(llvm::SMLoc loc, const Twine &message) override {
     emittedError = true;
-    return parser.emitError(loc,
-                            "custom op '" + Twine(opName) + "' " + message);
+    return parser.emitError(loc, "custom op '" + opName + "' " + message);
   }
 
   bool didEmitError() const { return emittedError; }
@@ -3750,8 +3743,7 @@ ParseResult ModuleParser::parseFunc() {
 
   // Verify no name collision / redefinition.
   if (function->getName() != name)
-    return emitError(loc,
-                     "redefinition of function named '" + name.str() + "'");
+    return emitError(loc, "redefinition of function named '") << name << "'";
 
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
@@ -3795,8 +3787,8 @@ ParseResult ModuleParser::finalizeModule() {
     // Resolve the reference.
     auto *resolvedFunction = getModule()->getNamedFunction(name);
     if (!resolvedFunction) {
-      forwardRef.second->emitError("reference to undefined function '" +
-                                   name.str() + "'");
+      forwardRef.second->emitError("reference to undefined function '")
+          << name << "'";
       return failure();
     }
 

@@ -209,7 +209,7 @@ public:
   /// Parse a keyword.
   ParseResult parseKeyword(const char *keyword, const Twine &msg = "") {
     if (parseOptionalKeyword(keyword))
-      return emitError(getNameLoc(), "expected '" + Twine(keyword) + "'" + msg);
+      return emitError(getNameLoc(), "expected '") << keyword << "'" << msg;
     return success();
   }
 
@@ -370,9 +370,9 @@ public:
                                       ArrayRef<Type> types, llvm::SMLoc loc,
                                       SmallVectorImpl<Value *> &result) {
     if (operands.size() != types.size())
-      return emitError(loc, Twine(operands.size()) +
-                                " operands present, but expected " +
-                                Twine(types.size()));
+      return emitError(loc)
+             << operands.size() << " operands present, but expected "
+             << types.size();
 
     for (unsigned i = 0, e = operands.size(); i != e; ++i)
       if (resolveOperand(operands[i], types[i], result))
@@ -386,7 +386,8 @@ public:
                                           Function *&result) = 0;
 
   /// Emit a diagnostic at the specified location and return failure.
-  virtual ParseResult emitError(llvm::SMLoc loc, const Twine &message) = 0;
+  virtual InFlightDiagnostic emitError(llvm::SMLoc loc,
+                                       const Twine &message = {}) = 0;
 };
 
 } // end namespace mlir

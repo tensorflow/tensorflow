@@ -420,7 +420,7 @@ func @undef() {
 // -----
 
 func @duplicate_induction_var() {
-  affine.for %i = 1 to 10 {   // expected-error {{previously defined here}}
+  affine.for %i = 1 to 10 {   // expected-note {{previously defined here}}
     affine.for %i = 1 to 10 { // expected-error {{redefinition of SSA value '%i'}}
     }
   }
