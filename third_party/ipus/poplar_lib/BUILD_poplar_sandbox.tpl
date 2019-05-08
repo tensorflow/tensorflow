@@ -15,6 +15,7 @@ filegroup(
     "poplibs/lib/libpopnn.*",
     "poplibs/lib/libpopops.*",
     "poplibs/lib/libpoprand.*",
+    "poplibs/lib/libpopsys.*",
     "poplibs/lib/libpoputil.*",
     "poplibs/lib/libpoplibs_support.*",
   ]),
