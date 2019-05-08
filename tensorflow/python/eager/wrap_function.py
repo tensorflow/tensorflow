@@ -84,6 +84,30 @@ class VariableHolder(object):
     return wrapped
 
 
+def _lift_single_variable(old_variable, graph, variable_holder):
+  """Lifts `old_variable` out of the `FuncGraph` `graph`."""
+  new_variable = resource_variable_ops.UninitializedVariable(
+      shape=old_variable.shape,
+      dtype=old_variable.dtype,
+      name=old_variable.op.name,
+      trainable=old_variable.trainable,
+      extra_handle_data=old_variable.handle)
+  new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
+  graph.inputs.append(old_variable.handle)
+  graph.captures[new_variable.handle] = old_variable.handle
+  # Now that we've added the new variable to graph.captures,
+  # graph.capture will use that cached value and do some post-processing
+  # on the capture like recording it on the tape.
+  graph.capture(new_variable.handle)
+  # pylint: disable=protected-access
+  variable_name = new_variable.name.split(":")[0]
+  variable_holder._variables_by_name[variable_name] = new_variable
+  graph._weak_variables.append(weakref.ref(new_variable))
+  # pylint: enable=protected-access
+  graph.watch_variable(new_variable)
+  return new_variable
+
+
 def _lift_unlifted_variables(graph, variable_holder):
   """Finds resource variables and lifts them into the outer context.
 
@@ -100,39 +124,44 @@ def _lift_unlifted_variables(graph, variable_holder):
     variable_holder: A VariableHolder to record the lifted variables in.
   """
   with graph.as_default():
-    collection_variables = (
-        ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
-        ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+    global_collection_variables = ops.get_collection(
+        ops.GraphKeys.GLOBAL_VARIABLES)
+    local_collection_variables = ops.get_collection(
+        ops.GraphKeys.LOCAL_VARIABLES)
     existing_captures = set(graph.internal_captures)
     lifted_variables = {}
-    for old_variable in collection_variables:
-      if (old_variable._in_graph_mode  # pylint: disable=protected-access
-          and
-          isinstance(old_variable, resource_variable_ops.ResourceVariable)):
-        if old_variable.handle in existing_captures:
-          continue
-        new_variable = resource_variable_ops.UninitializedVariable(
-            shape=old_variable.shape,
-            dtype=old_variable.dtype,
-            name=old_variable.op.name,
-            trainable=old_variable.trainable,
-            extra_handle_data=old_variable.handle)
-        new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
-        graph.inputs.append(old_variable.handle)
-        graph.captures[new_variable.handle] = old_variable.handle
-        # Now that we've added the new variable to graph.captures,
-        # graph.capture will use that cached value and do some post-processing
-        # on the capture like recording it on the tape.
-        graph.capture(new_variable.handle)
-        existing_captures.add(old_variable.handle)
+
+    def _should_lift_variable(v):
+      return ((v._in_graph_mode  # pylint: disable=protected-access
+               and v.graph.building_function)
+              and isinstance(v, resource_variable_ops.ResourceVariable)
+              and v.handle not in existing_captures)
+
+    for old_variable in global_collection_variables:
+      if _should_lift_variable(old_variable):
+        new_variable = _lift_single_variable(
+            old_variable, graph, variable_holder)
         lifted_variables[old_variable] = new_variable
-        # pylint: disable=protected-access
-        variable_name = new_variable.name.split(":")[0]
-        variable_holder._variables_by_name[variable_name] = new_variable
-        graph._weak_variables.append(weakref.ref(new_variable))
-        # pylint: enable=protected-access
-        graph.watch_variable(new_variable)
-    # Update the graph's collections, partly for the user and partly so this
+        existing_captures.add(old_variable.handle)
+
+    for old_variable in local_collection_variables:
+      if _should_lift_variable(old_variable):
+        new_variable = _lift_single_variable(
+            old_variable, graph, variable_holder)
+        lifted_variables[old_variable] = new_variable
+        existing_captures.add(old_variable.handle)
+        if new_variable._in_graph_mode:  # pylint: disable=protected-access
+          outer_graph = new_variable.graph
+          # Variables are added to the global collection by default. In this
+          # case we only want the variable in the local collection, so we'll pop
+          # it out.
+          global_collection = outer_graph.get_collection_ref(
+              ops.GraphKeys.GLOBAL_VARIABLES)
+          global_collection.remove(new_variable)
+          outer_graph.add_to_collection(
+              ops.GraphKeys.LOCAL_VARIABLES, new_variable)
+
+    # Update the FuncGraph's collections, partly for the user and partly so this
     # function is idempotent when it runs again in prune() calls.
     for collection_name in [
         ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES
@@ -148,9 +177,7 @@ class WrappedFunction(function.ConcreteFunction):
 
   def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
     self._variable_holder = variable_holder
-    if ops.executing_eagerly_outside_functions():
-      # TODO(allenl): Make this work in 1.x?
-      _lift_unlifted_variables(fn_graph, variable_holder)
+    _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
     super(WrappedFunction, self).__init__(
@@ -159,6 +186,8 @@ class WrappedFunction(function.ConcreteFunction):
   def prune(self, feeds, fetches, name=None, input_signature=None):
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
+    feeds = nest.map_structure(self.graph.as_graph_element, feeds)
+    fetches = nest.map_structure(self.graph.as_graph_element, fetches)
     flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):

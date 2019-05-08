@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
@@ -115,7 +114,7 @@ GpuExecutor::~GpuExecutor() {
 }
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
-  mutex_lock lock{in_memory_modules_mu_};
+  absl::MutexLock lock{&in_memory_modules_mu_};
   return UnloadGpuBinary(gpu_binary);
 }
 
@@ -237,7 +236,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
@@ -295,7 +294,7 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   // whether we've done an occupancy check on this kernel before isn't free
   // (because we have to synchronize), so we only do this at -v 2+.
   if (VLOG_IS_ON(2)) {
-    mutex_lock lock(launched_kernels_mu_);
+    absl::MutexLock lock(&launched_kernels_mu_);
     if (!launched_kernels_.count(hipfunc)) {
       VlogOccupancyInfo(kernel, thread_dims, block_dims);
       // TODO(rspringer): Remove elements from launched_kernels_...if we ever
@@ -367,7 +366,7 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   hipModule_t hip_module = nullptr;
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (!LoadModuleFromHsaco(
             reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
             &hip_module)) {
@@ -766,8 +765,8 @@ bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
 bool GpuExecutor::GetSymbol(const string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{disk_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&disk_modules_mu_};
     for (auto& it : disk_modules_) {
       if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
                                      reinterpret_cast<hipDeviceptr_t*>(mem),
@@ -777,8 +776,8 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
     }
   }
 
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&in_memory_modules_mu_};
     for (auto& it : in_memory_modules_) {
       if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
                                      reinterpret_cast<hipDeviceptr_t*>(mem),
@@ -788,8 +787,8 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
     }
   }
 
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
       CHECK(it != gpu_binary_to_module_.end());

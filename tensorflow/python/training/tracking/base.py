@@ -229,6 +229,7 @@ class CheckpointPosition(object):
     checkpoint = self.checkpoint
     checkpoint.all_python_objects.add(trackable)
     current_assignment = checkpoint.object_by_proto_id.get(self._proto_id, None)
+    checkpoint.matched_proto_ids.add(self._proto_id)
     if current_assignment is None:
       checkpoint.object_by_proto_id[self._proto_id] = trackable
       for deferred_slot_restoration in (
@@ -367,7 +368,7 @@ class CheckpointPosition(object):
           # checkpoint was loaded.
           if not serialized_tensor.optional_restore:
             self._checkpoint.unused_attributes.setdefault(
-                self.trackable, []).append(serialized_tensor.name)
+                self._proto_id, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)

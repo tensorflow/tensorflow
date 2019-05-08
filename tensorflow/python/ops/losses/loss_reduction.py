@@ -28,7 +28,10 @@ class ReductionV2(object):
      used with `tf.distribute.Strategy`, outside of built-in training loops such
      as `tf.keras` `compile` and `fit`, we expect reduction value to be
      `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
-  * `NONE`: Un-reduced weighted losses with the same shape as input.
+  * `NONE`: Un-reduced weighted losses with the same shape as input. When this
+    reduction type used with built-in Keras training loops like
+    `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but
+    the reported loss will be a scalar value.
   * `SUM`: Scalar sum of weighted losses.
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
      This reduction type is not supported when used with

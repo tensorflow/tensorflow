@@ -18,26 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import subprocess
-
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.examples.saved_model.integration_tests import integration_scripts
 
 
-class SavedModelTest(tf.test.TestCase):
-
-  def assertCommandSucceeded(self, script_name, **flags):
-    """Runs a test script via run_script."""
-    run_script = resource_loader.get_path_to_datafile("run_script")
-    command_parts = [run_script]
-    for flag_key, flag_value in flags.items():
-      command_parts.append("--%s=%s" % (flag_key, flag_value))
-    env = dict(TF2_BEHAVIOR="enabled", SCRIPT_NAME=script_name)
-    logging.info("Running: %s with environment flags %s" % (command_parts, env))
-    subprocess.check_call(command_parts, env=dict(os.environ, **env))
+class SavedModelTest(integration_scripts.TestCase):
 
   def test_text_rnn(self):
     export_dir = self.get_temp_dir()
@@ -57,6 +43,9 @@ class SavedModelTest(tf.test.TestCase):
         "use_model_in_sequential_keras", model_dir=export_dir)
 
   def test_text_embedding_in_dataset(self):
+    if tf.test.is_gpu_available():
+      self.skipTest("b/132156097 - fails if there is a gpu available")
+
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
@@ -86,4 +75,5 @@ class SavedModelTest(tf.test.TestCase):
     )
 
 if __name__ == "__main__":
+  integration_scripts.MaybeRunScriptInstead()
   tf.test.main()

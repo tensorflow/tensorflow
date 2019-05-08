@@ -178,7 +178,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
-          mode=['graph', 'eager']))
+          mode=['graph']))
   def test_validating_dataset_input_tensors_with_shape_mismatch(
       self, distribution):
     with self.cached_session():

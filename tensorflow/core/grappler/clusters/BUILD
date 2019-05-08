@@ -132,6 +132,7 @@ tf_cc_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_gpu",
+        "nomsan",  # TODO(b/132138608): Re-enable this.
     ],
     deps = [
         ":single_machine",

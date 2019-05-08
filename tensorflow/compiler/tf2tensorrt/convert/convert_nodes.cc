@@ -2835,17 +2835,28 @@ Status ConvertPool(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(tmorris): Use ActivationType::kLEAKY_RELU in TRT 5.1+ once perf
-// improves.
 Status ConvertLeakyRelu(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
   TFAttrs attrs(node_def);
   const float alpha = attrs.get<float>("alpha");
+
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  // Use IActivationLayer when available.
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kLEAKY_RELU);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setAlpha(alpha);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+#else
+  // Use elementwise ops when IActivationLayer is not available.
   if (alpha < 0.0f || alpha > 1.0f) {
     return errors::Unimplemented(
         "Alpha value for LeakyRelu must be between 0 and 1, at ",
@@ -2853,7 +2864,6 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-  // Input Tensor
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   // Create const for alpha.
   nvinfer1::ITensor* const_alpha_tensor = nullptr;
@@ -2876,6 +2886,67 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
+#endif
+}
+
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+Status ConvertClipByValue(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  // TODO(tmorris): We can also allow the case where min and max are tensors by
+  // using elementwise min and max layers.
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params,
+      {{"t", false}, {"clip_value_min", true}, {"clip_value_max", true}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  if (params->validation_only) return Status::OK();
+
+  TFAttrs attrs(node_def);
+  const DataType dtype = attrs.get<DataType>("T");
+  float clip_value_min = 0.0f;
+  float clip_value_max = 0.0f;
+  // TODO(tmorris): Add a templated helper function to get scalar weights of
+  // InType casted to OutType.
+  if (dtype == DataType::DT_FLOAT) {
+    clip_value_min = inputs.at(1).weights().GetSpan<float>()[0];
+    clip_value_max = inputs.at(2).weights().GetSpan<float>()[0];
+  } else if (dtype == DataType::DT_HALF) {
+    clip_value_min = Eigen::half_impl::half_to_float(
+        inputs.at(1).weights().GetSpan<Eigen::half>()[0]);
+    clip_value_max = Eigen::half_impl::half_to_float(
+        inputs.at(2).weights().GetSpan<Eigen::half>()[0]);
+  }
+
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  layer->setAlpha(clip_value_min);
+  layer->setBeta(clip_value_max);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->ProvideQuantizationRange(output_tensor, clip_value_min,
+                                              clip_value_max);
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+#endif
+
+const std::unordered_map<string, nvinfer1::ActivationType>*
+ActivationTypeMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::ActivationType>({
+        {"Relu", nvinfer1::ActivationType::kRELU},
+            {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+            {"Tanh", nvinfer1::ActivationType::kTANH},
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+            {"Elu", nvinfer1::ActivationType::kELU},
+            {"Selu", nvinfer1::ActivationType::kSELU},
+            {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
+            {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
+#endif
+      });
+  return m;
 }
 
 Status ConvertActivation(OpConverterParams* params) {
@@ -2884,28 +2955,38 @@ Status ConvertActivation(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  static const std::unordered_map<string, nvinfer1::ActivationType> ops{
-      {"Relu", nvinfer1::ActivationType::kRELU},
-      {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
-      {"Tanh", nvinfer1::ActivationType::kTANH},
-  };
-  auto op_pair = ops.find(node_def.op());
-  if (op_pair == ops.end()) {
+  auto op_pair = ActivationTypeMap()->find(node_def.op());
+  if (op_pair == ActivationTypeMap()->end()) {
     return errors::Unimplemented("Activation op: ", node_def.op(),
                                  " not supported at: ", node_def.name());
   }
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer =
-      params->converter->network()->addActivation(*tensor, op_pair->second);
+      params->converter->network()->addActivation(*inputs.at(0).tensor(),
+                                                  op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // Set parameters.
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  if (node_def.op() == "Elu") {
+    layer->setAlpha(1.0f);
+  } else if (node_def.op() == "Selu") {
+    // From tensorflow/core/kernels/relu_op_functor.h
+    layer->setAlpha(1.7580993408473768599402175208123f);
+    layer->setBeta(1.0507009873554804934193349852946f);
+  } else if (node_def.op() == "Softplus") {
+    layer->setAlpha(1.0f);
+    layer->setBeta(1.0f);
+  }
+#endif
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  // Set quantization range for output of Sigmoid, Tanh.
+  // Set quantization range for output when known.
   if (node_def.op() == "Sigmoid") {
     params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
   } else if (node_def.op() == "Tanh") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  } else if (node_def.op() == "Softsign") {
     params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -2973,7 +3054,6 @@ Status ConvertQuantize(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(tmorris): Use ActivationType::kCLIP in TRT 5.1+ once perf improves.
 Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2981,11 +3061,21 @@ Status ConvertRelu6(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
-  // ***************************************************************************
-  // TensorRT does not implement Relu6 natively. This function converts Relu6 op
-  // to available TensorRT ops: Relu6(x) = min(Relu(x), 6)
-  // ***************************************************************************
 
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  // Use IActivationLayer for TRT >= 5.1
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  layer->setAlpha(0.0f);
+  layer->setBeta(6.0f);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+#else
+  // Convert using min(Relu(x), 6) before TRT 5.1
   // Input Tensor
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
@@ -3020,6 +3110,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
+#endif
 }
 
 Status ConvertBiasAdd(OpConverterParams* params) {
@@ -4536,6 +4627,9 @@ static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  (*registration)["ClipByValue"] = ConvertClipByValue;
+#endif
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
@@ -4576,8 +4670,8 @@ static void RegisterValidatableOpConverters(
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
-  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
-    (*registration)[activation_op_type] = ConvertActivation;
+  for (auto activation_op_pair : *ActivationTypeMap()) {
+    (*registration)[activation_op_pair.first] = ConvertActivation;
   }
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
     (*registration)[pool_op_type] = ConvertPool;

@@ -296,13 +296,6 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
       cluster_spec=cluster_spec)
 
 
-# TODO(yuefengz): remove this function once
-# keras_multi_worker_optimizer_comparison_test no longer depends on it.
-def get_strategy_object(strategy_cls):
-  # CollectiveAllReduceStrategy and ParameterServerStrategy.
-  return strategy_cls()
-
-
 class KerasMultiWorkerTestStandaloneClient(test.TestCase,
                                            parameterized.TestCase):
 

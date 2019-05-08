@@ -31,6 +31,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_conversion_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -145,6 +147,21 @@ class FlatMapTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  def testRagged(self):
+
+    def _map_fn(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1], [-1]])
+
+    def _flat_map_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          ragged_conversion_ops.to_tensor(x))
+
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+    expected_output = []
+    for i in range(10):
+      expected_output.append([i])
+      expected_output.append([-i])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 if __name__ == "__main__":
   test.main()

@@ -339,6 +339,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.input_devices.push_back(inst_opts.target);
     }
     // Compute devices of captured inputs.
+    // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
     for (auto& input : captured_inputs_) {
@@ -347,12 +348,15 @@ Status CapturedFunction::Instantiate(
         const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
         inst_opts.input_devices.push_back(handle.device());
       } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-        // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
         inst_opts.input_devices.push_back(cpu_device->name());
       } else {
         // Fall back to using the function library runtime device.
         inst_opts.input_devices.push_back(inst_opts.target);
       }
+    }
+
+    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+      inst_opts.output_devices.push_back(inst_opts.target);
     }
   }
 
@@ -512,7 +516,6 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -554,7 +557,6 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -595,7 +597,6 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -651,7 +652,6 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(args), &captured_func_->captured_inputs(), ret_types_);
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ResourceMgr* resource_mgr = lib_->device()->resource_manager();
   ScopedStepContainer* step_container = new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {

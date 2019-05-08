@@ -105,7 +105,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'layer\', \'merge_mode\', \'weights\'], varargs=None, keywords=kwargs, defaults=[\'concat\', \'None\'], "
+    argspec: "args=[\'self\', \'layer\', \'merge_mode\', \'weights\', \'backward_layer\'], varargs=None, keywords=kwargs, defaults=[\'concat\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

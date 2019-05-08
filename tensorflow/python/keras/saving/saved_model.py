@@ -309,7 +309,7 @@ def _create_signature_def_map(model, mode):
   inputs_dict = {name: x for name, x in zip(model.input_names, model.inputs)}
   if model.optimizer:
     targets_dict = {x.name.split(':')[0]: x
-                    for x in model.targets if x is not None}
+                    for x in model._targets if x is not None}
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}

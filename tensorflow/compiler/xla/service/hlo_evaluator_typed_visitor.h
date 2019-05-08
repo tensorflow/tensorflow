@@ -68,8 +68,8 @@ T ToArithmeticSafeType(T t) {
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
 // Typically ReturnT here indicates the resulting literal type of each evaluated
-// Handle* method of a TypedVisitor.  There are however a few notable exceptions
-// to this rule, notably:
+// Handle* method of a TypedVisitor.  There are however a few exceptions to this
+// rule, notably:
 // - HandleCompare and HandleIsFinite: where the resulting literal type is
 //   always boolean.
 // - HandleImag and HandleReal: where the resulting literal type is always float
@@ -81,7 +81,7 @@ T ToArithmeticSafeType(T t) {
 //   - ReturnT: The type of input and output of each operation.
 //   - ElementwiseT: The type in which internal computation are done.
 //
-// This a logically a private part of HloEvaluator.  It lives in this header
+// This is logically a private part of HloEvaluator.  It lives in this header
 // file rather than in hlo_evaluator.cc because we use extern templates and a
 // bunch of independent cc files to speed up compiling the many instantiations
 // of this class.
@@ -180,7 +180,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(abs->operand(0));
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[abs],
-        (HloEvaluator::ElementWiseUnaryOpImpl<float, NativeT>(
+        (HloEvaluator::ElementWiseUnaryOpImpl<typename NativeT::value_type,
+                                              NativeT>(
             abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
             operand_literal)));
 

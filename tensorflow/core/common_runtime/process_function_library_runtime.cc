@@ -371,7 +371,11 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " colo group: " << colocation_group;
           while (src_device->empty() && colocation_group.empty() &&
                  src_node->IsIdentity()) {
-            src_node = *src_node->in_nodes().begin();
+            // Only follows the real data input of Identity, not control edges.
+            Node* input_node;
+            TF_RETURN_IF_ERROR(src_node->input_node(0, &input_node));
+            src_node = input_node;
+
             src_device = AssignedOrRequestedDeviceName(*src_node);
             GetColocationGroup(src_node, &colocation_group);
             VLOG(3) << "Considering src: " << src_node->name()
@@ -735,17 +739,19 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     // TODO(iga): Fail gracefully if the set of devices corresponds
     // to more than one address space.
     const string& target = pair.first;
+    FunctionLibraryRuntime* target_flr = GetFLR(target);
+    const string& device_type = target_flr->device()->device_type();
     Graph* subgraph = pair.second.get();
 
     ComponentFunctionData* comp_data = &data->glue_[target];
     TF_RETURN_IF_ERROR(UpdateArgAndRetvalMetadata(
-        subgraph, &comp_data->arg_indices_, &comp_data->ret_indices_,
-        &comp_data->arg_alloc_attrs_, &comp_data->ret_alloc_attrs_));
+        subgraph, device_type, &comp_data->arg_indices_,
+        &comp_data->ret_indices_, &comp_data->arg_alloc_attrs_,
+        &comp_data->ret_alloc_attrs_));
     FunctionDef shard;
     string unique_name = name_generator.GetName();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
-    FunctionLibraryRuntime* target_flr = GetFLR(target);
     TF_RETURN_IF_ERROR(data->lib_def_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.executor_type = options.executor_type;
@@ -870,7 +876,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
           if (!status.ok()) {
-            LOG(ERROR) << "Component function execution failed: " << status;
+            VLOG(2) << "Component function execution failed: " << status;
             refcounted_done->UpdateStatus(status);
           } else {
             for (int i = 0; i < comp_rets->size(); ++i) {
@@ -1000,7 +1006,7 @@ void ProcessFunctionLibraryRuntime::Run(
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    return RunMultiDevice(opts, handle, args, rets, done);
+    return RunMultiDevice(opts, handle, args, rets, std::move(done));
   }
 
   FunctionLibraryRuntime* flr = nullptr;
@@ -1106,6 +1112,12 @@ void ProcessFunctionLibraryRuntime::Run(
                         // Begin unbound arguments.
                         const Status& status) {
             std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
+
+            if (!status.ok()) {
+              done(status);
+              return;
+            }
+
             if (rets->size() != frame->num_retvals()) {
               done(errors::Internal(
                   "Number of return values from function (", rets->size(),
@@ -1118,6 +1130,7 @@ void ProcessFunctionLibraryRuntime::Run(
               Status s = frame->SetRetval(i, (*rets)[i]);
               if (!s.ok()) {
                 done(s);
+                return;
               }
             }
             done(Status::OK());

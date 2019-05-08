@@ -189,7 +189,7 @@ def _kl_divergence(p, p_logits, q):
 
 def get_graph_def_from_disk(filename):
   """Get a GraphDef proto from a disk location."""
-  with gfile.FastGFile(filename, 'rb') as f:
+  with gfile.GFile(filename, 'rb') as f:
     return graph_pb2.GraphDef.FromString(f.read())
 
 

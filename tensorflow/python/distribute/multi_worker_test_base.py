@@ -42,6 +42,7 @@ from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -289,9 +290,14 @@ class MultiWorkerTestBase(test.TestCase):
 
     return config
 
-  def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
-                  **kwargs):
-    result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+  def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
+                  *args, **kwargs):
+    if eager_mode:
+      with context.eager_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+    else:
+      with context.graph_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
     if np.all(result):
       with self._lock:
         self._result += 1
@@ -313,7 +319,8 @@ class MultiWorkerTestBase(test.TestCase):
       for task_id in range(len(cluster_spec.get(task_type, []))):
         t = threading.Thread(
             target=self._run_client,
-            args=(client_fn, task_type, task_id, num_gpus) + args,
+            args=(client_fn, task_type, task_id, num_gpus,
+                  context.executing_eagerly()) + args,
             kwargs=kwargs)
         t.start()
         threads.append(t)
@@ -446,7 +453,13 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)
+    try:
+      self._coord.join(worker_threads)
+    except errors.UnknownError as e:
+      if 'Could not start gRPC server' in e.message:
+        self.skipTest('Cannot start std servers.')
+      else:
+        raise
 
 
 class MultiWorkerMultiProcessTest(test.TestCase):

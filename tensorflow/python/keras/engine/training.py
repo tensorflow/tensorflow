@@ -133,7 +133,7 @@ class Model(network.Network):
     # under distribution strategy scope.
     self._compile_distribution = False
 
-    self.run_eagerly = None
+    self._run_eagerly = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -220,10 +220,7 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
-    run_eagerly = kwargs.pop('run_eagerly', None)
-
-    self._run_eagerly = run_eagerly
-    optimizer = optimizers.get(optimizer)
+    self._run_eagerly = kwargs.pop('run_eagerly', None)
 
     if distribute is not None:
       if tf2.enabled():
@@ -250,49 +247,29 @@ class Model(network.Network):
     # of enabling the feature and graduate it to the main distributed code path.
     self._cloning = kwargs.pop('cloning', True)
 
-    # Validate that arguments passed by the user to `compile` are supported by
-    # tf.distribute.Strategy.
-    if self._distribution_strategy:
-      if sample_weight_mode:
-        raise NotImplementedError('sample_weight_mode is not supported with '
-                                  'tf.distribute.Strategy.')
-      if weighted_metrics:
-        raise NotImplementedError('weighted_metrics is not supported with '
-                                  'tf.distribute.Strategy.')
-      if target_tensors:
-        raise ValueError('target_tensors is not supported with '
-                         'tf.distribute.Strategy.')
-
-      if run_eagerly:
-        raise ValueError(
-            'We currently do not support enabling `run_eagerly` with '
-            'distribution strategy.')
-
-      if (distributed_training_utils.is_distributing_by_cloning(self) and
-          (not self.built or not self.inputs or not self.outputs)):
-        raise ValueError(
-            'We currently do not support distribution strategy with a '
-            '`Sequential` model that is created without `input_shape`/'
-            '`input_dim` set in its first layer or a subclassed model.')
-
-    loss = loss or {}
-
-    self.optimizer = optimizer
+    self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
+                                                           sample_weight_mode,
+                                                           target_tensors,
+                                                           weighted_metrics)
+    self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
       self._track_trackable(
           self.optimizer, name='optimizer', overwrite=True)
-    self.loss = loss
-    self._compile_metrics = metrics or []
+    self.loss = loss or {}
     self.loss_weights = loss_weights
     self.sample_weight_mode = sample_weight_mode
+    self._compile_metrics = metrics or []
     self._compile_weighted_metrics = weighted_metrics
     if self.run_eagerly and target_tensors is not None:
       raise ValueError(
           'target_tensors argument is not supported when '
           'running a model eagerly.')
-    self.target_tensors = target_tensors
+
+    # _training_targets contains a list of _TrainingTarget object, which has all
+    # feedable and non feedable targets of the model and related metadata.
+    self._training_targets = []
 
     # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
@@ -314,12 +291,7 @@ class Model(network.Network):
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
-        loss, self.output_names)
-
-    self._feed_outputs = []
-    self._feed_output_names = []
-    self._feed_output_shapes = []
-    self._feed_loss_fns = []
+        self.loss, self.output_names)
 
     skip_target_indices = self._prepare_skip_target_indices()
     self._skip_target_weighing_indices = skip_target_indices[:]
@@ -330,93 +302,44 @@ class Model(network.Network):
 
     # Initialization for Eager mode execution.
     if self.run_eagerly:
-      if isinstance(optimizer, loss_scale_optimizer.LossScaleOptimizer):
-        # TODO(reedwm): Support this.
-        raise ValueError('We currently do not support enabling `run_eagerly` '
-                         'with a LossScaleOptimizer.')
-
-      # Prepare sample weight modes. List with the same length as model outputs.
-      self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
-          self.output_names, sample_weight_mode,
-          self._skip_target_weighing_indices)
-
-      # Prepare sample weights.
-      self._prepare_sample_weights()
-      # Save all metric attributes per output of the model.
-      self._cache_output_metric_attributes(metrics, weighted_metrics)
-
-      if target_tensors is not None:
-        raise ValueError('target_tensors are not currently supported in Eager '
-                         'mode.')
-      self.total_loss = None
-
-      # Set metric attributes on model.
-      self._set_metric_attributes(skip_target_indices=skip_target_indices)
-
-      self.targets = []
-      for i in range(len(self.outputs)):
-        self._feed_output_names.append(self.output_names[i])
-      self._collected_trainable_weights = self.trainable_weights
+      self._compile_eagerly(metrics, sample_weight_mode, skip_target_indices,
+                            target_tensors, weighted_metrics)
       return
 
     with K.get_graph().as_default():
       # Prepare targets of model.
-      self.targets = []
-      self._feed_targets = []
-      if target_tensors not in (None, []):
-        if isinstance(target_tensors, list):
-          if len(target_tensors) != len(self.outputs):
-            raise ValueError(
-                'When passing a list as `target_tensors`, '
-                'it should have one entry per model output. '
-                'The model has %s outputs, but you passed target_tensors=%s' %
-                (len(self.outputs), target_tensors))
-        elif isinstance(target_tensors, dict):
-          for name in target_tensors:
-            if name not in self.output_names:
-              raise ValueError(
-                  'Unknown entry in `target_tensors` '
-                  'dictionary: "' + name + '". '
-                  'Only expected the following keys: ' + str(self.output_names))
-          tmp_target_tensors = []
-          for name in self.output_names:
-            tmp_target_tensors.append(target_tensors.get(name, None))
-          target_tensors = tmp_target_tensors
-        elif tensor_util.is_tensor(target_tensors):
-          target_tensors = [target_tensors]
-        else:
-          raise TypeError('Expected `target_tensors` to be a list or tuple or '
-                          'dict or a single tensor, but got:', target_tensors)
+      target_tensors = self._process_target_tensor_for_compile(target_tensors)
 
       for i in range(len(self.outputs)):
         if i in skip_target_indices:
-          self.targets.append(None)
+          self._training_targets.append(_TrainingTarget(None))
         else:
-          shape = K.int_shape(self.outputs[i])
+          target = target_tensors[i]
           name = self.output_names[i]
-          if target_tensors not in (None, []):
-            target = target_tensors[i]
-          else:
-            target = None
-          if target is None or K.is_placeholder(target):
-            if target is None:
-              target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
-                  self.loss_functions[i],
-                  K.dtype(self.outputs[i]))
+          shape = K.int_shape(self.outputs[i])
+          loss_fn = self.loss_functions[i]
 
-              target = K.placeholder(
-                  ndim=len(shape),
-                  name=name + '_target',
-                  sparse=K.is_sparse(self.outputs[i]),
-                  dtype=target_dtype)
-            self._feed_targets.append(target)
-            self._feed_outputs.append(self.outputs[i])
-            self._feed_output_names.append(name)
-            self._feed_output_shapes.append(shape)
-            self._feed_loss_fns.append(self.loss_functions[i])
-          else:
+          if target is not None and not K.is_placeholder(target):
             self._skip_target_weighing_indices.append(i)
-          self.targets.append(target)
+            feedable = False
+          else:
+            feedable = True
+
+          if target is None:
+            target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
+                loss_fn,
+                K.dtype(self.outputs[i]))
+
+            target = K.placeholder(
+                ndim=len(shape),
+                name=name + '_target',
+                sparse=K.is_sparse(self.outputs[i]),
+                dtype=target_dtype)
+
+          training_target = _TrainingTarget(
+              target, name=name, shape=shape, feedable=feedable,
+              loss_fn=loss_fn)
+          self._training_targets.append(training_target)
 
       # Save all metric attributes per output of the model.
       self._cache_output_metric_attributes(metrics, weighted_metrics)
@@ -428,7 +351,7 @@ class Model(network.Network):
       self._handle_metrics(
           self.outputs,
           masks=self._prepare_output_masks(),
-          targets=self.targets,
+          targets=self._targets,
           skip_target_indices=skip_target_indices)
 
       # Prepare sample weight modes. List with the same length as model outputs.
@@ -449,8 +372,7 @@ class Model(network.Network):
       self.predict_function = None
 
       # Collected trainable weights, sorted in topological order.
-      trainable_weights = self.trainable_weights
-      self._collected_trainable_weights = trainable_weights
+      self._collected_trainable_weights = self.trainable_weights
 
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
@@ -1071,7 +993,7 @@ class Model(network.Network):
     Computation is done in batches.
 
     Arguments:
-         x: Input samples. It could be:
+        x: Input samples. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
@@ -1650,6 +1572,92 @@ class Model(network.Network):
         verbose=verbose,
         callbacks=callbacks)
 
+  def _validate_compile_param_for_distribution_strategy(
+      self, run_eagerly, sample_weight_mode, target_tensors, weighted_metrics):
+    # Validate that arguments passed by the user to `compile` are supported by
+    # tf.distribute.Strategy.
+    if self._distribution_strategy:
+      if sample_weight_mode:
+        raise NotImplementedError('sample_weight_mode is not supported with '
+                                  'tf.distribute.Strategy.')
+      if weighted_metrics:
+        raise NotImplementedError('weighted_metrics is not supported with '
+                                  'tf.distribute.Strategy.')
+      if target_tensors:
+        raise ValueError('target_tensors is not supported with '
+                         'tf.distribute.Strategy.')
+
+      if run_eagerly:
+        raise ValueError(
+            'We currently do not support enabling `run_eagerly` with '
+            'distribution strategy.')
+
+      if (distributed_training_utils.is_distributing_by_cloning(self) and
+          (not self.built or not self.inputs or not self.outputs)):
+        raise ValueError(
+            'We currently do not support distribution strategy with a '
+            '`Sequential` model that is created without `input_shape`/'
+            '`input_dim` set in its first layer or a subclassed model.')
+
+  def _process_target_tensor_for_compile(self, target_tensors):
+    if target_tensors not in (None, []):
+      if isinstance(target_tensors, list):
+        if len(target_tensors) != len(self.outputs):
+          raise ValueError(
+              'When passing a list as `target_tensors`, '
+              'it should have one entry per model output. '
+              'The model has %s outputs, but you passed target_tensors=%s' %
+              (len(self.outputs), target_tensors))
+      elif isinstance(target_tensors, dict):
+        unexpected_target_tensor_names = set(target_tensors.keys()).difference(
+            self.output_names)
+        if unexpected_target_tensor_names:
+          raise ValueError(
+              'Unknown entry in `target_tensors` dictionary: "{name}". '
+              'Only expected the following keys: {keys}'.format(
+                  name=unexpected_target_tensor_names,
+                  keys=str(self.output_names)))
+        tmp_target_tensors = []
+        for name in self.output_names:
+          tmp_target_tensors.append(target_tensors.get(name, None))
+        target_tensors = tmp_target_tensors
+      elif tensor_util.is_tensor(target_tensors):
+        target_tensors = [target_tensors]
+      else:
+        raise TypeError('Expected `target_tensors` to be a list or tuple or '
+                        'dict or a single tensor, but got:', target_tensors)
+    else:
+      # In case target tensor is empty or None, create a list with Nones
+      # that has same length as self.output_names. With that, the None check of
+      # target tensor can be skipped downstream.
+      target_tensors = [None for _ in self.output_names]
+    return target_tensors
+
+  def _compile_eagerly(self, metrics, sample_weight_mode,
+                       skip_target_indices, target_tensors, weighted_metrics):
+    if isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer):
+      # TODO(reedwm): Support this.
+      raise ValueError('We currently do not support enabling `run_eagerly` '
+                       'with a LossScaleOptimizer.')
+    # Prepare sample weight modes. List with the same length as model outputs.
+    self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
+        self.output_names, sample_weight_mode,
+        self._skip_target_weighing_indices)
+    # Prepare sample weights.
+    self._prepare_sample_weights()
+    # Save all metric attributes per output of the model.
+    self._cache_output_metric_attributes(metrics, weighted_metrics)
+    if target_tensors is not None:
+      raise ValueError('target_tensors are not currently supported in Eager '
+                       'mode.')
+    self.total_loss = None
+    # Set metric attributes on model.
+    self._set_metric_attributes(skip_target_indices=skip_target_indices)
+    for i in range(len(self.outputs)):
+      self._training_targets.append(
+          _TrainingTarget(None, self.output_names[i], None, True, None))
+    self._collected_trainable_weights = self.trainable_weights
+
   def _update_sample_weight_modes(self, sample_weights=None):
     """Updates sample weight modes based on training/eval inputs.
 
@@ -1713,7 +1721,7 @@ class Model(network.Network):
       self._handle_metrics(
           self.outputs,
           masks=masks,
-          targets=self.targets,
+          targets=self._targets,
           skip_target_indices=skip_target_indices,
           sample_weights=self.sample_weights,
           return_weighted_metrics=True)
@@ -1762,7 +1770,7 @@ class Model(network.Network):
     skip_target_indices = skip_target_indices or []
     total_loss = None
     with K.name_scope('loss'):
-      zipped_inputs = zip(self.targets, self.outputs, self.loss_functions,
+      zipped_inputs = zip(self._targets, self.outputs, self.loss_functions,
                           self.sample_weights, masks, self.loss_weights_list)
       for i, (y_true, y_pred, loss_fn, sample_weight, mask,
               loss_weight) in enumerate(zipped_inputs):
@@ -1782,7 +1790,6 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
             per_sample_losses = loss_fn.call(y_true, y_pred)
             weighted_losses = losses_utils.compute_weighted_loss(
@@ -1813,19 +1820,13 @@ class Model(network.Network):
             output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
-          # Keep track of stateful result tensor and function for the loss.
-          # Compute the stateful loss value.
-          if weighted_losses is not None:
-            # TODO(b/120571621): Directly call metric when the bug is fixed.
-            aggregated_output_loss = (
-                distributed_training_utils.call_replica_local_fn(
-                    self._output_loss_metrics[i],
-                    weighted_losses,
-                    strategy=self._distribution_strategy))
-          else:
-            # Custom loss class.
-            aggregated_output_loss = self._call_metric_fn(
-                self._output_loss_metrics[i], y_true, y_pred, sample_weight)
+          # Keep track of stateful result tensor for the loss.
+          # TODO(b/120571621): Directly call metric when the bug is fixed.
+          aggregated_output_loss = (
+              distributed_training_utils.call_replica_local_fn(
+                  self._output_loss_metrics[i],
+                  output_loss,
+                  strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         if total_loss is None:
@@ -2105,12 +2106,12 @@ class Model(network.Network):
           self._set_per_output_metric_attributes(
               self._per_output_weighted_metrics[i], i))
 
-    # Create a metric wrapper for each output loss.
+    # Create a metric wrapper for each output loss. This computes mean of an
+    # output loss across mini-batches (irrespective of how we reduce within a
+    # batch).
     if len(self.outputs) > 1:
       self._output_loss_metrics = [
-          metrics_module.SumOverBatchSize() if hasattr(loss_fn, 'reduction')
-          else metrics_module.SumOverBatchSizeMetricWrapper(loss_fn)
-          for loss_fn in self.loss_functions
+          metrics_module.Mean() for _ in self.loss_functions
       ]
 
     self._per_output_metrics = updated_per_output_metrics
@@ -2430,6 +2431,16 @@ class Model(network.Network):
         # input shape which is required for TPUs.
         drop_remainder = (not allow_partial_batch and
                           strategy.extended.experimental_require_static_shapes)
+
+        # TODO(b/131720208): We still drop remainder here if number of examples
+        # is divisible by batch size, as sometimes dynamic padder will time out
+        # with keras.metrics.CategoricalAccuracy() metric.
+        if distributed_training_utils.is_tpu_strategy(
+            strategy) and not drop_remainder:
+          dataset_size = first_x_value.shape[0]
+          if dataset_size % batch_size == 0:
+            drop_remainder = True
+
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)
@@ -2878,6 +2889,27 @@ class Model(network.Network):
     self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
 
+  @property
+  def _targets(self):
+    """The output target tensors for the model."""
+    return [t.target for t in self._training_targets]
+
+  @property
+  def _feed_targets(self):
+    return [t.target for t in self._training_targets if t.feedable]
+
+  @property
+  def _feed_output_names(self):
+    return [t.name for t in self._training_targets if t.feedable]
+
+  @property
+  def _feed_output_shapes(self):
+    return [t.shape for t in self._training_targets if t.feedable]
+
+  @property
+  def _feed_loss_fns(self):
+    return [t.loss_fn for t in self._training_targets if t.feedable]
+
 
 class DistributedCallbackModel(Model):
   """Model that is used for callbacks with tf.distribute.Strategy."""
@@ -2917,6 +2949,55 @@ class DistributedCallbackModel(Model):
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')
     return super(DistributedCallbackModel, self).__getattr__(item)
+
+
+class _TrainingTarget(object):
+  """Container for a target tensor and its metadata (shape, loss...).
+
+  Arguments:
+    target: A target tensor for the model. It may be `None` if the
+      output is excluded from loss computation. It is still kept as None
+      since each output of the model should have a corresponding target. If
+      the target is None, the rest of the attributes will be None as well.
+    name: String, the name of the target tensor.
+    shape: The shape of the target tensor.
+    feedable: Boolean, whether the target is feedable (requires data to be
+      passed in `fit` or `train_on_batch`), or not (model compiled with
+      `target_tensors` argument).
+    loss_fn: The loss function corresponding to this target. May be `None`.
+  """
+
+  def __init__(self,
+               target,
+               name=None,
+               shape=None,
+               feedable=False,
+               loss_fn=None):
+    self._target = target
+    self._name = name
+    self._shape = shape
+    self._feedable = feedable
+    self._loss_fn = loss_fn
+
+  @property
+  def target(self):
+    return self._target
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def shape(self):
+    return self._shape
+
+  @property
+  def feedable(self):
+    return self._feedable
+
+  @property
+  def loss_fn(self):
+    return self._loss_fn
 
 
 def _is_symbolic_tensor(x):

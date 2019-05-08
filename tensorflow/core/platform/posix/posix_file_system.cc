@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #if defined(__linux__)
@@ -62,7 +63,16 @@ class PosixRandomAccessFile : public RandomAccessFile {
     Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
-      ssize_t r = pread(fd_, dst, n, static_cast<off_t>(offset));
+      // Some platforms, notably macs, throw EINVAL if pread is asked to read
+      // more than fits in a 32-bit integer.
+      size_t requested_read_length;
+      if (n > INT32_MAX) {
+        requested_read_length = INT32_MAX;
+      } else {
+        requested_read_length = n;
+      }
+      ssize_t r =
+          pread(fd_, dst, requested_read_length, static_cast<off_t>(offset));
       if (r > 0) {
         dst += r;
         n -= r;

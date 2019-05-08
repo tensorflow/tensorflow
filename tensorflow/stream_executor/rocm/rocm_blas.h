@@ -20,8 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -141,7 +141,7 @@ class ROCMBlas : public blas::BlasSupport {
                                    blas::ProfileResult *output_profile_result);
 
   // mutex that guards the rocBLAS handle for this device.
-  mutex mu_;
+  absl::Mutex mu_;
 
   // GpuExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.

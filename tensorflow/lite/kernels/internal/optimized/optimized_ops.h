@@ -27,7 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -36,8 +36,12 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -90,6 +94,7 @@ using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
+using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
@@ -261,34 +266,6 @@ inline void AddBiasAndEvalActivationFunction(float output_activation_min,
           output_activation_max);
     }
   }
-#endif
-}
-
-template <typename Lhs, typename Rhs, typename Result>
-void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
-          Eigen::MatrixBase<Result>* result) {
-  if (rhs.cols() == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    result->col(0).noalias() = lhs * rhs.col(0);
-  } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
-    result->noalias() = lhs * rhs;
-  }
-}
-
-inline void optimized_ops_preload_l1_stream(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
-#endif
-}
-
-inline void optimized_ops_preload_l1_keep(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
 #endif
 }
 
@@ -784,39 +761,29 @@ inline void FullyConnected(
     const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
-  const float output_activation_min = params.float_activation_min;
-  const float output_activation_max = params.float_activation_max;
-
-  // TODO(b/62193649): this convoluted shape computation (determining
-  // input_rows from the weights_dims, then MapAsMatrixWithGivenNumberOfRows)
-  // is because the current --variable_batch hack consists in overwriting the
-  // 3rd dimension with the runtime batch size, as we don't keep track for each
-  // array of which dimension is the batch dimension in it.
-  // When that is fixed, this should become:
-  // const auto input_matrix_map =
-  //     MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
   const int dims_count = weights_shape.DimensionsCount();
   const int input_rows = weights_shape.Dims(dims_count - 1);
-  const auto input_matrix_map =
-      MapAsMatrixWithGivenNumberOfRows(input_data, input_shape, input_rows);
-  const auto filter_matrix_map =
-      MapAsMatrixWithLastDimAsRows(weights_data, weights_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
-
-  Gemm(filter_matrix_map.transpose(), input_matrix_map, &output_matrix_map);
-
-  if (optional_bias_data != nullptr) {
-    AddBiasAndEvalActivationFunction(
-        output_activation_min, output_activation_max, bias_shape,
-        optional_bias_data, output_shape, output_data);
-  } else {
-    const int flat_size = output_shape.FlatSize();
-    for (int i = 0; i < flat_size; ++i) {
-      output_data[i] = ActivationFunctionWithMinMax(
-          output_data[i], output_activation_min, output_activation_max);
-    }
-  }
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = input_rows;
+  rhs_params.cols = input_shape.FlatSize() / input_rows;
+  TFLITE_DCHECK_EQ(input_shape.FlatSize(), rhs_params.rows * rhs_params.cols);
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.cols = weights_shape.Dims(dims_count - 1);
+  lhs_params.rows = FlatSizeSkipDim(weights_shape, dims_count - 1);
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = output_shape.Dims(output_shape.DimensionsCount() - 1);
+  dst_params.cols =
+      FlatSizeSkipDim(output_shape, output_shape.DimensionsCount() - 1);
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = optional_bias_data;
+  gemm_params.clamp_min = params.float_activation_min;
+  gemm_params.clamp_max = params.float_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, weights_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 #ifdef USE_NEON
@@ -1037,7 +1004,7 @@ inline void FullyConnectedAsGEMVWorkerImpl(
   }
 }
 
-struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
+struct FullyConnectedAsGEMVWorkerTask : cpu_backend_threadpool::Task {
   FullyConnectedAsGEMVWorkerTask(const RuntimeShape& input_shape,
                                  const uint8* input_data, int32 input_offset,
                                  const RuntimeShape& filter_shape,
@@ -1103,15 +1070,13 @@ inline void FullyConnectedAsGEMV(
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
     uint8* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   const int output_dim_count = output_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemmlowp_context->max_num_threads(), output_rows, batches, input_size);
+  const int thread_count = LegacyHowManyThreads<kKernelRows>(
+      cpu_backend_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1125,51 +1090,27 @@ inline void FullyConnectedAsGEMV(
 
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
-  std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_rows, thread_count));
+  std::vector<FullyConnectedAsGEMVWorkerTask> tasks;
+  // TODO(b/131746020) don't create new heap allocations every time.
+  // At least we make it a single heap allocation by using reserve().
+  tasks.reserve(thread_count);
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
-    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data, row_start, row_end);
+    tasks.emplace_back(input_shape, input_data, input_offset, filter_shape,
+                       filter_data, filter_offset, bias_shape, bias_data,
+                       output_offset, output_multiplier, output_shift,
+                       output_activation_min, output_activation_max,
+                       output_shape, output_data, row_start, row_end);
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
 }
 #endif  // USE_NEON
-
-struct GemmlowpOutputPipeline {
-  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
-      ColVectorMap;
-  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
-                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
-                     gemmlowp::OutputStageClamp,
-                     gemmlowp::OutputStageSaturatingCastToUint8>
-      Pipeline;
-  static Pipeline MakeExp(const int32* bias_data, int output_rows,
-                          int32 output_offset, int32 output_multiplier,
-                          int output_left_shift, int32 output_activation_min,
-                          int32 output_activation_max) {
-    ColVectorMap bias_vector(bias_data, output_rows);
-    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-    bias_addition_stage.bias_vector = bias_vector;
-    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
-    quantize_down_stage.result_offset_after_shift = output_offset;
-    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_exponent = output_left_shift;
-    gemmlowp::OutputStageClamp clamp_stage;
-    clamp_stage.min = output_activation_min;
-    clamp_stage.max = output_activation_max;
-    gemmlowp::OutputStageSaturatingCastToUint8 saturating_cast_stage;
-    return std::make_tuple(bias_addition_stage, quantize_down_stage,
-                           clamp_stage, saturating_cast_stage);
-  }
-};
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
@@ -1177,8 +1118,6 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1218,19 +1157,30 @@ inline void FullyConnected(
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
 
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
-      filter_data, output_rows, filter_cols, filter_cols);
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
-      input_data, filter_cols, batches, filter_cols);
-  gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
-      output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max);
-  gemmlowp::GemmWithOutputPipeline<uint8, uint8,
-                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
-      filter_offset, input_offset, output_pipeline);
+  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  lhs_params.rows = filter_rows;
+  lhs_params.cols = filter_cols;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.zero_point = -filter_offset;
+  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  rhs_params.rows = filter_cols;
+  rhs_params.cols = batches;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.zero_point = -input_offset;
+  cpu_backend_gemm::MatrixParams<uint8> dst_params;
+  dst_params.rows = filter_rows;
+  dst_params.cols = batches;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.zero_point = output_offset;
+  cpu_backend_gemm::GemmParams<int32, uint8> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  gemm_params.multiplier_fixedpoint = output_multiplier;
+  gemm_params.multiplier_exponent = output_shift;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 inline void FullyConnected(
@@ -1288,33 +1238,31 @@ inline void FullyConnected(
     }
   }
 #endif
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> weights_matrix(
-      filter_data, output_depth, accum_depth);
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
-      input_data, accum_depth, batches);
-  gemmlowp::MatrixMap<int16, gemmlowp::MapOrder::ColMajor> output_matrix(
-      output_data, output_depth, batches);
-  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
-      ColVectorMap;
-  ColVectorMap bias_vector(bias_data_int32, output_depth);
-  gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-  bias_addition_stage.bias_vector = bias_vector;
-  gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
-  scale_stage.result_offset_after_shift = 0;
-  scale_stage.result_fixedpoint_multiplier = output_multiplier;
-  // Note that this shift is negated wrt ordinary FC.
-  scale_stage.result_exponent = output_shift;
-  gemmlowp::OutputStageClamp clamp_stage;
-  clamp_stage.min = output_activation_min;
-  clamp_stage.max = output_activation_max;
-  gemmlowp::OutputStageSaturatingCastToInt16 saturating_cast_int16_stage;
-  auto output_pipeline =
-      std::make_tuple(bias_addition_stage, scale_stage, clamp_stage,
-                      saturating_cast_int16_stage);
-  gemmlowp::GemmWithOutputPipeline<uint8, int16,
-                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      cpu_backend_context->gemmlowp_context(), weights_matrix, input_matrix,
-      &output_matrix, filter_offset, input_offset, output_pipeline);
+
+  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  lhs_params.rows = output_depth;
+  lhs_params.cols = accum_depth;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.zero_point = -filter_offset;
+  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  rhs_params.rows = accum_depth;
+  rhs_params.cols = batches;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.zero_point = -input_offset;
+  cpu_backend_gemm::MatrixParams<int16> dst_params;
+  dst_params.rows = output_depth;
+  dst_params.cols = batches;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.zero_point = 0;
+  cpu_backend_gemm::GemmParams<int32, int16> gemm_params;
+  gemm_params.bias = bias_data_int32;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  gemm_params.multiplier_fixedpoint = output_multiplier;
+  gemm_params.multiplier_exponent = output_shift;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 // Internal function doing the actual arithmetic work for
@@ -1598,7 +1546,7 @@ inline void ShuffledFullyConnectedWorkerImpl(
 
 // Wraps ShuffledFullyConnectedWorkerImpl into a Task class
 // to allow using gemmlowp's threadpool.
-struct ShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+struct ShuffledFullyConnectedWorkerTask : cpu_backend_threadpool::Task {
   ShuffledFullyConnectedWorkerTask(const uint8* input_data,
                                    const int8* shuffled_weights_data,
                                    int batches, int output_depth,
@@ -1643,8 +1591,6 @@ inline void ShuffledFullyConnected(
     const int32* bias_data, const RuntimeShape& output_shape,
     int16* output_data, uint8* shuffled_input_workspace_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
@@ -1731,8 +1677,9 @@ inline void ShuffledFullyConnected(
   }
 
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemmlowp_context->max_num_threads(), output_depth, batches, accum_depth);
+  const int thread_count =
+      LegacyHowManyThreads<kKernelRows>(cpu_backend_context->max_num_threads(),
+                                        output_depth, batches, accum_depth);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1745,21 +1692,25 @@ inline void ShuffledFullyConnected(
 
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
-  std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_depth, thread_count));
+  std::vector<ShuffledFullyConnectedWorkerTask> tasks;
+  // TODO(b/131746020) don't create new heap allocations every time.
+  // At least we make it a single heap allocation by using reserve().
+  tasks.reserve(thread_count);
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
-    tasks[i] = new ShuffledFullyConnectedWorkerTask(
-        shuffled_input_workspace_data,
-        int8_shuffled_weights_data + row_start * accum_depth, batches,
-        row_end - row_start, output_depth, accum_depth, bias_data + row_start,
-        output_multiplier, output_shift, output_data + row_start);
+    tasks.emplace_back(shuffled_input_workspace_data,
+                       int8_shuffled_weights_data + row_start * accum_depth,
+                       batches, row_end - row_start, output_depth, accum_depth,
+                       bias_data + row_start, output_multiplier, output_shift,
+                       output_data + row_start);
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
-  gemmlowp_context->workers_pool()->Execute(tasks);
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
 }
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
@@ -1883,7 +1834,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   }
 }
 
-struct MeanWorkerTask : public gemmlowp::Task {
+struct MeanWorkerTask : cpu_backend_threadpool::Task {
   MeanWorkerTask(const tflite::MeanParams& op_params,
                  const RuntimeShape& input_shape, const uint8_t* input_data,
                  int32 input_zero_point, float input_scale,
@@ -1929,8 +1880,6 @@ inline void Mean(const tflite::MeanParams& op_params,
                  uint8_t* output_data, int32 output_zero_point,
                  float output_scale, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
@@ -1953,28 +1902,32 @@ inline void Mean(const tflite::MeanParams& op_params,
   int thread_count = output_depth / kMinDepthPerThread;
   thread_count = thread_count > 0 ? thread_count : 1;
   const int capped_thread_count =
-      std::min(thread_count, gemmlowp_context->max_num_threads());
+      std::min(thread_count, cpu_backend_context->max_num_threads());
 
-  if (thread_count == 1) {
+  if (capped_thread_count == 1) {
     MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
              output_shape, output_data, output_zero_point, output_scale, 0,
              output_depth);
   } else {
     // Instead parrallel for batch, we loop for the output_depth since batch
     // is typical 1.
-    std::vector<gemmlowp::Task*> tasks(capped_thread_count);
+    std::vector<MeanWorkerTask> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(capped_thread_count);
     int depth_start = 0;
     for (int i = 0; i < capped_thread_count; ++i) {
       // Try to distribute the tasks as even as possible.
       int depth_end = depth_start +
                       (output_depth - depth_start) / (capped_thread_count - i);
-      tasks[i] = new MeanWorkerTask(op_params, input_shape, input_data,
-                                    input_zero_point, input_scale, output_shape,
-                                    output_data, output_zero_point,
-                                    output_scale, depth_start, depth_end);
+      tasks.emplace_back(op_params, input_shape, input_data, input_zero_point,
+                         input_scale, output_shape, output_data,
+                         output_zero_point, output_scale, depth_start,
+                         depth_end);
       depth_start = depth_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
   }
 }
 
@@ -2167,8 +2120,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
                  uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2254,19 +2205,30 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   }
 #endif
 
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
-      filter_data, filter_rows, filter_cols);
-  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
-      gemm_input_data, gemm_input_rows, gemm_input_cols);
-  gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
-      output_data, output_rows, output_cols);
-  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max);
-  gemmlowp::GemmWithOutputPipeline<uint8, uint8,
-                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
-      filter_offset, input_offset, output_pipeline);
+  cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+  lhs_params.rows = filter_rows;
+  lhs_params.cols = filter_cols;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.zero_point = -filter_offset;
+  cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+  rhs_params.rows = gemm_input_rows;
+  rhs_params.cols = gemm_input_cols;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.zero_point = -input_offset;
+  cpu_backend_gemm::MatrixParams<uint8> dst_params;
+  dst_params.rows = output_rows;
+  dst_params.cols = output_cols;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.zero_point = output_offset;
+  cpu_backend_gemm::GemmParams<int32, uint8> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  gemm_params.multiplier_fixedpoint = output_multiplier;
+  gemm_params.multiplier_exponent = output_shift;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 template <typename T>
@@ -3493,8 +3455,6 @@ inline void LstmCell(
     int16* activ_temp_data_int16, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
-  gemmlowp::GemmContext* gemmlowp_context =
-      cpu_backend_context->gemmlowp_context();
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
   int accum_shift = params.accum_shift;
@@ -3578,28 +3538,28 @@ inline void LstmCell(
   }
 #endif
   if (!gemm_already_performed) {
-    gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor>
-        weights_matrix(weights_data_uint8, fc_output_depth, fc_accum_depth);
-    gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
-        concat_temp_data_uint8, fc_accum_depth, fc_batches);
-    gemmlowp::MatrixMap<int16, gemmlowp::MapOrder::ColMajor> output_matrix(
-        activ_temp_data_int16, fc_output_depth, fc_batches);
-    typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
-        ColVectorMap;
-    ColVectorMap bias_vector(bias_data_int32, fc_output_depth);
-    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-    bias_addition_stage.bias_vector = bias_vector;
-    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
-    scale_stage.result_offset_after_shift = 0;
-    scale_stage.result_fixedpoint_multiplier = accum_multiplier;
-    scale_stage.result_exponent = accum_shift;
-    gemmlowp::OutputStageSaturatingCastToInt16 saturating_cast_int16_stage;
-    auto output_pipeline = std::make_tuple(bias_addition_stage, scale_stage,
-                                           saturating_cast_int16_stage);
-    gemmlowp::GemmWithOutputPipeline<
-        uint8, int16, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-        gemmlowp_context, weights_matrix, input_matrix, &output_matrix,
-        -weights_zero_point, -128, output_pipeline);
+    cpu_backend_gemm::MatrixParams<uint8> lhs_params;
+    lhs_params.rows = fc_output_depth;
+    lhs_params.cols = fc_accum_depth;
+    lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+    lhs_params.zero_point = weights_zero_point;
+    cpu_backend_gemm::MatrixParams<uint8> rhs_params;
+    rhs_params.rows = fc_accum_depth;
+    rhs_params.cols = fc_batches;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.zero_point = 128;
+    cpu_backend_gemm::MatrixParams<int16> dst_params;
+    dst_params.rows = fc_output_depth;
+    dst_params.cols = fc_batches;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.zero_point = 0;
+    cpu_backend_gemm::GemmParams<int32, int16> gemm_params;
+    gemm_params.bias = bias_data_int32;
+    gemm_params.multiplier_fixedpoint = accum_multiplier;
+    gemm_params.multiplier_exponent = accum_shift;
+    cpu_backend_gemm::Gemm(
+        lhs_params, weights_data_uint8, rhs_params, concat_temp_data_uint8,
+        dst_params, activ_temp_data_int16, gemm_params, cpu_backend_context);
   }
 
   // Rest of the LSTM cell: tanh and logistic math functions, and some adds
@@ -6130,19 +6090,19 @@ inline void Slice(const tflite::SliceParams& op_params,
   // We front-pad the begin and size vectors.
   const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
   const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0) - start_b
+                         ? ext_shape.Dims(0)
                          : start_b + op_params.size[0];
   const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
   const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1) - start_h
+                         ? ext_shape.Dims(1)
                          : start_h + op_params.size[size_count - 3];
   const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
   const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2) - start_w
+                         ? ext_shape.Dims(2)
                          : start_w + op_params.size[size_count - 2];
   const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
   const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3) - start_d
+                         ? ext_shape.Dims(3)
                          : start_d + op_params.size[size_count - 1];
 
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
@@ -6329,7 +6289,8 @@ inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
     const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data) {
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("TransposeConvV2");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
@@ -6362,21 +6323,25 @@ inline void TransposeConvV2(
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
-  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      Matrix;
-  typedef Eigen::Map<Matrix> MatrixRef;
-  typedef Eigen::Map<const Matrix> ConstMatrixRef;
-  ConstMatrixRef hwoi_ordered_filter_matrix_map(
-      hwoi_ordered_filter_data, hwoi_ordered_filter_total_size, input_depth);
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = hwoi_ordered_filter_total_size;
+  lhs_params.cols = input_depth;
   float* output_data_p = output_data;
   tensor_utils::ZeroVector(output_data, output_offset * batch_size);
   for (int i = 0; i < batch_size; ++i) {
-    ConstMatrixRef input_matrix_map(input_data + input_offset * i,
-                                    input_image_size, input_depth);
-    MatrixRef output_matrix_map(col2im_data, input_image_size,
-                                hwoi_ordered_filter_total_size);
-    Gemm(input_matrix_map, hwoi_ordered_filter_matrix_map.transpose(),
-         &output_matrix_map);
+    cpu_backend_gemm::MatrixParams<float> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_depth;
+    rhs_params.cols = input_image_size;
+    cpu_backend_gemm::MatrixParams<float> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = hwoi_ordered_filter_total_size;
+    dst_params.cols = input_image_size;
+    cpu_backend_gemm::GemmParams<float, float> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
 
     Col2im(col2im_data, output_depth, output_height, output_width,
            filter_height, filter_width, padding_top, padding_left,
@@ -6384,29 +6349,6 @@ inline void TransposeConvV2(
            output_data_p);
     output_data_p += output_offset;
   }
-}
-
-// TODO(renjieliu): Investigate whether we need to keep this.
-inline void TransposeConv(
-    const ConvParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // Note we could use transposed weights with forward conv for unstrided
-  // cases. But we are already getting good performance with this code as-is.
-  TFLITE_DCHECK(im2col_data);
-  TransposeIm2col(params, 0, input_shape, input_data, filter_shape,
-                  output_shape, im2col_data);
-
-  const auto im2col_matrix_map =
-      MapAsMatrixWithLastDimAsRows(im2col_data, im2col_shape);
-  const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
-
-  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented

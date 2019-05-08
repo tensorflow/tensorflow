@@ -63,7 +63,7 @@ TFE_ProfilerContext* TFE_NewProfilerContext() {
 
 void TFE_ProfilerContextSetEagerContext(TFE_ProfilerContext* profiler_context,
                                         TFE_Context* eager_context) {
-  profiler_context->profiler_context.eager_context = &eager_context->context;
+  profiler_context->profiler_context.eager_context = eager_context->context;
 }
 
 void TFE_DeleteProfilerContext(TFE_ProfilerContext* profiler_context) {
@@ -77,11 +77,11 @@ void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(true);
+  ctx->context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(false);
+  ctx->context->SetShouldStoreGraphs(false);
 }
 
 bool TFE_ProfilerClientStartTracing(const char* service_addr,

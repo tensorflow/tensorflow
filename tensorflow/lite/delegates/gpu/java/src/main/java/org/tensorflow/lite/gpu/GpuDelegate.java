@@ -27,8 +27,90 @@ public class GpuDelegate implements Delegate, Closeable {
 
   private long delegateHandle;
 
+  /** Shader compilation options. */
+  public static final class CompileOptions {
+    public CompileOptions() {}
+
+    /** Delegate chooses fastest GL object type to represent tensors (default). */
+    public static final int GL_OBJECT_TYPE_FASTEST = 0;
+    /**
+     * Delegate uses GL textures to represent tensors, which works faster on Adreno-based devices,
+     * but may use more memory.
+     */
+    public static final int GL_OBJECT_TYPE_TEXTURE = 1;
+    /** Delegate uses GL shader storage buffer objects to represent tensors. */
+    public static final int GL_OBJECT_TYPE_BUFFER = 2;
+
+    /**
+     * Sets whether precision loss is allowed.
+     *
+     * @param precisionLossAllowed When `true` (default), the GPU may quantify tensors, downcast
+     *     values, process in FP16. When `false`, computations are carried out in 32-bit floating
+     *     point.
+     */
+    public CompileOptions setPrecisionLossAllowed(boolean precisionLossAllowed) {
+      this.precisionLossAllowed = precisionLossAllowed;
+      return this;
+    }
+
+    /**
+     * Sets whether dynamic batch is enabled.
+     *
+     * @param dynamicBatchEnabled When `false` (default), dynamic batching is disabled and
+     *     input/output tensors must have a batch size of 1 (probably what you want, unless you use
+     *     LSTMs). When `true`, enables dynamic batching and input/output tensor can have a batch
+     *     size greater than 1.
+     */
+    public CompileOptions setDynamicBatchEnabled(boolean dynamicBatchEnabled) {
+      this.dynamicBatchEnabled = dynamicBatchEnabled;
+      return this;
+    }
+
+    /**
+     * Sets the preferred GL object type for tensor representation
+     *
+     * @param preferredGlObjectType One of `GL_OBJECT_TYPE_FASTEST` (default),
+     *     `GL_OBJECT_TYPE_TEXTURE`, `GL_OBJECT_TYPE_BUFFER`.
+     */
+    public CompileOptions setPreferredGlObjectType(int preferredGlObjectType) {
+      this.preferredGlObjectType = preferredGlObjectType;
+      return this;
+    }
+
+    boolean precisionLossAllowed = true;
+    boolean dynamicBatchEnabled = false;
+    int preferredGlObjectType = GL_OBJECT_TYPE_FASTEST;
+  }
+
+  /** Delegate options. */
+  public static final class Options {
+    public Options() {}
+
+    private static final CompileOptions DEFAULT_COMPILE_OPTIONS = new CompileOptions();
+
+    /**
+     * Sets the shader compilation options to be used by the delegate.
+     *
+     * @param compileOptions the {@link CompileOptions} to use.
+     */
+    public Options setCompileOptions(CompileOptions compileOptions) {
+      this.compileOptions = compileOptions != null ? compileOptions : DEFAULT_COMPILE_OPTIONS;
+      return this;
+    }
+
+    CompileOptions compileOptions = DEFAULT_COMPILE_OPTIONS;
+  }
+
+  public GpuDelegate(Options options) {
+    delegateHandle =
+        createDelegate(
+            options.compileOptions.precisionLossAllowed,
+            options.compileOptions.dynamicBatchEnabled,
+            options.compileOptions.preferredGlObjectType);
+  }
+
   public GpuDelegate() {
-    delegateHandle = createDelegate();
+    this(new Options());
   }
 
   /**
@@ -73,7 +155,8 @@ public class GpuDelegate implements Delegate, Closeable {
     System.loadLibrary(TFLITE_GPU_LIB);
   }
 
-  private static native long createDelegate();
+  private static native long createDelegate(
+      boolean precisionLossAllowed, boolean dynamicBatchEnabled, int preferredGlObjectType);
 
   private static native void deleteDelegate(long delegateHandle);
 

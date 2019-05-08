@@ -104,6 +104,10 @@ def _matches_version(actual_version, required_version):
   """
   if actual_version is None:
     return False
+
+  # Strip spaces from the versions.
+  actual_version = actual_version.strip()
+  required_version = required_version.strip()
   return actual_version.startswith(required_version)
 
 
@@ -402,6 +406,20 @@ def _list_from_env(env_name, default=[]):
   return default
 
 
+def _get_legacy_path(env_name, default=[]):
+  """Returns a path specified by a legacy environment variable.
+
+  CUDNN_INSTALL_PATH, NCCL_INSTALL_PATH, TENSORRT_INSTALL_PATH set to
+  '/usr/lib/x86_64-linux-gnu' would previously find both library and header
+  paths. Detect those and return '/usr', otherwise forward to _list_from_env().
+  """
+  if env_name in os.environ:
+    match = re.match("^(/[^/ ]*)+/lib/\w+-linux-gnu/?$", os.environ[env_name])
+    if match:
+      return [match.group(1)]
+  return _list_from_env(env_name, default)
+
+
 def _normalize_path(path):
   """Returns normalized path, with forward slashes on Windows."""
   path = os.path.normpath(path)
@@ -423,23 +441,26 @@ def find_cuda_config():
     cuda_paths = _list_from_env("CUDA_TOOLKIT_PATH", base_paths)
     result.update(_find_cuda_config(cuda_paths, cuda_version))
 
+    cublas_paths = _list_from_env("CUBLAS_INSTALL_PATH", base_paths)
+    # Add cuda paths in case CuBLAS is installed under CUDA_TOOLKIT_PATH.
+    cublas_paths += list(set(cuda_paths) - set(cublas_paths))
     cuda_version = result["cuda_version"]
     cublas_version = os.environ.get("TF_CUBLAS_VERSION", "")
-    result.update(_find_cublas_config(cuda_paths, cublas_version, cuda_version))
+    result.update(
+        _find_cublas_config(cublas_paths, cublas_version, cuda_version))
 
   if "cudnn" in libraries:
-    cudnn_paths = _list_from_env("CUDNN_INSTALL_PATH", base_paths)
+    cudnn_paths = _get_legacy_path("CUDNN_INSTALL_PATH", base_paths)
     cudnn_version = os.environ.get("TF_CUDNN_VERSION", "")
     result.update(_find_cudnn_config(cudnn_paths, cudnn_version))
 
   if "nccl" in libraries:
-    nccl_paths = _list_from_env("NCCL_INSTALL_PATH",
-                                base_paths) + _list_from_env("NCCL_HDR_PATH")
+    nccl_paths = _get_legacy_path("NCCL_INSTALL_PATH", base_paths)
     nccl_version = os.environ.get("TF_NCCL_VERSION", "")
     result.update(_find_nccl_config(nccl_paths, nccl_version))
 
   if "tensorrt" in libraries:
-    tensorrt_paths = _list_from_env("TENSORRT_INSTALL_PATH", base_paths)
+    tensorrt_paths = _get_legacy_path("TENSORRT_INSTALL_PATH", base_paths)
     tensorrt_version = os.environ.get("TF_TENSORRT_VERSION", "")
     result.update(_find_tensorrt_config(tensorrt_paths, tensorrt_version))
 

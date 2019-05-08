@@ -179,15 +179,8 @@ def _model_loss(model,
       # associated with a model, each output's loss is calculated and returned
       # as part of the loss_metrics.
       if len(model.outputs) > 1:
-        # Compute the stateful loss value.
-        if weighted_losses is not None:
-          aggregated_output_loss = output_loss_metrics[i](weighted_losses)
-        else:
-          # Custom loss class.
-          aggregated_output_loss = training_utils.call_metric_function(
-              output_loss_metrics[i], targets[i], outs[i], weights=weights)
         # Keep track of the stateful output loss result.
-        output_losses.append(aggregated_output_loss)
+        output_losses.append(output_loss_metrics[i](output_loss))
 
       total_loss += model.loss_weights_list[i] * output_loss
 
@@ -273,12 +266,13 @@ def train_on_batch(model,
   """
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_dtype(inputs)
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
+                                                                     model)
       if targets:
         targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in inputs])
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
+          [ops.convert_to_tensor(val) for val in inputs], model)
       if targets:
         targets = training_utils.cast_if_floating_dtype(
             [ops.convert_to_tensor(val) for val in targets])
@@ -331,11 +325,12 @@ def test_on_batch(model,
   """
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_dtype(inputs)
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
+                                                                     model)
       targets = training_utils.cast_if_floating_dtype(targets)
     else:
-      inputs = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in inputs])
+      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
+          [ops.convert_to_tensor(val) for val in inputs], model)
       targets = training_utils.cast_if_floating_dtype(
           [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:

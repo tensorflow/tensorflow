@@ -18,32 +18,58 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.platform import test
+
+
+def get_multi_io_model():
+  inp_1 = layers.Input(shape=(1,), name='input_1')
+  inp_2 = layers.Input(shape=(1,), name='input_2')
+  x = layers.Dense(3, kernel_initializer='ones', trainable=False)
+  out_1 = layers.Dense(
+      1, kernel_initializer='ones', name='output_1', trainable=False)
+  out_2 = layers.Dense(
+      1, kernel_initializer='ones', name='output_2', trainable=False)
+
+  branch_a = [inp_1, x, out_1]
+  branch_b = [inp_2, x, out_2]
+  return testing_utils.get_multi_io_model(branch_a, branch_b)
+
+
+def custom_generator_multi_io():
+  batch_size = 2
+  num_samples = 4
+  inputs = np.asarray([[1.], [2.], [3.], [4.]])
+  targets = np.asarray([[2.], [4.], [6.], [8.]])
+  w1 = np.asarray([2., 3., 4., 5.])
+  w2 = np.asarray([3.5, 2.5, 1.5, 0.5])
+  i = 0
+  while True:
+    batch_index = i * batch_size % num_samples
+    i += 1
+    start = batch_index
+    end = start + batch_size
+    x = [inputs[start:end], inputs[start:end]]
+    y = [targets[start:end], targets[start:end]]
+    w = [w1[start:end], w2[start:end]]
+    yield x, y, w
 
 
 @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
 @keras_parameterized.run_all_keras_modes
 class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
-  def _get_multi_io_model(self):
-    inp_1 = layers.Input(shape=(1,), name='input_1')
-    inp_2 = layers.Input(shape=(1,), name='input_2')
-    x = layers.Dense(3, kernel_initializer='ones', trainable=False)
-    out_1 = layers.Dense(
-        1, kernel_initializer='ones', name='output_1', trainable=False)
-    out_2 = layers.Dense(
-        1, kernel_initializer='ones', name='output_2', trainable=False)
-
-    branch_a = [inp_1, x, out_1]
-    branch_b = [inp_2, x, out_2]
-    model = testing_utils.get_multi_io_model(branch_a, branch_b)
+  def _get_compiled_multi_io_model(self):
+    model = get_multi_io_model()
     model.compile(
         optimizer='rmsprop',
         loss='mse',
@@ -135,7 +161,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.expected_batch_result = [41.25, 32.5, 8.75, 7.5, 9.286, 7.5, 4.375]
 
   def test_fit(self):
-    model = self._get_multi_io_model()
+    model = self._get_compiled_multi_io_model()
     history = model.fit([self.x, self.x], [self.y, self.y],
                         sample_weight={
                             'output_1': self.weights_1,
@@ -148,7 +174,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
       self.assertAllClose(history.history[key], value, 1e-3)
 
   def test_eval(self):
-    model = self._get_multi_io_model()
+    model = self._get_compiled_multi_io_model()
     eval_result = model.evaluate([self.x, self.x], [self.y, self.y],
                                  batch_size=2,
                                  sample_weight={
@@ -167,7 +193,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.assertAllClose(mse1, mse2, 1e-3)
 
   def test_train_on_batch(self):
-    model = self._get_multi_io_model()
+    model = self._get_compiled_multi_io_model()
     result = model.train_on_batch([self.x, self.x], [self.y, self.y],
                                   sample_weight={
                                       'output_1': self.weights_1,
@@ -176,7 +202,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.assertAllClose(result, self.expected_batch_result, 1e-3)
 
   def test_test_on_batch(self):
-    model = self._get_multi_io_model()
+    model = self._get_compiled_multi_io_model()
     result = model.test_on_batch([self.x, self.x], [self.y, self.y],
                                  sample_weight={
                                      'output_1': self.weights_1,
@@ -185,15 +211,15 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.assertAllClose(result, self.expected_batch_result, 1e-3)
 
   def test_fit_generator(self):
-    model = self._get_multi_io_model()
+    model = self._get_compiled_multi_io_model()
     history = model.fit_generator(
-        self._custom_generator(), steps_per_epoch=2, epochs=2)
+        custom_generator_multi_io(), steps_per_epoch=2, epochs=2)
     for key, value in self.expected_fit_result.items():
       self.assertAllClose(history.history[key], value, 1e-3)
 
   def test_eval_generator(self):
-    model = self._get_multi_io_model()
-    eval_result = model.evaluate_generator(self._custom_generator(), steps=2)
+    model = self._get_compiled_multi_io_model()
+    eval_result = model.evaluate_generator(custom_generator_multi_io(), steps=2)
     self.assertAllClose(eval_result, self.expected_batch_result, 1e-3)
 
 
@@ -316,6 +342,151 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     model = self._get_model()
     eval_result = model.evaluate_generator(self._custom_generator(), steps=2)
     self.assertAllClose(eval_result, self.expected_batch_result, 1e-3)
+
+
+@keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
+@keras_parameterized.run_all_keras_modes
+@parameterized.parameters([
+    loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
+    loss_reduction.ReductionV2.AUTO,
+    loss_reduction.ReductionV2.SUM
+])
+class TestOutputLossMetrics(keras_parameterized.TestCase):
+
+  def _get_compiled_multi_io_model(self, loss):
+    model = get_multi_io_model()
+    model.compile(
+        optimizer='rmsprop',
+        loss=loss,
+        run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def setUp(self):
+    super(TestOutputLossMetrics, self).setUp()
+    self.x = np.asarray([[1.], [2.], [3.], [4.]])
+    self.y = np.asarray([[2.], [4.], [6.], [8.]])
+    self.weights_1 = np.asarray([2., 3., 4., 5.])
+    self.weights_2 = np.asarray([3.5, 2.5, 1.5, 0.5])
+
+    # y_true = [[2.], [4.], [6.], [8.]], y_pred = [[3.], [6.], [9.], [12.]]
+
+    # Loss `output_1`:
+    #   Per-sample weighted losses
+    #   Batch 1 = [(3 - 2)^2 * 2, (6 - 4)^2 * 3)] = [2, 12]
+    #   Batch 2 = [((9 - 6)^2 * 4, (12 - 8)^2 * 5)] = [36, 80]
+
+    #   Result (reduction=SUM) = ((2 + 12) + (36 + 80))/2 = 65
+    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO/NONE) = 130 / 4 = 32.5
+
+    # Loss `output_2`:
+    #   Per-sample weighted losses
+    #   Batch 1 = [(3 - 2)^2 * 3.5, (6 - 4)^2 * 2.5)] = [3.5, 10]
+    #   Batch 2 = [(9 - 6)^2 * 1.5, (12 - 8)^2 * 0.5)] = [13.5, 8]
+
+    #   Result (reduction=SUM) = ((3.5 + 10) + (13.5 + 8))/2 = 17.5
+    #   Result (reduction=SUM_OVER_BATCH_SIZE/AUTO/NONE) = 35 / 4 = 8.75
+
+    # When reduction is 'NONE' loss value that is passed to the optimizer will
+    # be vector loss but what is reported is a scalar, which is an average of
+    # all the values in all the batch vectors.
+
+    # Total loss = Output_loss_1 + Output_loss_2
+
+    sum_over_batch_size_fit_result = {
+        'loss': [41.25, 41.25],
+        'output_1_loss': [32.5, 32.5],
+        'output_2_loss': [8.75, 8.75],
+    }
+
+    self.expected_fit_result = {
+        loss_reduction.ReductionV2.NONE:
+            sum_over_batch_size_fit_result,
+        loss_reduction.ReductionV2.SUM: {
+            'loss': [82.5, 82.5],
+            'output_1_loss': [65, 65],
+            'output_2_loss': [17.5, 17.5],
+        },
+        loss_reduction.ReductionV2.AUTO:
+            sum_over_batch_size_fit_result,
+        loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE:
+            sum_over_batch_size_fit_result,
+    }
+
+    # In the order: 'loss', 'output_1_loss', 'output_2_loss',
+    self.expected_batch_result = {
+        loss_reduction.ReductionV2.NONE: [41.25, 32.5, 8.75],
+        loss_reduction.ReductionV2.SUM: [82.5, 65, 17.5],
+        loss_reduction.ReductionV2.AUTO: [41.25, 32.5, 8.75],
+        loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE: [41.25, 32.5, 8.75],
+    }
+
+  def test_fit(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    history = model.fit([self.x, self.x], [self.y, self.y],
+                        sample_weight={
+                            'output_1': self.weights_1,
+                            'output_2': self.weights_2,
+                        },
+                        batch_size=2,
+                        epochs=2,
+                        shuffle=False)
+    for key, value in self.expected_fit_result[reduction].items():
+      self.assertAllClose(history.history[key], value)
+
+  def test_eval(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    eval_result = model.evaluate([self.x, self.x], [self.y, self.y],
+                                 batch_size=2,
+                                 sample_weight={
+                                     'output_1': self.weights_1,
+                                     'output_2': self.weights_2,
+                                 })
+    self.assertAllClose(eval_result, self.expected_batch_result[reduction])
+
+  def test_train_on_batch(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    result = model.train_on_batch([self.x, self.x], [self.y, self.y],
+                                  sample_weight={
+                                      'output_1': self.weights_1,
+                                      'output_2': self.weights_2,
+                                  })
+
+    expected_values = self.expected_batch_result[reduction]
+    if reduction == loss_reduction.ReductionV2.SUM:
+      # We are taking all the data as one batch, so undo the averaging here.
+      expected_values = [x * 2 for x in self.expected_batch_result[reduction]]
+    self.assertAllClose(result, expected_values)
+
+  def test_test_on_batch(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    result = model.test_on_batch([self.x, self.x], [self.y, self.y],
+                                 sample_weight={
+                                     'output_1': self.weights_1,
+                                     'output_2': self.weights_2,
+                                 })
+    expected_values = self.expected_batch_result[reduction]
+    if reduction == loss_reduction.ReductionV2.SUM:
+      # We are taking all the data as one batch, so undo the averaging here.
+      expected_values = [x * 2 for x in self.expected_batch_result[reduction]]
+    self.assertAllClose(result, expected_values)
+
+  def test_fit_generator(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    history = model.fit_generator(
+        custom_generator_multi_io(), steps_per_epoch=2, epochs=2)
+    for key, value in self.expected_fit_result[reduction].items():
+      self.assertAllClose(history.history[key], value)
+
+  def test_eval_generator(self, reduction):
+    model = self._get_compiled_multi_io_model(
+        loss=losses.MeanSquaredError(reduction=reduction))
+    eval_result = model.evaluate_generator(custom_generator_multi_io(), steps=2)
+    self.assertAllClose(eval_result, self.expected_batch_result[reduction])
 
 
 if __name__ == '__main__':

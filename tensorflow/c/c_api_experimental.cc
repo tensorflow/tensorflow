@@ -67,6 +67,24 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
   }
 }
 
+unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
+  tensorflow::BuildXlaOpsPassFlags* flags =
+      tensorflow::GetBuildXlaOpsPassFlags();
+  bool original = flags->tf_xla_enable_lazy_compilation;
+  flags->tf_xla_enable_lazy_compilation = enable;
+  return original;
+}
+
+void TF_SetXLaAutoJitMode(const char* mode) {
+  tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
+}
+
+void TF_SetXlaMinClusterSize(int size) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  flags->tf_xla_min_cluster_size = size;
+}
+
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
                            unsigned char gpu_memory_allow_growth,
                            unsigned int num_cpu_devices) {
@@ -677,7 +695,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
       std::move(server), grpc_server->worker_env()->device_mgr,
       grpc_server->worker_env()->collective_executor_mgr));
 

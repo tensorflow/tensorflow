@@ -26,6 +26,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
@@ -860,6 +861,88 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
+
+
+class PerReplicaTest(test.TestCase):
+
+  def testToComponents(self):
+    device_map = values.SingleDeviceMap("CPU")
+    vals = (constant_op.constant(1.),)
+    per_replica = values.PerReplica(device_map, vals)
+    logical_device = 0
+    self.assertEqual(per_replica._to_components(), vals)
+    self.assertEqual(per_replica._component_metadata(), (device_map,
+                                                         logical_device))
+
+  def testFromComponents(self):
+    device_map = values.SingleDeviceMap("CPU")
+    vals = (constant_op.constant(1.),)
+    logical_device = 0
+    metadata = device_map, logical_device
+    per_replica = values.PerReplica._from_components(vals, metadata)
+    self.assertEqual(per_replica._device_map, device_map)
+    self.assertEqual(per_replica._values, vals)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIsGraphTensor(self):
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
+                                    (constant_op.constant(1.),))
+    self.assertEqual(per_replica._is_graph_tensor(),
+                     not context.executing_eagerly())
+
+  def testShapeInvariantToComponents(self):
+    v1 = constant_op.constant(1.)
+    v2 = constant_op.constant(2.)
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
+    self.assertEqual(per_replica._shape_invariant_to_components(),
+                     (v1.shape, v2.shape))
+
+  def testShapeInvariantToComponentsExplicitShape(self):
+    v1 = constant_op.constant([1., 1., 1.])
+    v2 = constant_op.constant([2., 2., 2.])
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
+    shape = [None]
+    self.assertEqual(per_replica._shape_invariant_to_components(shape=shape),
+                     (shape, shape))
+
+  def testDoesNotTriggerFunctionTracing(self):
+    traces = []
+
+    @def_function.function
+    def f(x):
+      traces.append(None)  # Only happens on trace.
+      return x
+
+    per_replica = values.PerReplica(
+        values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
+
+    # Trace once.
+    f(per_replica)
+    self.assertNotEmpty(traces)
+    del traces[:]
+
+    metadata = per_replica._component_metadata()
+    for _ in range(5):
+      vals = per_replica._to_components()
+      vals = [v * 2 for v in vals]
+      per_replica = values.PerReplica._from_components(vals, metadata)
+
+      output = f(per_replica)
+      self.assertIsInstance(output, values.PerReplica)
+      self.assertAllEqual(output._values, per_replica._values)
+      self.assertAllEqual(output._device_map, per_replica._device_map)
+      self.assertAllEqual(output._logical_device, per_replica._logical_device)
+      self.assertEmpty(traces)  # Make sure we're not re-tracing `f`.
+
+  def testFunctionCanReturnPerReplica(self):
+    f = def_function.function(lambda x: x)
+    x = values.PerReplica(
+        values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
+    y = f(x)
+    self.assertIsNot(x, y)
+    for a, b in zip(x._to_components(), y._to_components()):
+      self.assertAllEqual(a, b)
+    self.assertEqual(x._component_metadata(), y._component_metadata())
 
 
 if __name__ == "__main__":

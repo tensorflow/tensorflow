@@ -38,7 +38,6 @@ from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
@@ -47,7 +46,6 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
@@ -585,8 +583,6 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
-    ag_internal.rewrite_graph_construction_error = (
-        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -693,6 +689,4 @@ def node_to_graph(node, context):
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.
   if context.program.options.uses(converter.Feature.NAME_SCOPES):
     node = converter.apply_(node, context, function_scopes)
-  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
-    node = converter.apply_(node, context, error_handlers)
   return node

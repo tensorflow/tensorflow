@@ -81,7 +81,7 @@ FunctionDef IsZero() {
       // Args
       {"x: T"},
       // Return values
-      {"equal: T"},
+      {"equal: bool"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
       {

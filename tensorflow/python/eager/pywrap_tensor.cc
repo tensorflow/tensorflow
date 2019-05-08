@@ -627,7 +627,36 @@ static PyObject* EagerTensor_numpy(EagerTensor* self) {
     PyErr_SetString(PyExc_RuntimeError, TF_Message(status.get()));
     return nullptr;
   }
+
+  // HACK(slebedev): The following explains why TensorToNdarray never
+  // reuses the storage.
+  //
+  // TF_TensorToPyArray copies the storage unless its
+  // refcount is 1. For DT_STRING and DT_RESOURCE TF_TensorFromTensor
+  // has to copy so the refcount of the original storage is unchanged.
+  // However, if the storage can be reused by TF_TensorFromTensor its
+  // refcount is +1'd and hence TF_TensorToPyArray no longer can reuse it.
+  //
+  // Here we attempt a direct conversion without an intermediate TF_Tensor
+  // and fall-back to the slow path on failure.
   PyObject* ret = nullptr;
+  if (t->dtype() != tensorflow::DT_STRING &&
+      t->dtype() != tensorflow::DT_RESOURCE) {
+    tensorflow::gtl::InlinedVector<npy_intp, 4> dims(t->dims());
+    for (int d = 0; d < t->dims(); ++d) {
+      dims[d] = t->dim_size(d);
+    }
+
+    auto* copy = new tensorflow::Tensor(*t);
+    char* data = const_cast<char*>(copy->tensor_data().data());
+    if (tensorflow::ArrayFromMemory(
+            dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
+            &ret)
+            .ok()) {
+      return ret;
+    }
+  }
+
   auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
   if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
     Py_XDECREF(ret);

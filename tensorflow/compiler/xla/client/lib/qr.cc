@@ -101,7 +101,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
 
   auto sigma_is_zero = Eq(sigma, zero);
 
-  *beta = Select(sigma_is_zero, alpha, -Sign(alpha) * mu);
+  *beta = Select(sigma_is_zero, alpha, Select(Lt(alpha, zero), one, -one) * mu);
   *tau = Select(sigma_is_zero, Broadcast(zero, batch_dims),
                 (*beta - alpha) / *beta);
   auto divisor =

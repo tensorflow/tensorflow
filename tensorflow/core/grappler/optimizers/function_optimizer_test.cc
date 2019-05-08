@@ -33,12 +33,7 @@ namespace {
 constexpr char kDevice[] = "/job:localhost/replica:0/task:0/device:CPU:0";
 }  // namespace
 
-class FunctionOptimizerTest : public GrapplerTest {
- protected:
-  void DisableFunctionSpecialization(FunctionOptimizer* optimizer) {
-    optimizer->options_.enable_function_specialization = false;
-  }
-};
+class FunctionOptimizerTest : public GrapplerTest {};
 
 TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   using test::function::NDef;
@@ -257,7 +252,6 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
   using test::function::NDef;
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
-  DisableFunctionSpecialization(&optimizer);  // do not specialize noinline func
 
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
@@ -383,6 +377,13 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_TestFunc) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
+  // SymbolicGradient calls were removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "SymbolicGradient");
+  }
+  // And functions were removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
+
   std::vector<Tensor> expected =
       EvaluateNodes(item.graph, {"out1", "out2"}, {});
   std::vector<Tensor> optimized = EvaluateNodes(output, {"out1", "out2"}, {});
@@ -425,34 +426,12 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(13, output.node_size());
-  EXPECT_EQ("Const", output.node(0).name());
-  EXPECT_EQ("Const_1", output.node(1).name());
-  EXPECT_EQ("SymbolicGradient/FunctionInputs", output.node(2).name());
-  EXPECT_EQ("SymbolicGradient", output.node(3).name());
-  EXPECT_EQ("SymbolicGradient/SymbolicGradient/Identity",
-            output.node(4).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_0",
-            output.node(5).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_1",
-            output.node(6).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/output/_2",
-            output.node(7).name());
-  EXPECT_EQ("SymbolicGradient/SymbolicGradient/Func/_1/dx",
-            output.node(8).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_3",
-            output.node(9).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_4",
-            output.node(10).name());
-  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/output/_5",
-            output.node(11).name());
-  EXPECT_EQ("out", output.node(12).name());
-  for (int i = 2; i < 4; ++i) {
-    EXPECT_EQ("IdentityN", output.node(i).op());
+  // SymbolicGradient calls were removed from the graph.
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.op(), "SymbolicGradient");
   }
-  for (int i = 4; i < 11; ++i) {
-    EXPECT_EQ("Identity", output.node(i).op());
-  }
+  // And functions were removed from the library.
+  EXPECT_EQ(output.library().function_size(), 0);
 
   std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out"}, {});
   std::vector<Tensor> optimized = EvaluateNodes(output, {"out"}, {});
@@ -528,6 +507,10 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
   item.feed.emplace_back("a", pi);
   item.feed.emplace_back("b", pi);
 
+  const string input_x = "Func/c/input/_0";
+  const string input_y = "Func/c/input/_1";
+  const string output_z = "Func/c/output/_2";
+
   // If device set is empty, inlined function body must not be placed.
   {
     GraphDef optimized_graph;
@@ -539,14 +522,14 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
 
          // Function body nodes are not placed, however function input nodes
          // must copy device assignment from input arguments.
-         NDef("c/inputs_ready", "NoOp", {"^a", "^b"}, {}),
-         NDef("c/x", "Identity", {"a:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-              kDevice),
-         NDef("c/y", "Identity", {"b:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-              kDevice),
-         NDef("c/mul", "Mul", {"c/x", "c/y"}, {{"T", DT_FLOAT}}),
+         NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, kDevice),
+         // TODO(ezhulenev): Currently inlined function body "implicitly placed"
+         // with a 'inline_options.initialize_empty_device' flag.
+         NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, kDevice),
 
-         NDef("d", "Identity", {"c/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+         NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, kDevice)},
         // Function library.
         {mul_func});
 
@@ -570,14 +553,12 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
         {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
-         NDef("c/inputs_ready", "NoOp", {"^a", "^b"}, {}, kDevice),
-         NDef("c/x", "Identity", {"a:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-              kDevice),
-         NDef("c/y", "Identity", {"b:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-              kDevice),
-         NDef("c/mul", "Mul", {"c/x", "c/y"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, kDevice),
 
-         NDef("d", "Identity", {"c/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+         NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, kDevice)},
         // Function library.
         {mul_func});
 
@@ -665,54 +646,68 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithControlDependencies) {
        NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
        // Initialize variable with one of the placeholders.
-       NDef("v", "VarHandleOp", {}, {{"dtype", DT_FLOAT}, {"shape", scalar}}),
+       NDef("v", "VarHandleOp", {}, {{"dtype", DT_FLOAT}, {"shape", scalar}},
+            kDevice),
        NDef("init_v", "AssignVariableOp", {"v", "a"}, {{"dtype", DT_FLOAT}},
             kDevice),
 
        // Function body of a first function call inlined into the graph.
-       NDef("f1/inputs_ready", "NoOp", {"^a", "^b", "^v", "^init_v"}, {},
+       NDef("Func/f1/input_control_node/_0", "NoOp", {"^init_v"}, {}, kDevice),
+
+       NDef("Func/f1/input/_1", "Identity",  // input: 'x'
+            {"a", "^Func/f1/input_control_node/_0"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("Func/f1/input/_2", "Identity",  // input: 'y'
+            {"b", "^Func/f1/input_control_node/_0"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("Func/f1/input/_3", "Identity",  // input: 'v'
+            {"v", "^Func/f1/input_control_node/_0"}, {{"T", DT_RESOURCE}},
             kDevice),
 
-       NDef("f1/x", "Identity", {"a:0", "^f1/inputs_ready"}, {{"T", DT_FLOAT}},
-            kDevice),
-       NDef("f1/y", "Identity", {"b:0", "^f1/inputs_ready"}, {{"T", DT_FLOAT}},
-            kDevice),
-       NDef("f1/v", "Identity", {"v:0", "^f1/inputs_ready"},
-            {{"T", DT_RESOURCE}}, kDevice),
-
-       NDef("f1/one", "Const", {"^f1/inputs_ready"},
+       NDef("f1/one", "Const", {"^Func/f1/input_control_node/_0"},
             {{"dtype", DT_FLOAT}, {"value", kOne}}, kDevice),
-       NDef("f1/add", "AssignAddVariableOp", {"f1/v", "f1/one"},
+       NDef("f1/mul", "Mul", {"Func/f1/input/_1", "Func/f1/input/_2"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("f1/add", "AssignAddVariableOp", {"Func/f1/input/_3", "f1/one"},
             {{"dtype", DT_FLOAT}}, kDevice),
-       NDef("f1/mul", "Mul", {"f1/x", "f1/y"}, {{"T", DT_FLOAT}}, kDevice),
 
-       NDef("f1/side_effects_executed", "NoOp", {"^f1/add"}, {}, kDevice),
+       NDef("Func/f1/output/_4", "Identity", {"f1/mul"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("Func/f1/output_control_node/_5", "NoOp", {"^f1/add"}, {}, kDevice),
 
        // Function body of a second function call also inlined into the graph,
-       // and input nodes read directly from the inlined nodes of the first
-       // function call.
-       NDef("f2/inputs_ready", "NoOp",
-            {"^v", "^f1/mul", "^f1/side_effects_executed"}, {}, kDevice),
+       // and input nodes read from the output nodes of the first function call.
+       NDef("Func/f2/input_control_node/_6", "NoOp",
+            {"^Func/f1/output_control_node/_5"}, {}, kDevice),
 
-       NDef("f2/x", "Identity", {"f1/mul:0", "^f2/inputs_ready"},
+       NDef("Func/f2/input/_7", "Identity",  // input: 'x'
+            {"Func/f1/output/_4", "^Func/f2/input_control_node/_6"},
             {{"T", DT_FLOAT}}, kDevice),
-       NDef("f2/y", "Identity", {"f1/mul:0", "^f2/inputs_ready"},
+       NDef("Func/f2/input/_8", "Identity",  // input: 'y'
+            {"Func/f1/output/_4", "^Func/f2/input_control_node/_6"},
             {{"T", DT_FLOAT}}, kDevice),
-       NDef("f2/v", "Identity", {"v:0", "^f2/inputs_ready"},
-            {{"T", DT_RESOURCE}}, kDevice),
+       NDef("Func/f2/input/_9", "Identity",  // input: 'v'
+            {"v", "^Func/f2/input_control_node/_6"}, {{"T", DT_RESOURCE}},
+            kDevice),
 
-       NDef("f2/one", "Const", {"^f2/inputs_ready"},
+       NDef("f2/one", "Const", {"^Func/f2/input_control_node/_6"},
             {{"dtype", DT_FLOAT}, {"value", kOne}}, kDevice),
-       NDef("f2/add", "AssignAddVariableOp", {"f2/v", "f2/one"},
+       NDef("f2/add", "AssignAddVariableOp", {"Func/f2/input/_9", "f2/one"},
             {{"dtype", DT_FLOAT}}, kDevice),
-       NDef("f2/mul", "Mul", {"f2/x", "f2/y"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("f2/mul", "Mul", {"Func/f2/input/_7", "Func/f2/input/_8"},
+            {{"T", DT_FLOAT}}, kDevice),
 
-       NDef("f2/side_effects_executed", "NoOp", {"^f2/add"}, {}, kDevice),
+       NDef("Func/f2/output/_10", "Identity", {"f2/mul"}, {{"T", DT_FLOAT}},
+            kDevice),
+       NDef("Func/f2/output_control_node/_11", "NoOp", {"^f2/add"}, {},
+            kDevice),
 
-       // Return values read directly from inlined nodes.
-       NDef("out_1", "Identity", {"f2/mul:0"}, {{"T", DT_FLOAT}}, kDevice),
+       // Return values read from inlined output nodes.
+       NDef("out_1", "Identity", {"Func/f2/output/_10"}, {{"T", DT_FLOAT}},
+            kDevice),
        NDef("out_2", "ReadVariableOp",
-            {"v", "^f1/side_effects_executed", "^f2/side_effects_executed"},
+            {"v", "^Func/f1/output_control_node/_5",
+             "^Func/f2/output_control_node/_11"},
             {{"dtype", DT_FLOAT}}, kDevice)},
 
       // Function library.
@@ -772,20 +767,22 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
   GraphDef optimized_graph;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
 
+  const string input_x = "Func/c/input/_0";
+  const string input_y = "Func/c/input/_1";
+  const string output_z = "Func/c/output/_2";
+
   GraphDef expected = test::function::GDef(
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu0),
        NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu1),
 
        // Function must be inlined and `mul` node placed on a requested device,
        // and input `Identity` nodes must be colocated with their source nodes.
-       NDef("c/inputs_ready", "NoOp", {"^a", "^b"}, {}, cpu0),
-       NDef("c/x", "Identity", {"a:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-            cpu0),
-       NDef("c/y", "Identity", {"b:0", "^c/inputs_ready"}, {{"T", DT_FLOAT}},
-            cpu1),
-       NDef("c/mul", "Mul", {"c/x", "c/y"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, cpu0),
+       NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, cpu1),
+       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu1),
 
-       NDef("d", "Identity", {"c/mul:0"}, {{"T", DT_FLOAT}}, cpu0)},
+       NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, cpu0)},
       // Function library.
       {mul_func});
 
@@ -824,8 +821,10 @@ TEST_F(FunctionOptimizerTest,
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
+       NDef("c", "NoOp", {}, {}, kDevice),
+
        // Call function first time.
-       NDef("f1", "PartitionedCall", {"a", "b"},
+       NDef("f1", "PartitionedCall", {"a", "b", "^c"},
             {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
              {"Tout", DataTypeSlice{DT_FLOAT}},
              {"f", FDH::FunctionRef("MyMul", {{"T", DT_FLOAT}})}},
@@ -851,31 +850,49 @@ TEST_F(FunctionOptimizerTest,
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
+       NDef("c", "NoOp", {}, {}, kDevice),
+
        // Function body of a first function call inlined into the graph.
-       NDef("f1/inputs_ready", "NoOp", {"^a", "^b"}, {}, kDevice),
-       NDef("f1/x", "Identity", {"a:0", "^f1/inputs_ready"}, {{"T", DT_FLOAT}},
+       NDef("Func/f1/input_control_node/_0", "NoOp", {"^c"}, {}, kDevice),
+
+       NDef("Func/f1/input/_1", "Identity",  // input: 'x'
+            {"a", "^Func/f1/input_control_node/_0"}, {{"T", DT_FLOAT}},
             kDevice),
-       NDef("f1/y", "Identity", {"b:0", "^f1/inputs_ready"}, {{"T", DT_FLOAT}},
+       NDef("Func/f1/input/_2", "Identity",  // input: 'y'
+            {"b", "^Func/f1/input_control_node/_0"}, {{"T", DT_FLOAT}},
             kDevice),
-       NDef("f1/mul", "Mul", {"f1/x", "f1/y"}, {{"T", DT_FLOAT}}, kDevice),
-       // Control input from `inputs_ready` node is added to ensure correct
-       // frame execution.
-       NDef("f1/side_effects_executed", "NoOp", {"^f1/inputs_ready"}, {},
+
+       NDef("f1/mul", "Mul", {"Func/f1/input/_1", "Func/f1/input/_2"},
+            {{"T", DT_FLOAT}}, kDevice),
+
+       NDef("Func/f1/output/_3", "Identity", {"f1/mul"}, {{"T", DT_FLOAT}},
             kDevice),
+       // Control input from `input_control_node` node is added to ensure
+       // correct frame execution.
+       NDef("Func/f1/output_control_node/_4", "NoOp",
+            {"^Func/f1/input_control_node/_0"}, {}, kDevice),
 
        // Function body of a second function call also inlined into the graph,
-       // and input nodes read directly from the inlined nodes of the first
+       // and input nodes read directly from the output nodes of the first
        // function call, and control dependency edge removed.
-       NDef("f2/inputs_ready", "NoOp", {"^f1/mul", "^f1/side_effects_executed"},
-            {}, kDevice),
-       NDef("f2/x", "Identity", {"f1/mul:0", "^f2/inputs_ready"},
-            {{"T", DT_FLOAT}}, kDevice),
-       NDef("f2/y", "Identity", {"f1/mul:0", "^f2/inputs_ready"},
-            {{"T", DT_FLOAT}}, kDevice),
-       NDef("f2/mul", "Mul", {"f2/x", "f2/y"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("Func/f2/input_control_node/_5", "NoOp",
+            {"^Func/f1/output_control_node/_4"}, {}, kDevice),
 
-       // Return directly from inlined node of f2.
-       NDef("out", "Identity", {"f2/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+       NDef("Func/f2/input/_6", "Identity",
+            {"Func/f1/output/_3", "^Func/f2/input_control_node/_5"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("Func/f2/input/_7", "Identity",
+            {"Func/f1/output/_3", "^Func/f2/input_control_node/_5"},
+            {{"T", DT_FLOAT}}, kDevice),
+
+       NDef("f2/mul", "Mul", {"Func/f2/input/_6", "Func/f2/input/_7"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("Func/f2/output/_8", "Identity", {"f2/mul"}, {{"T", DT_FLOAT}},
+            kDevice),
+
+       // Return directly from output node of f2.
+       NDef("out", "Identity", {"Func/f2/output/_8"}, {{"T", DT_FLOAT}},
+            kDevice)},
 
       // Function library.
       {mul_func});
@@ -1018,22 +1035,24 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithMergedDeadTensors) {
        NDef("b", "Placeholder", {}, {{"dtype", DT_BOOL}}, kDevice),
 
        // Function body of a first function call inlined into the graph.
-       NDef("fn/inputs_ready", "NoOp", {"^a", "^b"}, {}, kDevice),
-       NDef("fn/x", "Identity", {"a:0", "^fn/inputs_ready"}, {{"T", DT_FLOAT}},
-            kDevice),
-       NDef("fn/cond", "Identity", {"b:0", "^fn/inputs_ready"},
-            {{"T", DT_BOOL}}, kDevice),
-       NDef("fn/switch", "Switch", {"fn/x:0", "fn/cond:0"}, {{"T", DT_FLOAT}},
-            kDevice),
-       NDef("fn/if_false", "Identity", {"fn/switch:0"}, {{"T", DT_FLOAT}},
+       NDef("Func/fn/input/_0", "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("Func/fn/input/_1", "Identity", {"b"}, {{"T", DT_BOOL}}, kDevice),
+
+       NDef("fn/switch", "Switch", {"Func/fn/input/_0", "Func/fn/input/_1"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("fn/if_false", "Identity", {"fn/switch"}, {{"T", DT_FLOAT}},
             kDevice),
        NDef("fn/if_true", "Identity", {"fn/switch:1"}, {{"T", DT_FLOAT}},
             kDevice),
-       NDef("fn/merge", "Merge", {"fn/if_false:0", "fn/if_true:0"},
+       NDef("fn/merge", "Merge", {"fn/if_false", "fn/if_true"},
             {{"T", DT_FLOAT}, {"N", 2}}, kDevice),
 
-       // Return directly from inlined node.
-       NDef("out", "Identity", {"fn/merge:0"}, {{"T", DT_FLOAT}}, kDevice)},
+       NDef("Func/fn/output/_2", "Identity", {"fn/merge"}, {{"T", DT_FLOAT}},
+            kDevice),
+
+       // Return directly from inlined function output node.
+       NDef("out", "Identity", {"Func/fn/output/_2"}, {{"T", DT_FLOAT}},
+            kDevice)},
 
       // Function library.
       {no_dead_outputs});
@@ -1103,22 +1122,25 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithNestedFunctionCall) {
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
        // Inlined inputs of `b` node.
-       NDef("b/inputs_ready", "NoOp", {"^a"}, {}, kDevice),
-       NDef("b/x", "Identity", {"a:0", "^b/inputs_ready"}, {{"T", DT_FLOAT}},
-            kDevice),
+       NDef("Func/b/input/_0", "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
 
        // Inlined inputs of `square` node inside inlined `MySquare` function.
-       NDef("b/square/inputs_ready", "NoOp", {"^b/x"}, {}, kDevice),
-       NDef("b/square/x", "Identity", {"b/x:0", "^b/square/inputs_ready"},
+       NDef("Func/b/square/input/_2", "Identity", {"Func/b/input/_0"},
             {{"T", DT_FLOAT}}, kDevice),
-       NDef("b/square/y", "Identity", {"b/x:0", "^b/square/inputs_ready"},
+       NDef("Func/b/square/input/_3", "Identity", {"Func/b/input/_0"},
             {{"T", DT_FLOAT}}, kDevice),
 
        // Inlined mul node from the `MyMul` function.
-       NDef("b/square/mul", "Mul", {"b/square/x", "b/square/y"},
+       NDef("b/square/mul", "Mul",
+            {"Func/b/square/input/_2", "Func/b/square/input/_3"},
             {{"T", DT_FLOAT}}, kDevice),
 
-       NDef("c", "Identity", {"b/square/mul:0"}, {{"T", DT_FLOAT}}, kDevice)},
+       NDef("Func/b/square/output/_4", "Identity", {"b/square/mul"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("Func/b/output/_1", "Identity", {"Func/b/square/output/_4"},
+            {{"T", DT_FLOAT}}, kDevice),
+
+       NDef("c", "Identity", {"Func/b/output/_1"}, {{"T", DT_FLOAT}}, kDevice)},
       // Function library.
       {mul_func});
 
@@ -1170,7 +1192,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
            }},
       },
       /* Mapping between function returns and function node outputs. */
-      {{"z", "if_node:output:0"}});
+      {{"z", "if_node:output:0"}}, {{"side_effect", "if_node"}});
 
   // Build a computation graph for:
   //   is_add: bool
@@ -1194,7 +1216,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
              {"f", FDH::FunctionRef("AddOrMul")}},
             kDevice),
 
-       NDef("d", "Identity", {"c"}, {{"T", DT_FLOAT}}, kDevice)},
+       NDef("d", "Identity", {"c", "^c"}, {{"T", DT_FLOAT}}, kDevice)},
       // Function library.
       {add_or_mul_func, add_func, mul_func});
 
@@ -1903,10 +1925,10 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
 TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
   using test::function::NDef;
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
-  DisableFunctionSpecialization(&optimizer);
   auto func = test::function::XTimesTwo();
   (*func.mutable_attr())["_noinline"].set_b(true);
   GrapplerItem item;
+  item.id = "test_graph";
   item.graph = test::function::GDef(
       {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
        NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
@@ -1921,8 +1943,9 @@ TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.library().function().size(), 1);
-  EXPECT_EQ(output.library().function(0).signature().name(), "XTimesTwo");
+  ASSERT_EQ(output.library().function().size(), 1);
+  EXPECT_EQ(output.library().function(0).signature().name(),
+            "XTimesTwo_specialized_for_y_at_test_graph");
 }
 
 }  // namespace grappler

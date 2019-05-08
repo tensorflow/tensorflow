@@ -21,7 +21,9 @@ detection model, takes up a total of 22KB.
 
 -   [Goals](#goals)
 
--   [Generating Project Files](#generating-project-#files)
+-   [Generating Project Files](#generating-project-files)
+
+-   [Generating Arduino Libraries](#generating-arduino_libraries)
 
 -   [How to Port TensorFlow Lite Micro to a New Platform](#how-to-port-tensorflow-lite-micro-to-a-new-platform)
 
@@ -518,6 +520,30 @@ that contains the source and header files, some Mbed configuration files, and a
 README. You should then be able to copy this directory to another machine, and
 use it just like any other Mbed project. There's more information about project
 files [below](#working-with-generated-projects).
+
+## Generating Arduino Libraries
+
+It's possible to use the Arduino Desktop IDE to build TFL Micro targets for
+Arduino devices. The source code is packaged as a .zip archive that you can add
+in the IDE by going to Sketch->Include Library->Add .ZIP Library... Once you've
+added the library, you can then go to File->Examples->TensorFlowLite to find a
+simple sketch that you can use to build the example.
+
+You can generate the zip file from the source code here in git by running the
+following command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_micro_speech_mock_arduino_library_zip
+```
+
+The resulting library can be found in `tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech_mock/micro_speech_mock.zip`.
+This generates a library that builds the `micro_speech_mock` binary, but you can
+do the same for any other target by replacing the name in the make command line.
+If you want to build all the possible libraries, you can run this command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_projects
+```
 
 ## How to Port TensorFlow Lite Micro to a New Platform
 

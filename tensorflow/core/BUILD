@@ -911,6 +911,7 @@ tf_cuda_library(
         "framework/kernel_def_builder.h",
         "framework/kernel_def_util.h",
         "framework/log_memory.h",
+        "framework/logging.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
         "framework/node_def_builder.h",
@@ -943,13 +944,13 @@ tf_cuda_library(
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
+        "framework/typed_allocator.h",
         "framework/types.h",
         "public/version.h",
         "util/activation_mode.h",
         "util/batch_util.h",
         "util/bcast.h",
         "util/matmul_bcast.h",
-        "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -1641,9 +1642,14 @@ cc_library(
     ] + if_dynamic_kernels(
         [],
         otherwise = [
+            "//tensorflow/core/kernels:aggregate_ops",
+            "//tensorflow/core/kernels:bcast_ops",
             "//tensorflow/core/kernels:cast_op",
             "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:identity_op",
             "//tensorflow/core/kernels:random_ops",
+            "//tensorflow/core/kernels:reduction_ops",
+            "//tensorflow/core/kernels:reshape_op",
         ],
     ),
 )
@@ -1671,6 +1677,13 @@ tf_cuda_library(
         ":direct_session_internal",
     ],
     alwayslink = 1,
+)
+
+# -----------------------------------------------------------------------------
+# MKL targets
+cc_library(
+    name = "mkl_graph_util",
+    hdrs = ["graph/mkl_graph_util.h"],
 )
 
 # -----------------------------------------------------------------------------
@@ -1872,7 +1885,6 @@ cc_library(
     srcs = if_emscripten([":mobile_srcs_no_runtime"]),
     copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
     defines = ["TENSORFLOW_LITE_PROTOS"],
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -2192,6 +2204,13 @@ tf_pyclif_proto_library(
     name = "protobuf/saved_model_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/saved_model.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/variable_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/variable.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -2931,7 +2950,6 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = [
-        "util/cuda_device_functions.h",
         "util/gpu_device_functions.h",
     ],
     visibility = ["//visibility:public"],
@@ -3231,6 +3249,7 @@ tf_cuda_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -3308,7 +3327,7 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],

@@ -27,7 +27,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -315,6 +315,34 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
     // Note that this implementation matches that of TensorFlow, and corresponds
     // to the traditional LeakyRelu equation only for alpha <= 1.
     output_data[i] = std::max(val, val * params.alpha);
+  }
+}
+
+template <typename T>
+inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+                              const RuntimeShape& input_shape,
+                              const T* input_data,
+                              const RuntimeShape& output_shape,
+                              T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  static const int32 quantized_min = std::numeric_limits<T>::min();
+  static const int32 quantized_max = std::numeric_limits<T>::max();
+  static const int32 alpha_value = q_alpha - params.alpha_offset;
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 input_value = input_data[i] - params.input_offset;
+    if (input_value >= 0) {
+      output_data[i] = input_data[i];
+    } else {
+      const int32 unclamped_output =
+          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                     input_value * alpha_value,
+                                     params.output_multiplier,
+                                     params.output_shift);
+      const T clamped_output =
+          std::min(quantized_max, std::max(quantized_min, unclamped_output));
+      output_data[i] = static_cast<uint8>(clamped_output);
+    }
   }
 }
 
@@ -1886,23 +1914,25 @@ inline void LstmCell(
 // aiming for 16-bit fixed-point quantization of these internal nodes here.
 //
 template <int StateIntegerBits>
-inline void LstmCell(
-    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
-    const uint8* input_data_uint8,
-    const RuntimeShape& unextended_prev_activ_shape,
-    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
-    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
-    const int32* bias_data_int32,
-    const RuntimeShape& unextended_prev_state_shape,
-    const int16* prev_state_data_int16,
-    const RuntimeShape& unextended_output_state_shape,
-    int16* output_state_data_int16,
-    const RuntimeShape& unextended_output_activ_shape,
-    uint8* output_activ_data_uint8,
-    const RuntimeShape& unextended_concat_temp_shape,
-    uint8* concat_temp_data_uint8,
-    const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
+inline void LstmCell(const LstmCellParams& params,
+                     const RuntimeShape& unextended_input_shape,
+                     const uint8* input_data_uint8,
+                     const RuntimeShape& unextended_prev_activ_shape,
+                     const uint8* prev_activ_data_uint8,
+                     const RuntimeShape& weights_shape,
+                     const uint8* weights_data_uint8,
+                     const RuntimeShape& unextended_bias_shape,
+                     const int32* bias_data_int32,
+                     const RuntimeShape& unextended_prev_state_shape,
+                     const int16* prev_state_data_int16,
+                     const RuntimeShape& unextended_output_state_shape,
+                     int16* output_state_data_int16,
+                     const RuntimeShape& unextended_output_activ_shape,
+                     uint8* output_activ_data_uint8,
+                     const RuntimeShape& unextended_concat_temp_shape,
+                     uint8* concat_temp_data_uint8,
+                     const RuntimeShape& unextended_activ_temp_shape,
+                     int16* activ_temp_data_int16, void* gemmlowp_context) {
   (void)gemmlowp_context;  // only used in optimized code.
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
@@ -2591,6 +2621,29 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline float RoundToNearest(float value) {
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) ||
+      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val = floor_val + 1.0f;
+  }
+}
+
+inline void Round(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    // Note that this implementation matches that of tensorFlow tf.round
+    // and corresponds to the bankers rounding method.
+    // cfenv (for fesetround) is not yet supported universally on Android, so
+    // using a work around.
+    output_data[i] = RoundToNearest(input_data[i]);
+  }
+}
+
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
@@ -3051,19 +3104,19 @@ inline void Slice(const tflite::SliceParams& op_params,
   // We front-pad the begin and size vectors.
   const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
   const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0) - start_b
+                         ? ext_shape.Dims(0)
                          : start_b + op_params.size[0];
   const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
   const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1) - start_h
+                         ? ext_shape.Dims(1)
                          : start_h + op_params.size[size_count - 3];
   const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
   const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2) - start_w
+                         ? ext_shape.Dims(2)
                          : start_w + op_params.size[size_count - 2];
   const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
   const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3) - start_d
+                         ? ext_shape.Dims(3)
                          : start_d + op_params.size[size_count - 1];
 
   for (int in_b = start_b; in_b < stop_b; ++in_b) {

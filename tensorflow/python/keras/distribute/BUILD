@@ -195,6 +195,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_oss",  # b/129793413
         "no_windows_gpu",
+        "notap",  # b/131937016
         "notsan",
     ],
     deps = [
@@ -279,7 +280,7 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/124344198): Add "multi_and_single_gpu",
+        # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
 )
 
@@ -327,6 +328,63 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
+
+py_binary(
+    name = "mnist_multi_worker",
+    srcs = ["mnist_multi_worker.py"],
+    deps = [":mnist_multi_worker_lib"],
+)
+
+py_library(
+    name = "mnist_multi_worker_lib",
+    srcs = [
+        "mnist_multi_worker.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:optimizers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_optimizer_comparison_test",
+    srcs = ["multi_worker_optimizer_comparison_test.py"],
+    additional_deps = [
+        ":mnist_multi_worker_lib",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/keras/distribute:multi_worker_test",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/keras",
+    ],
     tags = [
         "multi_and_single_gpu",
     ],
