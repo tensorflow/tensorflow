@@ -157,8 +157,8 @@ class Layer(module.Module):
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
-    # and whether the layer's updates are run during training
-    self.trainable = trainable
+    # and whether the layer's updates are run during training.
+    self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
     self.stateful = False
@@ -700,6 +700,16 @@ class Layer(module.Module):
   @property
   def dynamic(self):
     return self._dynamic
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    for layer in getattr(self, '_layers', []):
+      layer.trainable = value
 
   @property
   def activity_regularizer(self):

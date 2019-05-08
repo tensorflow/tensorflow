@@ -353,6 +353,8 @@ def is_in_keras_graph():
   """Returns if currently executing inside of a Keras graph."""
   # Returns True even if in a subgraph of the Keras graph, such as those
   # created by control flow ops.
+  if context.executing_eagerly():
+    return False
   return (getattr(backend.get_graph(), 'name', None) == 'keras_graph' or
           getattr(_call_context, 'in_keras_graph', False))
 

@@ -26,6 +26,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
@@ -126,6 +127,8 @@ class BatchNormalizationBase(Layer):
   References:
     - [Batch Normalization: Accelerating Deep Network Training by Reducing
       Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+
+  {{TRAINABLE_ATTRIBUTE_NOTE}}
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -156,7 +159,7 @@ class BatchNormalizationBase(Layer):
                name=None,
                **kwargs):
     super(BatchNormalizationBase, self).__init__(
-        name=name, trainable=trainable, **kwargs)
+        name=name, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
     elif isinstance(axis, int):
@@ -193,6 +196,8 @@ class BatchNormalizationBase(Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
+    self._trainable_var = None
+    self.trainable = trainable
 
     if renorm:
       renorm_clipping = renorm_clipping or {}
@@ -234,6 +239,22 @@ class BatchNormalizationBase(Layer):
       return True
     except ValueError:
       return False
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    if self._trainable_var is not None:
+      self._trainable_var.update_value(value)
+
+  def _get_trainable_var(self):
+    if self._trainable_var is None:
+      self._trainable_var = K.freezable_variable(
+          self._trainable, name=self.name + '_trainable')
+    return self._trainable_var
 
   @property
   def _param_dtype(self):
@@ -598,9 +619,20 @@ class BatchNormalizationBase(Layer):
                                  K.zeros_like(variance))
     return mean, variance
 
-  def call(self, inputs, training=None):
+  def _get_training_value(self, training=None):
     if training is None:
       training = K.learning_phase()
+    if self._USE_V2_BEHAVIOR:
+      if isinstance(training, int):
+        training = bool(training)
+      if base_layer_utils.is_in_keras_graph():
+        training = math_ops.logical_and(training, self._get_trainable_var())
+      else:
+        training = math_ops.logical_and(training, self.trainable)
+    return training
+
+  def call(self, inputs, training=None):
+    training = self._get_training_value(training)
 
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
@@ -813,27 +845,27 @@ class BatchNormalizationBase(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_base_docstring(old, new):
+def replace_in_base_docstring(replacements):
   string = BatchNormalizationBase.__doc__
-  if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationBase'
-                     ' docstring: "{}"'.format(old))
-  return string.replace(old, new)
+  for old, new in replacements:
+    assert old in string
+    string.replace(old, new)
+  return string
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
 class BatchNormalization(BatchNormalizationBase):
 
-  __doc__ = _replace_in_base_docstring(
-      '''
+  __doc__ = replace_in_base_docstring(
+      [('''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
       implementation if possible. If False, do not used the fused
       implementation.''',
-
-      '''
+        '''
     fused: if `None` or `True`, use a faster, fused implementation if possible.
-      If `False`, use the system recommended implementation.''')
+      If `False`, use the system recommended implementation.'''),
+       ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '')])
 
   _USE_V2_BEHAVIOR = False
 
