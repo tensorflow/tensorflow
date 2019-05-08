@@ -24,6 +24,7 @@ namespace ruy {
 #define RUY_ASM_LABEL_STORE_UINT8 91
 #define RUY_ASM_LABEL_STORE_INT8 92
 #define RUY_ASM_LABEL_STORE_INT16 93
+#define RUY_ASM_LABEL_STORE_INT32 94
 #define RUY_ASM_LABEL_AFTER_STORE 99
 
 #define RUY_OFFSET_BIAS 0
@@ -49,8 +50,8 @@ namespace ruy {
 #define RUY_OFFSET_DST_STRIDE 112
 #define RUY_OFFSET_DEPTH 116
 #define RUY_OFFSET_CLAMP_MIN 120
-#define RUY_OFFSET_CLAMP_MAX 122
-#define RUY_OFFSET_FLAGS 124
+#define RUY_OFFSET_CLAMP_MAX 124
+#define RUY_OFFSET_FLAGS 128
 
 template <typename Params>
 void CheckOffsetsInKernelParams8bit(const Params&) {
@@ -476,6 +477,12 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "sub v17.4s, v17.4s, v11.4s\n"
         "sub v18.4s, v18.4s, v11.4s\n"
         "sub v19.4s, v19.4s, v11.4s\n"
+
+        // If the destination is int32, it means the user asks for the raw
+        // accumulators, no need for us to downquantize the value.
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -923,6 +930,108 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
 
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // At this point, v20 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+        RUY_MAKE_ZERO(v20)
+        RUY_MAKE_ZERO(v21)
+        RUY_MAKE_ZERO(v22)
+        RUY_MAKE_ZERO(v23)
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        RUY_MAKE_ZERO(v30)
+        RUY_MAKE_ZERO(v31)
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x4 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+        // Compute w2 = how many cols of the 4x4 block fit
+        "csel w2, w2, w3, le\n"
+
+       // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x4 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "str q16, [%[dst_tmp_buf], #0]\n"
+        "str q17, [%[dst_tmp_buf], #16]\n"
+        "str q18, [%[dst_tmp_buf], #32]\n"
+        "str q19, [%[dst_tmp_buf], #48]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        "mov w5, #0\n"
+        "51:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #16\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 50b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        "mov x3, x4\n"
+        "st1 {v16.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v16.s}[1], [x3], #4\n"
+        "st1 {v16.s}[2], [x3], #4\n"
+        "st1 {v16.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v17.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v17.s}[1], [x3], #4\n"
+        "st1 {v17.s}[2], [x3], #4\n"
+        "st1 {v17.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v18.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v18.s}[1], [x3], #4\n"
+        "st1 {v18.s}[2], [x3], #4\n"
+        "st1 {v18.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v19.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v19.s}[1], [x3], #4\n"
+        "st1 {v19.s}[2], [x3], #4\n"
+        "st1 {v19.s}[3], [x3], #4\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #16\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
 
         RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
 

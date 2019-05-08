@@ -248,8 +248,8 @@ struct KernelParams8bit {
   std::int32_t rhs_stride;
   std::int32_t dst_stride;
   std::int32_t depth;
-  std::int16_t clamp_min;
-  std::int16_t clamp_max;
+  std::int32_t clamp_min;
+  std::int32_t clamp_max;
   std::uint8_t flags;
   std::uint8_t dst_type_id;
   const std::int32_t zero_data[LhsCols] = {0};
@@ -348,7 +348,9 @@ struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
+    // TODO(renjieliu): Support InOrder path for dest is std::int32_t case.
+    if (__builtin_expect(tuning == Tuning::kInOrder, true) &&
+        !std::is_same<DstScalar, std::int32_t>::value) {
       Kernel8bitNeonInOrder(params);
     } else {
       Kernel8bitNeonOutOfOrder(params);

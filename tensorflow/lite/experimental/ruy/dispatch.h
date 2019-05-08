@@ -37,6 +37,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 
+#include <limits>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
@@ -93,6 +95,21 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
   // on all paths.
   RUY_DCHECK(lhs_zero_point != std::numeric_limits<LhsScalar>::lowest() ||
              rhs_zero_point != std::numeric_limits<RhsScalar>::lowest());
+}
+
+template <typename Spec, typename DstScalar>
+void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
+
+  // If user is looking for the raw accumulator, zero_point and all the other
+  // dequantize fields don't make sense and should not be set.
+  RUY_DCHECK(dst_zero_point == 0);
+  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
+  RUY_DCHECK(spec.multiplier_exponent == 0);
+  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
+  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
 }
 
 inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
@@ -152,8 +169,10 @@ void PopulateTrMulParams(TrMulParams* params) {
     }
 
     // If DstScalar is std::int32_t, means user want to get from accumulator
-    // results directly, fallback to Path::kStandardCpp.
-    if (std::is_same<DstScalar, std::int32_t>::value) {
+    // results directly, if it's not Neon path, will fallback to
+    // Path::kStandardCpp.
+    if (std::is_same<DstScalar, std::int32_t>::value &&
+        ThePath != Path::kNeon) {
       fallback_to_standard_cpp = true;
     }
   }
@@ -367,6 +386,7 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
                                 dst->zero_point);
+  EnforceDstSpecSupport<Spec>(spec, dst->zero_point);
 
   // This should be a constant, for a given machine and CompiledPaths.
   // There is a back door to override it for testing, but in production it will
