@@ -55,6 +55,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
