@@ -110,3 +110,10 @@ def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
 // CHECK-SAME:   [this](unsigned i) { return this->getOperand(i)->getType().cast<VectorOrTensorType>().getElementType(); },
 // CHECK-SAME:   llvm::ArrayRef<unsigned>({0, 2, 3})))
 // CHECK:   return emitOpError("failed to verify that operands indexed at 0, 2, 3 should all have the same type");
+
+def OpK : NS_Op<"op_for_AnyTensorOf", []> {
+  let arguments = (ins AnyTensorOf<[F32, I32]>:$x);
+}
+
+// CHECK-LABEL: OpK::verify
+// CHECK: if (!(((this->getOperation()->getOperand(0)->getType().isa<TensorType>())) && (((this->getOperation()->getOperand(0)->getType().cast<TensorType>().getElementType().isF32())) || ((this->getOperation()->getOperand(0)->getType().cast<TensorType>().getElementType().isInteger(32))))))

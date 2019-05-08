@@ -375,6 +375,11 @@ def F16Tensor  : TypedTensor<F16>;
 def F32Tensor  : TypedTensor<F32>;
 def F64Tensor  : TypedTensor<F64>;
 
+// Any tensor type whose element type is from the given
+// `allowedTypes` list
+class AnyTensorOf<list<Type> allowedTypes, string elementDescription = ""> :
+  TypedTensor<AnyTypeOf<allowedTypes, elementDescription>>;
+
 // This represents a generic tuple without any constraints on elemental type,
 // ranks, or size. As Tuples can contain tensors, vectors, or scalar values
 // there is not only a single elemental type.
