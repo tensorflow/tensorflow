@@ -17,8 +17,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
-#include "llvm/IR/MDBuilder.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -335,16 +339,16 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
 }
 }  // namespace
 
-unsigned int GetGlobalMemoryAddressSpace(llvm::Module* module) {
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::amdgcn){
     return kAMDGPUGlobalMemoryAddrSpace;
   }
   return 0;
 }
 
-unsigned int GetSharedMemoryAddressSpace(llvm::Module* module) {
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+unsigned GetSharedMemoryAddressSpace(const llvm::Module& module) {
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::nvptx ||
       target_triple.getArch() == llvm::Triple::nvptx64) {
     return kNVPTXSharedMemoryAddrSpace;
@@ -352,6 +356,27 @@ unsigned int GetSharedMemoryAddressSpace(llvm::Module* module) {
     return kAMDGPUSharedMemoryAddrSpace;
   }
   return 0;
+}
+
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                           llvm::IRBuilder<>* b) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::nvptx ||
+      target_triple.getArch() == llvm::Triple::nvptx64) {
+    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
+    // treats it as a CUDA kernel.
+    llvm::LLVMContext& context = module->getContext();
+    llvm::NamedMDNode* nvvm_annotations_node =
+        module->getOrInsertNamedMetadata("nvvm.annotations");
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        context, {llvm::ConstantAsMetadata::get(func),
+                  llvm::MDString::get(context, "kernel"),
+                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  }
 }
 
 llvm::Value* EmitCallToTargetFunction(
