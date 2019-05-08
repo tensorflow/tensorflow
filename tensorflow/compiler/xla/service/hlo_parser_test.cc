@@ -1438,6 +1438,17 @@ ENTRY Replica-id {
 
 )"
 },
+// partition-id
+{
+"PartitionId",
+R"(HloModule partition-id
+
+ENTRY PartitionId {
+  ROOT id = u32[] partition-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",

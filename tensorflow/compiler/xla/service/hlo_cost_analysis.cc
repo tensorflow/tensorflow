@@ -638,6 +638,10 @@ Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
