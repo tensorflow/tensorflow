@@ -202,6 +202,10 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
+}
+
 Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }

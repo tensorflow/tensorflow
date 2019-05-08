@@ -548,19 +548,13 @@ class RunManyGraphs {
   bool cancel_issued_ GUARDED_BY(mu_) = false;
 
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    // Start cancellation if we aren't already in an error state.
-    // TODO(jingdong): Change the following log to VLOG once the distributed
-    // error aggregation is stable.
-    LOG(INFO) << "Master received error status " << s;
+    VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
       // Only start cancelling other workers upon receiveing a non-derived
       // error
       cancel_issued_ = true;
 
-      // TODO(jingdong): Change the following log to VLOG once the distributed
-      // error aggregation feature is stable.
-      LOG(INFO)
-          << "Master received error report. Cancelling remaining workers.";
+      VLOG(1) << "Master received error report. Cancelling remaining workers.";
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }

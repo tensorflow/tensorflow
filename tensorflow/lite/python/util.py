@@ -31,6 +31,7 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 # Map of tf.dtypes to TFLite types_flag_pb2.
 _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.float32: _types_pb2.FLOAT,
+    dtypes.float16: _types_pb2.FLOAT16,
     dtypes.int32: _types_pb2.INT32,
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,

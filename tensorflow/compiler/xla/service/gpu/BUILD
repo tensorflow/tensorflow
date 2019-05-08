@@ -484,7 +484,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",

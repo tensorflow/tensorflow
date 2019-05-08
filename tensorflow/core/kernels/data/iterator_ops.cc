@@ -237,6 +237,8 @@ class IteratorResource : public ResourceBase {
   // destroyed, essentially triggering the iterator deletion.
   class Deleter {
    public:
+    Deleter() : deleter_() {}
+
     Deleter(ResourceHandle handle, ResourceMgr* resource_manager)
         : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
 
@@ -247,6 +249,10 @@ class IteratorResource : public ResourceBase {
     Deleter(const Deleter& rhs) : deleter_(rhs.deleter_) {
       VLOG(3) << "IteratorResource::Deleter copy constructor called.";
     }
+
+    Deleter& operator=(const Deleter& rhs) = delete;
+
+    Deleter& operator=(Deleter&& rhs) = default;
 
     virtual ~Deleter() {
       VLOG(3) << "IteratorResource::Deleter destructor called.";
@@ -358,6 +364,9 @@ class IteratorStateVariant {
       Decode(*other.data_);
     }
   }
+  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
+  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
+
   // Initializes this object with the current state of the iterator so
   // that it can be written on the next call to Encode().
   Status InitializeFromIterator(OpKernelContext* ctx,
@@ -1215,8 +1224,9 @@ REGISTER_KERNEL_BUILDER(
     MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
                         DeleteIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
-                        DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DeleteIterator").Device(DEVICE_GPU).HostMemory("deleter").Priority(1),
+    DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);

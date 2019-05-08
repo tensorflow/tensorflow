@@ -15,8 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
-#include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"

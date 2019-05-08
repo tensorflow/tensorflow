@@ -74,6 +74,10 @@ constexpr TfLiteType typeToTfLiteType<string>() {
   return kTfLiteString;
 }
 
+template <>
+constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
+  return kTfLiteFloat16;
+}
 // An interpreter for a graph of nodes that input and output from tensors.
 // Each node of the graph processes a set of input tensors and produces a
 // set of output Tensors. All inputs/output tensors are referenced by index.
@@ -402,9 +406,14 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
-  void SetProfiler(profiling::Profiler* profiler);
+  // Sets the profiler to tracing execution. The caller retains ownership
+  // of the profiler and must ensure its validity.
+  // WARNING: This is an experimental API and subject to change.
+  void SetProfiler(Profiler* profiler);
 
-  profiling::Profiler* GetProfiler();
+  // Gets the profiler used for op tracing.
+  // WARNING: This is an experimental API and subject to change.
+  Profiler* GetProfiler();
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;

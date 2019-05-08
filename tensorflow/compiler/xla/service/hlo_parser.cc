@@ -891,6 +891,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
       break;
     }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {

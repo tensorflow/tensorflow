@@ -196,10 +196,6 @@ class Layer(module.Module):
     self._metrics_tensors = {}
 
     self._set_dtype_and_policy(dtype)
-
-    self._call_fn_args = function_utils.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in self._call_fn_args or
-                                   hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Dependencies tracked via attribute assignment.
@@ -565,11 +561,8 @@ class Layer(module.Module):
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if (not hasattr(self, '_compute_previous_mask') or
-        self._compute_previous_mask):
+    if self._should_compute_mask:
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
-      if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly
@@ -2036,6 +2029,17 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _call_fn_args(self):
+    if getattr(self, '__call_fn_args', None) is None:
+      self.__call_fn_args = function_utils.fn_args(self.call)
+    return self.__call_fn_args
+
+  @property
+  def _should_compute_mask(self):
+    return ('mask' in self._call_fn_args or
+            getattr(self, 'compute_mask', None) is not None)
 
 
 class Node(object):

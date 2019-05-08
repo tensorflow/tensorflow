@@ -27,8 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "public/gemmlowp.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -37,9 +36,11 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
@@ -265,34 +266,6 @@ inline void AddBiasAndEvalActivationFunction(float output_activation_min,
           output_activation_max);
     }
   }
-#endif
-}
-
-template <typename Lhs, typename Rhs, typename Result>
-void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
-          Eigen::MatrixBase<Result>* result) {
-  if (rhs.cols() == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    result->col(0).noalias() = lhs * rhs.col(0);
-  } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
-    result->noalias() = lhs * rhs;
-  }
-}
-
-inline void optimized_ops_preload_l1_stream(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
-#endif
-}
-
-inline void optimized_ops_preload_l1_keep(const uint8* ptr) {
-#ifdef GEMMLOWP_ARM_64
-  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#else
-  gemmlowp::Prefetch(ptr);
 #endif
 }
 
@@ -788,39 +761,29 @@ inline void FullyConnected(
     const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
-  const float output_activation_min = params.float_activation_min;
-  const float output_activation_max = params.float_activation_max;
-
-  // TODO(b/62193649): this convoluted shape computation (determining
-  // input_rows from the weights_dims, then MapAsMatrixWithGivenNumberOfRows)
-  // is because the current --variable_batch hack consists in overwriting the
-  // 3rd dimension with the runtime batch size, as we don't keep track for each
-  // array of which dimension is the batch dimension in it.
-  // When that is fixed, this should become:
-  // const auto input_matrix_map =
-  //     MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
   const int dims_count = weights_shape.DimensionsCount();
   const int input_rows = weights_shape.Dims(dims_count - 1);
-  const auto input_matrix_map =
-      MapAsMatrixWithGivenNumberOfRows(input_data, input_shape, input_rows);
-  const auto filter_matrix_map =
-      MapAsMatrixWithLastDimAsRows(weights_data, weights_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
-
-  Gemm(filter_matrix_map.transpose(), input_matrix_map, &output_matrix_map);
-
-  if (optional_bias_data != nullptr) {
-    AddBiasAndEvalActivationFunction(
-        output_activation_min, output_activation_max, bias_shape,
-        optional_bias_data, output_shape, output_data);
-  } else {
-    const int flat_size = output_shape.FlatSize();
-    for (int i = 0; i < flat_size; ++i) {
-      output_data[i] = ActivationFunctionWithMinMax(
-          output_data[i], output_activation_min, output_activation_max);
-    }
-  }
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = input_rows;
+  rhs_params.cols = input_shape.FlatSize() / input_rows;
+  TFLITE_DCHECK_EQ(input_shape.FlatSize(), rhs_params.rows * rhs_params.cols);
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.cols = weights_shape.Dims(dims_count - 1);
+  lhs_params.rows = FlatSizeSkipDim(weights_shape, dims_count - 1);
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = output_shape.Dims(output_shape.DimensionsCount() - 1);
+  dst_params.cols =
+      FlatSizeSkipDim(output_shape, output_shape.DimensionsCount() - 1);
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = optional_bias_data;
+  gemm_params.clamp_min = params.float_activation_min;
+  gemm_params.clamp_max = params.float_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, weights_data, rhs_params, input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 #ifdef USE_NEON
@@ -1112,7 +1075,7 @@ inline void FullyConnectedAsGEMV(
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+  const int thread_count = LegacyHowManyThreads<kKernelRows>(
       cpu_backend_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
@@ -1131,8 +1094,8 @@ inline void FullyConnectedAsGEMV(
   // TODO(b/131746020) don't create new heap allocations every time.
   // At least we make it a single heap allocation by using reserve().
   tasks.reserve(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_rows, thread_count));
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
@@ -1714,9 +1677,9 @@ inline void ShuffledFullyConnected(
   }
 
   static constexpr int kKernelRows = 4;
-  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      cpu_backend_context->max_num_threads(), output_depth, batches,
-      accum_depth);
+  const int thread_count =
+      LegacyHowManyThreads<kKernelRows>(cpu_backend_context->max_num_threads(),
+                                        output_depth, batches, accum_depth);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1733,8 +1696,8 @@ inline void ShuffledFullyConnected(
   // TODO(b/131746020) don't create new heap allocations every time.
   // At least we make it a single heap allocation by using reserve().
   tasks.reserve(thread_count);
-  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
-      gemmlowp::CeilQuotient(output_depth, thread_count));
+  const int kRowsPerWorker =
+      RoundUp<kKernelRows>(CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
@@ -2017,6 +1980,12 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(3);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
+
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
   // The following code computes matrix multiplication c = a * transponse(b)
   // with CBLAS, where:
   // * `a` is a matrix with dimensions (m, k).
@@ -2026,12 +1995,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const float* a = gemm_input_data;
   const float* b = filter_data;
   float* c = output_data;
-  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
-  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
-  int n = output_shape.Dims(3);
-  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
-
-#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
   // The stride of matrix a, b and c respectively.
   int stride_a = k;
   int stride_b = k;
@@ -2039,36 +2002,32 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
 
   cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1.0f, a,
               stride_a, b, stride_b, 0.0f, c, stride_c);
-#else
-  // When an optimized CBLAS implementation is not available, fall back
-  // to using Eigen.
-  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      Matrix;
-  typedef Eigen::Map<Matrix> MatrixRef;
-  typedef Eigen::Map<const Matrix> ConstMatrixRef;
-
-  MatrixRef matrix_c(c, m, n);
-  ConstMatrixRef matrix_a(a, m, k);
-  ConstMatrixRef matrix_b(b, n, k);
-
-  // The following special casing for when a or b is a vector is required
-  // as Eigen seem to fail to make this optimization on its own.
-  if (n == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
-  } else if (m == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
-    matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
-  } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
-    matrix_c.noalias() = matrix_a * matrix_b.transpose();
-  }
-
-#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
-
   optimized_ops::AddBiasAndEvalActivationFunction(
       output_activation_min, output_activation_max, bias_shape, bias_data,
       output_shape, output_data);
+#else
+  // When an optimized CBLAS implementation is not available, fall back
+  // to using cpu_backend_gemm.
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n;
+  lhs_params.cols = k;
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = k;
+  rhs_params.cols = m;
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n;
+  dst_params.cols = m;
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
+#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 }
 
 inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
@@ -6326,7 +6285,8 @@ inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
     const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data) {
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("TransposeConvV2");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
@@ -6359,21 +6319,25 @@ inline void TransposeConvV2(
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
-  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      Matrix;
-  typedef Eigen::Map<Matrix> MatrixRef;
-  typedef Eigen::Map<const Matrix> ConstMatrixRef;
-  ConstMatrixRef hwoi_ordered_filter_matrix_map(
-      hwoi_ordered_filter_data, hwoi_ordered_filter_total_size, input_depth);
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = hwoi_ordered_filter_total_size;
+  lhs_params.cols = input_depth;
   float* output_data_p = output_data;
   tensor_utils::ZeroVector(output_data, output_offset * batch_size);
   for (int i = 0; i < batch_size; ++i) {
-    ConstMatrixRef input_matrix_map(input_data + input_offset * i,
-                                    input_image_size, input_depth);
-    MatrixRef output_matrix_map(col2im_data, input_image_size,
-                                hwoi_ordered_filter_total_size);
-    Gemm(input_matrix_map, hwoi_ordered_filter_matrix_map.transpose(),
-         &output_matrix_map);
+    cpu_backend_gemm::MatrixParams<float> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_depth;
+    rhs_params.cols = input_image_size;
+    cpu_backend_gemm::MatrixParams<float> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = hwoi_ordered_filter_total_size;
+    dst_params.cols = input_image_size;
+    cpu_backend_gemm::GemmParams<float, float> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
 
     Col2im(col2im_data, output_depth, output_height, output_width,
            filter_height, filter_width, padding_top, padding_left,
@@ -6381,29 +6345,6 @@ inline void TransposeConvV2(
            output_data_p);
     output_data_p += output_offset;
   }
-}
-
-// TODO(renjieliu): Investigate whether we need to keep this.
-inline void TransposeConv(
-    const ConvParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // Note we could use transposed weights with forward conv for unstrided
-  // cases. But we are already getting good performance with this code as-is.
-  TFLITE_DCHECK(im2col_data);
-  TransposeIm2col(params, 0, input_shape, input_data, filter_shape,
-                  output_shape, im2col_data);
-
-  const auto im2col_matrix_map =
-      MapAsMatrixWithLastDimAsRows(im2col_data, im2col_shape);
-  const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
-
-  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented

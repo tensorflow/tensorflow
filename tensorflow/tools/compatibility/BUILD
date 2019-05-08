@@ -55,6 +55,9 @@ py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":tf_upgrade_lib",
         "//tensorflow/python:client_testlib",

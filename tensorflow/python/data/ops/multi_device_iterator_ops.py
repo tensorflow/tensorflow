@@ -210,6 +210,9 @@ class MultiDeviceIterator(object):
       than the max_buffer_size, we set the max_buffer_size to
       prefetch_buffer_size.
     """
+    options = dataset_ops.Options()
+    options.experimental_distribute.num_devices = len(devices)
+    dataset = dataset.with_options(options)
     self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices
     self._source_device = source_device

@@ -366,6 +366,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   switch (cTensorType) {
     case kTfLiteFloat32:
       return TFLTensorDataTypeFloat32;
+    case kTfLiteFloat16:
+      return TFLTensorDataTypeFloat16;
     case kTfLiteInt32:
       return TFLTensorDataTypeInt32;
     case kTfLiteUInt8:

@@ -46,3 +46,10 @@ class DistributeOptions(options.OptionsBase):
       "using strategy.experimental_distribute_dataset(). In other cases, this "
       "option does nothing. If None, defaults to True.",
       default_factory=lambda: True)
+
+  num_devices = options.create_option(
+      name="num_devices",
+      ty=int,
+      docstring=
+      "The number of devices attached to this input pipeline. This will be "
+      "automatically set by MultiDeviceIterator.")

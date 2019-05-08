@@ -574,9 +574,9 @@ XlaOp Acosh(XlaOp x) {
 // If x^2 will overflow and x is positive, we can approximate x + sqrt(x^2 + 1)
 // as 2*x and return log(2) + log(x).
 //
-// If x is negative, the above would give us some trouble, because we'd need to
-// approximate x + sqrt(sqrt(x^2 + 1) - abs(x).  But we're saved
-// by the fact that asinh(-x) = -asinh(x).
+// If x is negative, the above would give us some trouble; we can't approximate
+// the result as x + abs(x) = 0!  But we're saved by the fact that asinh(-x) =
+// -asinh(x).
 XlaOp Asinh(XlaOp x) {
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
@@ -636,9 +636,39 @@ XlaOp Atanh(XlaOp x) {
   });
 }
 
-XlaOp Cosh(XlaOp x) { return (Exp(x) + Exp(-x)) * ScalarLike(x, 0.5); }
+// Cosh(x) = (e^x + e^-x) / 2
+//         = e^(x + log(1/2)) + e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Cosh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) + Exp(-x + log_one_half);
+  });
+}
 
-XlaOp Sinh(XlaOp x) { return (Exp(x) - Exp(-x)) * ScalarLike(x, 0.5); }
+// Sinh(x) = (e^x - e^-x) / 2
+//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to +/-inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Sinh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) - Exp(-x + log_one_half);
+  });
+}
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();

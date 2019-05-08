@@ -2231,14 +2231,10 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     if (cancellation_manager_) {
       // only log when the abort happens during the actual run time.
       auto device_name = impl_->params_.device->name();
-      // Do not log OutOfRange errors as warnings because they are expected when
+      // Use VLOG instead of LOG(warning) because error status is expected when
+      // the executor is run under the grappler optimization phase or when
       // iterating through a tf.data input pipeline.
-      if (!errors::IsOutOfRange(s)) {
-        LOG(WARNING) << "[" << device_name
-                     << "] Executor start aborting: " << s;
-      } else {
-        VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
-      }
+      VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
     }
 
     if (rendezvous_) {

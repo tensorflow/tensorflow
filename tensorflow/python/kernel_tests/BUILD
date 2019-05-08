@@ -1748,6 +1748,9 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
+    tags = [
+        "notsan",  # TODO(b/132205147): Re-enable this.
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3231,6 +3234,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    tags = ["no_oss"],  # b/124474135
     xla_enable_strict_auto_jit = True,
 )
 
