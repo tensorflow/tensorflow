@@ -15,7 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
-import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * Implementation of an {@link Operation} executed eagerly.
@@ -33,6 +33,7 @@ class EagerOperation extends AbstractOperation {
     this.type = type;
     this.name = name;
     this.nativeRef = new NativeReference(session, this, opNativeHandle, outputNativeHandles);
+    this.outputTensors = new AtomicReferenceArray<Tensor<?>>(outputNativeHandles.length);
   }
 
   @Override
@@ -67,6 +68,12 @@ class EagerOperation extends AbstractOperation {
 
   @Override
   public long[] shape(int outputIndex) {
+    // If the tensor of this output has already been resolved, return its shape.
+    // Otherwise, retrieve the tensor shape from the native library.
+    Tensor<?> tensor = outputTensors.get(outputIndex);
+    if (tensor != null) {
+      return tensor.shape();
+    }
     long outputNativeHandle = getUnsafeNativeHandle(outputIndex);
     long[] shape = new long[numDims(outputNativeHandle)];
     for (int i = 0; i < shape.length; ++i) {
@@ -77,10 +84,43 @@ class EagerOperation extends AbstractOperation {
 
   @Override
   public DataType dtype(int outputIndex) {
+    // If the tensor of this output has already been resolved, return its datatype.
+    // Otherwise, retrieve the tensor datatype from the native library.
+    Tensor<?> tensor = outputTensors.get(outputIndex);
+    if (tensor != null) {
+      return tensor.dataType();
+    }
     long outputNativeHandle = getUnsafeNativeHandle(outputIndex);
     return DataType.fromC(dataType(outputNativeHandle));
   }
 
+  @Override
+  public Tensor<?> tensor(int outputIndex) {
+    Tensor<?> tensor = outputTensors.get(outputIndex);
+    if (tensor == null) {
+      tensor = resolveTensor(outputIndex);
+    }
+    return tensor;
+  }
+
+  private final EagerSession session;
+  private final NativeReference nativeRef;
+  private final String type;
+  private final String name;
+  private final AtomicReferenceArray<Tensor<?>> outputTensors;
+  
+  private Tensor<?> resolveTensor(int outputIndex) {
+    // Take an optimistic approach, where we attempt to resolve the output tensor without locking.
+    // If another thread has resolved it meanwhile, release our copy and reuse the existing one instead.
+    long tensorNativeHandle = resolveTensorHandle(getUnsafeNativeHandle(outputIndex));
+    Tensor<?> tensor = Tensor.fromHandle(tensorNativeHandle, session);
+    if (!outputTensors.compareAndSet(outputIndex, null, tensor)) {
+      tensor.close();
+      tensor = outputTensors.get(outputIndex);
+    }
+    return tensor;
+  }
+  
   private static class NativeReference extends EagerSession.NativeReference {
 
     NativeReference(EagerSession session, EagerOperation operation, long opHandle, long[] outputHandles) {
@@ -92,29 +132,26 @@ class EagerOperation extends AbstractOperation {
     @Override
     void delete() {
       if (opHandle != 0L) {
-        for (long tensorHandle : outputHandles) {
-          if (tensorHandle != 0L) {
-            EagerOperation.deleteTensorHandle(tensorHandle);
+        for (int i = 0; i < outputHandles.length; ++i) {
+          if (outputHandles[i] != 0L) {
+            EagerOperation.deleteTensorHandle(outputHandles[i]);
+            outputHandles[i] = 0L;
           }
         }
         EagerOperation.delete(opHandle);
         opHandle = 0L;
-        Arrays.fill(outputHandles, 0L);
       }
     }
     
     private long opHandle;
     private final long[] outputHandles;
   }
-
-  private final EagerSession session;
-  private final NativeReference nativeRef;
-  private final String type;
-  private final String name;
   
   private static native void delete(long handle);
 
   private static native void deleteTensorHandle(long handle);
+  
+  private static native long resolveTensorHandle(long handle);
   
   private static native int outputListLength(long handle, String name);
 

@@ -166,6 +166,17 @@ public class GraphOperationTest {
       }
     }
   }
+  
+  @Test
+  public void outputTensorNotSupported() {
+    try (Graph g = new Graph()) {
+      Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
+      try {
+        split.output(0).tensor();
+        fail();
+      } catch (IllegalStateException e) {}
+    }
+  }
 
   private static int split(int[] values, int num_split) {
     try (Graph g = new Graph()) {
