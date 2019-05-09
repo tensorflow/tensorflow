@@ -46,46 +46,6 @@ public:
 #define GET_OP_CLASSES
 #include "mlir/StandardOps/Ops.h.inc"
 
-/// The "alloc" operation allocates a region of memory, as specified by its
-/// memref type. For example:
-///
-///   %0 = alloc() : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
-///
-/// The optional list of dimension operands are bound to the dynamic dimensions
-/// specified in its memref type. In the example below, the ssa value '%d' is
-/// bound to the second dimension of the memref (which is dynamic).
-///
-///   %0 = alloc(%d) : memref<8x?xf32, (d0, d1) -> (d0, d1), 1>
-///
-/// The optional list of symbol operands are bound to the symbols of the
-/// memrefs affine map. In the example below, the ssa value '%s' is bound to
-/// the symbol 's0' in the affine map specified in the allocs memref type.
-///
-///   %0 = alloc()[%s] : memref<8x64xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
-///
-/// This operation returns a single ssa value of memref type, which can be used
-/// by subsequent load and store operations.
-class AllocOp
-    : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
-public:
-  friend Operation;
-  using Op::Op;
-
-  /// The result of an alloc is always a MemRefType.
-  MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
-
-  static StringRef getOperationName() { return "std.alloc"; }
-
-  // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result,
-                    MemRefType memrefType, ArrayRef<Value *> operands = {});
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-};
-
 /// The "br" operation represents a branch operation in a function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types for each successor must match the
@@ -495,36 +455,6 @@ public:
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
   static bool isClassFor(Operation *op);
-};
-
-/// The "dealloc" operation frees the region of memory referenced by a memref
-/// which was originally created by the "alloc" operation.
-/// The "dealloc" operation should not be called on memrefs which alias an
-//  alloc'd memref (i.e. memrefs returned by the "view" and "reshape"
-/// operations).
-///
-///   %0 = alloc() : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
-///
-///   dealloc %0 : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
-///
-class DeallocOp
-    : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
-public:
-  friend Operation;
-  using Op::Op;
-
-  Value *getMemRef() { return getOperand(); }
-  void setMemRef(Value *value) { setOperand(value); }
-
-  static StringRef getOperationName() { return "std.dealloc"; }
-
-  // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result, Value *memref);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an

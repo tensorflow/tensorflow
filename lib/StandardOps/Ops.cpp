@@ -61,10 +61,9 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpFOp, CmpIOp,
-                CondBranchOp, DeallocOp, DimOp, DmaStartOp, DmaWaitOp,
-                ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
-                StoreOp, TensorCastOp,
+  addOperations<BranchOp, CallOp, CallIndirectOp, CmpFOp, CmpIOp, CondBranchOp,
+                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
+                MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -207,23 +206,18 @@ Value *AddIOp::fold() {
 // AllocOp
 //===----------------------------------------------------------------------===//
 
-void AllocOp::build(Builder *builder, OperationState *result,
-                    MemRefType memrefType, ArrayRef<Value *> operands) {
-  result->addOperands(operands);
-  result->types.push_back(memrefType);
-}
-
-void AllocOp::print(OpAsmPrinter *p) {
-  MemRefType type = getType();
+static void printAllocOp(OpAsmPrinter *p, AllocOp op) {
   *p << "alloc";
+
   // Print dynamic dimension operands.
-  printDimAndSymbolList(operand_begin(), operand_end(),
+  MemRefType type = op.getType();
+  printDimAndSymbolList(op.operand_begin(), op.operand_end(),
                         type.getNumDynamicDims(), p);
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
   *p << " : " << type;
 }
 
-ParseResult AllocOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseAllocOp(OpAsmParser *parser, OperationState *result) {
   MemRefType type;
 
   // Parse the dimension operands and optional symbol operands, followed by a
@@ -240,19 +234,18 @@ ParseResult AllocOp::parse(OpAsmParser *parser, OperationState *result) {
   // Verification still checks that the total number of operands matches
   // the number of symbols in the affine map, plus the number of dynamic
   // dimensions in the memref.
-  if (numDimOperands != type.getNumDynamicDims()) {
-    return parser->emitError(parser->getNameLoc(),
-                             "dimension operand count does not equal memref "
-                             "dynamic dimension count");
-  }
+  if (numDimOperands != type.getNumDynamicDims())
+    return parser->emitError(parser->getNameLoc())
+           << "dimension operand count does not equal memref dynamic dimension "
+              "count";
   result->types.push_back(type);
   return success();
 }
 
-LogicalResult AllocOp::verify() {
-  auto memRefType = getResult()->getType().dyn_cast<MemRefType>();
+static LogicalResult verify(AllocOp op) {
+  auto memRefType = op.getResult()->getType().dyn_cast<MemRefType>();
   if (!memRefType)
-    return emitOpError("result must be a memref");
+    return op.emitOpError("result must be a memref");
 
   unsigned numSymbols = 0;
   if (!memRefType.getAffineMaps().empty()) {
@@ -266,20 +259,21 @@ LogicalResult AllocOp::verify() {
     //
     // Verify that the layout affine map matches the rank of the memref.
     if (affineMap.getNumDims() != memRefType.getRank())
-      return emitOpError("affine map dimension count must equal memref rank");
+      return op.emitOpError(
+          "affine map dimension count must equal memref rank");
   }
   unsigned numDynamicDims = memRefType.getNumDynamicDims();
   // Check that the total number of operands matches the number of symbols in
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
-  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols)
-    return emitOpError(
+  if (op.getOperation()->getNumOperands() != numDynamicDims + numSymbols)
+    return op.emitOpError(
         "operand count does not equal dimension plus symbol operand count");
 
   // Verify that all operands are of type Index.
-  for (auto *operand : getOperands())
+  for (auto *operand : op.getOperands())
     if (!operand->getType().isIndex())
-      return emitOpError("requires operands to be of type Index");
+      return op.emitOpError("requires operands to be of type Index");
   return success();
 }
 
@@ -1256,7 +1250,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
     auto dealloc = op->cast<DeallocOp>();
 
     // Check that the memref operand's defining operation is an AllocOp.
-    Value *memref = dealloc.getMemRef();
+    Value *memref = dealloc.memref();
     Operation *defOp = memref->getDefiningOp();
     if (!isa_and_nonnull<AllocOp>(defOp))
       return matchFailure();
@@ -1273,15 +1267,11 @@ struct SimplifyDeadDealloc : public RewritePattern {
 };
 } // end anonymous namespace.
 
-void DeallocOp::build(Builder *builder, OperationState *result, Value *memref) {
-  result->addOperands(memref);
+static void printDeallocOp(OpAsmPrinter *p, DeallocOp op) {
+  *p << "dealloc " << *op.memref() << " : " << op.memref()->getType();
 }
 
-void DeallocOp::print(OpAsmPrinter *p) {
-  *p << "dealloc " << *getMemRef() << " : " << getMemRef()->getType();
-}
-
-ParseResult DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseDeallocOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType memrefInfo;
   MemRefType type;
 
@@ -1290,9 +1280,9 @@ ParseResult DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
                  parser->resolveOperand(memrefInfo, type, result->operands));
 }
 
-LogicalResult DeallocOp::verify() {
-  if (!getMemRef()->getType().isa<MemRefType>())
-    return emitOpError("operand must be a memref");
+static LogicalResult verify(DeallocOp op) {
+  if (!op.memref()->getType().isa<MemRefType>())
+    return op.emitOpError("operand must be a memref");
   return success();
 }
 
