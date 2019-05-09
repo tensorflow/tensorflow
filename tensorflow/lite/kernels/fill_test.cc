@@ -45,6 +45,26 @@ class FillOpModel : public SingleOpModel {
   int output_;
 };
 
+TEST(FillOpModel, FillUInt8) {
+  FillOpModel m({TensorType_INT8, {2}}, {TensorType_UINT8});
+  m.PopulateTensor<int8_t>(m.input1(), {2, 3});
+  m.PopulateTensor<uint8_t>(m.input2(), {1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({1, 1, 1, 1, 1, 1}));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 3}));
+}
+
+TEST(FillOpModel, FillInt8) {
+  FillOpModel m({TensorType_INT32, {2}}, {TensorType_INT8});
+  m.PopulateTensor<int32_t>(m.input1(), {2, 3});
+  m.PopulateTensor<int8_t>(m.input2(), {-1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({-1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 3}));
+}
+
 TEST(FillOpModel, FillInt32) {
   FillOpModel m({TensorType_INT32, {2}}, {TensorType_INT32});
   m.PopulateTensor<int32_t>(m.input1(), {2, 3});

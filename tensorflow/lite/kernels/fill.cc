@@ -53,11 +53,15 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
       return ResizeOutputImpl<int32_t>(context, dims, output);
     case kTfLiteInt64:
       return ResizeOutputImpl<int64_t>(context, dims, output);
+    case kTfLiteUInt8:
+      return ResizeOutputImpl<uint8_t>(context, dims, output);
+    case kTfLiteInt8:
+      return ResizeOutputImpl<int8_t>(context, dims, output);
     default:
       context->ReportError(
           context,
-          "Fill only currently supports int32, int64 for input 0, "
-          "got %d.",
+          "Fill only currently supports int32, int64, uint8 & int8 for input 0,"
+          " got %d.",
           dims->type);
       return kTfLiteError;
   }
@@ -77,7 +81,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Make sure the 1st input tensor is int32 or int64.
   const auto dtype = dims->type;
-  TF_LITE_ENSURE(context, dtype == kTfLiteInt32 || dtype == kTfLiteInt64);
+  TF_LITE_ENSURE(context, dtype == kTfLiteInt32 || dtype == kTfLiteInt64 ||
+                              dtype == kTfLiteUInt8 || dtype == kTfLiteInt8);
 
   // Make sure the 2nd input tensor is a scalar.
   TF_LITE_ENSURE_EQ(context, NumDimensions(value), 0);
@@ -116,11 +121,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       TF_LITE_FILL(float);
       break;
+    case kTfLiteUInt8:
+      TF_LITE_FILL(uint8_t);
+      break;
+    case kTfLiteInt8:
+      TF_LITE_FILL(int8_t);
+      break;
     default:
       context->ReportError(
           context,
-          "Fill only currently supports int32, int64, float32 for input 1,"
-          "got %d.",
+          "Fill only currently supports int32, int64, float32, uint8 & int8 for"
+          " input 1, got %d.",
           value->type);
       return kTfLiteError;
   }
