@@ -337,7 +337,14 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
     """
-    return self + other
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(other.value + self._value)
 
   def __sub__(self, other):
     """Returns the subtraction of `other` from `self`.
@@ -376,7 +383,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the subtraction of `self` from `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -408,7 +418,6 @@ class Dimension(object):
       other = as_dimension(other)
     except (TypeError, ValueError):
       return NotImplemented
-
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -423,7 +432,14 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the product of `self` and `other`.
     """
-    return self * other
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(other.value * self._value)
 
   def __floordiv__(self, other):
     """Returns the quotient of `self` and `other` rounded down.
