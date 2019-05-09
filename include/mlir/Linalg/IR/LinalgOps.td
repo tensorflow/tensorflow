@@ -39,12 +39,12 @@ def Buffer : Type<LinalgIsBufferTypePred, "buffer">;
 def LinalgIsViewTypePred : CPred<"$_self.isa<ViewType>()">;
 def View : Type<LinalgIsViewTypePred, "view">;
 
-class ParametricNativeOpTrait<string prop, string parameters> :
-  NativeOpTrait<prop # parameters>
+class LinalgParametricNativeOpTrait<string prop, string parameters> :
+  NativeOpTrait<"linalg::" # prop # parameters>
 {}
 
-class ParametricIntNativeOpTrait<string prop, list<int> parameters> :
-  ParametricNativeOpTrait<
+class LinalgParametricIntNativeOpTrait<string prop, list<int> parameters> :
+  LinalgParametricNativeOpTrait<
     prop,
     !strconcat("<",
                !cast<string>(!head(parameters)),
@@ -60,7 +60,7 @@ class ParametricIntNativeOpTrait<string prop, list<int> parameters> :
 // to have a specified number of inputs and outputs, all passed as operands.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class NInputsAndOutputs<int n_ins, int n_outs> :
-  ParametricIntNativeOpTrait<"NInputsAndOutputs", [n_ins, n_outs]>
+  LinalgParametricIntNativeOpTrait<"NInputsAndOutputs", [n_ins, n_outs]>
 {}
 
 // The linalg `NLoopTypes` trait provides the API for ops that are known to have
@@ -68,14 +68,14 @@ class NInputsAndOutputs<int n_ins, int n_outs> :
 // loops.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class NLoopTypes<int n_par, int n_red, int n_win> :
-ParametricIntNativeOpTrait<"NLoopTypes", [n_par, n_red, n_win]>
+LinalgParametricIntNativeOpTrait<"NLoopTypes", [n_par, n_red, n_win]>
 {}
 
 // The linalg `ViewRanks` trait the API for ops that are known to have a
 // specified list of view ranks.
 // See Linalg/LinalgTraits.h for implementation details an usage.
 class ViewRanks<list<int> ranks> :
-ParametricIntNativeOpTrait<"ViewRanks", ranks>
+LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 {}
 
 // Base Tablegen class for Linalg ops.

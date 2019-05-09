@@ -24,6 +24,7 @@
 
 namespace mlir {
 namespace OpTrait {
+namespace linalg {
 
 /// This class provides the API for ops that are known to have a specified
 /// number of inputs and outputs, all passed as operands. This is used as a
@@ -44,16 +45,20 @@ public:
     Value *getOutput(unsigned i) {
       return this->getOperand(getNumInputs() + i);
     }
-    ViewType getInputViewType(unsigned i) {
-      return this->getOperand(i)->getType().template cast<ViewType>();
+    mlir::linalg::ViewType getInputViewType(unsigned i) {
+      return this->getOperand(i)
+          ->getType()
+          .template cast<mlir::linalg::ViewType>();
     }
-    ViewType getOutputViewType(unsigned i) {
+    mlir::linalg::ViewType getOutputViewType(unsigned i) {
       return this->getOperand(getNumInputs() + i)
           ->getType()
-          .template cast<ViewType>();
+          .template cast<mlir::linalg::ViewType>();
     }
-    ViewType getViewType(unsigned i) {
-      return this->getOperand(i)->getType().template cast<ViewType>();
+    mlir::linalg::ViewType getViewType(unsigned i) {
+      return this->getOperand(i)
+          ->getType()
+          .template cast<mlir::linalg::ViewType>();
     }
     static LogicalResult verifyTrait(Operation *op) {
       return OpTrait::impl::verifyAtLeastNOperands(op, NInputs + NOutputs);
@@ -98,7 +103,8 @@ public:
       if (op->getNumOperands() != ranks.size())
         return op->emitError("expected " + Twine(ranks.size()) + " operands");
       for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
-        auto viewType = op->getOperand(i)->getType().dyn_cast<ViewType>();
+        auto viewType =
+            op->getOperand(i)->getType().dyn_cast<mlir::linalg::ViewType>();
         if (!viewType)
           return op->emitOpError("operand " + Twine(i) +
                                  " must have view type ");
@@ -111,6 +117,7 @@ public:
   };
 };
 
+} // namespace linalg
 } // namespace OpTrait
 } // namespace mlir
 

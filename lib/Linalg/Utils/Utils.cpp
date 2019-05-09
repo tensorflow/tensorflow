@@ -33,6 +33,7 @@
 using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
+using namespace mlir::linalg;
 using namespace llvm;
 
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(

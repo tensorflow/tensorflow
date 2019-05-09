@@ -24,6 +24,7 @@
 namespace mlir {
 class MLIRContext;
 
+namespace linalg {
 enum LinalgTypes {
   Buffer = Type::FIRST_LINALG_TYPE,
   Range,
@@ -110,6 +111,7 @@ public:
   unsigned getRank();
 };
 
+} // namespace linalg
 } // namespace mlir
 
 #endif // MLIR_LINALG_LINALGTYPES_H_

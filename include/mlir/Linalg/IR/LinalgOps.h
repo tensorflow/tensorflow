@@ -24,6 +24,7 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+namespace linalg {
 
 /// The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
 /// upon which a base view can be laid out to give it indexing semantics.
@@ -74,6 +75,35 @@ public:
   Value *getBuffer() { return getOperand(); }
   BufferType getBufferType() {
     return getOperand()->getType().cast<BufferType>();
+  }
+};
+
+/// A linalg.LoadOp is the counterpart of load but operating on ViewType
+/// instead of MemRefType.
+///
+/// ```{.mlir}
+///    %0 = linalg.load %V[%c0] : !linalg.view<?xf32>
+/// ```
+class LoadOp
+    : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
+public:
+  friend Operation;
+  using Op::Op;
+
+  // Hooks to customize the behavior of this op.
+  static llvm::StringRef getOperationName() { return "linalg.load"; }
+  static void build(Builder *b, OperationState *result, Value *view,
+                    ArrayRef<Value *> indices = {});
+  LogicalResult verify();
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+
+  // Op-specific functionality.
+  unsigned getRank() { return getViewType().getRank(); }
+  ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
+  Value *getView() { return getOperand(0); }
+  Operation::operand_range getIndices() {
+    return {operand_begin() + 1, operand_end()};
   }
 };
 
@@ -142,9 +172,8 @@ public:
 ///    !linalg.view<f32>
 /// ```
 class ViewOp;
-class SliceOp : public mlir::Op<SliceOp, mlir::OpTrait::VariadicOperands,
-                                mlir::OpTrait::OneResult,
-                                mlir::OpTrait::HasNoSideEffect> {
+class SliceOp : public Op<SliceOp, OpTrait::VariadicOperands,
+                          OpTrait::OneResult, OpTrait::HasNoSideEffect> {
   enum { FirstIndexingOperand = 1 };
 
 public:
@@ -153,31 +182,58 @@ public:
 
   // Hooks to customize the behavior of this op.
   static llvm::StringRef getOperationName() { return "linalg.slice"; }
-  static void build(mlir::Builder *b, mlir::OperationState *result,
-                    mlir::Value *base, llvm::ArrayRef<mlir::Value *> indexings);
-  mlir::LogicalResult verify();
-  static ParseResult parse(mlir::OpAsmParser *parser,
-                           mlir::OperationState *result);
-  void print(mlir::OpAsmPrinter *p);
+  static void build(Builder *b, OperationState *result, Value *base,
+                    llvm::ArrayRef<Value *> indexings);
+  LogicalResult verify();
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
 
   // Op-specific functionality.
   unsigned getRank() { return getViewType().getRank(); }
-  mlir::Type getElementType() { return getViewType().getElementType(); }
+  Type getElementType() { return getViewType().getElementType(); }
   ViewType getViewType() { return getType().cast<ViewType>(); }
   Value *getBaseView() { return getOperand(0); }
   ViewOp getBaseViewOp();
   ViewType getBaseViewType();
   unsigned getBaseViewRank() { return getBaseViewType().getRank(); }
   // Get the underlying indexing at a given rank.
-  mlir::Value *getIndexing(unsigned rank) {
-    return *(getIndexings().begin() + rank);
-  }
+  Value *getIndexing(unsigned rank) { return *(getIndexings().begin() + rank); }
   // Get all the indexings in this view.
-  mlir::Operation::operand_range getIndexings() {
+  Operation::operand_range getIndexings() {
     return {operand_begin() + SliceOp::FirstIndexingOperand, operand_end()};
   }
   // Get the subset of indexings that are of RangeType.
   SmallVector<Value *, 8> getRanges();
+};
+
+/// A linalg.StoreOp is the counterpart of affine.store but operating on
+/// ViewType instead of MemRefType.
+///
+/// ```{.mlir}
+///    linalg.store %f, %V[%c0] : !linalg.view<?xf32>
+/// ```
+class StoreOp
+    : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  friend Operation;
+  using Op::Op;
+
+  // Hooks to customize the behavior of this op.
+  static llvm::StringRef getOperationName() { return "linalg.store"; }
+  static void build(Builder *b, OperationState *result, Value *valueToStore,
+                    Value *view, ArrayRef<Value *> indices = {});
+  LogicalResult verify();
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+
+  // Op-specific functionality.
+  unsigned getRank() { return getViewType().getRank(); }
+  ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
+  Value *getValueToStore() { return getOperand(0); }
+  Value *getView() { return getOperand(1); }
+  Operation::operand_range getIndices() {
+    return {operand_begin() + 2, operand_end()};
+  }
 };
 
 /// The "linalg.view" op produces a linalg.view which is a multi-dimensional
@@ -193,9 +249,8 @@ public:
 ///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
 ///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
 /// ```
-class ViewOp : public mlir::Op<ViewOp, mlir::OpTrait::VariadicOperands,
-                               mlir::OpTrait::OneResult,
-                               mlir::OpTrait::HasNoSideEffect> {
+class ViewOp : public Op<ViewOp, OpTrait::VariadicOperands, OpTrait::OneResult,
+                         OpTrait::HasNoSideEffect> {
   enum { FirstIndexingOperand = 1 };
 
 public:
@@ -204,25 +259,21 @@ public:
 
   // Hooks to customize the behavior of this op.
   static llvm::StringRef getOperationName() { return "linalg.view"; }
-  static void build(mlir::Builder *b, mlir::OperationState *result,
-                    mlir::Value *buffer,
-                    llvm::ArrayRef<mlir::Value *> indexings);
-  mlir::LogicalResult verify();
-  static ParseResult parse(mlir::OpAsmParser *parser,
-                           mlir::OperationState *result);
-  void print(mlir::OpAsmPrinter *p);
+  static void build(Builder *b, OperationState *result, Value *buffer,
+                    llvm::ArrayRef<Value *> indexings);
+  LogicalResult verify();
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
 
   // Op-specific functionality.
   unsigned getRank() { return getViewType().getRank(); }
-  mlir::Type getElementType() { return getViewType().getElementType(); }
+  Type getElementType() { return getViewType().getElementType(); }
   ViewType getViewType() { return getType().cast<ViewType>(); }
-  mlir::Value *getSupportingBuffer() { return getOperand(0); }
+  Value *getSupportingBuffer() { return getOperand(0); }
   // Get the underlying indexing at a given rank.
-  mlir::Value *getIndexing(unsigned rank) {
-    return *(getIndexings().begin() + rank);
-  }
+  Value *getIndexing(unsigned rank) { return *(getIndexings().begin() + rank); }
   // Get all the indexings in this view.
-  mlir::Operation::operand_range getIndexings() {
+  Operation::operand_range getIndexings() {
     return {operand_begin() + ViewOp::FirstIndexingOperand, operand_end()};
   }
 };
@@ -245,9 +296,10 @@ public:
 ///    )
 /// ```
 ///
-/// Only permutation maps are currently supported. 
+/// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
+} // namespace linalg
 } // namespace mlir
 
 #endif // MLIR_LINALG_LINALGOPS_H_

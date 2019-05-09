@@ -19,6 +19,7 @@
 #include "mlir/Linalg/IR/LinalgTypes.h"
 
 using namespace mlir;
+using namespace mlir::linalg;
 
 // Static initialization for LinalgOps dialect registration.
 static DialectRegistration<LinalgDialect> LinalgOps;

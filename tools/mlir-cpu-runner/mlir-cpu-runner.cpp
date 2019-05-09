@@ -26,6 +26,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 
@@ -56,6 +57,10 @@ static llvm::cl::opt<std::string>
     mainFuncName("e", llvm::cl::desc("The function to be called"),
                  llvm::cl::value_desc("<function name>"),
                  llvm::cl::init("main"));
+static llvm::cl::opt<std::string> mainFuncType(
+    "entry-point-result",
+    llvm::cl::desc("Textual description of the function type to be called"),
+    llvm::cl::value_desc("f32 or memrefs"), llvm::cl::init("memrefs"));
 
 static llvm::cl::OptionCategory optFlags("opt-like flags");
 
@@ -129,9 +134,9 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
   }
 }
 
-static Error
-compileAndExecute(Module *module, StringRef entryPoint,
-                  std::function<llvm::Error(llvm::Module *)> transformer) {
+static Error compileAndExecuteFunctionWithMemRefs(
+    Module *module, StringRef entryPoint,
+    std::function<llvm::Error(llvm::Module *)> transformer) {
   Function *mainFunction = module->getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction->getBlocks().empty()) {
     return make_string_error("entry point not found");
@@ -163,6 +168,50 @@ compileAndExecute(Module *module, StringRef entryPoint,
   (*fptr)(expectedArguments->data());
   printMemRefArguments(argTypes, resTypes, *expectedArguments);
   freeMemRefArguments(*expectedArguments);
+
+  return Error::success();
+}
+
+static Error compileAndExecuteSingleFloatReturnFunction(
+    Module *module, StringRef entryPoint,
+    std::function<llvm::Error(llvm::Module *)> transformer) {
+  Function *mainFunction = module->getNamedFunction(entryPoint);
+  if (!mainFunction || mainFunction->isExternal()) {
+    return make_string_error("entry point not found");
+  }
+
+  if (!mainFunction->getType().getInputs().empty())
+    return make_string_error("function inputs not supported");
+
+  if (mainFunction->getType().getResults().size() != 1)
+    return make_string_error("only single f32 function result supported");
+
+  auto t = mainFunction->getType().getResults()[0].dyn_cast<LLVM::LLVMType>();
+  if (!t)
+    return make_string_error("only single llvm.f32 function result supported");
+  auto *llvmTy = t.getUnderlyingType();
+  if (llvmTy != llvmTy->getFloatTy(llvmTy->getContext()))
+    return make_string_error("only single llvm.f32 function result supported");
+
+  auto expectedEngine = mlir::ExecutionEngine::create(module, transformer);
+  if (!expectedEngine)
+    return expectedEngine.takeError();
+
+  auto engine = std::move(*expectedEngine);
+  auto expectedFPtr = engine->lookup(entryPoint);
+  if (!expectedFPtr)
+    return expectedFPtr.takeError();
+  void (*fptr)(void **) = *expectedFPtr;
+
+  float res;
+  struct {
+    void *data;
+  } data;
+  data.data = &res;
+  (*fptr)((void **)&data);
+
+  // Intentional printing of the output so we can test.
+  llvm::outs() << res;
 
   return Error::success();
 }
@@ -212,7 +261,11 @@ int main(int argc, char **argv) {
 
   auto transformer =
       mlir::makeLLVMPassesTransformer(passes, optLevel, optPosition);
-  auto error = compileAndExecute(m.get(), mainFuncName.getValue(), transformer);
+  auto error = mainFuncType.getValue() == "f32"
+                   ? compileAndExecuteSingleFloatReturnFunction(
+                         m.get(), mainFuncName.getValue(), transformer)
+                   : compileAndExecuteFunctionWithMemRefs(
+                         m.get(), mainFuncName.getValue(), transformer);
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),
                         [&exitCode](const llvm::ErrorInfoBase &info) {

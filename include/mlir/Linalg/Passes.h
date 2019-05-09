@@ -30,6 +30,8 @@ class ModulePassBase;
 
 mlir::ModulePassBase *
 createLinalgTilingPass(llvm::ArrayRef<int64_t> tileSizes = {});
+
+mlir::ModulePassBase *createLowerLinalgToLLVMPass();
 } // namespace mlir
 
 #endif // MLIR_LINALG_PASSES_H_

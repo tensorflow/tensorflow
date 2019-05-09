@@ -26,18 +26,20 @@
 #include "mlir/Support/LLVM.h"
 
 using namespace mlir;
+using namespace mlir::linalg;
 
-mlir::LinalgDialect::LinalgDialect(MLIRContext *context)
+mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect("linalg", context) {
   addTypes<BufferType, RangeType, ViewType>();
-  addOperations<BufferAllocOp, BufferDeallocOp, RangeOp, SliceOp, ViewOp>();
+  addOperations<BufferAllocOp, BufferDeallocOp, LoadOp, RangeOp, StoreOp,
+                SliceOp, ViewOp>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
       >();
 }
 
-struct mlir::BufferTypeStorage : public mlir::TypeStorage {
+struct mlir::linalg::BufferTypeStorage : public TypeStorage {
   /// Underlying Key type to transport the payload needed to construct a custom
   /// type in a generic way.
   struct Key {
@@ -71,13 +73,17 @@ private:
   Type elementType;
 };
 
-BufferType mlir::BufferType::get(MLIRContext *context, Type elementType) {
+BufferType mlir::linalg::BufferType::get(MLIRContext *context,
+                                         Type elementType) {
   return Base::get(context, LinalgTypes::Buffer, elementType);
 }
 
-Type mlir::BufferType::getElementType() { return getImpl()->getElementType(); }
+Type mlir::linalg::BufferType::getElementType() {
+  return getImpl()->getElementType();
+}
 
-Type mlir::LinalgDialect::parseType(StringRef spec, Location loc) const {
+Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
+                                            Location loc) const {
   MLIRContext *context = getContext();
   if (spec == "range")
     return RangeType::get(getContext());
@@ -97,7 +103,7 @@ Type mlir::LinalgDialect::parseType(StringRef spec, Location loc) const {
   return (context->emitError(loc, "unknown Linalg type: " + spec), Type());
 }
 
-struct mlir::ViewTypeStorage : public mlir::TypeStorage {
+struct mlir::linalg::ViewTypeStorage : public TypeStorage {
   /// Underlying Key type to transport the payload needed to construct a custom
   /// type in a generic way.
   struct Key {
@@ -136,14 +142,16 @@ private:
   unsigned rank;
 };
 
-ViewType mlir::ViewType::get(MLIRContext *context, Type elementType,
-                             unsigned rank) {
+ViewType mlir::linalg::ViewType::get(MLIRContext *context, Type elementType,
+                                     unsigned rank) {
   return Base::get(context, LinalgTypes::View, elementType, rank);
 }
 
-Type mlir::ViewType::getElementType() { return getImpl()->getElementType(); }
+Type mlir::linalg::ViewType::getElementType() {
+  return getImpl()->getElementType();
+}
 
-unsigned mlir::ViewType::getRank() { return getImpl()->getRank(); }
+unsigned mlir::linalg::ViewType::getRank() { return getImpl()->getRank(); }
 
 /// BufferType prints as "buffer<element_type>".
 static void print(BufferType bt, raw_ostream &os) {
@@ -166,7 +174,7 @@ static void print(RangeType rt, raw_ostream &os) { os << "range"; }
 /// ```
 ///
 /// for 0-D views (a.k.a pointer to a scalar value).
-static void print(mlir::ViewType rt, raw_ostream &os) {
+static void print(mlir::linalg::ViewType rt, raw_ostream &os) {
   os << "view<";
   for (unsigned i = 0, e = rt.getRank(); i < e; ++i) {
     os << "?x";
@@ -175,7 +183,7 @@ static void print(mlir::ViewType rt, raw_ostream &os) {
   os << ">";
 }
 
-void mlir::LinalgDialect::printType(Type type, raw_ostream &os) const {
+void mlir::linalg::LinalgDialect::printType(Type type, raw_ostream &os) const {
   switch (type.getKind()) {
   default:
     llvm_unreachable("Unhandled Linalg type");

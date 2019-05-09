@@ -37,6 +37,7 @@
 using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
+using namespace mlir::linalg;
 using namespace llvm;
 
 static llvm::cl::OptionCategory clOptionsCategory("linalg options");
