@@ -29,7 +29,7 @@ class AliasAnalysisTest : public CpuCodegenTest {};
 
 void FakeCustomCallTarget(float* out, float** in) {}
 
-REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
 
 TEST_F(AliasAnalysisTest, EmbeddedComputationParamsMayAliasTemps) {
   const char* hlo_string = R"(

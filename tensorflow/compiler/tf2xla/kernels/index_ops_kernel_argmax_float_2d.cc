@@ -51,4 +51,4 @@ extern "C" void TF_EXPORT argmax_float_2d_xla_impl(void* out, void** data) {
   tensorflow::argmax_float_2d_xla_impl(out, data);
 }
 
-REGISTER_CUSTOM_CALL_TARGET(argmax_float_2d_xla_impl);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(argmax_float_2d_xla_impl);

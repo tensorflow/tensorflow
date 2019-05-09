@@ -155,7 +155,8 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
     LOG(ERROR)
         << "Unable to resolve runtime symbol: `" << name
         << "'.  Hint: if the symbol a custom call target, make sure you've "
-           "registered it with the JIT using REGISTER_CUSTOM_CALL_TARGET.";
+           "registered it with the JIT using "
+           "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),

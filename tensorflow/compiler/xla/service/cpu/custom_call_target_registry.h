@@ -55,18 +55,21 @@ class RegisterCustomCallTarget {
   }
 };
 
-#define REGISTER_CUSTOM_CALL_CONCAT(a, b) a##b
+#define XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT(a, b) a##b
 
-#define REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, counter) \
-  static ::xla::cpu::RegisterCustomCallTarget REGISTER_CUSTOM_CALL_CONCAT(    \
-      custom_call_target_register, counter)(symbol,                           \
-                                            reinterpret_cast<void*>(address))
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, \
+                                                            counter)         \
+  static ::xla::cpu::RegisterCustomCallTarget                                \
+      XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT(custom_call_target_register,       \
+                                          counter)(                          \
+          symbol, reinterpret_cast<void*>(address))
 
-#define REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address) \
-  REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, __COUNTER__)
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address)  \
+  XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, \
+                                                      __COUNTER__)
 
-#define REGISTER_CUSTOM_CALL_TARGET(function) \
-  REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function)
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(function) \
+  XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function)
 
 }  // namespace cpu
 }  // namespace xla
