@@ -28,19 +28,18 @@ config_setting(
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
+        ":cublas-include",
         ":cuda-include",
         ":cudnn-include",
     ],
@@ -49,7 +48,6 @@ cc_library(
         "cuda/include",
         "cuda/include/crt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -66,7 +64,6 @@ cc_library(
         "-lpthread",
         "-lrt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -76,7 +73,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -88,7 +84,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -100,7 +95,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -113,7 +107,6 @@ cc_library(
     ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -125,7 +118,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -134,7 +126,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -146,7 +137,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -158,12 +148,10 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
-    visibility = ["//visibility:public"],
     deps = [
         ":cublas",
         ":cuda_headers",
@@ -184,7 +172,6 @@ cc_library(
         ".",
         "cuda/extras/CUPTI/include/",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -194,7 +181,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -207,13 +193,11 @@ cc_library(
     ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
-    visibility = ["//visibility:public"],
 )
 
 genrule(
@@ -1253,6 +1237,8 @@ genrule(
     cmd = """cp -rLf "/usr/local/cuda-10.0/extras/CUPTI/include/." "$(@D)/cuda/extras/CUPTI/include/" """,
 )
 
+filegroup(name = "cublas-include")
+
 genrule(
     name = "cuda-lib",
     outs = [
@@ -1267,7 +1253,7 @@ genrule(
         "cuda/lib/libcupti.so.10.0",
         "cuda/lib/libcusparse.so.10.0",
     ],
-    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" $(location cuda/lib/libcuda.so) && cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" $(location cuda/lib/libcudart.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" $(location cuda/lib/libcudart_static.a) && cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" $(location cuda/lib/libcublas.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" $(location cuda/lib/libcusolver.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusparse.so.10.0" $(location cuda/lib/libcusparse.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" $(location cuda/lib/libcurand.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" $(location cuda/lib/libcufft.so.10.0) && cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" $(location cuda/lib/libcudnn.so.7) && cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" $(location cuda/lib/libcupti.so.10.0) """,
+    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" $(location cuda/lib/libcuda.so) && cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" $(location cuda/lib/libcudart.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" $(location cuda/lib/libcudart_static.a) && cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" $(location cuda/lib/libcublas.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" $(location cuda/lib/libcusolver.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" $(location cuda/lib/libcurand.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" $(location cuda/lib/libcufft.so.10.0) && cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" $(location cuda/lib/libcudnn.so.7) && cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" $(location cuda/lib/libcupti.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusparse.so.10.0" $(location cuda/lib/libcusparse.so.10.0) """,
 )
 
 genrule(
