@@ -356,6 +356,15 @@ class DeviceSpecV2(object):
     return output
 
   def __eq__(self, other):
+    """Checks if two known `DeviceSpec`s are same.
+
+    Args:
+      other: Another DeviceSpec
+
+    Returns:
+      Returns `True` if other DeviceSpec and this DeviceSpec belong to the same class and
+      have same values. If not, returns `False`.
+    """
     return (isinstance(other, self.__class__) and
             self.to_string() == other.to_string())
 
