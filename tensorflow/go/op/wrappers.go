@@ -27920,8 +27920,13 @@ func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, out
 // A strong hash is important when inputs may be malicious, e.g. URLs with
 // additional components. Adversaries could try to make their inputs hash to the
 // same bucket for a denial-of-service attack or to skew the results. A strong
-// hash prevents this by making it difficult, if not infeasible, to compute inputs
-// that hash to the same bucket. This comes at a cost of roughly 4x higher compute
+// hash can be used to make it difficult to find inputs with a skewed hash value
+// distribution over buckets. This requires that the hash function is
+// randomized by high-entropy "salt", a random string unknown to the adversary.
+// To hash a string x using salt y, compute the hash function on the concatenation
+// of x and y.
+//
+// The additional robustness comes at a cost of roughly 4x higher compute
 // time than `tf.string_to_hash_bucket_fast`.
 //
 // Arguments:
