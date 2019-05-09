@@ -390,7 +390,8 @@ def _find_tensorrt_config(base_paths, required_version):
                                              get_header_version)
 
   if ".." in header_version:
-    header_path, header_version = _find_header(base_paths, "NvInferRTSafe.h",
+    # From TRT 6.0 onwards, version information has been moved to NvInferVersion.h.
+    header_path, header_version = _find_header(base_paths, "NvInferVersion.h",
                                                required_version,
                                                get_header_version)
 

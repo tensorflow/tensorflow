@@ -280,6 +280,14 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRangeMax() const override { return 0.f; }
 #endif
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
+#endif
+
  private:
   string name_;
   nvinfer1::Dims dims_;
