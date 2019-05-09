@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implement a quantized eight-bit version of the matmul operation
-// with bias, relu and requantization fusion support utilizing
-// mkldnn u8s8s32 inner product API.
-// Right now, this version can support
-// the input which is quantized as uint8 via either MIN_FIRST or SCALE mode,
-// the weight is quantized to int8 via SCALE model and
-// bias is always there.
+// Implements a quantized eight-bit version of the matmul operation with bias,
+// relu and requantization fusion support utilizing mkldnn u8s8s32 inner
+// product API. Right now, this version can support
+//   - Input: quantized as uint8 via either MIN_FIRST or SCALE mode.
+//   - Weight: quantized to int8 via SCALE model.
+//   - Bias: float32/int32. When int32 it is quantized according to input and
+//           filter min-max values.
 // Other than that, this op does not support other input combination yet.
 // When input is quantized to uint8 via MIN_FIRST, bias need compensation.
 // The detailed algorithm is illustrated as below:
@@ -49,20 +49,18 @@ limitations under the License.
 //
 // B𝑓32 is original fp32 bias tensor
 // Bs32 is converted 32bit integer bias tensor
-// With SCALE quantization of activation,
-//    Bs32 is calucated as below:
+// With SCALE quantization of activation, Bs32 is calucated as below:
 //      Bs32 = QaQwB𝑓32
 // With MIN_FIRST quantization of activation
 //    B'𝑓32 is the fp32 bias tensor with compensation
 //    B's32 is the coverted 32bit integer bias tensor
 //    B'𝑓32 and B's32 can be calculated as below:
 //      B'𝑓32 = B𝑓32+Min(A𝑓32)W𝑓32*1
-//      B's32=Q'aQwB𝑓32+Q'aMin(A𝑓32) Ws8*1
-//        where Q'aQw is the multiply of Q'a and Qw,
-//          also is called output quantize scale
+//      B's32 = Q'aQwB𝑓32+Q'aMin(A𝑓32) Ws8*1, where Q'aQw is the multiply of
+//              Q'a and Qw, also is called output quantize scale
 //
-// With Au8, Ws8 and B's32 inputs, the QuantizedMatMulWithBias op
-// calculate 32bit integer output as below:
+// With Au8, Ws8 and B's32 inputs, the QuantizedMatMulWithBias op calculate
+// 32bit integer output as below:
 //
 // With MIN_FIRST activation quantization
 //    Xs32 = Ws8A'u8+B's32
@@ -73,12 +71,11 @@ limitations under the License.
 //         = QaQwW𝑓32A𝑓32+QaQwB𝑓32
 //         = QaQw(W𝑓32A𝑓32+B𝑓32) = QaQwX𝑓32
 //
-// QuantizedMatMulWithBiasAndRelu op do the same calucation
-// as above except adding relu function for the 32bit integer output
-//
+// QuantizedMatMulWithBiasAndRelu op does the same calucation as above except
+// adding relu function for the 32bit integer output.
 // QuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
-// calculation based on above. The requantize scale Qr is calulated
-// from offline calibration.
+// calculation based on above. The requantize scale Qr is calulated from
+// offline calibration.
 //    Qr = 255/MaxAbs(X𝑓32)
 //    Xu8 = QrXs32
 //
@@ -647,7 +644,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
           mkldnn_matmul_fwd_pd,
       const Tensor& bias_tensor, const Tensor& weight_tensor) {
-    // If the bias is int32, it means the bias is already be converted offline.
+    // If the bias is int32, it means the bias is already converted offline.
     // and it can be added to matmul output directly.
     if (std::is_same<Tbias, qint32>::value) {
       return static_cast<Tbias*>(
@@ -682,9 +679,9 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
                      std::max(std::abs(max_weight), std::abs(min_weight)));
 
 #pragma omp parallel for schedule(static)
-        for (int j = 0; j < n; j++) {
+        for (int j = 0; j < n; ++j) {
           int x = 0;
-          for (int i = 0; i < k; i++) {
+          for (int i = 0; i < k; ++i) {
             x += wt_buf[i * n + j];
           }
           comp_bias[j] =

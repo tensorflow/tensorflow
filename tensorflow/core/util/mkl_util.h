@@ -633,8 +633,9 @@ class MklDnnShape {
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
                           memory::format format) {
-    DCHECK(dims != sizes.size()) << "SetTfLayout: Number of dimensions is not"
-                                    "match with dimension array";
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout: Number of dimensions does not"
+           "match with dimension array";
     data_.dimension_ = dims;
     for (size_t ii = 0; ii < dims; ii++) {
       data_.sizes_[ii] = sizes[ii];
@@ -647,8 +648,9 @@ class MklDnnShape {
 
   inline void SetTfLayout2D(size_t dims, const memory::dims& sizes,
                             memory::format format) {
-    DCHECK(dims != sizes.size()) << "SetTfLayout2D: Number of dimensions is"
-                                    "match with dimension array";
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout2D: Number of dimensions does not"
+           "match with dimension array";
     data_.dimension_ = dims;
     for (size_t ii = 0; ii < dims; ii++) {
       data_.sizes_[ii] = sizes[ii];

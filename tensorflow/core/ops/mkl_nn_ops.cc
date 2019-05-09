@@ -811,19 +811,19 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
     .Input("max_a: float")
     .Input("min_b: float")
     .Input("max_b: float")
-    .Input("mkl_a: uint8")      // MKl second tensor
-    .Input("mkl_b: uint8")      // MKl second tensor
-    .Input("mkl_bias: uint8")   // MKl second tensor
-    .Input("mkl_min_a: uint8")  // MKl second tensor
-    .Input("mkl_max_a: uint8")  // MKl second tensor
-    .Input("mkl_min_b: uint8")  // MKl second tensor
-    .Input("mkl_max_b: uint8")  // MKl second tensor
+    .Input("mkl_a: uint8")      // MKL second tensor
+    .Input("mkl_b: uint8")      // MKL second tensor
+    .Input("mkl_bias: uint8")   // MKL second tensor
+    .Input("mkl_min_a: uint8")  // MKL second tensor
+    .Input("mkl_max_a: uint8")  // MKL second tensor
+    .Input("mkl_min_b: uint8")  // MKL second tensor
+    .Input("mkl_max_b: uint8")  // MKL second tensor
     .Output("out: Toutput")
     .Output("min_out: float")
     .Output("max_out: float")
-    .Output("mkl_out: uint8")      // MKl second tensor
-    .Output("mkl_min_out: uint8")  // MKl second tensor
-    .Output("mkl_max_out: uint8")  // MKl second tensor
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("Tbias: {float, qint32}")
@@ -854,19 +854,19 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
     .Input("max_a: float")
     .Input("min_b: float")
     .Input("max_b: float")
-    .Input("mkl_a: uint8")      // MKl second tensor
-    .Input("mkl_b: uint8")      // MKl second tensor
-    .Input("mkl_bias: uint8")   // MKl second tensor
-    .Input("mkl_min_a: uint8")  // MKl second tensor
-    .Input("mkl_max_a: uint8")  // MKl second tensor
-    .Input("mkl_min_b: uint8")  // MKl second tensor
-    .Input("mkl_max_b: uint8")  // MKl second tensor
+    .Input("mkl_a: uint8")      // MKL second tensor
+    .Input("mkl_b: uint8")      // MKL second tensor
+    .Input("mkl_bias: uint8")   // MKL second tensor
+    .Input("mkl_min_a: uint8")  // MKL second tensor
+    .Input("mkl_max_a: uint8")  // MKL second tensor
+    .Input("mkl_min_b: uint8")  // MKL second tensor
+    .Input("mkl_max_b: uint8")  // MKL second tensor
     .Output("out: Toutput")
     .Output("min_out: float")
     .Output("max_out: float")
-    .Output("mkl_out: uint8")      // MKl second tensor
-    .Output("mkl_min_out: uint8")  // MKl second tensor
-    .Output("mkl_max_out: uint8")  // MKl second tensor
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
@@ -898,21 +898,21 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
     .Input("max_b: float")
     .Input("min_freezed_output: float")
     .Input("max_freezed_output: float")
-    .Input("mkl_a: uint8")                   // MKl second tensor
-    .Input("mkl_b: uint8")                   // MKl second tensor
-    .Input("mkl_bias: uint8")                // MKl second tensor
-    .Input("mkl_min_a: uint8")               // MKl second tensor
-    .Input("mkl_max_a: uint8")               // MKl second tensor
-    .Input("mkl_min_b: uint8")               // MKl second tensor
-    .Input("mkl_max_b: uint8")               // MKl second tensor
-    .Input("mkl_min_freezed_output: uint8")  // MKl second tensor
-    .Input("mkl_max_freezed_output: uint8")  // MKl second tensor
+    .Input("mkl_a: uint8")                   // MKL second tensor
+    .Input("mkl_b: uint8")                   // MKL second tensor
+    .Input("mkl_bias: uint8")                // MKL second tensor
+    .Input("mkl_min_a: uint8")               // MKL second tensor
+    .Input("mkl_max_a: uint8")               // MKL second tensor
+    .Input("mkl_min_b: uint8")               // MKL second tensor
+    .Input("mkl_max_b: uint8")               // MKL second tensor
+    .Input("mkl_min_freezed_output: uint8")  // MKL second tensor
+    .Input("mkl_max_freezed_output: uint8")  // MKL second tensor
     .Output("out: Toutput")
     .Output("min_out: float")
     .Output("max_out: float")
-    .Output("mkl_out: uint8")      // MKl second tensor
-    .Output("mkl_min_out: uint8")  // MKl second tensor
-    .Output("mkl_max_out: uint8")  // MKl second tensor
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("Tbias: {float, qint32}")
