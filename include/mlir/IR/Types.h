@@ -107,9 +107,9 @@ public:
     LAST_BUILTIN_TYPE = Opaque,
 
   // Reserve type kinds for dialect specific type system extensions.
-#define DEFINE_TYPE_KIND_RANGE(Dialect)                                        \
+#define DEFINE_SYM_KIND_RANGE(Dialect)                                         \
   FIRST_##Dialect##_TYPE, LAST_##Dialect##_TYPE = FIRST_##Dialect##_TYPE + 0xff,
-#include "DialectTypeRegistry.def"
+#include "DialectSymbolRegistry.def"
   };
 
   /// Utility class for implementing types. Clients are not expected to interact
