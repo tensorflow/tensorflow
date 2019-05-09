@@ -667,6 +667,10 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
             }
             it->second->getConstraints()->clearAndCopyFrom(
                 *region->getConstraints());
+          } else {
+            // Union was computed and stored in 'it->second': copy to 'region'.
+            region->getConstraints()->clearAndCopyFrom(
+                *it->second->getConstraints());
           }
           return true;
         };
