@@ -42,9 +42,8 @@ cc_library(
         %{cuda_headers}
     ],
     includes = [
-        ".",
+        ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
         "cuda/include",
-        "cuda/include/crt",
     ],
 )
 
@@ -91,10 +90,7 @@ cc_import(
 
 cc_library(
     name = "cudnn_header",
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    includes = ["cuda/include"],
 )
 
 cc_import(
@@ -127,11 +123,7 @@ cc_library(
         "cuda/cuda_config.h",
         ":cuda-extras",
     ],
-    includes = [
-        ".",
-        "cuda/",
-        "cuda/extras/CUPTI/include/",
-    ],
+    includes = ["cuda/extras/CUPTI/include/"],
 )
 
 cc_import(

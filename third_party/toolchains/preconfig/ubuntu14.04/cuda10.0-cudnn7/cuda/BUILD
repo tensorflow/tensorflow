@@ -44,19 +44,14 @@ cc_library(
         ":cudnn-include",
     ],
     includes = [
-        ".",
+        ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
         "cuda/include",
-        "cuda/include/crt",
     ],
 )
 
 cc_library(
     name = "cudart_static",
     srcs = ["cuda/lib/libcudart_static.a"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkopts = select({
         ":freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -69,20 +64,12 @@ cc_library(
 cc_library(
     name = "cuda_driver",
     srcs = ["cuda/lib/libcuda.so"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
 )
 
 cc_library(
     name = "cudart",
     srcs = ["cuda/lib/libcudart.so.10.0"],
     data = ["cuda/lib/libcudart.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
 )
 
@@ -90,10 +77,6 @@ cc_library(
     name = "cublas",
     srcs = ["cuda/lib/libcublas.so.10.0"],
     data = ["cuda/lib/libcublas.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
 )
 
@@ -101,10 +84,6 @@ cc_library(
     name = "cusolver",
     srcs = ["cuda/lib/libcusolver.so.10.0"],
     data = ["cuda/lib/libcusolver.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
 )
@@ -113,29 +92,18 @@ cc_library(
     name = "cudnn",
     srcs = ["cuda/lib/libcudnn.so.7"],
     data = ["cuda/lib/libcudnn.so.7"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cudnn_header",
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    includes = ["cuda/include"],
 )
 
 cc_library(
     name = "cufft",
     srcs = ["cuda/lib/libcufft.so.10.0"],
     data = ["cuda/lib/libcufft.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
 )
 
@@ -143,10 +111,6 @@ cc_library(
     name = "curand",
     srcs = ["cuda/lib/libcurand.so.10.0"],
     data = ["cuda/lib/libcurand.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
 )
 
@@ -168,29 +132,18 @@ cc_library(
         "cuda/cuda_config.h",
         ":cuda-extras",
     ],
-    includes = [
-        ".",
-        "cuda/extras/CUPTI/include/",
-    ],
+    includes = ["cuda/extras/CUPTI/include/"],
 )
 
 cc_library(
     name = "cupti_dsos",
     data = ["cuda/lib/libcupti.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
 )
 
 cc_library(
     name = "cusparse",
     srcs = ["cuda/lib/libcusparse.so.10.0"],
     data = ["cuda/lib/libcusparse.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
 )
