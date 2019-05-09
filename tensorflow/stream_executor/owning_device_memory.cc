@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
-namespace xla {
+namespace stream_executor {
 
 void OwningDeviceMemory::Free() {
   CHECK(allocator_ != nullptr)
@@ -29,7 +29,7 @@ void OwningDeviceMemory::Free() {
   }
 
   allocator_ = nullptr;
-  mem_ = se::DeviceMemoryBase();
+  mem_ = DeviceMemoryBase();
 }
 
-}  // namespace xla
+}  // namespace stream_executor

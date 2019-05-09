@@ -26,12 +26,13 @@ ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
 int ExecutableRunOptions::device_ordinal() const { return device_ordinal_; }
 
 ExecutableRunOptions& ExecutableRunOptions::set_allocator(
-    DeviceMemoryAllocator* allocator) {
+    stream_executor::DeviceMemoryAllocator* allocator) {
   allocator_ = allocator;
   return *this;
 }
 
-DeviceMemoryAllocator* ExecutableRunOptions::allocator() const {
+stream_executor::DeviceMemoryAllocator* ExecutableRunOptions::allocator()
+    const {
   return allocator_;
 }
 

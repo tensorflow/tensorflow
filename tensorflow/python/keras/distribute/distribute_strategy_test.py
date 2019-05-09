@@ -35,6 +35,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
@@ -115,7 +116,7 @@ def multi_inputs_multi_outputs_model():
       inputs=[input_a, input_b, input_m], outputs=[output_c, output_d])
   model.compile(
       loss='categorical_crossentropy',
-      optimizer=gradient_descent.GradientDescentOptimizer(0.001),
+      optimizer=gradient_descent_keras.SGD(learning_rate=0.001),
       metrics={
           'dense_2': 'categorical_accuracy',
           'dense_3': 'categorical_accuracy'
@@ -371,7 +372,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        optimizer=rmsprop_keras.RMSprop(learning_rate=0.01),
         cloning=cloning)
     config = run_config_lib.RunConfig(
         tf_random_seed=_RANDOM_SEED,
@@ -405,7 +406,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        optimizer=rmsprop_keras.RMSprop(learning_rate=0.01),
         cloning=cloning)
     config = run_config_lib.RunConfig(
         tf_random_seed=_RANDOM_SEED,
@@ -476,36 +477,6 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
       eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
       self.assertLess(eval_results['loss'], baseline_eval_results['loss'])
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
-          ],
-          mode=['graph'],
-          cloning=[True, False]))
-  def test_keras_optimizer_with_distribution_strategy(self, distribution,
-                                                      cloning):
-    keras_model = simple_sequential_model()
-    keras_model.compile(
-        loss='categorical_crossentropy',
-        optimizer=keras.optimizers.rmsprop(lr=0.01),
-        cloning=cloning)
-
-    config = run_config_lib.RunConfig(
-        tf_random_seed=_RANDOM_SEED,
-        model_dir=self._base_dir,
-        train_distribute=distribution)
-    with self.cached_session():
-      est_keras = keras_lib.model_to_estimator(
-          keras_model=keras_model, config=config)
-      with self.assertRaisesRegexp(ValueError,
-                                   'Only TensorFlow native optimizers are '
-                                   'supported with DistributionStrategy.'):
-        est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
-
-    writer_cache.FileWriterCache.clear()
-    gfile.DeleteRecursively(self._config.model_dir)
 
 
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,

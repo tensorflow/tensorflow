@@ -600,11 +600,8 @@ inline Variant::Variant(Variant&& other) noexcept
       other.GetValue()->DefaultConstructIn(GetValue());
       other.GetValue()->MoveTo(GetValue());
       value_.inline_value.has_value = true;
-      other.value_.ResetMemory();
-      other.is_inline_ = false;
     } else {
       value_.heap_value = std::move(other.value_.heap_value);
-      other.value_.ResetMemory();
       is_inline_ = false;
     }
   }

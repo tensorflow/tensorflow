@@ -230,7 +230,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile, bool block_host_until_done) {
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -348,7 +348,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();

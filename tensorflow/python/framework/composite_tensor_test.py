@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import sys
+import weakref
 from absl.testing import parameterized
 
 from tensorflow.python.framework import composite_tensor
@@ -326,22 +328,40 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(result, expected)
 
   def testMemoryIsFreed(self):
+    # Note: we use `set` values for components and metadata because we need
+    # to construct weakrefs to them.  Other builtin types, such as `list` and
+    # `tuple`, do not support weakrefs.
+    ct1 = CT(set([1, 2]), set(['no', 'leaks']))
+    ct2 = CT(set([3, 4]), set(['no', 'leaks']))
+    ct3 = CT(set([5, 6]), set(['other', 'metadata']))
+
     # Note: map_structure exercises flatten, pack_sequence_as, and
     # assert_same_structure.
-    func = lambda x, y: x + y
+    func = lambda x, y: x | y
+    ct4 = nest.map_structure(func, ct1, ct2, expand_composites=True)
 
-    object_count = [None, None]
-    for i in range(2):
-      gc.collect()
-      ct1 = CT([1, 2, 3], metadata=({'no': 'leaks'}))
-      ct2 = CT([4, 5, 6], metadata=({'no': 'leaks'}))
-      ct3 = nest.map_structure(func, ct1, ct2, expand_composites=True)
-      del ct1, ct2, ct3
-      gc.collect()
-      object_count[i] = len(gc.get_objects())
+    # Check that the exception-raising path in assert_same_structure
+    # doesn't leak any objects.
+    with self.assertRaisesRegexp(ValueError,
+                                 ".*don't have the same nested structure.*"):
+      nest.map_structure(func, ct2, ct3, expand_composites=True)
+    if hasattr(sys, 'exc_clear'):
+      sys.exc_clear()  # Remove any references in exception stack traces.
 
-    self.assertEqual(object_count[0], object_count[1])
-    self.assertEmpty(gc.garbage)
+    refs = []
+    for ct in [ct1, ct2, ct3, ct4]:
+      refs.append(weakref.ref(ct))
+      refs.append(weakref.ref(ct.components))
+      refs.append(weakref.ref(ct.metadata))
+    del ct  # pylint: disable=undefined-loop-variable
+
+    for ref in refs:
+      self.assertIsNotNone(ref())
+
+    del ct1, ct2, ct3, ct4
+    gc.collect()
+    for ref in refs:
+      self.assertIsNone(ref())
 
 if __name__ == '__main__':
   googletest.main()

@@ -50,7 +50,7 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
 
   int64 rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
   TF_ASSIGN_OR_RETURN(
-      OwningDeviceMemory allocated_buffer,
+      se::OwningDeviceMemory allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
                                   byte_size + 2 * redzone_size_ + rhs_slop,
                                   /*retry_on_failure=*/false));

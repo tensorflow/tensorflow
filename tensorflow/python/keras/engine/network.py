@@ -191,9 +191,7 @@ class Network(base_layer.Layer):
     self._init_set_name(name, zero_based=True)
     self._activity_regularizer = None
     # This acts just like the `trainable` attribute of any layer instance.
-    # It does not affect users of the underlying layers, only users of the
-    # Network instance.
-    self.trainable = kwargs.get('trainable', True)
+    self._trainable = kwargs.get('trainable', True)
     # This attribute has no effect if the model is created using the Functional
     # API. Instead, `model.dynamic` is determined based on the internal layers.
     self._dynamic = kwargs.get('dynamic', False)

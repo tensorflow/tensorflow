@@ -1330,6 +1330,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "custom_training_loop_test",
+    size = "medium",
+    srcs = ["custom_training_loop_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = ["notsan"],
+)
+
+tf_py_test(
     name = "network_test",
     size = "medium",
     srcs = ["engine/network_test.py"],

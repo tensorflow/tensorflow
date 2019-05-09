@@ -119,14 +119,14 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
 
 ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
                                        const Shape& on_device_shape,
-                                       DeviceMemoryAllocator* allocator,
+                                       se::DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
     : ShapedBuffer(on_host_shape, on_device_shape, allocator->platform(),
                    device_ordinal),
       allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
-                                       DeviceMemoryAllocator* allocator)
+                                       se::DeviceMemoryAllocator* allocator)
     : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)

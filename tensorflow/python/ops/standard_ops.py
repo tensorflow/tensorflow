@@ -105,6 +105,8 @@ from tensorflow.python.ops.template import *
 from tensorflow.python.ops.tensor_array_ops import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
+from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
+
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order
 

@@ -157,8 +157,8 @@ class Layer(module.Module):
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
-    # and whether the layer's updates are run during training
-    self.trainable = trainable
+    # and whether the layer's updates are run during training.
+    self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
     self.stateful = False
@@ -572,7 +572,7 @@ class Layer(module.Module):
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
     # every layer/mode call because layer/model may be reused.
-    if (context.executing_eagerly() and
+    if (base_layer_utils.is_in_eager_or_tf_function() and
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
@@ -700,6 +700,16 @@ class Layer(module.Module):
   @property
   def dynamic(self):
     return self._dynamic
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    for layer in getattr(self, '_layers', []):
+      layer.trainable = value
 
   @property
   def activity_regularizer(self):
@@ -880,7 +890,9 @@ class Layer(module.Module):
         continue
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
-      if tf_utils.is_symbolic_tensor(loss):
+      # TF Functions should take the eager path.
+      if (tf_utils.is_symbolic_tensor(loss) and
+          not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))

@@ -298,7 +298,11 @@ def _export_mode(
       builder.add_meta_graph(
           model_utils.EXPORT_TAG_MAP[mode],
           signature_def_map=_create_signature_def_map(clone, mode),
-          saver=saver_lib.Saver(clone_var_list),
+          saver=saver_lib.Saver(
+              clone_var_list,
+              # Allow saving Models with no variables. This is somewhat odd, but
+              # it's not necessarily a bug.
+              allow_empty=True),
           init_op=variables.local_variables_initializer(),
           train_op=train_op)
     return None

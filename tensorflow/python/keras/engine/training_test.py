@@ -1128,6 +1128,36 @@ class TrainingTest(keras_parameterized.TestCase):
 
     self.assertLen(model.trainable_variables, 3)
 
+  # TODO(b/131372221): Make this work with subclassed models.
+  @keras_parameterized.run_with_all_model_types(exclude_models=['subclass'])
+  @keras_parameterized.run_all_keras_modes
+  def test_model_dtype(self):
+
+    class AssertTypeLayer(keras.layers.Layer):
+
+      def __init__(self, assert_type=None, **kwargs):
+        super(AssertTypeLayer, self).__init__(**kwargs)
+        self.assert_type = assert_type
+
+      def call(self, inputs):
+        assert inputs.dtype.name == self.assert_type, (
+            'Input tensor has type %s which does not match assert type %s' %
+            (inputs.dtype.name, self.assert_type))
+        return inputs + 1.
+
+    for dtype in ('float16', 'float32', 'float64'):
+      model = testing_utils.get_model_from_layers([AssertTypeLayer(dtype)],
+                                                  input_shape=(10,),
+                                                  input_dtype=dtype)
+      model.compile('sgd', 'mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+
+      x = np.ones((10, 10), dtype=dtype)
+      y = np.ones((10, 10), dtype=dtype)
+      model.fit(x, y)
+      model.test_on_batch(x, y)
+      model(x)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 

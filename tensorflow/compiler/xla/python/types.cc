@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 

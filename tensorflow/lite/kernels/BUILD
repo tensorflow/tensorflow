@@ -157,8 +157,10 @@ cc_library(
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
