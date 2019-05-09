@@ -27,10 +27,6 @@ class GpuInstructionFusion : public InstructionFusion {
   explicit GpuInstructionFusion(bool may_duplicate)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
 
-  // Maximum number of operands plus outputs allowed on a single fusion node.
-  // Exposed publicly mainly for tests.
-//  static constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
-
   static bool IsExpensive(const HloInstruction& instruction);
 
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;

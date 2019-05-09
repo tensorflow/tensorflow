@@ -28,8 +28,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -197,11 +195,6 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
 
   if (!IsLoopFusible(producer) || !IsFusible(consumer)) return false;
 
-  // Other output fusions are not currently supported on GPUs.
-  /*if (producer.opcode() == HloOpcode::kFusion) {
-    return false;
-  }*/
-
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
@@ -237,10 +230,6 @@ bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
   if (!producer.IsFusible() || !IsInputFusibleReduction(consumer)) return false;
-
-  // Never multi-output fuse constants.  To the extent that we want to fuse
-  // constants, that should be handled by the regular fusion pass.
-  if (producer.opcode() == HloOpcode::kConstant) return false;
 
   if (!producer.IsElementwise() && !producer.IsLoopFusion()) return false;
 
