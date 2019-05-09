@@ -21,8 +21,10 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -343,4 +345,202 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
 
   // Otherwise return the right pointer.
   return llvm::SMLoc::getFromPointer(position + columnNo);
+}
+
+//===----------------------------------------------------------------------===//
+// SourceMgrDiagnosticVerifierHandler
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace detail {
+// Record the expected diagnostic's position, substring and whether it was
+// seen.
+struct ExpectedDiag {
+  DiagnosticSeverity kind;
+  unsigned lineNo;
+  StringRef substring;
+  llvm::SMLoc fileLoc;
+  bool matched;
+};
+
+struct SourceMgrDiagnosticVerifierHandlerImpl {
+  SourceMgrDiagnosticVerifierHandlerImpl() : status(success()) {}
+
+  /// Returns the expected diagnostics for the given source file.
+  llvm::Optional<MutableArrayRef<ExpectedDiag>>
+  getExpectedDiags(StringRef bufName);
+
+  /// Computes the expected diagnostics for the given source buffer.
+  MutableArrayRef<ExpectedDiag>
+  computeExpectedDiags(const llvm::MemoryBuffer &buf);
+
+  /// The current status of the verifier.
+  LogicalResult status;
+
+  /// A list of expected diagnostics for each buffer of the source manager.
+  llvm::StringMap<SmallVector<ExpectedDiag, 2>> expectedDiagsPerFile;
+
+  /// Regex to match the expected diagnostics format.
+  llvm::Regex expected = llvm::Regex(
+      "expected-(error|note|remark|warning) *(@[+-][0-9]+)? *{{(.*)}}");
+};
+} // end namespace detail
+} // end namespace mlir
+
+/// Given a diagnostic kind, return a human readable string for it.
+static StringRef getDiagKindStr(DiagnosticSeverity kind) {
+  switch (kind) {
+  case DiagnosticSeverity::Note:
+    return "note";
+  case DiagnosticSeverity::Warning:
+    return "warning";
+  case DiagnosticSeverity::Error:
+    return "error";
+  case DiagnosticSeverity::Remark:
+    return "remark";
+  }
+}
+
+/// Returns the expected diagnostics for the given source file.
+llvm::Optional<MutableArrayRef<ExpectedDiag>>
+SourceMgrDiagnosticVerifierHandlerImpl::getExpectedDiags(StringRef bufName) {
+  auto expectedDiags = expectedDiagsPerFile.find(bufName);
+  if (expectedDiags != expectedDiagsPerFile.end())
+    return MutableArrayRef<ExpectedDiag>(expectedDiags->second);
+  return llvm::None;
+}
+
+/// Computes the expected diagnostics for the given source buffer.
+MutableArrayRef<ExpectedDiag>
+SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
+    const llvm::MemoryBuffer &buf) {
+  auto &expectedDiags = expectedDiagsPerFile[buf.getBufferIdentifier()];
+
+  // Scan the file for expected-* designators.
+  SmallVector<StringRef, 100> lines;
+  buf.getBuffer().split(lines, '\n');
+  for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
+    SmallVector<StringRef, 3> matches;
+    if (!expected.match(lines[lineNo], &matches))
+      continue;
+    // Point to the start of expected-*.
+    auto expectedStart = llvm::SMLoc::getFromPointer(matches[0].data());
+
+    DiagnosticSeverity kind;
+    if (matches[1] == "error")
+      kind = DiagnosticSeverity::Error;
+    else if (matches[1] == "warning")
+      kind = DiagnosticSeverity::Warning;
+    else if (matches[1] == "remark")
+      kind = DiagnosticSeverity::Remark;
+    else {
+      assert(matches[1] == "note");
+      kind = DiagnosticSeverity::Note;
+    }
+
+    ExpectedDiag record{kind, lineNo + 1, matches[3], expectedStart, false};
+    auto offsetMatch = matches[2];
+    if (!offsetMatch.empty()) {
+      int offset;
+      // Get the integer value without the @ and +/- prefix.
+      if (!offsetMatch.drop_front(2).getAsInteger(0, offset)) {
+        if (offsetMatch[1] == '+')
+          record.lineNo += offset;
+        else
+          record.lineNo -= offset;
+      }
+    }
+    expectedDiags.push_back(record);
+  }
+  return expectedDiags;
+}
+
+SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
+    llvm::SourceMgr &srcMgr, MLIRContext *ctx)
+    : SourceMgrDiagnosticHandler(srcMgr, ctx),
+      impl(new SourceMgrDiagnosticVerifierHandlerImpl()) {
+  // Compute the expected diagnostics for each of the current files in the
+  // source manager.
+  for (unsigned i = 0, e = mgr.getNumBuffers(); i != e; ++i)
+    (void)impl->computeExpectedDiags(*mgr.getMemoryBuffer(i + 1));
+
+  // Register a handler to verfy the diagnostics.
+  ctx->getDiagEngine().setHandler(
+      [&](Location loc, StringRef msg, DiagnosticSeverity kind) {
+        // We only support FileLineColLoc at the moment.
+        if (auto fileLoc = loc.dyn_cast<FileLineColLoc>())
+          return process(*fileLoc, msg, kind);
+
+        emitDiagnostic(loc, "expected " + getDiagKindStr(kind) + " \": " + msg,
+                       DiagnosticSeverity::Error);
+        impl->status = failure();
+      });
+}
+
+SourceMgrDiagnosticVerifierHandler::~SourceMgrDiagnosticVerifierHandler() {
+  // Ensure that all expected diagnosics were handled.
+  (void)verify();
+}
+
+/// Returns the status of the verifier and verifies that all expected
+/// diagnostics were emitted. This return success if all diagnostics were
+/// verified correctly, failure otherwise.
+LogicalResult SourceMgrDiagnosticVerifierHandler::verify() {
+  // Verify that all expected errors were seen.
+  for (auto &expectedDiagsPair : impl->expectedDiagsPerFile) {
+    for (auto &err : expectedDiagsPair.second) {
+      if (err.matched)
+        continue;
+      llvm::SMRange range(err.fileLoc,
+                          llvm::SMLoc::getFromPointer(err.fileLoc.getPointer() +
+                                                      err.substring.size()));
+      mgr.PrintMessage(err.fileLoc, llvm::SourceMgr::DK_Error,
+                       "expected " + getDiagKindStr(err.kind) + " \"" +
+                           err.substring + "\" was not produced",
+                       range);
+      impl->status = failure();
+    }
+  }
+  impl->expectedDiagsPerFile.clear();
+  return impl->status;
+}
+
+/// Process a FileLineColLoc diagnostic.
+void SourceMgrDiagnosticVerifierHandler::process(FileLineColLoc loc,
+                                                 StringRef msg,
+                                                 DiagnosticSeverity kind) {
+  // Get the expected diagnostics for this file.
+  auto diags = impl->getExpectedDiags(loc.getFilename());
+  if (!diags)
+    diags = impl->computeExpectedDiags(getBufferForFile(loc.getFilename()));
+
+  // Search for a matching expected diagnostic.
+  // If we find something that is close then emit a more specific error.
+  ExpectedDiag *nearMiss = nullptr;
+
+  // If this was an expected error, remember that we saw it and return.
+  unsigned line = loc.getLine();
+  for (auto &e : *diags) {
+    if (line == e.lineNo && msg.contains(e.substring)) {
+      if (e.kind == kind) {
+        e.matched = true;
+        return;
+      }
+
+      // If this only differs based on the diagnostic kind, then consider it
+      // to be a near miss.
+      nearMiss = &e;
+    }
+  }
+
+  // Otherwise, emit an error for the near miss.
+  if (nearMiss)
+    mgr.PrintMessage(nearMiss->fileLoc, llvm::SourceMgr::DK_Error,
+                     "'" + getDiagKindStr(kind) +
+                         "' diagnostic emitted when expecting a '" +
+                         getDiagKindStr(nearMiss->kind) + "'");
+  else
+    emitDiagnostic(loc, "expected " + getDiagKindStr(kind) + " \": " + msg,
+                   DiagnosticSeverity::Error);
+  impl->status = failure();
 }

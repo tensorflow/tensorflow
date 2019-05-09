@@ -109,162 +109,33 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   return OptSuccess;
 }
 
-/// Given a diagnostic kind, return a human readable string for it.
-static StringRef getDiagnosticKindString(DiagnosticSeverity kind) {
-  switch (kind) {
-  case DiagnosticSeverity::Note:
-    return "note";
-  case DiagnosticSeverity::Warning:
-    return "warning";
-  case DiagnosticSeverity::Error:
-    return "error";
-  case DiagnosticSeverity::Remark:
-    return "remark";
-  }
-}
-
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
 static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // Tell sourceMgr about this buffer, which is what the parser will pick up.
   SourceMgr sourceMgr;
-  auto &buffer = *ownedBuffer;
   sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), SMLoc());
 
   // Parse the input file.
   MLIRContext context;
-  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
 
   // If we are in verify mode then we have a lot of work to do, otherwise just
   // perform the actions without worrying about it.
   if (!verifyDiagnostics) {
-    // Run the test actions.
+    SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
     return performActions(sourceMgr, &context);
   }
 
-  // Keep track of the result of this file processing.  If there are no issues,
-  // then we succeed.
-  auto result = OptSuccess;
-
-  // Record the expected diagnostic's position, substring and whether it was
-  // seen.
-  struct ExpectedDiag {
-    DiagnosticSeverity kind;
-    unsigned lineNo;
-    StringRef substring;
-    SMLoc fileLoc;
-    bool matched;
-  };
-  SmallVector<ExpectedDiag, 2> expectedDiags;
-
-  // Error checker that verifies reported error was expected.
-  auto checker = [&](Location location, StringRef message,
-                     DiagnosticSeverity kind) {
-    unsigned line = 1, column = 1;
-    if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
-      line = fileLoc->getLine();
-      column = fileLoc->getColumn();
-    }
-
-    // If we find something that is close then emit a more specific error.
-    ExpectedDiag *nearMiss = nullptr;
-
-    // If this was an expected error, remember that we saw it and return.
-    for (auto &e : expectedDiags) {
-      if (line == e.lineNo && message.contains(e.substring)) {
-        if (e.kind == kind) {
-          e.matched = true;
-          return;
-        }
-
-        // If this only differs based on the diagnostic kind, then consider it
-        // to be a near miss.
-        nearMiss = &e;
-      }
-    }
-
-    // If there was a near miss, emit a specific diagnostic.
-    if (nearMiss) {
-      sourceMgr.PrintMessage(nearMiss->fileLoc, SourceMgr::DK_Error,
-                             "'" + getDiagnosticKindString(kind) +
-                                 "' diagnostic emitted when expecting a '" +
-                                 getDiagnosticKindString(nearMiss->kind) + "'");
-      result = OptFailure;
-      return;
-    }
-
-    // If this error wasn't expected, produce an error out of mlir-opt saying
-    // so.
-    sourceMgrHandler.emitDiagnostic(location, "unexpected error: " + message,
-                                    DiagnosticSeverity::Error);
-    result = OptFailure;
-  };
-
-  // Scan the file for expected-* designators and register a callback for the
-  // error handler.
-  // Extract the expected errors from the file.
-  llvm::Regex expected(
-      "expected-(error|note|remark|warning) *(@[+-][0-9]+)? *{{(.*)}}");
-  SmallVector<StringRef, 100> lines;
-  buffer.getBuffer().split(lines, '\n');
-  for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
-    SmallVector<StringRef, 3> matches;
-    if (expected.match(lines[lineNo], &matches)) {
-      // Point to the start of expected-*.
-      SMLoc expectedStart = SMLoc::getFromPointer(matches[0].data());
-
-      DiagnosticSeverity kind;
-      if (matches[1] == "error")
-        kind = DiagnosticSeverity::Error;
-      else if (matches[1] == "warning")
-        kind = DiagnosticSeverity::Warning;
-      else if (matches[1] == "remark")
-        kind = DiagnosticSeverity::Remark;
-      else {
-        assert(matches[1] == "note");
-        kind = DiagnosticSeverity::Note;
-      }
-
-      ExpectedDiag record{kind, lineNo + 1, matches[3], expectedStart, false};
-      auto offsetMatch = matches[2];
-      if (!offsetMatch.empty()) {
-        int offset;
-        // Get the integer value without the @ and +/- prefix.
-        if (!offsetMatch.drop_front(2).getAsInteger(0, offset)) {
-          if (offsetMatch[1] == '+')
-            record.lineNo += offset;
-          else
-            record.lineNo -= offset;
-        }
-      }
-      expectedDiags.push_back(record);
-    }
-  }
-
-  // Finally, register the error handler to capture them.
-  context.getDiagEngine().setHandler(checker);
+  SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
 
   // Do any processing requested by command line flags.  We don't care whether
   // these actions succeed or fail, we only care what diagnostics they produce
   // and whether they match our expectations.
   performActions(sourceMgr, &context);
 
-  // Verify that all expected errors were seen.
-  for (auto &err : expectedDiags) {
-    if (!err.matched) {
-      SMRange range(err.fileLoc,
-                    SMLoc::getFromPointer(err.fileLoc.getPointer() +
-                                          err.substring.size()));
-      auto kind = getDiagnosticKindString(err.kind);
-      sourceMgr.PrintMessage(err.fileLoc, SourceMgr::DK_Error,
-                             "expected " + kind + " \"" + err.substring +
-                                 "\" was not produced",
-                             range);
-      result = OptFailure;
-    }
-  }
-
-  return result;
+  // Verify the diagnostic handler to make sure that each of the diagnostics
+  // matched.
+  return failed(sourceMgrHandler.verify()) ? OptFailure : OptSuccess;
 }
 
 /// Split the specified file on a marker and process each chunk independently

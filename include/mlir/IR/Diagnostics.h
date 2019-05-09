@@ -442,20 +442,50 @@ public:
   /// Emit the given diagnostic information with the held source manager.
   void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
 
-private:
+protected:
   /// Get a memory buffer for the given file, or the main file of the source
   /// manager if one doesn't exist.
   const llvm::MemoryBuffer &getBufferForFile(StringRef filename);
 
-  /// Convert a location into the given memory buffer into an SMLoc.
-  llvm::SMLoc convertLocToSMLoc(Location loc);
-
   /// The source manager that we are wrapping.
   llvm::SourceMgr &mgr;
+
+private:
+  /// Convert a location into the given memory buffer into an SMLoc.
+  llvm::SMLoc convertLocToSMLoc(Location loc);
 
   /// Mapping between file name and buffer pointer.
   llvm::StringMap<const llvm::MemoryBuffer *> filenameToBuf;
 };
+
+//===----------------------------------------------------------------------===//
+// SourceMgrDiagnosticVerifierHandler
+//===----------------------------------------------------------------------===//
+
+namespace detail {
+struct SourceMgrDiagnosticVerifierHandlerImpl;
+} // end namespace detail
+
+/// This class is a utility diagnostic handler for use with llvm::SourceMgr that
+/// verifies that emitted diagnostics match 'expected-*' lines on the
+/// corresponding line of the source file.
+class SourceMgrDiagnosticVerifierHandler : public SourceMgrDiagnosticHandler {
+public:
+  SourceMgrDiagnosticVerifierHandler(llvm::SourceMgr &srcMgr, MLIRContext *ctx);
+  ~SourceMgrDiagnosticVerifierHandler();
+
+  /// Returns the status of the handler and verifies that all expected
+  /// diagnostics were emitted. This return success if all diagnostics were
+  /// verified correctly, failure otherwise.
+  LogicalResult verify();
+
+private:
+  /// Process a FileLineColLoc diagnostic.
+  void process(FileLineColLoc loc, StringRef msg, DiagnosticSeverity kind);
+
+  std::unique_ptr<detail::SourceMgrDiagnosticVerifierHandlerImpl> impl;
+};
+
 } // namespace mlir
 
 #endif
