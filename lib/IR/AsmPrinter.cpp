@@ -79,9 +79,10 @@ static llvm::cl::opt<bool>
                        llvm::cl::init(false), llvm::cl::Hidden);
 
 namespace {
+/// A special index constant used for non-kind attribute aliases.
+static constexpr int kNonAttrKindAlias = -1;
+
 class ModuleState {
-  /// A special index constant used for non-kind attribute aliases.
-  static constexpr int kNonAttrKindAlias = -1;
 
 public:
   /// This is the current context if it is knowable, otherwise this is null.

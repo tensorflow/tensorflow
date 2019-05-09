@@ -1,5 +1,6 @@
 add_subdirectory(EDSC)
 add_subdirectory(FxpMathOps)
+add_subdirectory(GPU)
 add_subdirectory(Linalg)
 add_subdirectory(LLVMIR)
 add_subdirectory(Quantization)

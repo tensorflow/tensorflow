@@ -5,5 +5,5 @@ add_llvm_library(MLIRGPU
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/GPU
 )
-add_dependencies(MLIRGPU MLIRIR LLVMSupport)
+add_dependencies(MLIRGPU MLIRGPUOpsIncGen MLIRIR LLVMSupport)
 target_link_libraries(MLIRGPU MLIRIR LLVMSupport)
