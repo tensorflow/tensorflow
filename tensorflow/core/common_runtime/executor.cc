@@ -158,14 +158,14 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
-  bool is_merge : 1;             // True iff IsMerge(node)
-  bool is_enter : 1;             // True iff IsEnter(node)
-  bool is_constant_enter : 1;    // True iff IsEnter(node) and
-                                 // node->GetAttr("is_constant") == true.
-  bool is_exit : 1;              // True iff IsExit(node)
-  bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
-  bool is_sink : 1;              // True iff IsSink(node)
+  bool kernel_is_async : 1;     // True iff kernel->AsAsync() != nullptr
+  bool is_merge : 1;            // True iff IsMerge(node)
+  bool is_enter : 1;            // True iff IsEnter(node)
+  bool is_constant_enter : 1;   // True iff IsEnter(node) and
+                                // node->GetAttr("is_constant") == true.
+  bool is_exit : 1;             // True iff IsExit(node)
+  bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
+  bool is_sink : 1;             // True iff IsSink(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
 
@@ -1249,6 +1249,7 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   string session_handle_;
@@ -1383,6 +1384,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      create_rendezvous_(&impl->params_.rendezvous_factory),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
@@ -1627,6 +1629,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
+  params.create_rendezvous = create_rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.session_handle = session_handle_;

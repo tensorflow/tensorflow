@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function as eager_def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -942,6 +943,35 @@ class FunctionalOpsTest(test.TestCase):
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
 # below test cases.
 class PartitionedCallTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testRemoteDeviceInPartitionedCallOp(self):
+    workers, _ = test_util.create_local_cluster(2, 0)
+
+    worker0_device = "/job:worker/replica:0/task:0/cpu:0"
+    worker1_device = "/job:worker/replica:0/task:1/cpu:0"
+
+    @eager_def_function.function
+    def f(a, b):
+      return a + b
+
+    with session.Session(workers[0].target) as sess:
+      with ops.device(worker0_device):
+        a = variable_scope.get_variable(
+            "a", initializer=constant_op.constant(1.), use_resource=True)
+      with ops.device(worker1_device):
+        b = variable_scope.get_variable(
+            "b", initializer=constant_op.constant(1.), use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+
+    config = config_pb2.ConfigProto()
+    config.experimental.share_cluster_devices_in_session = True
+
+    with session.Session(workers[0].target, config=config) as sess:
+      res = sess.run(f(a, b))
+
+    self.assertEqual(res, 2)
 
   @test_util.run_deprecated_v1
   def testBasicSingleDevice(self):
