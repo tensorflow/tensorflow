@@ -135,6 +135,9 @@ FunctionDef RandomUniformLess();
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();
 
+// x:T -> y: T, idx: out_idx
+FunctionDef Unique();
+
 void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function
