@@ -290,9 +290,9 @@ class Variant {
     virtual const void* RawPtr() const = 0;
     virtual ValueInterface* Clone() const = 0;
     virtual void CloneInto(ValueInterface* memory) const = 0;
-    virtual void DefaultConstructIn(ValueInterface* memory) const = 0;
     virtual void Swap(ValueInterface* memory) = 0;
-    virtual void MoveTo(ValueInterface* memory) = 0;
+    virtual void MoveAssign(ValueInterface* memory) = 0;
+    virtual void MoveInto(ValueInterface* memory) = 0;
     virtual string TypeName() const = 0;
     virtual string DebugString() const = 0;
     virtual void Encode(VariantTensorData* data) const = 0;
@@ -330,11 +330,7 @@ class Variant {
       return clone;
     }
 
-    void DefaultConstructIn(ValueInterface* memory) const override {
-      new (memory) Value(kInPlace, T());
-    }
-
-    void MoveTo(ValueInterface* memory) override {
+    void MoveAssign(ValueInterface* memory) override {
       CHECK(TypeId() == memory->TypeId())
           << TypeId().name() << " vs. " << memory->TypeId().name();
       static_cast<Value*>(memory)->value = std::move(value);
@@ -342,6 +338,10 @@ class Variant {
 
     void CloneInto(ValueInterface* memory) const override {
       new (memory) Value(kInPlace, value);
+    }
+
+    void MoveInto(ValueInterface* memory) override {
+      new (memory) Value(kInPlace, std::move(value));
     }
 
     void Swap(ValueInterface* memory) override {
@@ -419,8 +419,7 @@ class Variant {
 
     InlineValue(InlineValue&& other) noexcept : has_value(other.has_value) {
       if (other.has_value) {
-        other.AsValueInterface()->DefaultConstructIn(AsValueInterface());
-        other.AsValueInterface()->MoveTo(AsValueInterface());
+        other.AsValueInterface()->MoveInto(AsValueInterface());
         other.Cleanup();
       }
     }
@@ -463,12 +462,12 @@ class Variant {
             if (AsValueInterface()->TypeId() !=
                 other.AsValueInterface()->TypeId()) {
               Cleanup();
-              other.AsValueInterface()->DefaultConstructIn(AsValueInterface());
+              other.AsValueInterface()->MoveInto(AsValueInterface());
+            } else {
+              other.AsValueInterface()->MoveAssign(AsValueInterface());
             }
-            other.AsValueInterface()->MoveTo(AsValueInterface());
           } else {
-            other.AsValueInterface()->DefaultConstructIn(AsValueInterface());
-            other.AsValueInterface()->MoveTo(AsValueInterface());
+            other.AsValueInterface()->MoveInto(AsValueInterface());
           }
           other.Cleanup();
           has_value = true;
@@ -597,8 +596,7 @@ inline Variant::Variant(Variant&& other) noexcept
   if (!other.is_empty()) {
     if (other.IsInlineValue()) {
       value_.inline_value = InlineValue();
-      other.GetValue()->DefaultConstructIn(GetValue());
-      other.GetValue()->MoveTo(GetValue());
+      other.GetValue()->MoveInto(GetValue());
       value_.inline_value.has_value = true;
     } else {
       value_.heap_value = std::move(other.value_.heap_value);
