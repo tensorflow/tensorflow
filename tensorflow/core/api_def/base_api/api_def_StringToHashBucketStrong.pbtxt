@@ -21,7 +21,7 @@ END
   attr {
     name: "key"
     description: <<END
-The key for the keyed hash function passed as a list of two uint64
+The key used to seed the hash function, passed as a list of two uint64
 elements.
 END
   }
@@ -36,9 +36,7 @@ additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
 hash can be used to make it difficult to find inputs with a skewed hash value
 distribution over buckets. This requires that the hash function is
-randomized by high-entropy "salt", a random string unknown to the adversary.
-To hash a string x using salt y, compute the hash function on the concatenation
-of x and y.
+seeded by a high-entropy (random) "key" unknown to the adversary.
 
 The additional robustness comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
