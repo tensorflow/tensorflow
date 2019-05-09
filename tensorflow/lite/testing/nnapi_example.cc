@@ -47,9 +47,11 @@ bool Interpret(const char* examples_filename, bool use_nnapi) {
   test_driver.SetModelBaseDir(dirname(examples_filename));
   if (!tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver)) {
     fprintf(stderr, "Results from tflite don't match.");
+    tflite_stream.close();
     return false;
   }
 
+  tflite_stream.close();
   return true;
 }
 

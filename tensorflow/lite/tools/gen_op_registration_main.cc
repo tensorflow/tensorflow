@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
   std::ifstream fin(input_model);
   std::stringstream content;
   content << fin.rdbuf();
+  fin.close();
   // Need to store content data first, otherwise, it won't work in bazel.
   string content_str = content.str();
   const ::tflite::Model* model = ::tflite::GetModel(content_str.data());

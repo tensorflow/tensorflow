@@ -44,6 +44,7 @@ TEST(UtilTest, SimpleE2ETest) {
   std::ifstream file(options.dump_output_to_file);
   std::getline(file, content);
   EXPECT_EQ(content, expected);
+  file.close();
 }
 
 }  // namespace

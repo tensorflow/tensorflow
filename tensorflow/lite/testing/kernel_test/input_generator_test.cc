@@ -54,6 +54,7 @@ TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   std::string out;
   std::getline(in, out, '\n');
   ASSERT_EQ(out, content);
+  in.close();
 }
 
 TEST(InputGeneratorTest, GenerateUniformInput) {

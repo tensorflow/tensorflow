@@ -146,6 +146,7 @@ TEST_F(PredictorTest, BatchTest) {
     EXPECT_THAT(&predictions, IncludeAnyResponesIn(std::unordered_set<string>(
                                   fields.begin() + 1, fields.end())));
   }
+  fin.close();
 
   EXPECT_EQ(total_triggers, total_items);
   EXPECT_GE(total_responses, total_triggers);

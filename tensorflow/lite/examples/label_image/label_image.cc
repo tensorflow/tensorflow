@@ -63,6 +63,7 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
   while (std::getline(file, line)) {
     result->push_back(line);
   }
+  file.close();
   *found_label_count = result->size();
   const int padding = 16;
   while (result->size() % padding) {
