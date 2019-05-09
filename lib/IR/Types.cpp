@@ -24,15 +24,15 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-unsigned Type::getKind() const { return type->getKind(); }
+unsigned Type::getKind() const { return impl->getKind(); }
 
 /// Get the dialect this type is registered to.
-const Dialect &Type::getDialect() const { return type->getDialect(); }
+const Dialect &Type::getDialect() const { return impl->getDialect(); }
 
 MLIRContext *Type::getContext() const { return getDialect().getContext(); }
 
-unsigned Type::getSubclassData() const { return type->getSubclassData(); }
-void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
+unsigned Type::getSubclassData() const { return impl->getSubclassData(); }
+void Type::setSubclassData(unsigned val) { impl->setSubclassData(val); }
 
 /// Function Type.
 

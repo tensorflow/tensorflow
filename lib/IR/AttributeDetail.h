@@ -123,6 +123,21 @@ struct FloatAttributeStorage final
     return llvm::hash_combine(key.first, llvm::hash_value(key.second));
   }
 
+  /// Construct a key with a type and double.
+  static KeyTy getKey(Type type, double value) {
+    // Treat BF16 as double because it is not supported in LLVM's APFloat.
+    // TODO(b/121118307): add BF16 support to APFloat?
+    if (type.isBF16() || type.isF64())
+      return KeyTy(type, APFloat(value));
+
+    // This handles, e.g., F16 because there is no APFloat constructor for it.
+    bool unused;
+    APFloat val(value);
+    val.convert(type.cast<FloatType>().getFloatSemantics(),
+                APFloat::rmNearestTiesToEven, &unused);
+    return KeyTy(type, val);
+  }
+
   /// Construct a new storage instance.
   static FloatAttributeStorage *construct(AttributeStorageAllocator &allocator,
                                           const KeyTy &key) {

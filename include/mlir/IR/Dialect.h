@@ -189,7 +189,7 @@ protected:
 
   template <typename First> struct VariadicTypeAdder<First> {
     static void addToSet(Dialect &dialect) {
-      dialect.addType(First::getTypeID());
+      dialect.addType(First::getClassID());
     }
   };
 

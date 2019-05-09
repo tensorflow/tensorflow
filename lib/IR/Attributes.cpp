@@ -61,17 +61,17 @@ AttributeUniquer::getInitFn(MLIRContext *ctx) {
 //===----------------------------------------------------------------------===//
 
 Attribute::Kind Attribute::getKind() const {
-  return static_cast<Kind>(attr->getKind());
+  return static_cast<Kind>(impl->getKind());
 }
 
 /// Return the type of this attribute.
-Type Attribute::getType() const { return attr->getType(); }
+Type Attribute::getType() const { return impl->getType(); }
 
 /// Return the context this attribute belongs to.
 MLIRContext *Attribute::getContext() const { return getType().getContext(); }
 
 bool Attribute::isOrContainsFunction() const {
-  return attr->isOrContainsFunctionCache();
+  return impl->isOrContainsFunctionCache();
 }
 
 // Given an attribute that could refer to a function attribute in the remapping
@@ -120,19 +120,17 @@ UnitAttr UnitAttr::get(MLIRContext *context) {
 
 BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   // Note: The context is also used within the BoolAttrStorage.
-  return AttributeUniquer::get<BoolAttr>(context, Attribute::Kind::Bool,
-                                         context, value);
+  return Base::get(context, Attribute::Kind::Bool, context, value);
 }
 
-bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
+bool BoolAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr
 //===----------------------------------------------------------------------===//
 
 IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
-  return AttributeUniquer::get<IntegerAttr>(
-      type.getContext(), Attribute::Kind::Integer, type, value);
+  return Base::get(type.getContext(), Attribute::Kind::Integer, type, value);
 }
 
 IntegerAttr IntegerAttr::get(Type type, int64_t value) {
@@ -144,9 +142,7 @@ IntegerAttr IntegerAttr::get(Type type, int64_t value) {
   return get(type, APInt(intType.getWidth(), value));
 }
 
-APInt IntegerAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->getValue();
-}
+APInt IntegerAttr::getValue() const { return getImpl()->getValue(); }
 
 int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
 
@@ -154,47 +150,25 @@ int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
 // FloatAttr
 //===----------------------------------------------------------------------===//
 
-FloatAttr FloatAttr::get(Type type, const APFloat &value) {
-  assert(&type.cast<FloatType>().getFloatSemantics() == &value.getSemantics() &&
-         "FloatAttr type doesn't match the type implied by its value");
-  return AttributeUniquer::get<FloatAttr>(type.getContext(),
-                                          Attribute::Kind::Float, type, value);
-}
-
-static FloatAttr getFloatAttr(Type type, double value,
-                              llvm::Optional<Location> loc) {
-  if (!type.isa<FloatType>()) {
-    if (loc)
-      type.getContext()->emitError(*loc) << "expected floating point type";
-    return nullptr;
-  }
-
-  // Treat BF16 as double because it is not supported in LLVM's APFloat.
-  // TODO(b/121118307): add BF16 support to APFloat?
-  if (type.isBF16() || type.isF64())
-    return FloatAttr::get(type, APFloat(value));
-
-  // This handles, e.g., F16 because there is no APFloat constructor for it.
-  bool unused;
-  APFloat val(value);
-  val.convert(type.cast<FloatType>().getFloatSemantics(),
-              APFloat::rmNearestTiesToEven, &unused);
-  return FloatAttr::get(type, val);
+FloatAttr FloatAttr::get(Type type, double value) {
+  return Base::get(type.getContext(), Attribute::Kind::Float, type, value);
 }
 
 FloatAttr FloatAttr::getChecked(Type type, double value, Location loc) {
-  return getFloatAttr(type, value, loc);
+  return Base::getChecked(loc, type.getContext(), Attribute::Kind::Float, type,
+                          value);
 }
 
-FloatAttr FloatAttr::get(Type type, double value) {
-  auto res = getFloatAttr(type, value, /*loc=*/llvm::None);
-  assert(res && "failed to construct float attribute");
-  return res;
+FloatAttr FloatAttr::get(Type type, const APFloat &value) {
+  return Base::get(type.getContext(), Attribute::Kind::Float, type, value);
 }
 
-APFloat FloatAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->getValue();
+FloatAttr FloatAttr::getChecked(Type type, const APFloat &value, Location loc) {
+  return Base::getChecked(loc, type.getContext(), Attribute::Kind::Float, type,
+                          value);
 }
+
+APFloat FloatAttr::getValue() const { return getImpl()->getValue(); }
 
 double FloatAttr::getValueAsDouble() const {
   return getValueAsDouble(getValue());
@@ -208,68 +182,91 @@ double FloatAttr::getValueAsDouble(APFloat value) {
   return value.convertToDouble();
 }
 
+/// Verify construction invariants.
+static LogicalResult verifyFloatTypeInvariants(llvm::Optional<Location> loc,
+                                               Type type) {
+  if (!type.isa<FloatType>()) {
+    if (loc)
+      type.getContext()->emitError(*loc, "expected floating point type");
+    return failure();
+  }
+  return success();
+}
+
+LogicalResult FloatAttr::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *ctx, Type type, double value) {
+  return verifyFloatTypeInvariants(loc, type);
+}
+
+LogicalResult
+FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                        MLIRContext *ctx, Type type,
+                                        const APFloat &value) {
+  // Verify that the type is correct.
+  if (failed(verifyFloatTypeInvariants(loc, type)))
+    return failure();
+
+  // Verify that the type semantics match that of the value.
+  if (&type.cast<FloatType>().getFloatSemantics() != &value.getSemantics()) {
+    if (loc)
+      ctx->emitError(
+          *loc, "FloatAttr type doesn't match the type implied by its value");
+    return failure();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // StringAttr
 //===----------------------------------------------------------------------===//
 
 StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
-  return AttributeUniquer::get<StringAttr>(context, Attribute::Kind::String,
-                                           bytes);
+  return Base::get(context, Attribute::Kind::String, bytes);
 }
 
-StringRef StringAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+StringRef StringAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // ArrayAttr
 //===----------------------------------------------------------------------===//
 
 ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
-  return AttributeUniquer::get<ArrayAttr>(context, Attribute::Kind::Array,
-                                          value);
+  return Base::get(context, Attribute::Kind::Array, value);
 }
 
-ArrayRef<Attribute> ArrayAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+ArrayRef<Attribute> ArrayAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // AffineMapAttr
 //===----------------------------------------------------------------------===//
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return AttributeUniquer::get<AffineMapAttr>(
-      value.getResult(0).getContext(), Attribute::Kind::AffineMap, value);
+  return Base::get(value.getResult(0).getContext(), Attribute::Kind::AffineMap,
+                   value);
 }
 
-AffineMap AffineMapAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // IntegerSetAttr
 //===----------------------------------------------------------------------===//
 
 IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
-  return AttributeUniquer::get<IntegerSetAttr>(
-      value.getConstraint(0).getContext(), Attribute::Kind::IntegerSet, value);
+  return Base::get(value.getConstraint(0).getContext(),
+                   Attribute::Kind::IntegerSet, value);
 }
 
-IntegerSet IntegerSetAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+IntegerSet IntegerSetAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // TypeAttr
 //===----------------------------------------------------------------------===//
 
 TypeAttr TypeAttr::get(Type value) {
-  return AttributeUniquer::get<TypeAttr>(value.getContext(),
-                                         Attribute::Kind::Type, value);
+  return Base::get(value.getContext(), Attribute::Kind::Type, value);
 }
 
-Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
+Type TypeAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // FunctionAttr
@@ -277,8 +274,7 @@ Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 FunctionAttr FunctionAttr::get(Function *value) {
   assert(value && "Cannot get FunctionAttr for a null function");
-  return AttributeUniquer::get<FunctionAttr>(value->getContext(),
-                                             Attribute::Kind::Function, value);
+  return Base::get(value->getContext(), Attribute::Kind::Function, value);
 }
 
 /// This function is used by the internals of the Function class to null out
@@ -288,9 +284,7 @@ void FunctionAttr::dropFunctionReference(Function *value) {
                                         Attribute::Kind::Function, value);
 }
 
-Function *FunctionAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+Function *FunctionAttr::getValue() const { return getImpl()->value; }
 
 FunctionType FunctionAttr::getType() const {
   return Attribute::getType().cast<FunctionType>();
@@ -330,13 +324,11 @@ SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
                                          Attribute elt) {
   assert(elt.getType() == type.getElementType() &&
          "value should be of the given element type");
-  return AttributeUniquer::get<SplatElementsAttr>(
-      type.getContext(), Attribute::Kind::SplatElements, type, elt);
+  return Base::get(type.getContext(), Attribute::Kind::SplatElements, type,
+                   elt);
 }
 
-Attribute SplatElementsAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->elt;
-}
+Attribute SplatElementsAttr::getValue() const { return getImpl()->elt; }
 
 //===----------------------------------------------------------------------===//
 // RawElementIterator
@@ -502,7 +494,7 @@ void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
 }
 
 ArrayRef<char> DenseElementsAttr::getRawData() const {
-  return static_cast<ImplType *>(attr)->data;
+  return static_cast<ImplType *>(impl)->data;
 }
 
 // Constructs a dense elements attribute from an array of raw APInt values.
@@ -652,13 +644,11 @@ OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
                                            StringRef bytes) {
   assert(TensorType::isValidElementType(type.getElementType()) &&
          "Input element type should be a valid tensor element type");
-  return AttributeUniquer::get<OpaqueElementsAttr>(
-      type.getContext(), Attribute::Kind::OpaqueElements, type, dialect, bytes);
+  return Base::get(type.getContext(), Attribute::Kind::OpaqueElements, type,
+                   dialect, bytes);
 }
 
-StringRef OpaqueElementsAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->bytes;
-}
+StringRef OpaqueElementsAttr::getValue() const { return getImpl()->bytes; }
 
 /// Return the value at the given index. If index does not refer to a valid
 /// element, then a null attribute is returned.
@@ -668,9 +658,7 @@ Attribute OpaqueElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   return Attribute();
 }
 
-Dialect *OpaqueElementsAttr::getDialect() const {
-  return static_cast<ImplType *>(attr)->dialect;
-}
+Dialect *OpaqueElementsAttr::getDialect() const { return getImpl()->dialect; }
 
 bool OpaqueElementsAttr::decode(ElementsAttr &result) {
   if (auto *d = getDialect())
@@ -687,17 +675,16 @@ SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
                                            DenseElementsAttr values) {
   assert(indices.getType().getElementType().isInteger(64) &&
          "expected sparse indices to be 64-bit integer values");
-  return AttributeUniquer::get<SparseElementsAttr>(
-      type.getContext(), Attribute::Kind::SparseElements, type, indices,
-      values);
+  return Base::get(type.getContext(), Attribute::Kind::SparseElements, type,
+                   indices, values);
 }
 
 DenseIntElementsAttr SparseElementsAttr::getIndices() const {
-  return static_cast<ImplType *>(attr)->indices;
+  return getImpl()->indices;
 }
 
 DenseElementsAttr SparseElementsAttr::getValues() const {
-  return static_cast<ImplType *>(attr)->values;
+  return getImpl()->values;
 }
 
 /// Return the value of the element at the given index.

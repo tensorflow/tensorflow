@@ -23,7 +23,7 @@
 #define MLIR_IR_ATTRIBUTESUPPORT_H
 
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Support/StorageUniquer.h"
+#include "mlir/IR/StorageUniquerSupport.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/StringRef.h"
 

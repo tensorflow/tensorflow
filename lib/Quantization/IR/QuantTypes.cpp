@@ -28,7 +28,7 @@ using namespace mlir::quant;
 using namespace mlir::quant::detail;
 
 unsigned QuantizedType::getFlags() const {
-  return static_cast<ImplType *>(type)->flags;
+  return static_cast<ImplType *>(impl)->flags;
 }
 
 LogicalResult QuantizedType::verifyConstructionInvariants(
@@ -75,25 +75,25 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
 }
 
 Type QuantizedType::getStorageType() const {
-  return static_cast<ImplType *>(type)->storageType;
+  return static_cast<ImplType *>(impl)->storageType;
 }
 
 int64_t QuantizedType::getStorageTypeMin() const {
-  return static_cast<ImplType *>(type)->storageTypeMin;
+  return static_cast<ImplType *>(impl)->storageTypeMin;
 }
 
 int64_t QuantizedType::getStorageTypeMax() const {
-  return static_cast<ImplType *>(type)->storageTypeMax;
+  return static_cast<ImplType *>(impl)->storageTypeMax;
 }
 
 unsigned QuantizedType::getStorageTypeIntegralWidth() const {
   // NOTE: If ever supporting non-integral storage types, some other scheme
   // for determining the width will be needed.
-  return static_cast<ImplType *>(type)->storageType.getIntOrFloatBitWidth();
+  return static_cast<ImplType *>(impl)->storageType.getIntOrFloatBitWidth();
 }
 
 Type QuantizedType::getExpressedType() const {
-  return static_cast<ImplType *>(type)->expressedType;
+  return static_cast<ImplType *>(impl)->expressedType;
 }
 
 bool QuantizedType::isCompatibleExpressedType(Type candidateExpressedType) {

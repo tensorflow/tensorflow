@@ -108,7 +108,7 @@ unsigned Type::getIntOrFloatBitWidth() const {
 //===----------------------------------------------------------------------===//
 
 Type VectorOrTensorType::getElementType() const {
-  return static_cast<ImplType *>(type)->elementType;
+  return static_cast<ImplType *>(impl)->elementType;
 }
 
 unsigned VectorOrTensorType::getElementTypeBitWidth() const {
@@ -360,21 +360,15 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
                    cleanedAffineMapComposition, memorySpace);
 }
 
-ArrayRef<int64_t> MemRefType::getShape() const {
-  return static_cast<ImplType *>(type)->getShape();
-}
+ArrayRef<int64_t> MemRefType::getShape() const { return getImpl()->getShape(); }
 
-Type MemRefType::getElementType() const {
-  return static_cast<ImplType *>(type)->elementType;
-}
+Type MemRefType::getElementType() const { return getImpl()->elementType; }
 
 ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
-  return static_cast<ImplType *>(type)->getAffineMaps();
+  return getImpl()->getAffineMaps();
 }
 
-unsigned MemRefType::getMemorySpace() const {
-  return static_cast<ImplType *>(type)->memorySpace;
-}
+unsigned MemRefType::getMemorySpace() const { return getImpl()->memorySpace; }
 
 unsigned MemRefType::getNumDynamicDims() const {
   return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });

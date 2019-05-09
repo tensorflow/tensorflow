@@ -23,7 +23,7 @@
 #define MLIR_IR_TYPE_SUPPORT_H
 
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Support/StorageUniquer.h"
+#include "mlir/IR/StorageUniquerSupport.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
 
@@ -110,7 +110,7 @@ private:
   /// Get the dialect that the type 'T' was registered with.
   template <typename T>
   static const Dialect &lookupDialectForType(MLIRContext *ctx) {
-    return lookupDialectForType(ctx, T::getTypeID());
+    return lookupDialectForType(ctx, T::getClassID());
   }
 
   /// Get the dialect that registered the type with the provided typeid.

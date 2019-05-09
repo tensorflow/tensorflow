@@ -422,6 +422,7 @@ private:
   static MemRefType getImpl(ArrayRef<int64_t> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
+  using Base::getImpl;
 };
 
 /// The 'complex' type represents a complex number with a parameterized element

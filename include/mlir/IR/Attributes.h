@@ -90,24 +90,30 @@ public:
     LAST_KIND = SparseElements,
   };
 
+  /// Utility class for implementing attributes.
+  template <typename ConcreteType, typename BaseType = Attribute,
+            typename StorageType = AttributeStorage>
+  using AttrBase = detail::StorageUserBase<ConcreteType, BaseType, StorageType,
+                                           detail::AttributeUniquer>;
+
   using ImplType = AttributeStorage;
   using ValueType = void;
 
-  Attribute() : attr(nullptr) {}
-  /* implicit */ Attribute(const ImplType *attr)
-      : attr(const_cast<ImplType *>(attr)) {}
+  Attribute() : impl(nullptr) {}
+  /* implicit */ Attribute(const ImplType *impl)
+      : impl(const_cast<ImplType *>(impl)) {}
 
-  Attribute(const Attribute &other) : attr(other.attr) {}
+  Attribute(const Attribute &other) : impl(other.impl) {}
   Attribute &operator=(Attribute other) {
-    attr = other.attr;
+    impl = other.impl;
     return *this;
   }
 
-  bool operator==(Attribute other) const { return attr == other.attr; }
+  bool operator==(Attribute other) const { return impl == other.impl; }
   bool operator!=(Attribute other) const { return !(*this == other); }
-  explicit operator bool() const { return attr; }
+  explicit operator bool() const { return impl; }
 
-  bool operator!() const { return attr == nullptr; }
+  bool operator!() const { return impl == nullptr; }
 
   template <typename U> bool isa() const;
   template <typename U> U dyn_cast() const;
@@ -145,7 +151,7 @@ public:
   void dump() const;
 
   /// Get an opaque pointer to the attribute.
-  const void *getAsOpaquePointer() const { return attr; }
+  const void *getAsOpaquePointer() const { return impl; }
   /// Construct an attribute from the opaque pointer representation.
   static Attribute getFromOpaquePointer(const void *ptr) {
     return Attribute(
@@ -155,7 +161,7 @@ public:
   friend ::llvm::hash_code hash_value(Attribute arg);
 
 protected:
-  ImplType *attr;
+  ImplType *impl;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
@@ -165,19 +171,19 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 
 /// Unit attributes are attributes that hold no specific value and are given
 /// meaning by their existence.
-class UnitAttr : public Attribute {
+class UnitAttr : public Attribute::AttrBase<UnitAttr> {
 public:
-  using Attribute::Attribute;
+  using Base::Base;
 
   static UnitAttr get(MLIRContext *context);
 
   static bool kindof(Kind kind) { return kind == Attribute::Kind::Unit; }
 };
 
-class BoolAttr : public Attribute {
+class BoolAttr : public Attribute::AttrBase<BoolAttr, Attribute,
+                                            detail::BoolAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::BoolAttributeStorage;
+  using Base::Base;
   using ValueType = bool;
 
   static BoolAttr get(bool value, MLIRContext *context);
@@ -188,10 +194,11 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Bool; }
 };
 
-class IntegerAttr : public Attribute {
+class IntegerAttr
+    : public Attribute::AttrBase<IntegerAttr, Attribute,
+                                 detail::IntegerAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::IntegerAttributeStorage;
+  using Base::Base;
   using ValueType = APInt;
 
   static IntegerAttr get(Type type, int64_t value);
@@ -205,10 +212,10 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
 };
 
-class FloatAttr : public Attribute {
+class FloatAttr : public Attribute::AttrBase<FloatAttr, Attribute,
+                                             detail::FloatAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::FloatAttributeStorage;
+  using Base::Base;
   using ValueType = APFloat;
 
   /// Return a float attribute for the specified value in the specified type.
@@ -219,6 +226,7 @@ public:
 
   /// Return a float attribute for the specified value in the specified type.
   static FloatAttr get(Type type, const APFloat &value);
+  static FloatAttr getChecked(Type type, const APFloat &value, Location loc);
 
   APFloat getValue() const;
 
@@ -229,12 +237,20 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Float; }
+
+  /// Verify the construction invariants for a double value.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
+                               Type type, double value);
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
+                               Type type, const APFloat &value);
 };
 
-class StringAttr : public Attribute {
+class StringAttr : public Attribute::AttrBase<StringAttr, Attribute,
+                                              detail::StringAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::StringAttributeStorage;
+  using Base::Base;
   using ValueType = StringRef;
 
   static StringAttr get(StringRef bytes, MLIRContext *context);
@@ -247,10 +263,10 @@ public:
 
 /// Array attributes are lists of other attributes.  They are not necessarily
 /// type homogenous given that attributes don't, in general, carry types.
-class ArrayAttr : public Attribute {
+class ArrayAttr : public Attribute::AttrBase<ArrayAttr, Attribute,
+                                             detail::ArrayAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::ArrayAttributeStorage;
+  using Base::Base;
   using ValueType = ArrayRef<Attribute>;
 
   static ArrayAttr get(ArrayRef<Attribute> value, MLIRContext *context);
@@ -267,10 +283,11 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Array; }
 };
 
-class AffineMapAttr : public Attribute {
+class AffineMapAttr
+    : public Attribute::AttrBase<AffineMapAttr, Attribute,
+                                 detail::AffineMapAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::AffineMapAttributeStorage;
+  using Base::Base;
   using ValueType = AffineMap;
 
   static AffineMapAttr get(AffineMap value);
@@ -281,10 +298,11 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::AffineMap; }
 };
 
-class IntegerSetAttr : public Attribute {
+class IntegerSetAttr
+    : public Attribute::AttrBase<IntegerSetAttr, Attribute,
+                                 detail::IntegerSetAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::IntegerSetAttributeStorage;
+  using Base::Base;
   using ValueType = IntegerSet;
 
   static IntegerSetAttr get(IntegerSet value);
@@ -295,10 +313,10 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::IntegerSet; }
 };
 
-class TypeAttr : public Attribute {
+class TypeAttr : public Attribute::AttrBase<TypeAttr, Attribute,
+                                            detail::TypeAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::TypeAttributeStorage;
+  using Base::Base;
   using ValueType = Type;
 
   static TypeAttr get(Type value);
@@ -316,10 +334,11 @@ public:
 /// is deleted that had an attribute which referenced it.  No references to this
 /// attribute should persist across the transformation, but that attribute will
 /// remain in MLIRContext.
-class FunctionAttr : public Attribute {
+class FunctionAttr
+    : public Attribute::AttrBase<FunctionAttr, Attribute,
+                                 detail::FunctionAttributeStorage> {
 public:
-  using Attribute::Attribute;
-  using ImplType = detail::FunctionAttributeStorage;
+  using Base::Base;
   using ValueType = Function *;
 
   static FunctionAttr get(Function *value);
@@ -356,10 +375,11 @@ public:
 
 /// An attribute that represents a reference to a splat vecctor or tensor
 /// constant, meaning all of the elements have the same value.
-class SplatElementsAttr : public ElementsAttr {
+class SplatElementsAttr
+    : public Attribute::AttrBase<SplatElementsAttr, ElementsAttr,
+                                 detail::SplatElementsAttributeStorage> {
 public:
-  using ElementsAttr::ElementsAttr;
-  using ImplType = detail::SplatElementsAttributeStorage;
+  using Base::Base;
   using ValueType = Attribute;
 
   static SplatElementsAttr get(VectorOrTensorType type, Attribute elt);
@@ -467,16 +487,17 @@ protected:
 
 /// An attribute that represents a reference to a dense integer vector or tensor
 /// object.
-class DenseIntElementsAttr : public DenseElementsAttr {
+class DenseIntElementsAttr
+    : public Attribute::AttrBase<DenseIntElementsAttr, DenseElementsAttr,
+                                 detail::DenseElementsAttributeStorage> {
 public:
   /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
   /// iterator directly.
   using iterator = DenseElementsAttr::RawElementIterator;
 
-  using DenseElementsAttr::DenseElementsAttr;
+  using Base::Base;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
-  using DenseElementsAttr::ImplType;
 
   /// Constructs a dense integer elements attribute from an array of APInt
   /// values. Each APInt value is expected to have the same bitwidth as the
@@ -503,7 +524,9 @@ public:
 
 /// An attribute that represents a reference to a dense float vector or tensor
 /// object. Each element is stored as a double.
-class DenseFPElementsAttr : public DenseElementsAttr {
+class DenseFPElementsAttr
+    : public Attribute::AttrBase<DenseFPElementsAttr, DenseElementsAttr,
+                                 detail::DenseElementsAttributeStorage> {
 public:
   /// DenseFPElementsAttr iterates on APFloat, so we need to wrap the raw
   /// element iterator.
@@ -517,10 +540,9 @@ public:
   };
   using iterator = ElementIterator;
 
-  using DenseElementsAttr::DenseElementsAttr;
+  using Base::Base;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
-  using DenseElementsAttr::ImplType;
 
   // Constructs a dense float elements attribute from an array of APFloat
   // values. Each APFloat value is expected to have the same bitwidth as the
@@ -544,10 +566,11 @@ public:
 /// which the compiler may not need to interpret. This attribute is always
 /// associated with a particular dialect, which provides a method to convert
 /// tensor representation to a non-opaque format.
-class OpaqueElementsAttr : public ElementsAttr {
+class OpaqueElementsAttr
+    : public Attribute::AttrBase<OpaqueElementsAttr, ElementsAttr,
+                                 detail::OpaqueElementsAttributeStorage> {
 public:
-  using ElementsAttr::ElementsAttr;
-  using ImplType = detail::OpaqueElementsAttributeStorage;
+  using Base::Base;
   using ValueType = StringRef;
 
   static OpaqueElementsAttr get(Dialect *dialect, VectorOrTensorType type,
@@ -589,10 +612,11 @@ public:
 /// [[1, 0, 0, 0],
 ///  [0, 0, 5, 0],
 ///  [0, 0, 0, 0]].
-class SparseElementsAttr : public ElementsAttr {
+class SparseElementsAttr
+    : public Attribute::AttrBase<SparseElementsAttr, ElementsAttr,
+                                 detail::SparseElementsAttributeStorage> {
 public:
-  using ElementsAttr::ElementsAttr;
-  using ImplType = detail::SparseElementsAttributeStorage;
+  using Base::Base;
 
   static SparseElementsAttr get(VectorOrTensorType type,
                                 DenseIntElementsAttr indices,
@@ -610,23 +634,23 @@ public:
 };
 
 template <typename U> bool Attribute::isa() const {
-  assert(attr && "isa<> used on a null attribute.");
+  assert(impl && "isa<> used on a null attribute.");
   return U::kindof(getKind());
 }
 template <typename U> U Attribute::dyn_cast() const {
-  return isa<U>() ? U(attr) : U(nullptr);
+  return isa<U>() ? U(impl) : U(nullptr);
 }
 template <typename U> U Attribute::dyn_cast_or_null() const {
-  return (attr && isa<U>()) ? U(attr) : U(nullptr);
+  return (impl && isa<U>()) ? U(impl) : U(nullptr);
 }
 template <typename U> U Attribute::cast() const {
   assert(isa<U>());
-  return U(attr);
+  return U(impl);
 }
 
 // Make Attribute hashable.
 inline ::llvm::hash_code hash_value(Attribute arg) {
-  return ::llvm::hash_value(arg.attr);
+  return ::llvm::hash_value(arg.impl);
 }
 
 /// NamedAttribute is used for named attribute lists, it holds an identifier for
