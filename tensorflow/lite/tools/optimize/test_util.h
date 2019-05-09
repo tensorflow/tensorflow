@@ -66,6 +66,9 @@ extern const char* kModelWithCustomOp;
 // Test model with a argmax op.
 extern const char* kModelWithArgMaxOp;
 
+// Test model with a elu op.
+extern const char* kEluModel;
+
 // Test model with a argmax op.
 extern const char* kModelWithFCOp;
 

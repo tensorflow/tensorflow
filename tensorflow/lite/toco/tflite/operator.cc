@@ -1295,6 +1295,21 @@ class ReduceMin
   }
 };
 
+class Elu : public SimpleOperator<EluOperator> {
+ public:
+  explicit Elu() : SimpleOperator("ELU", OperatorType::kElu) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class ReduceProd
     : public BuiltinOperator<TensorFlowProdOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
@@ -2546,8 +2561,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
-      MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
-  ops.push_back(
       MakeUnique<SimpleOperator<RoundOperator>>("ROUND", OperatorType::kRound));
   ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
@@ -2566,6 +2579,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
   ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
   ops.push_back(MakeUnique<Greater>());
+  ops.push_back(MakeUnique<Elu>());
   ops.push_back(MakeUnique<GreaterEqual>());
   ops.push_back(MakeUnique<Less>());
   ops.push_back(MakeUnique<LessEqual>());

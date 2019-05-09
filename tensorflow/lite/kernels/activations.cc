@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/elu.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
@@ -301,6 +302,32 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, data->input_left_shift <= 1);
   }
 
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input->dims));
+}
+
+TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+    static constexpr int kInputIntegerBits = 4;
+
+    const double input_real_multiplier =
+        input->params.scale *
+        static_cast<double>(1 << (31 - kInputIntegerBits));
+
+    QuantizeMultiplierGreaterThanOne(input_real_multiplier,
+                                     &data->input_multiplier,
+                                     &data->input_left_shift);
+    data->input_range_radius =
+        CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+  }
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
 }
@@ -972,19 +999,46 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+EluParams GetExprParams(const OpData* data, const TfLiteTensor* input,
+                        const TfLiteTensor* output) {
+  EluParams params;
+  params.input_zero_point = input->params.zero_point;
+  params.input_range_radius = data->input_range_radius;
+  params.input_multiplier = data->input_multiplier;
+  params.input_left_shift = data->input_left_shift;
+  params.output_zero_point = output->params.zero_point;
+  return params;
+}
+
 TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
       optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      reference_integer_ops::QElu<int8_t>(
+          GetExprParams(data, input, output), GetTensorShape(input),
+          GetTensorData<int8_t>(input), GetTensorShape(output),
+          GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteUInt8: {
+      reference_integer_ops::QElu<uint8_t>(
+          GetExprParams(data, input, output), GetTensorShape(input),
+          GetTensorData<uint8_t>(input), GetTensorShape(output),
+          GetTensorData<uint8_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      context->ReportError(
+          context,
+          "Only float32, uint8 and int8 is supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -992,9 +1046,8 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_ELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
-                                 activations::EluEval};
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::EluPrepare, activations::EluEval};
   return &r;
 }
 

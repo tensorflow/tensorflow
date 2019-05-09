@@ -52,7 +52,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kReshape || type == OperatorType::kTanh ||
          type == OperatorType::kMul || type == OperatorType::kBatchToSpaceND ||
          type == OperatorType::kSum || type == OperatorType::kSpaceToBatchND ||
-         type == OperatorType::kSpaceToDepth ||
+         type == OperatorType::kSpaceToDepth || type == OperatorType::kElu ||
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||

@@ -121,6 +121,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     }
+    case BuiltinOperator_ELU:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_L2_NORMALIZATION: {
       property.inputs = {{0, {}}};
       // L2 Norm requires output with 1/128 as scale and 0 as zero point.
