@@ -295,4 +295,26 @@ void EventMgr::PollEvents(bool is_dedicated_poller,
   }
 }
 
+EventMgrFactory* EventMgrFactory::Singleton() {
+  static EventMgrFactory* instance = new EventMgrFactory;
+  return instance;
+}
+
+EventMgr* EventMgrFactory::GetEventMgr(se::StreamExecutor* se,
+                                       const GPUOptions& gpu_options) {
+  mutex_lock l(mu_);
+  // TODO(laigd): consider making gpu_options part of the key. It's not
+  // currently since EventMgr depends only rely on field deferred_deletion_bytes
+  // and polling_active_delay_usecs from gpu_options which are not used or
+  // rarely used.
+  auto itr = event_mgr_map_.find(se);
+  if (itr == event_mgr_map_.end()) {
+    auto event_mgr = new EventMgr(se, gpu_options);
+    event_mgr_map_[se] = event_mgr;
+    return event_mgr;
+  } else {
+    return itr->second;
+  }
+}
+
 }  // namespace tensorflow

@@ -375,7 +375,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         streams_.back()->device_to_host, streams_.back()->device_to_device));
   }
 
-  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
+  em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
+                                                  options.config.gpu_options());
 
   GPUKernelTracker::Params tracker_params(
       options.config.gpu_options().experimental().kernel_tracker_max_interval(),
@@ -404,13 +405,13 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     }
     kernel_tracker_.reset(new GPUKernelTracker(
         tracker_params, Env::Default(), streams_[0]->compute, timing_counter,
-        timestamped_allocator_ ? gpu_allocator_ : nullptr, em_.get()));
+        timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
   gpu_device_info_ = new GpuDeviceInfo;
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
-  gpu_device_info_->event_mgr = em_.get();
+  gpu_device_info_->event_mgr = em_;
   PlatformGpuId platform_gpu_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformGpuId(tf_gpu_id_, &platform_gpu_id));
