@@ -28,6 +28,12 @@
 
 namespace mlir {
 
+namespace detail {
+template <typename RangeT>
+using ValueOfRange = typename std::remove_reference<decltype(
+    *std::begin(std::declval<RangeT &>()))>::type;
+} // end namespace detail
+
 /// An STL-style algorithm similar to std::for_each that applies a second
 /// functor between every pair of elements.
 ///
@@ -58,9 +64,11 @@ inline void interleave(const Container &c, UnaryFunctor each_fn,
   interleave(c.begin(), c.end(), each_fn, between_fn);
 }
 
-template <typename T, template <typename> class Container, typename raw_ostream>
-inline void interleaveComma(const Container<T> &c, raw_ostream &os) {
-  interleave(c.begin(), c.end(), [&](T a) { os << a; }, [&]() { os << ", "; });
+template <typename Container, typename raw_ostream,
+          typename T = detail::ValueOfRange<Container>>
+inline void interleaveComma(const Container &c, raw_ostream &os) {
+  interleave(
+      c.begin(), c.end(), [&](const T &a) { os << a; }, [&] { os << ", "; });
 }
 
 /// A special type used to provide an address for a given class that can act as
