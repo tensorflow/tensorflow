@@ -196,7 +196,6 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":with_select_tf_ops": [
