@@ -448,12 +448,8 @@ class ControlFlowTest(test.TestCase):
       values = constant_op.constant(10)
       indices = constant_op.constant(0)
       x = ops.IndexedSlices(values, indices)
-      v1_msg = "The two structures don't have the same nested structure"
-      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
-                "number, type, and overall structure of return values.")
       with self.assertRaisesRegexp(
-          TypeError,
-          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
+          TypeError, "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
             constant_op.constant(True),
             lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
@@ -516,7 +512,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
       self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
 
-  @test_util.disable_control_flow_v2("b/113293074")
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
