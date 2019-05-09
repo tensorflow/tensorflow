@@ -686,16 +686,9 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
 
 template <typename T>
 void optimized_ops_preload_l1_stream(const T* ptr) {
-#ifdef __aarch64__
-  // Aarch64 has very detailed prefetch instructions, that compilers
-  // can't know how to map __builtin_prefetch to, and as a result, don't,
-  // leaving __builtin_prefetch a no-op on this architecture.
-  // For our purposes, "pldl1keep" is usually what we want, meaning:
-  // "prefetch for load, into L1 cache, using each value multiple times".
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#elif defined __GNUC__
+#ifdef __GNUC__
   // builtin offered by GCC-compatible compilers including clang
-  __builtin_prefetch(ptr);
+  __builtin_prefetch(ptr, /* 0 means read */ 0, /* 0 means no locality */ 0);
 #else
   (void)ptr;
 #endif
@@ -703,16 +696,9 @@ void optimized_ops_preload_l1_stream(const T* ptr) {
 
 template <typename T>
 void optimized_ops_preload_l1_keep(const T* ptr) {
-#ifdef __aarch64__
-  // Aarch64 has very detailed prefetch instructions, that compilers
-  // can't know how to map __builtin_prefetch to, and as a result, don't,
-  // leaving __builtin_prefetch a no-op on this architecture.
-  // For our purposes, "pldl1keep" is usually what we want, meaning:
-  // "prefetch for load, into L1 cache, using each value multiple times".
-  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#elif defined __GNUC__
+#ifdef __GNUC__
   // builtin offered by GCC-compatible compilers including clang
-  __builtin_prefetch(ptr);
+  __builtin_prefetch(ptr, /* 0 means read */ 0, /* 3 means high locality */ 3);
 #else
   (void)ptr;
 #endif
