@@ -834,7 +834,7 @@ class Layer(module.Module):
     model = tf.keras.Model(inputs, outputs)
     # Actvity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
-    ````
+    ```
 
     If this is not the case for your loss (if, for example, your loss references
     a `Variable` of one of the model's layers), you can wrap your loss in a
