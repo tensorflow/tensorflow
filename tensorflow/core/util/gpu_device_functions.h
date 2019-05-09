@@ -355,6 +355,7 @@ __device__ inline double GpuShuffleUpSync(unsigned mask, double value,
                              static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleUpSync, CudaShuffleUpSync);
 
 // Wrapper for __shfl_down_sync. All threads in 'mask' must call this function
 // in convergence, see comment above for details.
@@ -394,6 +395,7 @@ __device__ inline double GpuShuffleDownSync(unsigned mask, double value,
                              static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleDownSync, CudaShuffleDownSync);
 
 // Wrapper for __shfl_xor_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.

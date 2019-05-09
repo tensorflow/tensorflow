@@ -21,6 +21,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "cuda/include/cuda_fp16.h"
 #endif
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -46,6 +47,7 @@ limitations under the License.
 #define gpuSuccess cudaSuccess
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
+
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 using gpuStream_t = hipStream_t;
@@ -59,7 +61,7 @@ __host__ __device__ inline const char* gpuGetErrorString(cudaError_t error){
 #elif TENSORFLOW_USE_ROCM
 // hipGetErrorString is available on host side only
 inline const char* gpuGetErrorString(hipError_t error){
-   return hipGetErrorString(error);
+  return hipGetErrorString(error);
 #endif
 }
 
@@ -142,24 +144,28 @@ __device__ inline Eigen::half GpuShuffleSync(unsigned mask, Eigen::half value,
   return Eigen::half(
       GpuShuffleSync(mask, static_cast<uint16>(value), src_lane, width));
 }
+// Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleUpSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
       GpuShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
 }
+// Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleDownSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
       GpuShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
 }
+// Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
     unsigned mask, Eigen::half value, int lane_mask, int width = warpSize) {
   return Eigen::half(
       GpuShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
 }
+// Aliased in gpu_device_functions.h
 #endif
 
 namespace gpu_helper {
