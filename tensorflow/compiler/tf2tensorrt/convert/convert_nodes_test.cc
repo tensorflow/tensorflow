@@ -1683,7 +1683,12 @@ TEST_F(OpConverterTest, ConvertMatMul) {
       NodeDef node_def = get_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
       AddTestTensor("input", {2}, /*batch_size=*/1);
       AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
-      RunValidationAndConversion(node_def);
+      if (!transpose_a) {
+        RunValidationAndConversion(node_def);
+      } else {
+        RunValidationAndConversion(node_def, error::INVALID_ARGUMENT, "Cannot transpose first input if it is a tensor with fewer than 2 non-batch dimensions");
+        continue;
+      }
       TRT_TensorOrWeights output;
       TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
       ASSERT_TRUE(output.is_tensor());
@@ -1710,7 +1715,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
     ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 1, 1}, output.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
     DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
     BuildAndRun(input_data, &output_data);

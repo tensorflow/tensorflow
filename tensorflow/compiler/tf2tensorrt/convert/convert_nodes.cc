@@ -4027,9 +4027,10 @@ Status ConvertGather(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertFullyConnectedHelper(OpConverterParams* params, nvinfer1::ITensor* tensor_a,
-                       TRT_ShapedWeights weights_raw, bool transpose_b,
-                       string node_name) {
+Status ConvertFullyConnectedHelper(OpConverterParams* params,
+                                   nvinfer1::ITensor* tensor_a,
+                                   TRT_ShapedWeights weights_b,
+                                   bool transpose_b, const string& node_name) {
   // Reshape input to 3D - this will be a no-op unless using int8 precision.
   auto input_dim = tensor_a->getDimensions();
   while (input_dim.nbDims < 3) {
@@ -4040,12 +4041,12 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params, nvinfer1::ITensor*
       &tensor_a));
 
   // FC layer will transpose weights, so we need to pre-transpose.
-  TRT_ShapedWeights weights(weights_raw.TrtDType());
+  TRT_ShapedWeights weights(weights_b.TrtDType());
   if (!transpose_b) {
-    weights = params->weight_store->GetTempWeights(weights_raw);
-    ReorderCKtoKC(weights_raw, &weights);
+    weights = params->weight_store->GetTempWeights(weights_b);
+    ReorderCKtoKC(weights_b, &weights);
   } else {
-    weights = weights_raw;
+    weights = weights_b;
   }
   TRT_ShapedWeights biases(weights.TrtDType());
   const int noutput = weights.shape_.d[0];
@@ -4055,7 +4056,6 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params, nvinfer1::ITensor*
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
 
   // Reshape output to 1D - this will be a no-op unless using int8 precision.
   auto output_dim = output_tensor->getDimensions();
@@ -4064,6 +4064,7 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params, nvinfer1::ITensor*
       TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
       &output_tensor));
 
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
 
@@ -4079,8 +4080,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // time.
   if (should_use_fc ||
       params->converter->precision_mode() == TrtPrecisionMode::INT8) {
-    return ConvertFullyConnectedHelper(params, input_a.tensor(), input_b.weights(),
-                           transpose_b, node_name);
+    return ConvertFullyConnectedHelper(
+        params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
   constexpr auto get_matrix_op =
@@ -4131,13 +4132,42 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"a", false}, {"b", true}}));
+  if (inputs.size() != 2) {
+    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
+                                   " inputs but expected 2, at ",
+                                   node_def.name());
+  }
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   TFAttrs attrs(node_def);
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
+
+  // TODO: ReorderCKtoKC is currently not general enough to transpose weights
+  // that are not 2D.
+  if (transpose_b && inputs.at(1).is_weights() &&
+      inputs.at(1).GetTrtDims().nbDims != 2) {
+    return errors::InvalidArgument(
+        "Cannot currently transpose second input if it is a non-2D constant");
+  }
+
+  // If A is a tensor, we can only transpose it is at least 3D in TF,
+  // or TRT will not do the correct transposition.
+  if (transpose_a && inputs.at(0).is_tensor() &&
+      inputs.at(0).GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
+  }
+
+  // If B is a tensor, then it must be at least 3D in TF,
+  // or TRT won't be able to handle the multiply correctly.
+  if (inputs.at(1).is_tensor() && inputs.at(1).GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Second input must either be a constant, or contain at least 2 "
+        "non-batch dimensions.");
+  }
 
   if (params->validation_only) return Status::OK();
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
@@ -4167,7 +4197,7 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_b = attrs.get<bool>("adj_y");
   // Removes the batch dimension from weights.
   const auto remove_weights_batch_dim =
-      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights& tensor) {
+      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
         auto dims = input.GetTrtDims();
         if (input.is_weights()) {
           // The other operand must be a tensor, this is ensured by earlier
@@ -4186,14 +4216,14 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
         nvinfer1::ITensor* t;
         TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
             input, dims, params->validation_only, &t));
-        tensor = std::move(TRT_TensorOrWeights{t});
+        *tensor = std::move(TRT_TensorOrWeights{t});
         return Status::OK();
       };
 
   TRT_TensorOrWeights tensor_l{nullptr};
   TRT_TensorOrWeights tensor_r{nullptr};
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), tensor_l));
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), tensor_r));
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
   if (params->validation_only) return Status::OK();
 
   return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
