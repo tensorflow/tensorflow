@@ -5353,6 +5353,108 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
 }
 #endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
+// Get the NodeDef for SquaredDifference.
+NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  auto x = ops::Placeholder(s.WithOpName("x"), dtype);
+  auto y = ops::Placeholder(s.WithOpName("y"), dtype);
+  auto squared_diff =
+      ops::SquaredDifference(s.WithOpName("my_squared_diff"), x, y);
+  return squared_diff.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestConvertSquaredDifference(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> dims_x;
+    std::vector<int> dims_y;
+    std::vector<CType> value_x;
+    std::vector<CType> value_y;
+    std::vector<int> expected_output_dims;
+    std::vector<CType> expected_output;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  std::vector<TestParams> params = {
+      {
+          /*dims_x=*/{1, 2, 3},
+          /*dims_y=*/{1, 2, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/CastTestVector<int, CType>({0, -1, 3, 0, 10, -7}),
+          /*expected_output_dims=*/{1, 2, 3},
+          /*expected_output=*/CastTestVector<int, CType>({0, 4, 1, 9, 36, 144}),
+      },
+      {
+          /*dims_x=*/{1, 2, 3},
+          /*dims_y=*/{1, 1, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/CastTestVector<int, CType>({0, 1, 2}),
+          /*expected_output_dims=*/{1, 2, 3},
+          /*expected_output=*/CastTestVector<int, CType>({0, 0, 0, 9, 9, 9}),
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetSquaredDifferenceNodeDef(dtype);
+    test->AddTestTensor("x", params[i].dims_x, 1, TfDataTypeToTrt(dtype));
+    test->AddTestTensor("y", params[i].dims_y, 1, TfDataTypeToTrt(dtype));
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_squared_diff", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    DataVec input_data{{"x", test::AsTensor<CType>(params[i].value_x)},
+                       {"y", test::AsTensor<CType>(params[i].value_y)}};
+    DataVec output_data{
+        {"my_squared_diff",
+         ConstructTensor<CType>(params[i].expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertSquaredDifference) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_squared_diff", "SquaredDifference", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "SquaredDifference got 0 inputs but expected 2, at my_squared_diff");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
+    AddTestWeights<float>("x", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestTensor("y", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"x\" for SquaredDifference must be "
+                               "a tensor, at my_squared_diff");
+  }
+  {
+    // Shapes are not broadcastable, should fail.
+    Reset();
+    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
+    AddTestTensor("x", {2, 3});
+    AddTestTensor("y", {7, 5});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Infeasible broadcast scheme");
+  }
+
+  TestConvertSquaredDifference<DT_FLOAT>(this);
+  TestConvertSquaredDifference<DT_HALF>(this);
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
