@@ -647,6 +647,9 @@ Integer CeilQuotient(Integer a, Integer b) {
 // This function is a copy of gemmlowp::HowManyThreads, copied when we dropped
 // the direct dependency of internal/optimized/ on gemmlowp.
 //
+// It computes a reasonable number of threads to use for a GEMM of shape
+// (rows, cols, depth).
+//
 // TODO(b/131910176): get rid of this function by switching each call site
 // to its own more sensible logic for its own workload.
 template <int KernelRows>
@@ -657,25 +660,10 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
     return 1;
   }
 
-  // Basic calculation: take into account max pool size, and
-  // how many rows we have to feed our kernel.
-  // The motivation for an absolute minimum number of rows per thread,
-  // potentially higher than KernelRows, is that very thin thread workload
-  // currently defeat assumptions of the AddMod generator, resulting
-  // in substantial bias in TestWithRealData on 24 threads.
-  // Ideally, the AddMod generator should be aware of global (r,c) coordinates
-  // so as to be independent of the number of threads.
-  static const int AbsoluteMinRowsPerThread = 16;
-  static const int MinRowsPerThread = KernelRows > AbsoluteMinRowsPerThread
-                                          ? KernelRows
-                                          : AbsoluteMinRowsPerThread;
-  int thread_count =
-      std::min(max_num_threads, CeilQuotient(rows, MinRowsPerThread));
+  // Ensure that each thread has KernelRows rows to process, if at all possible.
+  int thread_count = std::min(max_num_threads, rows / KernelRows);
 
-  // At this point for small products we already have thread_count==1 so
-  // we can avoid doing more work; otherwise, we still want to check
-  // that the cubic size (rows*cols*depth) is big enough to keep
-  // workers_ busy.
+  // Limit the number of threads according to the overall size of the problem.
   if (thread_count > 1) {
     // Empirically determined value.
     static constexpr std::uint64_t min_cubic_size_per_thread = 64 * 1024;
@@ -686,10 +674,10 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
 
     thread_count = std::min(
         thread_count, static_cast<int>(cubic_size / min_cubic_size_per_thread));
+  }
 
-    if (thread_count < 1) {
-      thread_count = 1;
-    }
+  if (thread_count < 1) {
+    thread_count = 1;
   }
 
   assert(thread_count > 0 && thread_count <= max_num_threads);
