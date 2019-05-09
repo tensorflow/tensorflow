@@ -460,11 +460,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         }
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             operand_shapes, proto.custom_call_opaque());
+                             operand_shapes, proto.backend_config());
       } else {
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             proto.custom_call_opaque());
+                             proto.backend_config());
       }
       if (proto.has_window()) {
         static_cast<HloCustomCallInstruction*>(instruction.get())

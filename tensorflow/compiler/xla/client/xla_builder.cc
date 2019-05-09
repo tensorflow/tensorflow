@@ -1517,7 +1517,7 @@ XlaOp XlaBuilder::CustomCall(
     }
     *instr.mutable_shape() = shape.ToProto();
     instr.set_custom_call_target(call_target_name);
-    instr.set_custom_call_opaque(opaque);
+    instr.set_backend_config(opaque);
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
