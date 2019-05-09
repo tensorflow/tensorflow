@@ -268,6 +268,19 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 // LaunchFuncOp
 //===----------------------------------------------------------------------===//
+
+void LaunchFuncOp::build(Builder *builder, OperationState *result,
+                         Function *kernelFunc, Value *gridSizeX,
+                         Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
+                         Value *blockSizeY, Value *blockSizeZ,
+                         ArrayRef<Value *> kernelOperands) {
+  // Add grid and block sizes as op operands, followed by the data operands.
+  result->addOperands(
+      {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
+  result->addOperands(kernelOperands);
+  result->addAttribute("kernel", builder->getFunctionAttr(kernelFunc));
+}
+
 Function *LaunchFuncOp::kernel() {
   return this->getAttr("kernel").dyn_cast<FunctionAttr>().getValue();
 }

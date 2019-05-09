@@ -104,6 +104,11 @@ class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
 public:
   using Op::Op;
 
+  static void build(Builder *builder, OperationState *result,
+                    Function *kernelFunc, Value *gridSizeX, Value *gridSizeY,
+                    Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
+                    Value *blockSizeZ, ArrayRef<Value *> kernelOperands);
+
   /// The kernel function specified by the operation's `kernel` attribute.
   Function *kernel();
   /// The number of operands passed to the kernel function.
