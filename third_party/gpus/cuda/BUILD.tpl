@@ -28,13 +28,11 @@ config_setting(
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -48,7 +46,6 @@ cc_library(
         "cuda/include",
         "cuda/include/crt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -65,7 +62,6 @@ cc_library(
         "-lpthread",
         %{cudart_static_linkopt}
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -75,7 +71,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -87,7 +82,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -99,7 +93,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -112,7 +105,6 @@ cc_library(
     ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -124,7 +116,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -133,7 +124,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -145,7 +135,6 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -157,12 +146,10 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
-    visibility = ["//visibility:public"],
     deps = [
         ":cublas",
         ":cuda_headers",
@@ -183,7 +170,6 @@ cc_library(
         ".",
         "cuda/extras/CUPTI/include/",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -193,7 +179,6 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -206,13 +191,11 @@ cc_library(
     ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
-    visibility = ["//visibility:public"],
 )
 
 %{copy_rules}

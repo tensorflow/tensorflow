@@ -28,13 +28,11 @@ config_setting(
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -48,7 +46,6 @@ cc_library(
         "cuda/include",
         "cuda/include/crt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
@@ -60,42 +57,36 @@ cc_import(
     # TODO(pcloudy): Remove this rule after b/111278841 is resolved.
     interface_library = "cuda/lib/%{cudart_static_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cuda_driver",
     interface_library = "cuda/lib/%{cuda_driver_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cudart",
     interface_library = "cuda/lib/%{cudart_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cublas",
     interface_library = "cuda/lib/%{cublas_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cusolver",
     interface_library = "cuda/lib/%{cusolver_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cudnn",
     interface_library = "cuda/lib/%{cudnn_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -104,26 +95,22 @@ cc_library(
         ".",
         "cuda/include",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cufft",
     interface_library = "cuda/lib/%{cufft_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "curand",
     interface_library = "cuda/lib/%{curand_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
-    visibility = ["//visibility:public"],
     deps = [
         ":cublas",
         ":cuda_headers",
@@ -145,27 +132,23 @@ cc_library(
         "cuda/",
         "cuda/extras/CUPTI/include/",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cupti_dsos",
     interface_library = "cuda/lib/%{cupti_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_import(
     name = "cusparse",
     interface_library = "cuda/lib/%{cusparse_lib}",
     system_provided = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
-    visibility = ["//visibility:public"],
 )
 
 %{copy_rules}
