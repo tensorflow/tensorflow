@@ -73,48 +73,6 @@ static std::vector<const mlir::PassRegistryEntry *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
 
-/// Given a MemoryBuffer along with a line and column within it, return the
-/// location being referenced.
-static SMLoc getLocFromLineAndCol(MemoryBuffer &membuf, unsigned lineNo,
-                                  unsigned columnNo) {
-  // TODO: This should really be upstreamed to be a method on llvm::SourceMgr.
-  // Doing so would allow it to use the offset cache that is already maintained
-  // by SrcBuffer, making this more efficient.
-
-  // Scan for the correct line number.
-  const char *position = membuf.getBufferStart();
-  const char *end = membuf.getBufferEnd();
-
-  // We start counting line and column numbers from 1.
-  --lineNo;
-  --columnNo;
-
-  while (position < end && lineNo) {
-    auto curChar = *position++;
-
-    // Scan for newlines.  If this isn't one, ignore it.
-    if (curChar != '\r' && curChar != '\n')
-      continue;
-
-    // We saw a line break, decrement our counter.
-    --lineNo;
-
-    // Check for \r\n and \n\r and treat it as a single escape.  We know that
-    // looking past one character is safe because MemoryBuffer's are always nul
-    // terminated.
-    if (*position != curChar && (*position == '\r' || *position == '\n'))
-      ++position;
-  }
-
-  // If the line/column counter was invalid, return a pointer to the start of
-  // the buffer.
-  if (lineNo || position + columnNo > end)
-    return SMLoc::getFromPointer(membuf.getBufferStart());
-
-  // Otherwise return the right pointer.
-  return SMLoc::getFromPointer(position + columnNo);
-}
-
 /// Perform the actions on the input file indicated by the command line flags
 /// within the specified context.
 ///
@@ -165,20 +123,6 @@ static StringRef getDiagnosticKindString(DiagnosticSeverity kind) {
   }
 }
 
-/// Given a diagnostic kind, returns the LLVM DiagKind.
-static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
-  switch (kind) {
-  case DiagnosticSeverity::Note:
-    return llvm::SourceMgr::DK_Note;
-  case DiagnosticSeverity::Warning:
-    return llvm::SourceMgr::DK_Warning;
-  case DiagnosticSeverity::Error:
-    return llvm::SourceMgr::DK_Error;
-  case DiagnosticSeverity::Remark:
-    return llvm::SourceMgr::DK_Remark;
-  }
-}
-
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
 static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
@@ -189,24 +133,11 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 
   // Parse the input file.
   MLIRContext context;
+  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
 
   // If we are in verify mode then we have a lot of work to do, otherwise just
   // perform the actions without worrying about it.
   if (!verifyDiagnostics) {
-    // Register a simple diagnostic handler that prints out info with context.
-    context.getDiagEngine().setHandler(
-        [&](Location location, StringRef message, DiagnosticSeverity kind) {
-          unsigned line = 1, column = 1;
-          SMLoc loc;
-          if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
-            line = fileLoc->getLine();
-            column = fileLoc->getColumn();
-            loc = getLocFromLineAndCol(buffer, line, column);
-          }
-
-          sourceMgr.PrintMessage(loc, getDiagKind(kind), message);
-        });
-
     // Run the test actions.
     return performActions(sourceMgr, &context);
   }
@@ -264,9 +195,8 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 
     // If this error wasn't expected, produce an error out of mlir-opt saying
     // so.
-    auto unexpectedLoc = getLocFromLineAndCol(buffer, line, column);
-    sourceMgr.PrintMessage(unexpectedLoc, SourceMgr::DK_Error,
-                           "unexpected error: " + Twine(message));
+    sourceMgrHandler.emitDiagnostic(location, "unexpected error: " + message,
+                                    DiagnosticSeverity::Error);
     result = OptFailure;
   };
 

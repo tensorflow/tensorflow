@@ -18,9 +18,11 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -222,4 +224,87 @@ void DiagnosticEngine::emit(const Diagnostic &diag) {
   // Emit any notes that were attached to this diagnostic.
   for (auto &note : diag.getNotes())
     impl->emit(note.getLocation(), note.str(), note.getSeverity());
+}
+
+//===----------------------------------------------------------------------===//
+// SourceMgrDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+/// Given a diagnostic kind, returns the LLVM DiagKind.
+static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
+  switch (kind) {
+  case DiagnosticSeverity::Note:
+    return llvm::SourceMgr::DK_Note;
+  case DiagnosticSeverity::Warning:
+    return llvm::SourceMgr::DK_Warning;
+  case DiagnosticSeverity::Error:
+    return llvm::SourceMgr::DK_Error;
+  case DiagnosticSeverity::Remark:
+    return llvm::SourceMgr::DK_Remark;
+  }
+}
+
+SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
+                                                       MLIRContext *ctx)
+    : mgr(mgr) {
+  // Register a simple diagnostic handler.
+  ctx->getDiagEngine().setHandler(
+      [this](Location loc, StringRef message, DiagnosticSeverity kind) {
+        emitDiagnostic(loc, message, kind);
+      });
+}
+
+void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
+                                                DiagnosticSeverity kind) {
+  mgr.PrintMessage(convertLocToSMLoc(loc), getDiagKind(kind), message);
+}
+
+/// Convert a location into the given memory buffer into an SMLoc.
+llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
+  auto fileLoc = loc.dyn_cast<FileLineColLoc>();
+
+  // We currently only support FileLineColLoc.
+  if (!fileLoc)
+    return llvm::SMLoc();
+
+  auto *membuf = mgr.getMemoryBuffer(mgr.getMainFileID());
+
+  // TODO: This should really be upstreamed to be a method on llvm::SourceMgr.
+  // Doing so would allow it to use the offset cache that is already maintained
+  // by SrcBuffer, making this more efficient.
+  unsigned lineNo = fileLoc->getLine();
+  unsigned columnNo = fileLoc->getColumn();
+
+  // Scan for the correct line number.
+  const char *position = membuf->getBufferStart();
+  const char *end = membuf->getBufferEnd();
+
+  // We start counting line and column numbers from 1.
+  --lineNo;
+  --columnNo;
+
+  while (position < end && lineNo) {
+    auto curChar = *position++;
+
+    // Scan for newlines.  If this isn't one, ignore it.
+    if (curChar != '\r' && curChar != '\n')
+      continue;
+
+    // We saw a line break, decrement our counter.
+    --lineNo;
+
+    // Check for \r\n and \n\r and treat it as a single escape.  We know that
+    // looking past one character is safe because MemoryBuffer's are always nul
+    // terminated.
+    if (*position != curChar && (*position == '\r' || *position == '\n'))
+      ++position;
+  }
+
+  // If the line/column counter was invalid, return a pointer to the start of
+  // the buffer.
+  if (lineNo || position + columnNo > end)
+    return llvm::SMLoc::getFromPointer(membuf->getBufferStart());
+
+  // Otherwise return the right pointer.
+  return llvm::SMLoc::getFromPointer(position + columnNo);
 }

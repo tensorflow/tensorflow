@@ -29,10 +29,16 @@
 #include "llvm/ADT/Twine.h"
 #include <functional>
 
+namespace llvm {
+class SMLoc;
+class SourceMgr;
+} // end namespace llvm
+
 namespace mlir {
 class DiagnosticEngine;
 class Identifier;
 struct LogicalResult;
+class MLIRContext;
 class Type;
 
 namespace detail {
@@ -413,6 +419,26 @@ private:
 
   /// The internal implementation of the DiagnosticEngine.
   std::unique_ptr<detail::DiagnosticEngineImpl> impl;
+};
+
+//===----------------------------------------------------------------------===//
+// SourceMgrDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+/// This class is a utility diagnostic handler for use with llvm::SourceMgr.
+class SourceMgrDiagnosticHandler {
+public:
+  SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx);
+
+  /// Emit the given diagnostic information with the held source manager.
+  void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
+
+private:
+  /// Convert a location into the given memory buffer into an SMLoc.
+  llvm::SMLoc convertLocToSMLoc(Location loc);
+
+  /// The source manager that we are wrapping.
+  llvm::SourceMgr &mgr;
 };
 } // namespace mlir
 
