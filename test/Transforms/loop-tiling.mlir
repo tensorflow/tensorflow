@@ -83,20 +83,20 @@ func @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
 // possible here, they are adjusted to 4 x 4 x 5.
 
 // MODEL-LABEL: func @simple_matmul
-func @simple_matmul(%arg0: memref<8x8xvector<64xf32>>, %arg1: memref<8x8xvector<64xf32>>, %arg2: memref<8x8xvector<64xf32>>) -> memref<8x8xvector<64xf32>> {
+func @simple_matmul(%arg0: memref<256x256xvector<64xf32>>, %arg1: memref<256x256xvector<64xf32>>, %arg2: memref<256x256xvector<64xf32>>) -> memref<256x256xvector<64xf32>> {
   affine.for %i = 0 to 256 {
     affine.for %j = 0 to 256 {
       affine.for %k = 0 to 250 {
-        %l = load %arg0[%i, %k] : memref<8x8xvector<64xf32>>
-        %r = load %arg1[%k, %j] : memref<8x8xvector<64xf32>>
-        %o = load %arg2[%i, %j] : memref<8x8xvector<64xf32>>
+        %l = load %arg0[%i, %k] : memref<256x256xvector<64xf32>>
+        %r = load %arg1[%k, %j] : memref<256x256xvector<64xf32>>
+        %o = load %arg2[%i, %j] : memref<256x256xvector<64xf32>>
         %m = mulf %l, %r : vector<64xf32>
         %a = addf %o, %m : vector<64xf32>
-        store %a, %arg2[%i, %j] : memref<8x8xvector<64xf32>>
+        store %a, %arg2[%i, %j] : memref<256x256xvector<64xf32>>
       }
     }
   }
-  return %arg2 : memref<8x8xvector<64xf32>>
+  return %arg2 : memref<256x256xvector<64xf32>>
 }
 // MODEL:       affine.for %i0 = 0 to 256 step 4 {
 // MODEL-NEXT:    affine.for %i1 = 0 to 256 step 4 {

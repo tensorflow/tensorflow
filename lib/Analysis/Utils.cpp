@@ -170,7 +170,8 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
 LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
-                                    ComputationSliceState *sliceState) {
+                                    ComputationSliceState *sliceState,
+                                    bool addMemRefDimBounds) {
   assert((op->isa<LoadOp>() || op->isa<StoreOp>()) && "load/store op expected");
 
   MemRefAccess access(op);
@@ -298,6 +299,20 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
 
   assert(cst.getNumDimIds() == rank && "unexpected MemRefRegion format");
 
+  // Add upper/lower bounds for each memref dimension with static size
+  // to guard against potential over-approximation from projection.
+  // TODO(andydavis) Support dynamic memref dimensions.
+  if (addMemRefDimBounds) {
+    auto memRefType = memref->getType().cast<MemRefType>();
+    for (unsigned r = 0; r < rank; r++) {
+      cst.addConstantLowerBound(r, 0);
+      int64_t dimSize = memRefType.getDimSize(r);
+      if (dimSize == MemRefType::kDynamicDimSize)
+        continue;
+      cst.addConstantUpperBound(r, dimSize - 1);
+    }
+  }
+
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
   LLVM_DEBUG(cst.dump());
   return success();
@@ -372,7 +387,8 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
   Operation *opInst = loadOrStoreOp.getOperation();
 
   MemRefRegion region(opInst->getLoc());
-  if (failed(region.compute(opInst, /*loopDepth=*/0)))
+  if (failed(region.compute(opInst, /*loopDepth=*/0, /*sliceState=*/nullptr,
+                            /*addMemRefDimBounds=*/false)))
     return success();
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region");

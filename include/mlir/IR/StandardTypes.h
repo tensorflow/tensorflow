@@ -415,6 +415,9 @@ public:
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
+  /// Integer value indicating that the size in a dimension is dynamic.
+  static constexpr int64_t kDynamicDimSize = -1;
+
 private:
   /// Get or create a new MemRefType defined by the arguments.  If the resulting
   /// type would be ill-formed, return nullptr.  If the location is provided,

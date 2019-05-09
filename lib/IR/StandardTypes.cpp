@@ -306,6 +306,9 @@ LogicalResult UnrankedTensorType::verifyConstructionInvariants(
 // MemRefType
 //===----------------------------------------------------------------------===//
 
+// static constexpr must have a definition (until in C++17 and inline variable).
+constexpr int64_t MemRefType::kDynamicDimSize;
+
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
 /// type would be ill-formed, return nullptr.  If the location is provided,
 /// emit detailed error messages.  To emit errors when the location is unknown,

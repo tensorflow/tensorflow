@@ -141,6 +141,8 @@ struct MemRefRegion {
   /// *) Inequality constraints for the slice bounds in 'sliceState', which
   ///    represent the bounds on the loop IVs in this constraint system w.r.t
   ///    to slice operands (which correspond to symbols).
+  /// If 'addMemRefDimBounds' is true, constant upper/lower bounds
+  /// [0, memref.getDimSize(i)) are added for each MemRef dimension 'i'.
   ///
   ///  For example, the memref region for this operation at loopDepth = 1 will
   ///  be:
@@ -155,7 +157,8 @@ struct MemRefRegion {
   /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
   ///
   LogicalResult compute(Operation *op, unsigned loopDepth,
-                        ComputationSliceState *sliceState = nullptr);
+                        ComputationSliceState *sliceState = nullptr,
+                        bool addMemRefDimBounds = true);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }

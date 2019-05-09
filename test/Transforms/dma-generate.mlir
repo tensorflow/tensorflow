@@ -571,6 +571,34 @@ func @test_analysis_util(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9xf32>, 
 // CHECK:         dma_wait %6[%c0], %c2_0 : memref<1xi32>
 // CHECK:         affine.for %i1 =
 
+// ----
+
+#map3 = (d0) -> (d0)
+#map12 = (d0) -> (d0 + 3)
+#map14 = (d0, d1) -> ((d0 + d1 * 72) floordiv 2304 + ((((d0 + d1 * 72) mod 2304) mod 1152) mod 9) floordiv 3)
+#map15 = (d0, d1) -> ((d0 + d1 * 72) mod 2304 - (((d0 + d1 * 72) mod 2304) floordiv 1152) * 1151 - ((((d0 + d1 * 72) mod 2304) mod 1152) floordiv 9) * 9 - (((((d0 + d1 * 72) mod 2304) mod 1152) mod 9) floordiv 3) * 3)
+#map16 = (d0, d1) -> (((((d0 + d1 * 72) mod 2304) mod 1152) floordiv 9) floordiv 8)
+// Test for test case in b/128303048 #4.
+func @test_memref_bounds(%arg0: memref<4x4x16x1xvector<8x128xf32>>, %arg1: memref<144x9xvector<8x128xf32>>, %arg2: memref<2xvector<8x128xf32>>) -> (memref<144x9xvector<8x128xf32>>, memref<2xvector<8x128xf32>>) {
+  %c0 = constant 0 : index
+  affine.for %i8 = 0 to 9 step 3 {
+    affine.for %i9 = #map3(%i8) to #map12(%i8) {
+      affine.for %i10 = 0 to 64 {
+        %10 = affine.apply #map14(%i9, %i10)
+        %11 = affine.apply #map15(%i9, %i10)
+        %12 = affine.apply #map16(%i9, %i10)
+        %13 = load %arg0[%10, %11, %12, %c0] : memref<4x4x16x1xvector<8x128xf32>>
+      }
+    }
+  }
+  return %arg1, %arg2 : memref<144x9xvector<8x128xf32>>, memref<2xvector<8x128xf32>>
+}
+
+// CHECK:       %0 = alloc() : memref<4x4x16x1xvector<8x128xf32>, 2>
+// CHECK-NEXT:  %1 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %arg0[%c0, %c0, %c0, %c0], %0[%c0, %c0, %c0, %c0], %c256, %1[%c0] : memref<4x4x16x1xvector<8x128xf32>>, memref<4x4x16x1xvector<8x128xf32>, 2>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %1[%c0], %c256 : memref<1xi32>
+
 // -----
 
 // Since the fast memory size is 4 KB, DMA generation will happen right under
