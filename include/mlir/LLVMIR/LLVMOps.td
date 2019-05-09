@@ -156,7 +156,8 @@ def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
 def LLVM_AllocaOp : LLVM_OneResultOp<"alloca">,
                     Arguments<(ins LLVM_Type:$arraySize)> {
   string llvmBuilder = [{
-    $res = builder.CreateAlloca($_resultType, $arraySize);
+    $res = builder.CreateAlloca($_resultType->getPointerElementType(),
+                                $arraySize);
   }];
   let parser = [{ return parseAllocaOp(parser, result); }];
   let printer = [{ printAllocaOp(p, *this); }];
