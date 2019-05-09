@@ -54,21 +54,10 @@ using add = ValueBuilder<mlir::LLVM::AddOp>;
 using sub = ValueBuilder<mlir::LLVM::SubOp>;
 using mul = ValueBuilder<mlir::LLVM::MulOp>;
 
-static llvm::Module *getLLVMModule(MLIRContext *context) {
-  auto *llvmDialect =
-      static_cast<LLVM::LLVMDialect *>(context->getRegisteredDialect("llvm"));
-  if (!llvmDialect) {
-    context->emitError(UnknownLoc::get(context),
-                       "LLVM IR dialect is not registered");
-    return nullptr;
-  }
-  return &llvmDialect->getLLVMModule();
-}
-
 template <typename T>
 static llvm::Type *getPtrToElementType(T containerType,
-                                       llvm::Module &llvmModule) {
-  return convertToLLVMDialectType(containerType.getElementType(), llvmModule)
+                                       LLVMLowering &lowering) {
+  return lowering.convertType(containerType.getElementType())
       .template cast<LLVMType>()
       .getUnderlyingType()
       ->getPointerTo();
@@ -82,9 +71,11 @@ static llvm::Type *getPtrToElementType(T containerType,
 //   - an F32 type is converted into an LLVM float type
 //   - a Buffer, Range or View is converted into an LLVM structure type
 //     containing the respective dynamic values.
-static Type convertLinalgType(Type t, llvm::Module &llvmModule) {
+static Type convertLinalgType(Type t, LLVMLowering &lowering) {
   auto *context = t.getContext();
-  auto *int64Ty = llvm::Type::getInt64Ty(llvmModule.getContext());
+  auto *int64Ty = lowering.convertType(IntegerType::get(64, context))
+                      .cast<LLVM::LLVMType>()
+                      .getUnderlyingType();
 
   // A buffer descriptor contains the pointer to a flat region of storage and
   // the size of the region.
@@ -95,7 +86,7 @@ static Type convertLinalgType(Type t, llvm::Module &llvmModule) {
   //   int64_t size;
   // };
   if (auto bufferTy = t.dyn_cast<BufferType>()) {
-    auto *ptrTy = getPtrToElementType(bufferTy, llvmModule);
+    auto *ptrTy = getPtrToElementType(bufferTy, lowering);
     auto *structTy = llvm::StructType::get(ptrTy, int64Ty);
     return LLVMType::get(context, structTy);
   }
@@ -136,7 +127,7 @@ static Type convertLinalgType(Type t, llvm::Module &llvmModule) {
   //   int64_t strides[Rank];
   // };
   if (auto viewTy = t.dyn_cast<ViewType>()) {
-    auto *ptrTy = getPtrToElementType(viewTy, llvmModule);
+    auto *ptrTy = getPtrToElementType(viewTy, lowering);
     auto *arrayTy = llvm::ArrayType::get(int64Ty, viewTy.getRank());
     auto *structTy = llvm::StructType::get(ptrTy, int64Ty, arrayTy, arrayTy);
     return LLVMType::get(context, structTy);
@@ -157,36 +148,31 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
 }
 
 // BufferSizeOp creates a new `index` value.
-class BufferSizeOpConversion : public DialectOpConversion {
+class BufferSizeOpConversion : public LLVMOpLowering {
 public:
-  explicit BufferSizeOpConversion(MLIRContext *context)
-      : DialectOpConversion(BufferSizeOp::getOperationName(), 1, context),
-        llvmModule(*getLLVMModule(context)) {}
+  BufferSizeOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(BufferSizeOp::getOperationName(), context, lowering_) {}
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto bufferSizeType =
-        convertToLLVMDialectType(operands[0]->getType(), llvmModule);
+    auto bufferSizeType = lowering.convertType(operands[0]->getType());
     edsc::ScopedContext context(rewriter, op->getLoc());
     return {extractvalue(bufferSizeType, operands[0],
                          makePositionAttr(rewriter, 1))};
   }
-
-  llvm::Module &llvmModule;
 };
 
 // RangeOp creates a new range descriptor.
-class RangeOpConversion : public DialectOpConversion {
+class RangeOpConversion : public LLVMOpLowering {
 public:
-  explicit RangeOpConversion(MLIRContext *context)
-      : DialectOpConversion(RangeOp::getOperationName(), 1, context),
-        llvmModule(*getLLVMModule(context)) {}
+  explicit RangeOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(RangeOp::getOperationName(), context, lowering_) {}
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto rangeOp = op->cast<RangeOp>();
     auto rangeDescriptorType =
-        convertLinalgType(rangeOp.getResult()->getType(), llvmModule);
+        convertLinalgType(rangeOp.getResult()->getType(), lowering);
 
     edsc::ScopedContext context(rewriter, op->getLoc());
 
@@ -201,24 +187,20 @@ public:
 
     return {desc};
   }
-
-  llvm::Module &llvmModule;
 };
 
-class SliceOpConversion : public DialectOpConversion {
+class SliceOpConversion : public LLVMOpLowering {
 public:
-  explicit SliceOpConversion(MLIRContext *context)
-      : DialectOpConversion(SliceOp::getOperationName(), 1, context),
-        llvmModule(*getLLVMModule(context)) {}
+  explicit SliceOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(SliceOp::getOperationName(), context, lowering_) {}
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto sliceOp = op->cast<SliceOp>();
     auto viewDescriptorType =
-        convertLinalgType(sliceOp.getViewType(), llvmModule);
+        convertLinalgType(sliceOp.getViewType(), lowering);
     auto viewType = sliceOp.getBaseViewType();
-    auto int64Ty =
-        convertToLLVMDialectType(rewriter.getIntegerType(64), llvmModule);
+    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
 
     // Helper function to create an integer array attribute out of a list of
     // values.
@@ -229,7 +211,7 @@ public:
     auto getViewPtr = [pos, &rewriter, this](ViewType type,
                                              Value *view) -> Value * {
       auto elementPtrTy =
-          rewriter.getType<LLVMType>(getPtrToElementType(type, llvmModule));
+          rewriter.getType<LLVMType>(getPtrToElementType(type, lowering));
       return extractvalue(elementPtrTy, view, pos(0));
     };
 
@@ -288,25 +270,20 @@ public:
 
     return {desc};
   }
-
-  llvm::Module &llvmModule;
 };
 
-class ViewOpConversion : public DialectOpConversion {
+class ViewOpConversion : public LLVMOpLowering {
 public:
-  explicit ViewOpConversion(MLIRContext *context)
-      : DialectOpConversion(ViewOp::getOperationName(), 1, context),
-        llvmModule(*getLLVMModule(context)) {}
+  explicit ViewOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(ViewOp::getOperationName(), context, lowering_) {}
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto viewOp = op->cast<ViewOp>();
-    auto viewDescriptorType =
-        convertLinalgType(viewOp.getViewType(), llvmModule);
+    auto viewDescriptorType = convertLinalgType(viewOp.getViewType(), lowering);
     auto elementType = rewriter.getType<LLVMType>(
-        getPtrToElementType(viewOp.getViewType(), llvmModule));
-    auto int64Ty =
-        convertToLLVMDialectType(rewriter.getIntegerType(64), llvmModule);
+        getPtrToElementType(viewOp.getViewType(), lowering));
+    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
 
     auto pos = [&rewriter](ArrayRef<int> values) {
       return makePositionAttr(rewriter, values);
@@ -350,15 +327,13 @@ public:
 
     return {desc};
   }
-
-  llvm::Module &llvmModule;
 };
 
 // DotOp creates a new range descriptor.
-class DotOpConversion : public DialectOpConversion {
+class DotOpConversion : public LLVMOpLowering {
 public:
-  explicit DotOpConversion(MLIRContext *context)
-      : DialectOpConversion(DotOp::getOperationName(), 1, context) {}
+  explicit DotOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(DotOp::getOperationName(), context, lowering_) {}
 
   static StringRef libraryFunctionName() { return "linalg_dot"; }
 
@@ -384,11 +359,12 @@ protected:
     return ConversionListBuilder<
         BufferSizeOpConversion, DotOpConversion, RangeOpConversion,
         SliceOpConversion, ViewOpConversion>::build(&converterStorage,
-                                                    llvmDialect->getContext());
+                                                    llvmDialect->getContext(),
+                                                    *this);
   }
 
   Type convertAdditionalType(Type t) override {
-    return convertLinalgType(t, *module);
+    return convertLinalgType(t, *this);
   }
 };
 } // end anonymous namespace
