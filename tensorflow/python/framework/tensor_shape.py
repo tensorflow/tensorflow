@@ -908,8 +908,8 @@ class TensorShape(object):
     """
     try:
       other = as_shape(other)
-    except TypeError:
-      return NotImplemented
+    except TypeError as e:
+      return (type(e), '::', e)
     if self._dims is None:
       return other
     else:
@@ -941,8 +941,8 @@ class TensorShape(object):
     # completely unknown shape, so that we can use the partial information.
     try:
       other = as_shape(other)
-    except TypeError:
-      return NotImplemented
+    except TypeError as e:
+      return (type(e), '::', e)
     if self._dims is None or other.dims is None:
       return unknown_shape()
     else:
@@ -960,8 +960,8 @@ class TensorShape(object):
     """
     try:
       other = as_shape(other)
-    except TypeError:
-      return NotImplemented
+    except TypeError as e:
+      return (type(e), '::', e)
     if self.rank is not None and other.rank is not None:
       if self.rank != other.rank:
         raise ValueError("Shapes %s and %s must have the same rank" %
