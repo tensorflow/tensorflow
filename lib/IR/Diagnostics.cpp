@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -32,10 +33,22 @@ using namespace mlir::detail;
 // DiagnosticArgument
 //===----------------------------------------------------------------------===//
 
+// Construct from an Attribute.
+DiagnosticArgument::DiagnosticArgument(Attribute attr)
+    : kind(DiagnosticArgumentKind::Attribute),
+      opaqueVal(reinterpret_cast<intptr_t>(attr.getAsOpaquePointer())) {}
+
 // Construct from a Type.
 DiagnosticArgument::DiagnosticArgument(Type val)
     : kind(DiagnosticArgumentKind::Type),
       opaqueVal(reinterpret_cast<intptr_t>(val.getAsOpaquePointer())) {}
+
+/// Returns this argument as an Attribute.
+Attribute DiagnosticArgument::getAsAttribute() const {
+  assert(getKind() == DiagnosticArgumentKind::Attribute);
+  return Attribute::getFromOpaquePointer(
+      reinterpret_cast<const void *>(opaqueVal));
+}
 
 /// Returns this argument as a Type.
 Type DiagnosticArgument::getAsType() const {
@@ -46,6 +59,9 @@ Type DiagnosticArgument::getAsType() const {
 /// Outputs this argument to a stream.
 void DiagnosticArgument::print(raw_ostream &os) const {
   switch (kind) {
+  case DiagnosticArgumentKind::Attribute:
+    os << getAsAttribute();
+    break;
   case DiagnosticArgumentKind::Double:
     os << getAsDouble();
     break;

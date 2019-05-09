@@ -151,10 +151,9 @@ static ParseResult parseICmpOp(OpAsmParser *parser, OperationState *result) {
                              "expected 'predicate' attribute of string type");
   int predicateValue = getICmpPredicateByName(predicateStr.getValue());
   if (predicateValue == -1)
-    return parser->emitError(
-        predicateLoc,
-        "'" + Twine(predicateStr.getValue()) +
-            "' is an incorrect value of the 'predicate' attribute");
+    return parser->emitError(predicateLoc)
+           << "'" << predicateStr.getValue()
+           << "' is an incorrect value of the 'predicate' attribute";
 
   attrs[0].second = parser->getBuilder().getI64IntegerAttr(predicateValue);
 

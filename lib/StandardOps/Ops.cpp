@@ -694,9 +694,8 @@ ParseResult CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
   auto predicate = getPredicateByName(predicateName);
   if (predicate == CmpIPredicate::NumPredicates)
-    return parser->emitError(parser->getNameLoc(),
-                             "unknown comparison predicate \"" + predicateName +
-                                 "\"");
+    return parser->emitError(parser->getNameLoc())
+           << "unknown comparison predicate \"" << predicateName << "\"";
 
   auto builder = parser->getBuilder();
   Type i1Type = getCheckedI1SameShape(&builder, type);

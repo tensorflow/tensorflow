@@ -212,9 +212,8 @@ ParseResult mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "view type expected for first type");
   if (indexingsInfo.size() != baseViewType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected " + Twine(baseViewType.getRank()) +
-                                 " indexings");
+    return parser->emitError(parser->getNameLoc(), "expected ")
+           << baseViewType.getRank() << " indexings";
   ViewType viewType = types.back().dyn_cast<ViewType>();
   if (!viewType)
     return parser->emitError(parser->getNameLoc(), "view type expected");
@@ -222,9 +221,8 @@ ParseResult mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
   ArrayRef<Type> indexingTypes =
       ArrayRef<Type>(types).drop_front(1).drop_back(1);
   if (indexingTypes.size() != baseViewType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected " + Twine(baseViewType.getRank()) +
-                                 " indexing types");
+    return parser->emitError(parser->getNameLoc(), "expected ")
+           << baseViewType.getRank() << " indexing types";
   return failure(
       parser->resolveOperand(baseInfo, baseViewType, result->operands) ||
       (!indexingsInfo.empty() &&
@@ -326,9 +324,8 @@ ParseResult mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
   if (!viewType)
     return parser->emitError(parser->getNameLoc(), "view type expected");
   if (viewType.getRank() != indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected" + Twine(viewType.getRank()) +
-                                 " range indexings");
+    return parser->emitError(parser->getNameLoc(), "expected")
+           << viewType.getRank() << " range indexings";
   return failure(
       parser->resolveOperand(
           bufferInfo,

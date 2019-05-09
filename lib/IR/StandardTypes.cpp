@@ -333,12 +333,11 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   for (const auto &affineMap : affineMapComposition) {
     if (affineMap.getNumDims() != dim) {
       if (location)
-        context->emitError(
-            *location,
-            "memref affine map dimension mismatch between " +
-                (i == 0 ? Twine("memref rank") : "affine map " + Twine(i)) +
-                " and affine map" + Twine(i + 1) + ": " + Twine(dim) +
-                " != " + Twine(affineMap.getNumDims()));
+        context->emitError(*location)
+            << "memref affine map dimension mismatch between "
+            << (i == 0 ? Twine("memref rank") : "affine map " + Twine(i))
+            << " and affine map" << i + 1 << ": " << dim
+            << " != " << affineMap.getNumDims();
       return nullptr;
     }
 

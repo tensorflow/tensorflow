@@ -63,6 +63,7 @@ public:
   /// Enum that represents the different kinds of diagnostic arguments
   /// supported.
   enum class DiagnosticArgumentKind {
+    Attribute,
     Double,
     Integer,
     String,
@@ -75,6 +76,9 @@ public:
 
   /// Returns the kind of this argument.
   DiagnosticArgumentKind getKind() const { return kind; }
+
+  /// Returns this argument as an Attribute.
+  Attribute getAsAttribute() const;
 
   /// Returns this argument as a double.
   double getAsDouble() const {
@@ -105,6 +109,9 @@ public:
 
 private:
   friend class Diagnostic;
+
+  // Construct from an Attribute.
+  explicit DiagnosticArgument(Attribute attr);
 
   // Construct from a floating point number.
   explicit DiagnosticArgument(double val)
