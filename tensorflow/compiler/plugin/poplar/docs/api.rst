@@ -1,3 +1,5 @@
+.. _api-section:
+
 Python API
 ----------
 
