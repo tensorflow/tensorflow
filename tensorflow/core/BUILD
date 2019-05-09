@@ -1746,6 +1746,10 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "platform/**/env_time.cc",
+            "platform/**/logging.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/rocm.h",
@@ -1877,6 +1881,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        ":platform_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
