@@ -98,6 +98,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restricted_value_on_output = {16.0 / 256.0, 127};
       property.version = 2;
       break;
+    case BuiltinOperator_ELU:
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.version = 1;
+      break;
     case BuiltinOperator_LOGISTIC:
       property.input_indexes = {0};
       property.output_indexes = {0};

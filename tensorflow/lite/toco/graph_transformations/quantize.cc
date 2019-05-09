@@ -45,7 +45,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kMinimum || type == OperatorType::kMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
          type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
-         type == OperatorType::kResizeBilinear ||
+         type == OperatorType::kResizeBilinear || type == OperatorType::kElu ||
          type == OperatorType::kSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kPadV2 || type == OperatorType::kReshape ||

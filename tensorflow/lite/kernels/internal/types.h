@@ -835,6 +835,15 @@ struct DequantizationParams {
   int32 zero_point;
 };
 
+struct EluParams {
+  // uint8 inference params.
+  int32 input_zero_point;
+  int32 input_range_radius;
+  int32 input_multiplier;
+  int input_left_shift;
+  int32 output_zero_point;
+};
+
 struct FakeQuantParams {
   MinMax minmax;
   int32 num_bits;
