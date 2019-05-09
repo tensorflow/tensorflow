@@ -121,6 +121,9 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
                               poplarExecutor->GetTupleBufferByIndex(buffer, i));
         }
         CHECK(!buffer.is_null() || buffer.size() == 0);
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "-- return " << buffer.opaque();
+        }
         *device_memory = buffer;
         return Status::OK();
       }));

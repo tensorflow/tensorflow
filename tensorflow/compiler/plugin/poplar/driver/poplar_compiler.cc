@@ -71,7 +71,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
@@ -526,14 +525,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     auto size_function = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
     };
-    if (poplarExecutor->GetMaxAllReduceBufferSize() == 0) {
-      pipeline.AddPass<HloMemoryScheduler>(size_function,
-                                           DefaultMemoryScheduler);
-    } else {
-      pipeline.AddPass<HloMemoryScheduler>(
-          size_function, CreateSyncListMemoryScheduler(
-                             poplarExecutor->GetMaxAllReduceBufferSize()));
-    }
+
+    pipeline.AddPass<HloMemoryScheduler>(
+        size_function, CreateSyncListMemoryScheduler(
+                           poplarExecutor->GetMaxAllReduceBufferSize()));
+
     pipeline.AddPass<CombineAllReduce>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
