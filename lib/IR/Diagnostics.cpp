@@ -275,7 +275,26 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
   mgr.PrintMessage(convertLocToSMLoc(loc), getDiagKind(kind), message);
 }
 
-/// Convert a location into the given memory buffer into an SMLoc.
+/// Get a memory buffer for the given file, or nullptr if one is not found.
+const llvm::MemoryBuffer &
+SourceMgrDiagnosticHandler::getBufferForFile(StringRef filename) {
+  // Check for an existing mapping to the buffer id for this file.
+  auto bufferIt = filenameToBuf.find(filename);
+  if (bufferIt != filenameToBuf.end())
+    return *bufferIt->second;
+
+  // Look for a buffer in the manager that has this filename.
+  for (unsigned i = 1, e = mgr.getNumBuffers() + 1; i != e; ++i) {
+    auto *buf = mgr.getMemoryBuffer(i);
+    if (buf->getBufferIdentifier() == filename)
+      return *(filenameToBuf[filename] = buf);
+  }
+
+  return *(filenameToBuf[filename] = mgr.getMemoryBuffer(mgr.getMainFileID()));
+}
+
+/// Get a memory buffer for the given file, or the main file of the source
+/// manager if one doesn't exist. This always returns non-null.
 llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   auto fileLoc = loc.dyn_cast<FileLineColLoc>();
 
@@ -283,7 +302,8 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   if (!fileLoc)
     return llvm::SMLoc();
 
-  auto *membuf = mgr.getMemoryBuffer(mgr.getMainFileID());
+  // Get the buffer for this filename.
+  auto &membuf = getBufferForFile(fileLoc->getFilename());
 
   // TODO: This should really be upstreamed to be a method on llvm::SourceMgr.
   // Doing so would allow it to use the offset cache that is already maintained
@@ -292,8 +312,8 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   unsigned columnNo = fileLoc->getColumn();
 
   // Scan for the correct line number.
-  const char *position = membuf->getBufferStart();
-  const char *end = membuf->getBufferEnd();
+  const char *position = membuf.getBufferStart();
+  const char *end = membuf.getBufferEnd();
 
   // We start counting line and column numbers from 1.
   --lineNo;
@@ -319,7 +339,7 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   // If the line/column counter was invalid, return a pointer to the start of
   // the buffer.
   if (lineNo || position + columnNo > end)
-    return llvm::SMLoc::getFromPointer(membuf->getBufferStart());
+    return llvm::SMLoc::getFromPointer(membuf.getBufferStart());
 
   // Otherwise return the right pointer.
   return llvm::SMLoc::getFromPointer(position + columnNo);

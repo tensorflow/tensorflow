@@ -26,10 +26,12 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include <functional>
 
 namespace llvm {
+class MemoryBuffer;
 class SMLoc;
 class SourceMgr;
 } // end namespace llvm
@@ -441,11 +443,18 @@ public:
   void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
 
 private:
+  /// Get a memory buffer for the given file, or the main file of the source
+  /// manager if one doesn't exist.
+  const llvm::MemoryBuffer &getBufferForFile(StringRef filename);
+
   /// Convert a location into the given memory buffer into an SMLoc.
   llvm::SMLoc convertLocToSMLoc(Location loc);
 
   /// The source manager that we are wrapping.
   llvm::SourceMgr &mgr;
+
+  /// Mapping between file name and buffer pointer.
+  llvm::StringMap<const llvm::MemoryBuffer *> filenameToBuf;
 };
 } // namespace mlir
 
