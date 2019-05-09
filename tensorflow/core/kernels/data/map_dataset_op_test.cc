@@ -35,7 +35,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "map_dataset";
-constexpr char kOpName[] = "MapDataset";
 
 class MapDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -50,7 +49,7 @@ class MapDatasetOpTest : public DatasetOpsTestBase {
         FunctionDefHelper::FunctionRef(func_name, {{"T", DT_INT64}});
 
     NodeDef map_dataset_node_def = test::function::NDef(
-        kNodeName, kOpName, {input_dataset},
+        kNodeName, OpName(MAP_DATASET), {input_dataset},
         {{"f", func},
          {"Targuments", {}},
          {"output_shapes", gtl::ArraySlice<TensorShape>{{}}},
@@ -252,7 +251,7 @@ TEST_F(MapDatasetOpTest, DatasetTypeString) {
                              map_dataset_context.get(), &map_dataset));
   core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
-  EXPECT_EQ(map_dataset->type_string(), kOpName);
+  EXPECT_EQ(map_dataset->type_string(), OpName(MAP_DATASET));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
@@ -499,7 +498,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       map_dataset->MakeIterator(iterator_context.get(), "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Map");
+  EXPECT_EQ(iterator->prefix(), IteratorPrefix(MAP_DATASET, "Iterator"));
 }
 
 TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {

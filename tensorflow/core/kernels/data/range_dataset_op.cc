@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -22,6 +23,8 @@ namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
+
+using namespace tensorflow::data::name_utils;
 
 class RangeDatasetOp : public DatasetOpKernel {
  public:
@@ -54,7 +57,7 @@ class RangeDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Range")});
+          Iterator::Params{this, IteratorPrefix(RANGE_DATASET, prefix)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -69,8 +72,7 @@ class RangeDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() const override {
-      return strings::StrCat("RangeDatasetOp(", start_, ", ", stop_, ", ",
-                             step_, ")::Dataset");
+      return DatasetDebugString(RANGE_DATASET, start_, stop_, step_);
     }
 
     int64 Cardinality() const override {

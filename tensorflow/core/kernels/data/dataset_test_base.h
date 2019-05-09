@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -35,6 +36,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+using namespace tensorflow::data::name_utils;
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {

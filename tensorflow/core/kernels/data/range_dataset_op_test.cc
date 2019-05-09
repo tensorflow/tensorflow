@@ -20,7 +20,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "range_dataset";
-constexpr char kOpName[] = "RangeDataset";
 
 class RangeDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -219,7 +218,7 @@ TEST_F(RangeDatasetOpTest, DatasetTypeString) {
                              range_dataset_context.get(), &range_dataset));
   core::ScopedUnref scoped_unref(range_dataset);
 
-  EXPECT_EQ(range_dataset->type_string(), kOpName);
+  EXPECT_EQ(range_dataset->type_string(), OpName(RANGE_DATASET));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
@@ -446,7 +445,7 @@ TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
                                            &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Range");
+  EXPECT_EQ(iterator->prefix(), IteratorPrefix(RANGE_DATASET, "Iterator"));
 }
 
 TEST_P(ParameterizedRangeDatasetOpTest, Roundtrip) {
