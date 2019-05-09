@@ -149,8 +149,8 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.dtype_map = pywrap_tensorflow.NewCheckpointReader(
-        save_path).get_variable_to_dtype_map()
+    self._reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
+    self.dtype_map = self._reader.get_variable_to_dtype_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
     # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
@@ -201,10 +201,10 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
     for saveable in python_saveables:
       spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore([reader.get_tensor(name) for name in spec_names])
+      saveable.python_restore(
+          [self._reader.get_tensor(name) for name in spec_names])
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables:
