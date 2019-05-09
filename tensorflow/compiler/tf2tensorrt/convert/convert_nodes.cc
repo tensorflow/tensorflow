@@ -790,6 +790,14 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   float getDynamicRangeMax() const override { return 0.f; }
 #endif
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
+#endif
+
  private:
   nvinfer1::DataType trt_dtype_;
   nvinfer1::Dims trt_dims_;

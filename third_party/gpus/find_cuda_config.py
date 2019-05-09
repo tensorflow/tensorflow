@@ -388,6 +388,12 @@ def _find_tensorrt_config(base_paths, required_version):
   header_path, header_version = _find_header(base_paths, "NvInfer.h",
                                              required_version,
                                              get_header_version)
+
+  if ".." in header_version:
+    header_path, header_version = _find_header(base_paths, "NvInferRTSafe.h",
+                                               required_version,
+                                               get_header_version)
+
   tensorrt_version = header_version.split(".")[0]
 
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
