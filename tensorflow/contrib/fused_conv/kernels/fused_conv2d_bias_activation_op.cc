@@ -221,20 +221,20 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
         auto conv_output_scaled =
             conv_output.cast<ScaleType>() * conv_input_scale;
-        auto side_input_scaled =
-            side_input.cast<ScaleType>() * side_input_scale;
-
-        if (activation_mode == ActivationMode::NONE) {
-          output = (conv_output_scaled + bias + side_input_scaled)
+        ScaleType lower_bound = (activation_mode == ActivationMode::NONE
+                                     ? static_cast<ScaleType>(kMinRange)
+                                     : 0);
+        if (side_input_scale == 0.0f) {
+          output = (conv_output_scaled + bias)
                        .round()
-                       .clip(static_cast<ScaleType>(kMinRange),
-                             static_cast<ScaleType>(kMaxRange))
+                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
                        .template cast<T>();
-
-        } else if (activation_mode == ActivationMode::RELU) {
+        } else {
+          auto side_input_scaled =
+              side_input.cast<ScaleType>() * side_input_scale;
           output = (conv_output_scaled + bias + side_input_scaled)
                        .round()
-                       .clip(0, static_cast<ScaleType>(kMaxRange))
+                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
                        .template cast<T>();
         }
       }
