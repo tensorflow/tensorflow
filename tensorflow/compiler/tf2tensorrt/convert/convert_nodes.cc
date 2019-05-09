@@ -4072,6 +4072,33 @@ Status ConvertMatMulHelper(OpConverterParams* params,
                            TRT_TensorOrWeights input_a,
                            TRT_TensorOrWeights input_b, bool transpose_a,
                            bool transpose_b, string node_name) {
+  // TODO: ReorderCKtoKC is currently not general enough to transpose weights
+  // that are not 2D.
+  if ((transpose_a && input_a.is_weights() &&
+       input_a.GetTrtDims().nbDims != 2) ||
+      (transpose_b && input_b.is_weights() &&
+       input_b.GetTrtDims().nbDims != 2)) {
+    return errors::InvalidArgument(
+        "Cannot currently transpose input if it is a non-2D constant");
+  }
+
+  // If A is a tensor, we can only transpose if it is at least 3D in TF,
+  // or TRT will not do the correct transposition.
+  if (transpose_a && input_a.is_tensor() && input_a.GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
+  }
+
+  // If B is a tensor, then it must be at least 3D in TF,
+  // or TRT won't be able to handle the multiply correctly.
+  if (input_b.is_tensor() && input_b.GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Second input must either be a constant, or contain at least 2 "
+        "non-batch dimensions.");
+  }
+  if (params->validation_only) return Status::OK();
+
   // If an FC layer can be used and would be faster, use that instead.
   const bool should_use_fc =
       !transpose_a && input_a.is_tensor() && input_b.is_weights() &&
@@ -4144,32 +4171,6 @@ Status ConvertMatMul(OpConverterParams* params) {
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
 
-  // TODO: ReorderCKtoKC is currently not general enough to transpose weights
-  // that are not 2D.
-  if (transpose_b && inputs.at(1).is_weights() &&
-      inputs.at(1).GetTrtDims().nbDims != 2) {
-    return errors::InvalidArgument(
-        "Cannot currently transpose second input if it is a non-2D constant");
-  }
-
-  // If A is a tensor, we can only transpose it is at least 3D in TF,
-  // or TRT will not do the correct transposition.
-  if (transpose_a && inputs.at(0).is_tensor() &&
-      inputs.at(0).GetTrtDims().nbDims < 2) {
-    return errors::InvalidArgument(
-        "Cannot transpose first input if it is a tensor with fewer than 2 "
-        "non-batch dimensions.");
-  }
-
-  // If B is a tensor, then it must be at least 3D in TF,
-  // or TRT won't be able to handle the multiply correctly.
-  if (inputs.at(1).is_tensor() && inputs.at(1).GetTrtDims().nbDims < 2) {
-    return errors::InvalidArgument(
-        "Second input must either be a constant, or contain at least 2 "
-        "non-batch dimensions.");
-  }
-
-  if (params->validation_only) return Status::OK();
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
                              transpose_b, node_def.name());
 }
@@ -4177,16 +4178,16 @@ Status ConvertMatMul(OpConverterParams* params) {
 Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
-  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
-  // false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs.size() != 2) {
     return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
+  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
+  // false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
@@ -4224,7 +4225,6 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TRT_TensorOrWeights tensor_r{nullptr};
   TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
   TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
-  if (params->validation_only) return Status::OK();
 
   return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
                              transpose_b, node_def.name());
