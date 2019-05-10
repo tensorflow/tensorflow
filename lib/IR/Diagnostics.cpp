@@ -313,10 +313,11 @@ SourceMgrDiagnosticHandler::getBufferForFile(StringRef filename) {
       return filenameToBuf[filename] = buf;
   }
 
-  // Otherwise, default to the main file buffer, if it exists.
+  // Otherwise, try to load the source file.
   const llvm::MemoryBuffer *newBuf = nullptr;
-  if (mgr.getNumBuffers() != 0)
-    newBuf = mgr.getMemoryBuffer(mgr.getMainFileID());
+  std::string ignored;
+  if (auto newBufID = mgr.AddIncludeFile(filename, llvm::SMLoc(), ignored))
+    newBuf = mgr.getMemoryBuffer(newBufID);
   return filenameToBuf[filename] = newBuf;
 }
 

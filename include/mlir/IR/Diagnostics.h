@@ -448,9 +448,8 @@ public:
   void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
 
 protected:
-  /// Get a memory buffer for the given file, or the main file of the source
-  /// manager if one doesn't exist. If no file is available, nullptr is
-  /// returned.
+  /// Get a memory buffer for the given file, or nullptr if no file is
+  /// available.
   const llvm::MemoryBuffer *getBufferForFile(StringRef filename);
 
   /// The source manager that we are wrapping.
