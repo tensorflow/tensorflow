@@ -30,7 +30,7 @@
 namespace mlir {
 
 namespace detail {
-class AffineMapStorage;
+struct AffineMapStorage;
 } // end namespace detail
 
 class AffineExpr;

@@ -23,7 +23,7 @@
 
 namespace linalg {
 
-class ViewTypeStorage;
+struct ViewTypeStorage;
 
 /// A ViewType represents a range abstraction on top of an underlying storage
 /// type. It is parameterizable by the underlying element type and the rank of

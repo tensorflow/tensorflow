@@ -46,7 +46,7 @@ public:
 /// A BufferType represents a contiguous block of memory that can be allocated
 /// and deallocated. A buffer cannot be indexed directly, a view must be
 /// laid out on a buffer to give it indexing semantics.
-class BufferTypeStorage;
+struct BufferTypeStorage;
 class BufferType : public Type::TypeBase<BufferType, Type, BufferTypeStorage> {
 public:
   // Used for generic hooks in TypeBase.
@@ -93,7 +93,7 @@ public:
 ///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
 ///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
 /// ```
-class ViewTypeStorage;
+struct ViewTypeStorage;
 class ViewType : public Type::TypeBase<ViewType, Type, ViewTypeStorage> {
 public:
   // Used for generic hooks in TypeBase.
