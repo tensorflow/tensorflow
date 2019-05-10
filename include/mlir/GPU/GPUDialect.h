@@ -79,6 +79,10 @@ public:
   void getKernelOperandValues(SmallVectorImpl<Value *> *out);
   /// Append the operand types passed as kernel arguments to `out`.
   void getKernelOperandTypes(SmallVectorImpl<Type> *out);
+  /// Get the SSA values passed as operands to specify the grid size.
+  KernelDim3 getGridSizeOperandValues();
+  /// Get the SSA values passed as operands to specify the block size.
+  KernelDim3 getBlockSizeOperandValues();
 
   LogicalResult verify();
 
@@ -112,6 +116,10 @@ public:
                     Function *kernelFunc, Value *gridSizeX, Value *gridSizeY,
                     Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
                     Value *blockSizeZ, ArrayRef<Value *> kernelOperands);
+
+  static void build(Builder *builder, OperationState *result,
+                    Function *kernelFunc, KernelDim3 gridSize,
+                    KernelDim3 blockSize, ArrayRef<Value *> kernelOperands);
 
   /// The kernel function specified by the operation's `kernel` attribute.
   Function *kernel();

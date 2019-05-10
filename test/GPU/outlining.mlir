@@ -3,14 +3,19 @@
 func @launch() {
   %0 = "op"() : () -> (f32)
   %1 = "op"() : () -> (memref<?xf32, 1>)
-  %cst = constant 8 : index
+  %gDimX = constant 8 : index
+  %gDimY = constant 12 : index
+  %gDimZ = constant 16 : index
+  %bDimX = constant 20 : index
+  %bDimY = constant 24 : index
+  %bDimZ = constant 28 : index
 
-  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @launch_kernel : (f32, memref<?xf32, 1>) -> ()} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+  // CHECK: "gpu.launch_func"(%c8, %c12, %c16, %c20, %c24, %c28, %0, %1) {kernel: @launch_kernel : (f32, memref<?xf32, 1>) -> ()} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   // CHECK-NOT: gpu.launch blocks
-  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
-                                       %grid_z = %cst)
-             threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
-                                        %block_z = %cst)
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %gDimX, %grid_y = %gDimY,
+                                       %grid_z = %gDimZ)
+             threads(%tx, %ty, %tz) in (%block_x = %bDimX, %block_y = %bDimY,
+                                        %block_z = %bDimZ)
              args(%arg0 = %0, %arg1 = %1) : f32, memref<?xf32, 1> {
     "use"(%arg0): (f32) -> ()
     "some_op"(%bx, %block_x) : (index, index) -> ()

@@ -83,11 +83,9 @@ void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, Function *kernelFunc) {
   FuncBuilder funcBuilder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues;
   launchOp.getKernelOperandValues(&kernelOperandValues);
-  // TODO(tjoerg): Pass KernelDims rather than individual values.
   funcBuilder.create<gpu::LaunchFuncOp>(
-      loc, kernelFunc, launchOp.getOperand(0), launchOp.getOperand(1),
-      launchOp.getOperand(2), launchOp.getOperand(3), launchOp.getOperand(4),
-      launchOp.getOperand(5), kernelOperandValues);
+      loc, kernelFunc, launchOp.getGridSizeOperandValues(),
+      launchOp.getBlockSizeOperandValues(), kernelOperandValues);
   launchOp.erase();
 }
 

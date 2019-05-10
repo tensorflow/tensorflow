@@ -75,21 +75,25 @@ void LaunchOp::build(Builder *builder, OperationState *result, Value *gridSizeX,
 Region &LaunchOp::getBody() { return getOperation()->getRegion(0); }
 
 KernelDim3 LaunchOp::getBlockIds() {
+  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[0], args[1], args[2]};
 }
 
 KernelDim3 LaunchOp::getThreadIds() {
+  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[3], args[4], args[5]};
 }
 
 KernelDim3 LaunchOp::getGridSize() {
+  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[6], args[7], args[8]};
 }
 
 KernelDim3 LaunchOp::getBlockSize() {
+  assert(!getBody().getBlocks().empty() && "Function body must not be empty.");
   auto args = getBody().getBlocks().front().getArguments();
   return KernelDim3{args[9], args[10], args[11]};
 }
@@ -106,6 +110,14 @@ void LaunchOp::getKernelOperandTypes(SmallVectorImpl<Type> *out) {
   for (int i = kNumConfigOperands; i < getNumOperands(); ++i) {
     out->push_back(getOperand(i)->getType());
   }
+}
+
+KernelDim3 LaunchOp::getGridSizeOperandValues() {
+  return KernelDim3{getOperand(0), getOperand(1), getOperand(2)};
+}
+
+KernelDim3 LaunchOp::getBlockSizeOperandValues() {
+  return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
 LogicalResult LaunchOp::verify() {
@@ -293,6 +305,14 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
   result->addOperands(kernelOperands);
   result->addAttribute("kernel", builder->getFunctionAttr(kernelFunc));
+}
+
+void LaunchFuncOp::build(Builder *builder, OperationState *result,
+                         Function *kernelFunc, KernelDim3 gridSize,
+                         KernelDim3 blockSize,
+                         ArrayRef<Value *> kernelOperands) {
+  build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
+        blockSize.x, blockSize.y, blockSize.z, kernelOperands);
 }
 
 Function *LaunchFuncOp::kernel() {
