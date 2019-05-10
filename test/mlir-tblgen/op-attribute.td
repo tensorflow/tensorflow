@@ -32,7 +32,7 @@ def AOp : NS_Op<"a_op", []> {
 // ---
 
 // CHECK:      some-return-type AOp::aAttr() {
-// CHECK-NEXT:   auto attr = this->getAttr("aAttr").dyn_cast_or_null<some-attr-kind>();
+// CHECK-NEXT:   auto attr = this->getAttr("aAttr").cast<some-attr-kind>();
 // CHECK-NEXT:   return attr.some-convert-from-storage();
 
 // CHECK:      some-return-type AOp::bAttr() {

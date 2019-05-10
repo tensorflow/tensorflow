@@ -24,7 +24,7 @@ def NS_OpA : NS_Op<"op_a_with_enum_attr", []> {
 // ---
 
 // DEF-LABEL: StringRef OpA::attr()
-// DEF-NEXT:    auto attr = this->getAttr("attr").dyn_cast_or_null<StringAttr>();
+// DEF-NEXT:    auto attr = this->getAttr("attr").cast<StringAttr>();
 // DEF-NEXT:    return attr.getValue();
 
 // DEF-LABEL: OpA::verify()

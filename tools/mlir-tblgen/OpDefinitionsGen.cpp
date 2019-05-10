@@ -441,8 +441,12 @@ void OpEmitter::genAttrGetters() {
     // Emit normal emitter.
 
     // Return the queried attribute with the correct return type.
-    auto attrVal = formatv("this->getAttr(\"{0}\").dyn_cast_or_null<{1}>()",
-                           name, attr.getStorageType());
+    auto attrVal =
+        (attr.hasDefaultValueInitializer() || attr.isOptional())
+            ? formatv("this->getAttr(\"{0}\").dyn_cast_or_null<{1}>()", name,
+                      attr.getStorageType())
+            : formatv("this->getAttr(\"{0}\").cast<{1}>()", name,
+                      attr.getStorageType());
     body << "  auto attr = " << attrVal << ";\n";
     if (attr.hasDefaultValueInitializer()) {
       // Returns the default value if not set.
