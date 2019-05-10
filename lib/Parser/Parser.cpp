@@ -1667,9 +1667,7 @@ class AffineParser : public Parser {
 public:
   explicit AffineParser(ParserState &state) : Parser(state) {}
 
-  AffineMap parseAffineMapInline();
   AffineMap parseAffineMapRange(unsigned numDims, unsigned numSymbols);
-  IntegerSet parseIntegerSetInline();
   ParseResult parseAffineMapOrIntegerSetInline(AffineMap &map, IntegerSet &set);
   IntegerSet parseIntegerSetConstraints(unsigned numDims, unsigned numSymbols);
 
@@ -2074,52 +2072,6 @@ AffineParser::parseDimAndOptionalSymbolIdList(unsigned &numDims,
     return success();
   }
   return parseSymbolIdList(numSymbols);
-}
-
-/// Parses an affine map definition inline.
-///
-///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-///                 (`size` `(` dim-size (`,` dim-size)* `)`)?
-///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
-///
-///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-///
-AffineMap AffineParser::parseAffineMapInline() {
-  unsigned numDims = 0, numSymbols = 0;
-
-  // List of dimensional and optional symbol identifiers.
-  if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
-    return AffineMap();
-  }
-
-  if (parseToken(Token::arrow, "expected '->' or '['")) {
-    return AffineMap();
-  }
-
-  // Parse the affine map.
-  return parseAffineMapRange(numDims, numSymbols);
-}
-
-/// Parses an integer set definition inline.
-///
-///  integer-set ::= dim-and-symbol-id-lists `:` affine-constraint-conjunction
-///  affine-constraint-conjunction ::= /*empty*/
-///                                 | affine-constraint (`,`
-///                                 affine-constraint)*
-///
-IntegerSet AffineParser::parseIntegerSetInline() {
-  unsigned numDims = 0, numSymbols = 0;
-
-  // List of dimensional and optional symbol identifiers.
-  if (parseDimAndOptionalSymbolIdList(numDims, numSymbols)) {
-    return IntegerSet();
-  }
-
-  if (parseToken(Token::colon, "expected ':' or '['")) {
-    return IntegerSet();
-  }
-
-  return parseIntegerSetConstraints(numDims, numSymbols);
 }
 
 /// Parses an ambiguous affine map or integer set definition inline.
