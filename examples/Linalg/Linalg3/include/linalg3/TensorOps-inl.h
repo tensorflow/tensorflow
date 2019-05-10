@@ -87,7 +87,7 @@ mlir::AffineMap linalg::operandRangesToLoopsMap(
 //   2. If it is rank-reducing, an offset of 1 is added to the dimensions such
 //      that `d >= slicingDim`. This is to account for the rank reduction.
 // `getRootIndex` is then called on the **parent** view
-static llvm::SmallVector<mlir::Value *, 8>
+inline llvm::SmallVector<mlir::Value *, 8>
 extractRangesFromViewOrSliceOp(mlir::Value *view) {
   // This expects a viewType which must come from either ViewOp or SliceOp.
   assert(view->getType().isa<linalg::ViewType>() && "expected ViewType");
