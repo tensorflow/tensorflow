@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/java/src/main/native/gpu_delegate_jni.h"
+#include <jni.h>
 
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
@@ -45,3 +49,7 @@ Java_org_tensorflow_lite_gpu_GpuDelegate_bindGlBufferToTensor(
              ? JNI_TRUE
              : JNI_FALSE;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
