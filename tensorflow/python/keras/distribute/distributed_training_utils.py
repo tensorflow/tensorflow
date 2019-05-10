@@ -618,7 +618,8 @@ def is_distributing_by_cloning(model):
     True if the `model` is going to be distributed using cloning and False
     otherwise.
   """
-  return (model._cloning or not context.executing_eagerly() or
+  return (model._cloning or model._compile_distribution or
+          not context.executing_eagerly() or
           K.is_tpu_strategy(model._distribution_strategy))
 
 

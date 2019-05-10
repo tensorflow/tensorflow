@@ -249,7 +249,7 @@ class Model(network.Network):
     # cloning is requested.
     # TODO(b/124517980, b/124377929): Remove this temporary undocumented way
     # of enabling the feature and graduate it to the main distributed code path.
-    self._cloning = kwargs.pop('cloning', True)
+    self._cloning = kwargs.pop('cloning', False)
 
     self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                            sample_weight_mode,
