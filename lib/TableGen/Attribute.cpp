@@ -110,7 +110,9 @@ bool tblgen::Attribute::isOptional() const {
   return def->getValueAsBit("isOptional");
 }
 
-StringRef tblgen::Attribute::getTableGenDefName() const {
+StringRef tblgen::Attribute::getAttrDefName() const {
+  if (def->isAnonymous() && (isOptional() || hasDefaultValueInitializer()))
+    return getValueAsString(def->getValueInit("baseAttr"));
   return def->getName();
 }
 

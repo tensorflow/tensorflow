@@ -92,7 +92,10 @@ public:
   // Returns whether this attribute is optional.
   bool isOptional() const;
 
-  StringRef getTableGenDefName() const;
+  // Returns this attribute's TableGen def name. If this is an `OptionalAttr`
+  // or `DefaultValuedAttr` without explicit name, returns the base attribute's
+  // name.
+  StringRef getAttrDefName() const;
 
   // Returns the code body for derived attribute. Aborts if this is not a
   // derived attribute.

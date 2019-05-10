@@ -495,6 +495,10 @@ class DefaultValuedAttr<Attr attr, string val> :
   let convertFromStorage = attr.convertFromStorage;
   let constBuilderCall = attr.constBuilderCall;
   let defaultValue = val;
+
+  // Remember `attr`'s def name.
+  // TOOD(b/132458159): consider embedding Attr as a field.
+  string baseAttr = !cast<string>(attr);
 }
 
 // Decorates an attribute as optional. The return type of the generated
@@ -507,6 +511,10 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   let convertFromStorage = "$_self ? " # returnType # "(" #
                            attr.convertFromStorage # ") : (llvm::None)";
   let isOptional = 0b1;
+
+  // Remember `attr`'s def name.
+  // TOOD(b/132458159): consider embedding Attr as a field.
+  string baseAttr = !cast<string>(attr);
 }
 
 // A generic attribute that must be constructed around a specific type

@@ -234,7 +234,7 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
 std::string PatternEmitter::handleConstantAttr(Attribute attr,
                                                StringRef value) {
   if (!attr.isConstBuildable())
-    PrintFatalError(loc, "Attribute " + attr.getTableGenDefName() +
+    PrintFatalError(loc, "Attribute " + attr.getAttrDefName() +
                              " does not have the 'constBuilderCall' field");
 
   // TODO(jpienaar): Verify the constants here
