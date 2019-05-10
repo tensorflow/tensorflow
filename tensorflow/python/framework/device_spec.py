@@ -356,6 +356,18 @@ class DeviceSpecV2(object):
     return output
 
   def __eq__(self, other):
+    """Checks if the `other` DeviceSpec is same as the current instance, eg have
+
+       same value for all the internal fields.
+
+    Args:
+      other: Another DeviceSpec
+
+    Returns:
+      Return `True` if `other` is also a DeviceSpec instance and has same value
+      as the current instance.
+      Return `False` otherwise.
+    """
     return (isinstance(other, self.__class__) and
             self.to_string() == other.to_string())
 
