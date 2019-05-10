@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 
+from tensorflow.core.framework import variable_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import lift_to_graph
@@ -385,6 +386,79 @@ class LoadTest(test.TestCase):
     self.assertEqual(2., self.evaluate(fn(x=array_ops.ones([]))))
     root.graph.as_graph_element("x:0")
 
+  def _no_trainable_variable_attribute(self, trainable):
+    """A SavedModel where the VariableDef has no 'trainable' (it's false)."""
+
+    class _MissingFieldsVariable(resource_variable_ops.ResourceVariable):
+
+      def to_proto(self, export_scope=None):
+        full_proto = super(_MissingFieldsVariable, self).to_proto(export_scope)
+        return variable_pb2.VariableDef(
+            variable_name=full_proto.variable_name,
+            initial_value_name=full_proto.initial_value_name,
+            initializer_name=full_proto.snapshot_name,
+            save_slice_info_def=full_proto.save_slice_info_def,
+            is_resource=full_proto.is_resource)
+
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      v = _MissingFieldsVariable(3., trainable=trainable)
+      with session_lib.Session() as session:
+        session.run([v.initializer])
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={})
+        b.save()
+
+    return path
+
+  def test_trainable_not_set_in_proto(self):
+    """If a VariableDef has no 'trainable', we fall back to collections."""
+    real_tf_version = versions.__version__
+    # Pretend to be exported from an older version of TensorFlow, so trainable
+    # will follow collections instead of checking VariableDefs.
+    versions.__version__ = "1.7.0"
+    path = self._no_trainable_variable_attribute(trainable=True)
+    root = load.load(path)
+    self.assertTrue(root.variables[0].trainable)
+    path = self._no_trainable_variable_attribute(trainable=False)
+    root = load.load(path)
+    self.assertFalse(root.variables[0].trainable)
+    versions.__version__ = real_tf_version
+
+  def _export_variable(self, **kwargs_for_variable):
+    """A 1.x SavedModel with a single variable."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      v = resource_variable_ops.ResourceVariable(3., **kwargs_for_variable)
+      with session_lib.Session() as session:
+        session.run([v.initializer])
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={})
+        b.save()
+
+    return path
+
+  def test_trainable_in_proto(self):
+    """If a VariableDef has a trainable property, we do not use collections."""
+    path = self._export_variable(
+        trainable=True,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+    root = load.load(path)
+    self.assertTrue(root.variables[0].trainable)
+    path = self._export_variable(
+        trainable=False,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                     ops.GraphKeys.TRAINABLE_VARIABLES])
+    root = load.load(path)
+    self.assertFalse(root.variables[0].trainable)
+
 if __name__ == "__main__":
   test.main()
-
