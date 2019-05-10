@@ -64,12 +64,11 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
   ```python
   import tensorflow as tf
-  with tf.device('cpu:0'):
-    val0 = tf.ones((1,), dtype=tf.float32)
-    a = tf.atan2(val0, val0)
-    a_identity = tf.identity(a)
-    print(a.numpy())          #[0.7853982]
-    print(a_identity.numpy()) #[0.7853982]
+  val0 = tf.ones((1,), dtype=tf.float32)
+  a = tf.atan2(val0, val0)
+  a_identity = tf.identity(a)
+  print(a.numpy())          #[0.7853982]
+  print(a_identity.numpy()) #[0.7853982]
   ```
   
   Args:
