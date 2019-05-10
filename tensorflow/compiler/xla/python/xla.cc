@@ -272,7 +272,7 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  py::class_<PyLocalClient>(m, "LocalClient")
+  py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
       .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
                   py::arg("xla_platform_id"), py::arg("asynchronous"))
       .def("DeviceCount", &PyLocalClient::device_count)
