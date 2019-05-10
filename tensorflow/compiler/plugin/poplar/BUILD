@@ -1284,22 +1284,6 @@ py_test(
 )
 
 py_test(
-    name = "ipu_engine_cache_test",
-    size = "medium",
-    srcs = ["tests/ipu_engine_cache_test.py"],
-    deps = [
-        ":test_utils_py",
-        ":ipu_ops_py",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-    ],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
     name = "casts_elimination_test",
     size = "medium",
     srcs = ["tests/casts_elimination_test.py"],
@@ -1541,7 +1525,6 @@ test_suite(
         "hlo_matcher_test",
         "inplace_test",
         "inter_ipu_copy_inserter_test",
-        "ipu_engine_cache_test",
         "ipu_model_device_test",
         "ipu_outfeed_test",
         "lstm_test",

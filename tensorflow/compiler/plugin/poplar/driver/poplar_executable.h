@@ -93,14 +93,19 @@ class PoplarExecutable : public Executable {
 
   const bool IsRemapGraph() const { return is_remap_graph_; }
 
+  const bool IsLoadedFromCache() const { return loaded_from_cache_; }
+
   static StatusOr<PoplarExecutable*> Deserialize(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
       const std::string& filename);
 
-  static Status Serialize(const PoplarExecutable& executable,
-                          const std::string& filename,
+  static Status Serialize(const std::string& filename,
+                          const poplar::Executable& executable,
+                          const InfeedInfos& infeeds,
+                          const OutfeedInfos& outfeeds,
+                          uint32 replication_count,
                           const poplar::OptionFlags& opts);
 
  private:
@@ -119,6 +124,7 @@ class PoplarExecutable : public Executable {
   uint32 replication_factor_;
   InfeedInfos infeed_infos_;
   OutfeedInfos outfeed_infos_;
+  bool loaded_from_cache_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

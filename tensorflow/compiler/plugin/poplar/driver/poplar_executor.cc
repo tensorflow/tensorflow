@@ -766,7 +766,7 @@ std::string PoplarExecutor::CachedExecutableFilename(
 }
 
 bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {
-  return false;
+  return tensorflow::Env::Default()->FileExists(filename).ok();
 }
 
 tensorflow::IpuTraceEvent PoplarExecutor::NewTraceEvent() {
@@ -1550,7 +1550,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       if (current_config_.profiling().enable_ipu_trace_events()) {
         std::stringstream report_stream;
         if (current_config_.profiling().enable_execution_trace() > 0) {
-          if (executable.ExecutionCount() == 0) {
+          if (executable.ExecutionCount() == 0 &&
+              !executable.IsLoadedFromCache()) {
             auto graph_profile = current_engine_->getGraphProfile();
             auto exec_profile = current_engine_->getExecutionProfile();
 

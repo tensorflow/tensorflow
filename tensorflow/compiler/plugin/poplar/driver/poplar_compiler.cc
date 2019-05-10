@@ -371,15 +371,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         CreateHloProfilePrinterData(*profile_index_map, cost_analysis, name);
   }
 
-  std::string filename;
+  std::string cache_filename;
   if (poplarExecutor->HaveExecutableCache()) {
-    filename = poplarExecutor->CachedExecutableFilename(*module);
+    cache_filename = poplarExecutor->CachedExecutableFilename(*module);
 
-    if (poplarExecutor->HaveCachedExecutable(filename)) {
+    if (poplarExecutor->HaveCachedExecutable(cache_filename)) {
       TF_ASSIGN_OR_RETURN(PoplarExecutable * poplar_executable,
                           PoplarExecutable::Deserialize(
                               std::move(module), std::move(profile_printer),
-                              std::move(profile_index_map), filename));
+                              std::move(profile_index_map), cache_filename));
       // When restoring the executable we still need to make sure all the
       // outfeeds are unique.
       TF_RETURN_IF_ERROR(poplarExecutor->RegisterOutfeeds(
@@ -388,7 +388,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::unique_ptr<Executable> executable;
       executable.reset(poplar_executable);
 
+      VLOG(1) << "Loaded " << executable->module().name() << " from "
+              << cache_filename;
+
       return std::move(executable);
+    } else {
+      VLOG(1) << "Couldn't find " << cache_filename << " in executable cache";
     }
   }
 
@@ -661,6 +666,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         poplar::Executable exec = poplar::compileGraph(
             resources.main_graph, progs, opts, progress_logging);
 
+        if (poplarExecutor->HaveExecutableCache()) {
+          if (!poplarExecutor->HaveCachedExecutable(cache_filename)) {
+            TF_RETURN_IF_ERROR(PoplarExecutable::Serialize(
+                cache_filename, exec, resources.annotations.infeed_infos,
+                resources.annotations.outfeed_infos, replication_factor,
+                poplarExecutor->GetReportFlags()));
+          }
+        }
+
         engine.reset(new poplar::Engine(std::move(exec), opts));
 
       } catch (const std::exception& e) {
@@ -716,13 +730,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::move(resources.annotations.outfeed_infos));
 
   executable.reset(poplar_executable);
-
-  if (poplarExecutor->HaveExecutableCache()) {
-    if (!poplarExecutor->HaveCachedExecutable(filename)) {
-      TF_RETURN_IF_ERROR(PoplarExecutable::Serialize(
-          *poplar_executable, filename, poplarExecutor->GetReportFlags()));
-    }
-  }
 
   return std::move(executable);
 }
