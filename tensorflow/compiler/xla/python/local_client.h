@@ -175,6 +175,7 @@ class PyLocalClient {
 
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
                          bool asynchronous);
+  virtual ~PyLocalClient() = default;
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
   StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
@@ -192,7 +193,7 @@ class PyLocalClient {
 
   PythonRefManager& py_ref_manager() { return py_ref_manager_; }
 
- private:
+ protected:
   std::string platform_name_;
   LocalClient* client_;
   std::vector<std::unique_ptr<Device>> devices_;

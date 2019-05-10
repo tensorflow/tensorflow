@@ -131,11 +131,50 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "local_client",
+    srcs = ["local_client.cc"],
+    hdrs = ["local_client.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+        "-Wno-c++98-c++11-compat",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":shared_device_buffer",
+        ":types",
+        ":worker_thread",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
 tf_pybind_extension(
     name = "xla_extension",
     srcs = [
-        "local_client.cc",
-        "local_client.h",
         "xla.cc",
     ],
     copts = [
@@ -146,23 +185,19 @@ tf_pybind_extension(
     features = ["-use_header_modules"],
     module_name = "xla_extension",
     deps = [
+        ":local_client",
         ":shared_device_buffer",
         ":types",
         ":worker_thread",
         ":xrt",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -187,9 +222,7 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
         # Do NOT remove this dependency. The XLA Python extension must not
         # depend on any part of TensorFlow at runtime, **including**
         # libtensorflow_framework.so. The XLA module is deployed self-contained

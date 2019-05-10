@@ -147,7 +147,12 @@ Device::Device(se::StreamExecutor* executor, bool use_multiple_streams,
                                                    "py_xla_execute");
 }
 
-Device::~Device() { compute_stream_->parent()->SynchronizeAllActivity(); }
+Device::~Device() {
+  bool ok = compute_stream_->parent()->SynchronizeAllActivity();
+  if (!ok) {
+    LOG(ERROR) << "SynchronizeAllActivity failed when destroying Device.";
+  }
+}
 
 void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
                                        std::function<void()> callback) const {
@@ -283,7 +288,7 @@ StatusOr<PyLocalBuffer> PyLocalBuffer::FromPython(const py::object& argument,
 
   device.ThenRelease(device.host_to_device_stream(), std::move(py_buffer_ref));
   if (!device.asynchronous()) {
-    device.host_to_device_stream()->BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
   }
   return buffer;
 }
@@ -344,7 +349,7 @@ PyLocalBuffer::FromPythonValues(
     device.ThenRelease(device.host_to_device_stream(),
                        std::move(transfers[i].py_buffer_ref));
     if (!device.asynchronous()) {
-      device.host_to_device_stream()->BlockHostUntilDone();
+      TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
     }
   }
 
@@ -393,8 +398,8 @@ PyLocalBuffer::FromPythonValues(
     // Wait for the compute stream so that memory allocations are synchronized.
     device.host_to_device_stream()->ThenWaitFor(device.compute_stream());
   }
-  transfer_manager->WriteRootTupleIndexTable(device.host_to_device_stream(),
-                                             shaped_buffer);
+  TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
+      device.host_to_device_stream(), shaped_buffer));
   if (definition_event) {
     definition_event->RecordOnStream(device.host_to_device_stream());
   }
@@ -404,7 +409,7 @@ PyLocalBuffer::FromPythonValues(
                                      std::move(tuple_buffer));
   }
   if (!device.asynchronous()) {
-    device.host_to_device_stream()->BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
   }
 
   return buffer;
@@ -543,7 +548,7 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
     device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
   }
   if (!device.asynchronous()) {
-    device.compute_stream()->BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(device.compute_stream()->BlockHostUntilDone());
   }
   return PyLocalBuffer(on_host_shape, std::move(out_buffer), client_);
 }

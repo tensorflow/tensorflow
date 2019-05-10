@@ -102,17 +102,15 @@ class Backend(object):
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
+  def __init__(self, platform, client):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
-      xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
-      asynchronous: A boolean; should we enable asynchronous execution?
-        (Experimental.)
+      client: An _xla.PyLocalClient object.
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
+    self.client = client
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -157,11 +155,15 @@ class LocalBackend(Backend):
 
 
 def _cpu_backend_factory():
-  return LocalBackend(platform='cpu', xla_platform_id='Host', asynchronous=True)
+  client = _xla.LocalClient.Get(
+      platform='cpu', xla_platform_id='Host', asynchronous=True)
+  return LocalBackend(platform='cpu', client=client)
 
 
 def _gpu_backend_factory():
-  return LocalBackend(platform='gpu', xla_platform_id='CUDA')
+  client = _xla.LocalClient.Get(
+      platform='gpu', xla_platform_id='CUDA', asynchronous=False)
+  return LocalBackend(platform='gpu', client=client)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
