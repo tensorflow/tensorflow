@@ -19,7 +19,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif
 
@@ -30,18 +29,16 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 using se::Stream;
-using se::StreamExecutor;
 
 namespace functor {
 using se::DeviceMemory;
-using se::DeviceMemoryBase;
-using se::dnn::ToDataType;
 using se::ScratchAllocator;
 using se::port::StatusOr;
 
