@@ -337,6 +337,7 @@ cuda_py_test(
 py_binary(
     name = "mnist_multi_worker",
     srcs = ["mnist_multi_worker.py"],
+    python_version = "PY2",
     deps = [":mnist_multi_worker_lib"],
 )
 
