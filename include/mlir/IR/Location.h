@@ -46,7 +46,7 @@ struct FusedLocationStorage;
 /// Location objects represent source locations information in MLIR.
 class Location {
 public:
-  enum class Kind {
+  enum class Kind : uint8_t {
     /// This represents an unknown location.
     Unknown,
 
