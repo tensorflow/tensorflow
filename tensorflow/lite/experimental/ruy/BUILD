@@ -265,11 +265,13 @@ cc_library(
     srcs = [
         "dispatch.h",
         "impl.h",
+        "prepack.h",
     ],
     hdrs = [
         "matrix.h",
         "path.h",
         "ruy.h",
+        "ruy_advanced.h",
     ],
     visibility = ruy_visibility(),
     deps = [
@@ -290,10 +292,19 @@ cc_library(
     ],
 )
 
-# Just a usage example.
+# Usage examples.
 cc_binary(
     name = "example",
     srcs = ["example.cc"],
+    deps = [
+        ":ruy",
+    ],
+)
+
+# Usage examples of the advanced API.
+cc_binary(
+    name = "example_advanced",
+    srcs = ["example_advanced.cc"],
     deps = [
         ":ruy",
     ],
