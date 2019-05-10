@@ -1744,6 +1744,7 @@ AffineExpr AffineParser::getAffineBinaryOpExpr(AffineHighPrecOp op,
     llvm_unreachable("can't create affine expression for null high prec op");
     return nullptr;
   }
+  llvm_unreachable("Unknown AffineHighPrecOp");
 }
 
 /// Create an affine binary low precedence op expression (add, sub).
@@ -1758,6 +1759,7 @@ AffineExpr AffineParser::getAffineBinaryOpExpr(AffineLowPrecOp op,
     llvm_unreachable("can't create affine expression for null low prec op");
     return nullptr;
   }
+  llvm_unreachable("Unknown AffineLowPrecOp");
 }
 
 /// Consume this token if it is a lower precedence affine op (there are only

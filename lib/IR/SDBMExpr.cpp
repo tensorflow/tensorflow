@@ -54,6 +54,7 @@ public:
     case SDBMExprKind::Constant:
       return derived->visitConstant(expr.cast<SDBMConstantExpr>());
     }
+    llvm_unreachable("Unknown SDBMExpr Kind");
   }
 
 protected:

@@ -280,6 +280,7 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
   case DiagnosticSeverity::Remark:
     return llvm::SourceMgr::DK_Remark;
   }
+  llvm_unreachable("Unknown DiagnosticSeverity");
 }
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
@@ -426,6 +427,7 @@ static StringRef getDiagKindStr(DiagnosticSeverity kind) {
   case DiagnosticSeverity::Remark:
     return "remark";
   }
+  llvm_unreachable("Unknown DiagnosticSeverity");
 }
 
 /// Returns the expected diagnostics for the given source file.

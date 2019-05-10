@@ -78,6 +78,7 @@ private:
         return attr.getInt();
       return llvm::None;
     }
+    llvm_unreachable("Unknown AffineExpr");
   }
 
   // TODO: Change these to operate on APInts too.

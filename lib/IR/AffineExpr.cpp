@@ -84,6 +84,7 @@ AffineExpr::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
       return *this;
     return getAffineBinaryOpExpr(getKind(), newLHS, newRHS);
   }
+  llvm_unreachable("Unknown AffineExpr");
 }
 
 /// Returns true if this expression is made out of only symbols and
@@ -107,6 +108,7 @@ bool AffineExpr::isSymbolicOrConstant() const {
            expr.getRHS().isSymbolicOrConstant();
   }
   }
+  llvm_unreachable("Unknown AffineExpr");
 }
 
 /// Returns true if this is a pure affine expression, i.e., multiplication,
@@ -138,9 +140,10 @@ bool AffineExpr::isPureAffine() const {
            op.getRHS().template isa<AffineConstantExpr>();
   }
   }
+  llvm_unreachable("Unknown AffineExpr");
 }
 
-/// Returns the greatest known integral divisor of this affine expression.
+// Returns the greatest known integral divisor of this affine expression.
 uint64_t AffineExpr::getLargestKnownDivisor() const {
   AffineBinaryOpExpr binExpr(nullptr);
   switch (getKind()) {
@@ -166,6 +169,7 @@ uint64_t AffineExpr::getLargestKnownDivisor() const {
         binExpr.getRHS().getLargestKnownDivisor());
   }
   }
+  llvm_unreachable("Unknown AffineExpr");
 }
 
 bool AffineExpr::isMultipleOf(int64_t factor) const {
@@ -199,6 +203,7 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
            0;
   }
   }
+  llvm_unreachable("Unknown AffineExpr");
 }
 
 bool AffineExpr::isFunctionOfDim(unsigned position) const {

@@ -155,6 +155,7 @@ public:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
           expr.cast<AffineSymbolExpr>());
     }
+    llvm_unreachable("Unknown AffineExpr");
   }
 
   //===--------------------------------------------------------------------===//

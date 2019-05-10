@@ -37,6 +37,7 @@ Function *Value::getFunction() {
   case Value::Kind::OpResult:
     return getDefiningOp()->getFunction();
   }
+  llvm_unreachable("Unknown Value Kind");
 }
 
 Location Value::getLoc() {
@@ -54,6 +55,7 @@ Region *Value::getContainingRegion() {
   case Value::Kind::OpResult:
     return getDefiningOp()->getContainingRegion();
   }
+  llvm_unreachable("Unknown Value Kind");
 }
 
 //===----------------------------------------------------------------------===//
