@@ -28,7 +28,6 @@ import os
 import numpy as np
 
 import six
-from six.moves import xrange
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
@@ -137,13 +136,11 @@ class LocalBackend(Backend):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
     if compile_options.argument_layouts:
-      argument_layouts = [
-          s.as_xla_shape() for s in compile_options.argument_layouts
-      ]
+      argument_layouts = compile_options.argument_layouts
     else:
-      argument_layouts = c_computation.GetProgramShape().Parameters()
+      argument_layouts = c_computation.GetProgramShape().parameter_shapes()
     if compile_options.result_layout:
-      options.result_layout = compile_options.result_layout.as_xla_shape()
+      options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
@@ -299,6 +296,66 @@ def dtype_to_etype(dtype):
   return DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
 
 
+Shape = _xla.Shape
+Shape.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class Shape(object):
+  '''Represents an XLA shape.
+
+  A shape is either an array shape, having rank-many integer
+  dimensions and an element type (represented by a Numpy dtype), or it
+  is a tuple shape, having a shape for every tuple component:
+
+    type shape =
+        TupleShape of shape list
+      | ArrayShape of { dimensions: int list; element_type: dtype }
+  '''
+
+  @staticmethod
+  def tuple_shape(tuple_shapes) -> Shape:
+    "Construct a tuple shape."
+
+  @staticmethod
+  def array_shape(element_type, dimensions, minor_to_major=None) -> Shape:
+
+  @staticmethod
+  def from_pyval(pyval) -> Shape:
+    "Returns a Shape that describes a tuple-tree of Numpy arrays."
+
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+  def is_tuple(self) -> bool:
+  def is_array(self) -> bool:
+  def tuple_shapes(self) -> [Shape]:
+  def numpy_dtype(self) -> np.dtype:
+    "Like element_type(), but returns dtype('O') for a tuple shape."
+  def xla_element_type(self) -> PrimitiveType:
+  def element_type(self) -> np.dtype:
+  def dimensions(self) -> (int, int, ...):
+  def rank(self) -> int:
+  def minor_to_major(self) -> [int]:
+  def with_major_to_minor_layout_if_absent(self) -> Shape:
+    "Returns a copy with missing layouts set to major-to-minor."
+
+  def to_serialized_proto(self) -> bytes:
+    "Returns 'shape' as a serialized proto."
+"""
+
+ProgramShape = _xla.ProgramShape
+ProgramShape.__doc__ = """
+A ProgramShape is a C++ object that duck types like the following class.
+
+class ProgramShape(object):
+  def __init__(self, parameter_shapes, result_shape):
+  def parameter_shapes(self) -> [Shape]:
+  def result_shape(self) -> Shape:
+  def __repr__(self):
+"""
+
+
 class Buffer(object):
   """Represents a handle to data owned by XLA.
 
@@ -325,10 +382,11 @@ class Buffer(object):
     """Copies multiple Python values to freshly allocated on-device buffers.
 
     Arguments:
-      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is
-      a Python value to copy (e.g., a NumPy array), and `device` is an integer
-      device ordinal.
+      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is a
+        Python value to copy (e.g., a NumPy array), and `device` is an integer
+        device ordinal.
       backend: a Backend object, or `None` to use the default local backend.
+
     Returns:
       A list of `Buffer` objects corresponding to `pyvals_and_devices`.
     """
@@ -352,7 +410,7 @@ class Buffer(object):
     return self.c_buffer.ToPython()
 
   def shape(self):
-    return _wrap_shape(self.c_buffer.shape())
+    return self.c_buffer.shape()
 
   def device(self):
     return self._device
@@ -379,205 +437,17 @@ class Buffer(object):
 LocalBuffer = Buffer
 
 
-class Format(enum.IntEnum):
-  """Python copy of the Format protocol buffer enum."""
-  INVALID_FORMAT = 0
-  DENSE = 1
-  SPARSE = 2
+def shape_from_pyval(pyval):
+  """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
-
-class Shape(object):
-  """Represents an XLA shape.
-
-  A shape is either an array shape, having rank-many integer
-  dimensions and an element type (represented by a Numpy dtype), or it
-  is a tuple shape, having a shape for every tuple component:
-
-    type shape =
-        TupleShape of shape list
-      | ArrayShape of { dimensions: int list; element_type: dtype }
-
-  Callers are expected to instantiate this class only via the static
-  constructors: tuple_shape, array_shape, and from_pyval.
-  """
-
-  @staticmethod
-  def tuple_shape(tuple_shapes):
-    """Construct a tuple shape."""
-    if (not isinstance(tuple_shapes, (tuple, list)) or
-        not all(isinstance(t, Shape) for t in tuple_shapes)):
-      raise TypeError('tuple_shapes must be a tuple of Shapes')
-    return Shape(tuple_shapes, tuple)
-
-  @staticmethod
-  def array_shape(element_type, dimensions, minor_to_major=None):
-    """Construct an array shape."""
-    if (not isinstance(dimensions, tuple) or
-        not all(isinstance(i, int) for i in dimensions)):
-      dimensions = tuple(int(i) for i in dimensions)
-    return Shape(
-        dimensions, np.dtype(element_type), minor_to_major=minor_to_major)
-
-  @staticmethod
-  def from_pyval(pyval):
-    """Returns a Shape that describes a tuple-tree of Numpy arrays."""
-
-    def convert(pyval):
-      if isinstance(pyval, tuple):
-        return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
-      else:
-        pyval = require_numpy_array_layout(pyval)
-        return Shape.array_shape(pyval.dtype, np.shape(pyval))
-
-    return convert(pyval)
-
-  def __init__(self, dimensions, dtype, minor_to_major=None):
-    assert isinstance(dimensions, tuple)
-    self._dimensions = dimensions
-    self._dtype = dtype
-    self._is_tuple = dtype == tuple
-    self._minor_to_major = minor_to_major
-    self._check_minor_to_major()
-
-  def __eq__(self, other):
-    # pylint: disable=protected-access
-    return (self._dtype == other._dtype and
-            self._dimensions == other._dimensions and
-            self._minor_to_major == other._minor_to_major)
-
-  def __ne__(self, other):
-    return not self == other
-
-  def __hash__(self):
-    return hash((self._dtype, self._dimensions, self._minor_to_major))
-
-  def __repr__(self):
-    return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}, _minor_to_major={!r})').format(
-                self._dtype, self._dimensions, self._is_tuple,
-                self._minor_to_major)
-
-  def is_tuple(self):
-    return self._is_tuple
-
-  def is_array(self):
-    return not self._is_tuple
-
-  def tuple_shapes(self):
-    if not self.is_tuple():
-      raise ValueError('not a tuple shape')
-    return self._dimensions
-
-  def numpy_dtype(self):
-    """Like element_type(), but returns dtype('O') in case of a tuple shape."""
-    if self.is_tuple():
-      return np.dtype(np.object)
+  def convert(pyval):
+    if isinstance(pyval, tuple):
+      return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      return self.element_type()
+      pyval = require_numpy_array_layout(pyval)
+      return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
-  def xla_element_type(self):
-    return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.numpy_dtype())]
-
-  def element_type(self):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    return self._dtype
-
-  def dimensions(self):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    return self._dimensions
-
-  def rank(self):
-    return len(self.dimensions())
-
-  def minor_to_major(self):
-    return self._minor_to_major
-
-  def map_leaves(self, f):
-    """Map f over each leaf-level array subshape.
-
-    Args:
-      f: The function to apply. Whenever f returns None, the identity is applied
-        instead.
-
-    Returns:
-      A new Shape with the mapped leaves.
-    """
-    if self.is_tuple():
-      children = tuple(child.map_leaves(f) for child in self.tuple_shapes())
-      return Shape.tuple_shape(children)
-    else:
-      mapped = f(self)
-      return self if mapped is None else mapped
-
-  def _check_minor_to_major(self):
-    mtm = self._minor_to_major
-    if self.is_tuple():
-      assert mtm is None, self
-    if mtm is not None:
-      assert self.rank() == len(mtm), self
-      assert sorted(mtm) == list(range(len(mtm))), self
-
-  def update_minor_to_major(self, minor_to_major):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    if not isinstance(minor_to_major, tuple):
-      raise TypeError('minor_to_major must be a tuple')
-    updated = Shape.array_shape(self.element_type(), self.dimensions(),
-                                minor_to_major)
-    updated._check_minor_to_major()  # pylint: disable=protected-access
-    return updated
-
-  def with_major_to_minor_layout_if_absent(self):
-    """Returns a copy of a shape with missing layouts set to major-to-minor."""
-
-    def f(a):
-      if a.minor_to_major():
-        return None
-      return a.update_minor_to_major(tuple(xrange(a.rank() - 1, -1, -1)))
-
-    return self.map_leaves(f)
-
-  def serialize(self, proto):
-    """Serializes 'shape' into proto."""
-    if self.is_tuple():
-      proto.element_type = int(PrimitiveType.TUPLE)
-      for shape in self.tuple_shapes():
-        shape.serialize(proto.tuple_shapes.add())
-    else:
-      proto.element_type = int(self.xla_element_type())
-      proto.dimensions.extend(self.dimensions())
-      proto.is_dynamic_dimension.extend([False for _ in self.dimensions()])
-      if self.minor_to_major():
-        proto.layout.format = Format.DENSE
-        proto.layout.minor_to_major.extend(self.minor_to_major())
-
-  def as_xla_shape(self):
-    if self.is_tuple():
-      return _xla.Shape.Tuple([x.as_xla_shape() for x in self.tuple_shapes()])
-
-    return _xla.Shape.Array(self.xla_element_type(), self.dimensions(),
-                            self.minor_to_major())
-
-
-ProgramShape = collections.namedtuple('ProgramShape',
-                                      ('parameter_shapes', 'result_shape'))
-
-
-def _wrap_shape(xla_shape):
-  element_type = xla_shape.element_type()
-  if element_type == PrimitiveType.TUPLE:
-    shapes = tuple(_wrap_shape(sub) for sub in xla_shape.tuple_shapes())
-    return Shape.tuple_shape(shapes)
-  else:
-    dtype = XLA_ELEMENT_TYPE_TO_DTYPE[element_type]
-    return Shape.array_shape(dtype, xla_shape.dimensions())
-
-
-def _wrap_program_shape(program_shape):
-  return ProgramShape([_wrap_shape(arg) for arg in program_shape.Parameters()],
-                      _wrap_shape(program_shape.Result()))
+  return convert(pyval)
 
 
 def require_numpy_array_layout(value):
@@ -620,8 +490,7 @@ def transfer_from_outfeed(shape, device_ordinal=0):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent().as_xla_shape(),
-      device_ordinal)
+      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
 
 
 class CompileOptions(object):
@@ -707,10 +576,10 @@ class Computation(object):
     return Executable(c, backend=backend)
 
   def GetProgramShape(self):
-    return _wrap_program_shape(self._c_computation.GetProgramShape())
+    return self._c_computation.GetProgramShape()
 
   def GetReturnValueShape(self):
-    return _wrap_shape(self._c_computation.GetProgramShape().Result())
+    return self._c_computation.GetProgramShape().result_shape()
 
 
 class Executable(object):
@@ -885,7 +754,7 @@ class ComputationBuilder(object):
       return Computation(self._builder.Build(), backend=backend)
 
   def GetShape(self, operand):
-    return _wrap_shape(self._builder.GetShape(operand))
+    return self._builder.GetShape(operand)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -904,9 +773,8 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    return ops.Infeed(
-        self._builder,
-        shape.with_major_to_minor_layout_if_absent().as_xla_shape())
+    return ops.Infeed(self._builder,
+                      shape.with_major_to_minor_layout_if_absent())
 
   def Outfeed(self, operand):
     """Enqueues an outfeed op onto the computation.
@@ -1003,10 +871,9 @@ class ComputationBuilder(object):
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
 
-    return ops.Parameter(
-        self._builder, parameter_num,
-        shape.with_major_to_minor_layout_if_absent().as_xla_shape(),
-        name.encode('utf8'))
+    return ops.Parameter(self._builder, parameter_num,
+                         shape.with_major_to_minor_layout_if_absent(),
+                         name.encode('utf8'))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -1021,7 +888,7 @@ class ComputationBuilder(object):
       An XlaOp.
     """
     return self.ParameterWithShape(
-        Shape.from_pyval(value), name=name, parameter_num=parameter_num)
+        shape_from_pyval(value), name=name, parameter_num=parameter_num)
 
   def Iota(self, dtype, size):
     """Enqueues an iota constant onto the computation.
@@ -1048,7 +915,7 @@ class ComputationBuilder(object):
       An XlaOp representing the added broadcasted iota constant.
     """
     element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
-    xla_shape = _xla.Shape.Array(element_type, shape, None)
+    xla_shape = _xla.Shape.array_shape(element_type, shape, None)
     return ops.Iota(self._builder, xla_shape, dimension)
 
   def Concatenate(self, operands, dimension):
@@ -1105,10 +972,7 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return ops.Reshape(operand, dimensions, new_sizes)
 
-  def AllReduce(self,
-                operand,
-                computation,
-                replica_groups=None):
+  def AllReduce(self, operand, computation, replica_groups=None):
     """AllReduce op.
 
     Args:
@@ -1321,10 +1185,9 @@ class ComputationBuilder(object):
       An XlaOp representing the added custom call op.
     """
     opaque = opaque or b''
-    return ops.CustomCall(
-        self._builder, call_target_name, list(operands),
-        shape_with_layout.as_xla_shape(),
-        [s.as_xla_shape() for s in operand_shapes_with_layout], opaque)
+    return ops.CustomCall(self._builder, call_target_name,
+                          list(operands), shape_with_layout,
+                          list(operand_shapes_with_layout), opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1412,7 +1275,7 @@ class ComputationBuilder(object):
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
     Returns: a XlaOp to the generated array of F32 values.
     """
-    shape = _xla.Shape.Array(self.GetShape(mu).xla_element_type(), dims)
+    shape = _xla.Shape.array_shape(self.GetShape(mu).xla_element_type(), dims)
     return ops.RngNormal(mu, sigma, shape)
 
   def RngUniform(self, a, b, dims):
@@ -1429,7 +1292,7 @@ class ComputationBuilder(object):
     Returns: a XlaOp to the generated array of values with the same numeric type
       (F32, S32, or U32) as the arguments a and b.
     """
-    shape = _xla.Shape.Array(self.GetShape(a).xla_element_type(), dims)
+    shape = _xla.Shape.array_shape(self.GetShape(a).xla_element_type(), dims)
     return ops.RngUniform(a, b, shape)
 
   def While(self, cond, body, init):
@@ -1681,7 +1544,6 @@ class ComputationBuilder(object):
 
 
 FftType = _xla.FftType
-
 
 _UNARY_OPS = [
     'Not',

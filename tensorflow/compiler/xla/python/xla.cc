@@ -16,10 +16,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
@@ -129,34 +131,95 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TOKEN", TOKEN);
 
   // Shapes
-  py::class_<Shape>(m, "Shape")
+  py::class_<Shape> shape_class(m, "Shape");
+  shape_class
       .def_static(
-          "Tuple",
+          "tuple_shape",
           [](std::vector<Shape> shapes) -> Shape {
             return ShapeUtil::MakeTupleShape(shapes);
           },
-          "Makes a tuple shape.")
+          "Constructs a tuple shape.")
       .def_static(
-          "Array",
-          [](PrimitiveType type, std::vector<int64> dims,
-             absl::optional<std::vector<int64>> layout) -> Shape {
-            if (layout) {
-              return ShapeUtil::MakeShapeWithLayout(type, dims, *layout);
+          "array_shape",
+          [](PrimitiveType type, py::object dims_seq,
+             absl::optional<py::object> layout_seq) -> Shape {
+            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            if (layout_seq) {
+              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
             } else {
               Shape shape = ShapeUtil::MakeShape(type, dims);
               shape.clear_layout();
               return shape;
             }
           },
-          "Makes an array shape.", py::arg("type"), py::arg("dims"),
+          "Constructs an array shape.", py::arg("type"), py::arg("dims"),
+          py::arg("layout") = absl::nullopt)
+      .def_static(
+          "array_shape",
+          [](py::dtype dtype, py::object dims_seq,
+             absl::optional<py::object> layout_seq) -> Shape {
+            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            if (layout_seq) {
+              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+            } else {
+              Shape shape = ShapeUtil::MakeShape(type, dims);
+              shape.clear_layout();
+              return shape;
+            }
+          },
+          "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = absl::nullopt)
       .def("dimensions",
-           static_cast<const std::vector<int64>& (Shape::*)() const>(
-               &Shape::dimensions))
-      .def("element_type", &Shape::element_type)
+           [](const Shape& shape) -> py::tuple {
+             return IntSpanToTuple(shape.dimensions());
+           })
+      .def("xla_element_type", &Shape::element_type)
+      .def("element_type",
+           [](const Shape& shape) {
+             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+           })
+      .def("numpy_dtype",
+           [](const Shape& shape) {
+             if (shape.IsTuple()) {
+               return py::dtype("O");
+             }
+             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+           })
+      .def("is_tuple", &Shape::IsTuple)
+      .def("is_array", &Shape::IsArray)
+      .def("rank", &Shape::rank)
+      .def("to_serialized_proto",
+           [](const Shape& shape) {
+             ShapeProto proto = shape.ToProto();
+             return py::bytes(proto.SerializeAsString());
+           })
       .def("tuple_shapes",
-           static_cast<const std::vector<Shape>& (Shape::*)() const>(
-               &Shape::tuple_shapes))
+           [](const Shape& shape) {
+             return std::vector<Shape>(shape.tuple_shapes());
+           })
+      .def(
+          "with_major_to_minor_layout_if_absent",
+          [](const Shape& shape) {
+            Shape out = shape;
+            ShapeUtil::ForEachMutableSubshape(
+                &out, [](Shape* subshape, const ShapeIndex&) {
+                  if (!subshape->has_layout()) {
+                    LayoutUtil::SetToDefaultLayout(subshape);
+                  }
+                });
+            return out;
+          },
+          "Returns a copy of a shape with missing layouts set to "
+          "major-to-minor.")
+      .def("__eq__", [](const Shape& shape,
+                        const Shape& other) { return shape == other; })
+      .def("__ne__", [](const Shape& shape,
+                        const Shape& other) { return shape != other; })
+      .def("__hash__",
+           [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
       .def("__repr__", [](const Shape& shape) {
         return shape.ToString(/*print_layouts=*/true);
       });
@@ -171,10 +234,10 @@ PYBIND11_MODULE(xla_extension, m) {
             *program_shape.mutable_result() = result;
             return program_shape;
           }))
-      .def("Parameters",
+      .def("parameter_shapes",
            static_cast<const std::vector<Shape>& (ProgramShape::*)() const>(
                &ProgramShape::parameters))
-      .def("Result", &ProgramShape::result)
+      .def("result_shape", &ProgramShape::result)
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals

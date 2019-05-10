@@ -31,13 +31,6 @@ from tensorflow.compiler.xla.python import xla_extension as _xla
 # pylint: enable=g-direct-tensorflow-import
 
 
-def _make_xla_shape(shape):
-  if shape.is_tuple():
-    return _xla.Shape.Tuple([_make_xla_shape(s) for s in shape.tuple_shapes()])
-  return _xla.Shape.Array(shape.xla_element_type(), shape.dimensions(),
-                          shape.minor_to_major())
-
-
 def get_tf_context(target, worker):
   """Returns a TensorFlow RPC client object.
 
@@ -83,17 +76,16 @@ class XrtBackend(xla_client.Backend):
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access
-    program_shape = xla_client._wrap_program_shape(
-        computation.GetProgramShape())
+    program_shape = computation.GetProgramShape()
     # pylint: enable=protected-access
     proto = computation.GetSerializedProto()
     # TODO(phawkins): use the layouts in compile_options.
     arg_shapes = [
-        _make_xla_shape(shape.with_major_to_minor_layout_if_absent())
-        for shape in program_shape.parameter_shapes
+        shape.with_major_to_minor_layout_if_absent()
+        for shape in program_shape.parameter_shapes()
     ]
-    result_shape = _make_xla_shape(
-        program_shape.result_shape.with_major_to_minor_layout_if_absent())
+    result_shape = (
+        program_shape.result_shape().with_major_to_minor_layout_if_absent())
     device_assignment = _xla.xrt.AssignDevices(compile_options.num_replicas, 1)
     return _xla.xrt.XrtExecutable.Compile(self.context, proto, arg_shapes,
                                           result_shape, device_assignment)

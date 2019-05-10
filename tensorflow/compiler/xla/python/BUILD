@@ -150,6 +150,7 @@ tf_pybind_extension(
         ":types",
         ":worker_thread",
         ":xrt",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
