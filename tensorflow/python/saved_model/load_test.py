@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -49,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -211,6 +213,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertEqual("contents 1", f.read())
     with open(self.evaluate(imported.asset2.asset_path), "r") as f:
       self.assertEqual("contents 2", f.read())
+
+  def test_cond_prune(self, cycles):
+    x_in = []
+    x_out = []
+
+    def f(x, y):
+      x_in.append(x)
+      xx = cond_v2.cond_v2(
+          math_ops.less(1, 2),
+          lambda: x + 1,
+          lambda: x + 2,
+      )
+      x_out.append(xx)
+      return xx, 2 * y
+
+    f_wrapped = wrap_function.wrap_function(
+        f, [tensor_spec.TensorSpec((), dtypes.float32)] * 2)
+    f_pruned = f_wrapped.prune(x_in[0], [x_out[0]])
+
+    class Adder(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+      def add(self, x):
+        return f_pruned(x)
+
+    root = Adder()
+    root.add(constant_op.constant(1.))
+    root = self.cycle(root, cycles)
+    root.add(constant_op.constant(1.))
 
   def test_capture_assets(self, cycles):
     root = tracking.AutoTrackable()

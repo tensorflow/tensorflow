@@ -221,6 +221,10 @@ class WrappedFunction(function.ConcreteFunction):
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
     pruned_graph.inputs.extend(pruned_graph.captures.values())
+    # pylint: disable=protected-access
+    for f in self.graph._functions.values():
+      pruned_graph._add_function(f)
+    # pylint: enable=protected-access
 
     pruned_graph.variables = self.graph.variables
 
