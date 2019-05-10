@@ -145,6 +145,7 @@ cc_library(
     name = "cpu_backend_gemm",
     srcs = [
         "cpu_backend_gemm_ruy.h",
+        "cpu_backend_gemm_custom_gemv.h",
     ] + select({
         "//tensorflow/lite/kernels:tflite_with_ruy": [],
         "//conditions:default": [
@@ -162,6 +163,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
