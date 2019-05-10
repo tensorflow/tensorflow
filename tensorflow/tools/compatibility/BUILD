@@ -92,14 +92,31 @@ py_library(
 )
 
 py_library(
+    name = "module_deprecations_v2",
+    srcs = ["module_deprecations_v2.py"],
+    deps = [":ast_edits"],
+)
+
+py_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
+        ":module_deprecations_v2",
         ":reorders_v2",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tf_upgrade_v2_safety_lib",
+    srcs = ["tf_upgrade_v2_safety.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        ":module_deprecations_v2",
     ],
 )
 
@@ -113,6 +130,7 @@ py_binary(
         ":ast_edits",
         ":ipynb",
         ":tf_upgrade_v2_lib",
+        ":tf_upgrade_v2_safety_lib",
     ],
 )
 
@@ -129,6 +147,18 @@ py_test(
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "tf_upgrade_v2_safety_test",
+    srcs = ["tf_upgrade_v2_safety_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tf_upgrade_v2_safety_lib",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
     ],
 )
