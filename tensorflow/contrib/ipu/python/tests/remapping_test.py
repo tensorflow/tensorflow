@@ -63,9 +63,11 @@ class MappingTest(test_util.TensorFlowTestCase):
             bad_maps = []
             for g in tm['mappings']:
               for tensor in tm['mappings'][g]:
-                if tensor['total_elements'] > 16:
-                  if tensor['tiles_used'] != 1024:
-                    bad_maps += [tensor['inst_name']]
+                # Total elements > 16
+                if tensor[6] > 16:
+                  # Tiles used != 1024
+                  if len(tensor[7]) != 1024:
+                    bad_maps += [tensor[0]]
 
       self.assertEqual(len(bad_maps), 0)
 

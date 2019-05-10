@@ -1550,41 +1550,60 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
 
     for (auto pair : tm.second) {
       const auto& pop_tensor = pair.second;
+      auto flattened = pop_tensor.flatten();
 
-      Json::Value tensor;
-      tensor["inst_name"] = Json::Value(pair.first.first);
-      tensor["output_index"] = Json::Value::UInt64(pair.first.second);
-      tensor["constant"] = Json::Value::UInt64(pop_tensor.containsConstant());
-      tensor["has_aliases"] = Json::Value::UInt64(pop_tensor.containsAliases());
-      tensor["tiles"] = Json::Value(Json::arrayValue);
-
-      const auto& mapping = graph.getTileMapping(pop_tensor);
-      unsigned tiles_used = 0;
+      Json::Value tiles = Json::Value(Json::arrayValue);
+      const auto& region_list = graph.getSortedContiguousRegions(
+          flattened, {{0, flattened.numElements()}}, true);
       size_t total_elements = 0;
+      std::vector<uint64> region_count;
+      std::vector<uint64> element_count;
 
-      for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
-        const auto& tile = mapping[tile_idx];
-        if (tile.size() != 0) {
-          tiles_used++;
-          size_t tile_element_count = 0;
-          for (const auto& interval : tile) {
-            tile_element_count += interval.size();
+      for (const auto& region : region_list) {
+        for (const auto& interval : region) {
+          const auto& mapping = graph.getTileMapping(
+              flattened.slice(interval.begin(), interval.end()));
+
+          if (mapping.size() > region_count.size()) {
+            region_count.resize(mapping.size());
+            element_count.resize(mapping.size());
           }
 
-          Json::Value tile;
-          tile["tile_id"] = Json::Value::UInt64(tile_idx);
-          tile["num_intervals"] = Json::Value::UInt64(tile.size());
-          tile["num_elements"] = Json::Value::UInt64(tile_element_count);
-          tile["element_type"] =
-              Json::Value(pop_tensor.elementType().toString());
-          tensor["tiles"].append(tile);
-
-          total_elements += tile_element_count;
+          for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
+            for (const auto& interval : mapping[tile_idx]) {
+              region_count[tile_idx] += 1;
+              element_count[tile_idx] += interval.size();
+            }
+          }
         }
       }
 
-      tensor["tiles_used"] = Json::Value::UInt64(tiles_used);
-      tensor["total_elements"] = Json::Value::UInt64(total_elements);
+      for (size_t tile_idx = 0; tile_idx < region_count.size(); tile_idx++) {
+        if (region_count[tile_idx] > 0) {
+          Json::Value tile_info(Json::arrayValue);
+          tile_info.append(Json::Value::UInt64(tile_idx));
+          tile_info.append(Json::Value::UInt64(region_count[tile_idx]));
+          tile_info.append(Json::Value::UInt64(element_count[tile_idx]));
+          tiles.append(tile_info);
+
+          total_elements += element_count[tile_idx];
+        }
+      }
+
+      Json::Value tensor_shape(Json::arrayValue);
+      for (auto d : pop_tensor.shape()) {
+        tensor_shape.append(Json::Value::UInt64(d));
+      }
+
+      Json::Value tensor(Json::arrayValue);
+      tensor.append(Json::Value(pair.first.first));
+      tensor.append(Json::Value::UInt64(pair.first.second));
+      tensor.append(tensor_shape);
+      tensor.append(Json::Value(pop_tensor.elementType().toString()));
+      tensor.append(Json::Value::UInt64(pop_tensor.containsConstant()));
+      tensor.append(Json::Value::UInt64(pop_tensor.containsAliases()));
+      tensor.append(Json::Value::UInt64(total_elements));
+      tensor.append(tiles);
 
       mappings[tm.first].append(tensor);
     }
