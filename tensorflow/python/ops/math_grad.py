@@ -1308,6 +1308,34 @@ def _SelectGrad(op, grad):
   return (None, array_ops.where(c, grad, zeros), array_ops.where(
       c, zeros, grad))
 
+@ops.RegisterGradient("SelectV2")
+def _SelectGrad(op, grad):
+  c = op.inputs[0]
+  x = op.inputs[1]
+  y = op.inputs[2]
+  zeros = array_ops.zeros([], dtype=grad.dtype.base_dtype)
+  gx = array_ops.where_v2(c, grad, zeros)
+  gx_shape = array_ops.shape(gx)
+  x_shape = array_ops.shape(x)
+  rankdiff_x = array_ops.rank(gx) - array_ops.rank(x)
+  # Reduce away broadcasted leading dims.
+  gx = math_ops.reduce_sum(gx, axis=math_ops.range(rankdiff_x))
+  # Reduce but keep x's 1-valued dims which were broadcast.
+  gx = math_ops.reduce_sum(
+      gx, keepdims=1, axis=array_ops.where(grad_shape[rankdiff_x:] > x_shape))
+
+  gy = array_ops.where_v2(c, zeros, grad)
+  gy_shape = array_ops.shape(gy)
+  y_shape = array_ops.shape(y)
+  rankdiff_y = array_ops.rank(gy) - array_ops.rank(y)
+  # Reduce away broadcasted leading dims.
+  gy = math_ops.reduce_sum(gy, axis=math_ops.range(rankdiff_y))
+  # Reduce but keep y's 1-valued dims which were broadcast.
+  gy = math_ops.reduce_sum(
+      gy, keepdims=1, axis=array_ops.where(grad_shape[rankdiff_y:] > y_shape))
+
+  return (None, gx, gy)
+
 
 def _MatMulGradAgainstFirstOnly(op, grad):
   """Gradient for MatMul, only for the first input."""
