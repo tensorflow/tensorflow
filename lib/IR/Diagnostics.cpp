@@ -248,6 +248,26 @@ void DiagnosticEngine::emit(const Diagnostic &diag) {
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//
 
+/// Return a processable FileLineColLoc from the given location.
+static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
+  // Process a FileLineColLoc.
+  if (auto fileLoc = loc.dyn_cast<FileLineColLoc>())
+    return fileLoc;
+
+  // Process a CallSiteLoc.
+  if (auto callLoc = loc.dyn_cast<CallSiteLoc>()) {
+    // Check to see if the caller is a FileLineColLoc.
+    if (auto fileLoc = callLoc->getCaller().dyn_cast<FileLineColLoc>())
+      return fileLoc;
+
+    // Otherwise, if the caller is another CallSiteLoc, check if its callee is a
+    // FileLineColLoc.
+    if (auto callerLoc = callLoc->getCaller().dyn_cast<CallSiteLoc>())
+      return callerLoc->getCallee().dyn_cast<FileLineColLoc>();
+  }
+  return llvm::None;
+}
+
 /// Given a diagnostic kind, returns the LLVM DiagKind.
 static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
   switch (kind) {
@@ -302,9 +322,8 @@ SourceMgrDiagnosticHandler::getBufferForFile(StringRef filename) {
 /// Get a memory buffer for the given file, or the main file of the source
 /// manager if one doesn't exist. This always returns non-null.
 llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
-  auto fileLoc = loc.dyn_cast<FileLineColLoc>();
-
-  // We currently only support FileLineColLoc.
+  // Process a FileLineColLoc.
+  auto fileLoc = getFileLineColLoc(loc);
   if (!fileLoc)
     return llvm::SMLoc();
 
@@ -324,8 +343,10 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   const char *end = membuf->getBufferEnd();
 
   // We start counting line and column numbers from 1.
-  --lineNo;
-  --columnNo;
+  if (lineNo != 0)
+    --lineNo;
+  if (columnNo != 0)
+    --columnNo;
 
   while (position < end && lineNo) {
     auto curChar = *position++;
@@ -476,11 +497,11 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
   // Register a handler to verfy the diagnostics.
   ctx->getDiagEngine().setHandler(
       [&](Location loc, StringRef msg, DiagnosticSeverity kind) {
-        // We only support FileLineColLoc at the moment.
-        if (auto fileLoc = loc.dyn_cast<FileLineColLoc>())
+        // Process a FileLineColLoc.
+        if (auto fileLoc = getFileLineColLoc(loc))
           return process(*fileLoc, msg, kind);
 
-        emitDiagnostic(loc, "expected " + getDiagKindStr(kind) + " \": " + msg,
+        emitDiagnostic(loc, "unexpected " + getDiagKindStr(kind) + ": " + msg,
                        DiagnosticSeverity::Error);
         impl->status = failure();
       });
@@ -549,7 +570,7 @@ void SourceMgrDiagnosticVerifierHandler::process(FileLineColLoc loc,
                          "' diagnostic emitted when expecting a '" +
                          getDiagKindStr(nearMiss->kind) + "'");
   else
-    emitDiagnostic(loc, "expected " + getDiagKindStr(kind) + " \": " + msg,
+    emitDiagnostic(loc, "unexpected " + getDiagKindStr(kind) + ": " + msg,
                    DiagnosticSeverity::Error);
   impl->status = failure();
 }
