@@ -301,7 +301,12 @@ PYBIND11_MODULE(xla_extension, m) {
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
+  ops.def("AllReduce",
+          static_cast<XlaOp (*)(
+              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+              const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
   ops.def("AllToAll", &AllToAll);
+  ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
