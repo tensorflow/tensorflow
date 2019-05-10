@@ -1035,13 +1035,8 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp that represents on each replica the sum of its group's values.
     """
-    if replica_groups is None:
-      replica_groups = []  # special value for XLA API
-    else:
-      replica_groups = [
-          _make_replica_group_proto(group) for group in replica_groups
-      ]
-    return ops.CrossReplicaSum(operand, replica_groups)
+    replica_groups_protos = _get_replica_groups_protos(replica_groups)
+    return ops.CrossReplicaSum(operand, replica_groups_protos)
 
   def Trans(self, operand):
     """Specialized matrix transpose op."""
