@@ -5393,5 +5393,33 @@ TEST_F(AlgebraicSimplifierTest,
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareIota) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = s32[] constant(0)
+      iota = s32[128] iota(), iota_dimension=0
+      broad = s32[128] broadcast(zero), dimensions={}
+      ROOT compare = pred[128] compare(iota, broad), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(false))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareSame) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param = s32[123] parameter(0)
+      ROOT compare = pred[123] compare(param, param), direction=GE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(true))));
+}
+
 }  // namespace
 }  // namespace xla
