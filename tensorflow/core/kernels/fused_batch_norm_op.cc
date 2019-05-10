@@ -189,6 +189,11 @@ struct FusedBatchNorm<CPUDevice, T, U> {
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   void* reserve_space_allocator,
                   void* workspace_allocator, bool is_training) {
+    if (reserve_space_allocator != nullptr) {
+        Tensor* dummy_reserve_space = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(5, {}, &dummy_reserve_space));
+    }
     OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
                 errors::Internal("The CPU implementation of FusedBatchNorm "
                                  "only supports NHWC tensor format for now."));
@@ -724,29 +729,29 @@ class FusedBatchNormOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(4, scale.shape(),
                                                      &saved_maybe_inv_var));
 
-#if GOOGLE_CUDA
     if (!use_reserved_space) {
       functor::FusedBatchNorm<Device, T, U>()(
           context, x, scale, offset, estimated_mean, estimated_variance,
           epsilon_, y, batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
           tensor_format_, nullptr, nullptr, is_training_);
     } else {
+#if GOOGLE_CUDA
       functor::CudnnBatchNormAllocatorInOutput<U> reserve_space_allocator(
           context, 5);
       functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(
           context);
+#else
+      // Allocate two dummy objects to handle the 5th output. If they are seen
+      // by the CPU functor, we will allocate empty space for the 5th output.
+      Tensor reserve_space_allocator;
+      Tensor workspace_allocator;
+#endif // GOOGLE_CUDA
       functor::FusedBatchNorm<Device, T, U>()(
           context, x, scale, offset, estimated_mean, estimated_variance,
           epsilon_, y, batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
           tensor_format_, (void**)&reserve_space_allocator,
           (void**)&workspace_allocator, is_training_);
     }
-#else
-    functor::FusedBatchNorm<Device, T, U>()(
-        context, x, scale, offset, estimated_mean, estimated_variance,
-        epsilon_, y, batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
-        tensor_format_, nullptr, nullptr, is_training_);
-#endif // GOOGLE_CUDA
   }
 
  private:
