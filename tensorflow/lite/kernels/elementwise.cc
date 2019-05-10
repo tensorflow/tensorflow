@@ -126,47 +126,46 @@ inline TfLiteStatus EvalOptimized(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+inline TfLiteStatus EvalReference(TfLiteContext* context, TfLiteNode* node,
+                                  void func(const RuntimeShape&, const float*,
+                                            const RuntimeShape&, float*)) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  func(GetTensorShape(input), GetTensorData<float>(input),
+       GetTensorShape(output), GetTensorData<float>(output));
+  return kTfLiteOk;
+}
+
 template <KernelType type>
 TfLiteStatus FloorEval(TfLiteContext* context, TfLiteNode* node) {
-  if (type == kReference) {
-    return EvalNumeric(context, node, [](float f) { return std::floor(f); });
-  } else if (type == kGenericOptimized) {
-    return EvalOptimized(context, node, optimized_ops::Floor);
-  } else {
-    return kTfLiteError;
+  TfLiteStatus status = kTfLiteError;
+  switch (type) {
+    case kReference:
+      status = EvalReference(context, node, reference_ops::Floor);
+      break;
+    case kGenericOptimized:
+      status = EvalOptimized(context, node, optimized_ops::Floor);
+      break;
   }
-  return kTfLiteOk;
+  return status;
 }
 
 template <KernelType type>
 TfLiteStatus CeilEval(TfLiteContext* context, TfLiteNode* node) {
-  if (type == kReference) {
-    return EvalNumeric(context, node, [](float f) { return std::ceil(f); });
-  } else if (type == kGenericOptimized) {
-    return EvalOptimized(context, node, optimized_ops::Ceil);
-  } else {
-    return kTfLiteError;
+  TfLiteStatus status = kTfLiteError;
+  switch (type) {
+    case kReference:
+      status = EvalReference(context, node, reference_ops::Ceil);
+      break;
+    case kGenericOptimized:
+      status = EvalOptimized(context, node, optimized_ops::Ceil);
+      break;
   }
-  return kTfLiteOk;
-}
-
-inline float RoundToNearest(float value) {
-  // Note that this implementation matches that of tensorFlow tf.round
-  // and corresponds to the bankers rounding method.
-  // cfenv (for fesetround) is not yet supported universally on Android, so
-  // using a work around.
-  auto floor_val = std::floor(value);
-  auto diff = value - floor_val;
-  if ((diff < 0.5f) ||
-      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
-    return floor_val;
-  } else {
-    return floor_val = floor_val + 1.0f;
-  }
+  return status;
 }
 
 TfLiteStatus RoundEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, [](float f) { return RoundToNearest(f); });
+  return EvalReference(context, node, reference_ops::Round);
 }
 
 }  // namespace
