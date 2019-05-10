@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <list>
 #include <utility>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -146,9 +147,9 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
     // On Mac OS X, 'name' may have a leading underscore prefix, even though the
     // registered name may not.
     std::string stripped_name(name.begin() + 1, name.end());
-    func_addr = CustomCallTargetRegistry::Global()->Lookup(stripped_name);
+    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(stripped_name);
   } else {
-    func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(name);
   }
 
   if (func_addr == nullptr) {
@@ -210,7 +211,8 @@ llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
 namespace {
 // Register some known symbols with the CustomCallTargetRegistry.
 bool RegisterKnownJITSymbols() {
-  CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
+  xla::CustomCallTargetRegistry* registry =
+      xla::CustomCallTargetRegistry::Global();
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \

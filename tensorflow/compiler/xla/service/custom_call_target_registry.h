@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CUSTOM_CALL_TARGET_REGISTRY_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CUSTOM_CALL_TARGET_REGISTRY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_TARGET_REGISTRY_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_TARGET_REGISTRY_H_
 
 // This file is depended on by kernels that have to build for mobile devices.
 // For this reason, we avoid relying on TensorFlow and instead only use the
@@ -24,7 +24,6 @@ limitations under the License.
 #include <unordered_map>
 
 namespace xla {
-namespace cpu {
 
 // The CPU JIT compiler uses this registry to resolve symbolic CustomCall
 // targets; so when using the CPU JIT, CustomCall targets need to be registered
@@ -57,12 +56,11 @@ class RegisterCustomCallTarget {
 
 #define XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT(a, b) a##b
 
-#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, \
-                                                            counter)         \
-  static ::xla::cpu::RegisterCustomCallTarget                                \
-      XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT(custom_call_target_register,       \
-                                          counter)(                          \
-          symbol, reinterpret_cast<void*>(address))
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address,  \
+                                                            counter)          \
+  static ::xla::RegisterCustomCallTarget XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT( \
+      custom_call_target_register, counter)(symbol,                           \
+                                            reinterpret_cast<void*>(address))
 
 #define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address)  \
   XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, \
@@ -71,7 +69,6 @@ class RegisterCustomCallTarget {
 #define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(function) \
   XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function)
 
-}  // namespace cpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CUSTOM_CALL_TARGET_REGISTRY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_TARGET_REGISTRY_H_

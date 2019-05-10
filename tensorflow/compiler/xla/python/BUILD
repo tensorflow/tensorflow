@@ -186,7 +186,7 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         # Do NOT remove this dependency. The XLA Python extension must not
