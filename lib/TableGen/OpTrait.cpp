@@ -39,7 +39,7 @@ mlir::tblgen::OpTrait mlir::tblgen::OpTrait::create(const llvm::Init *init) {
 }
 
 mlir::tblgen::OpTrait::OpTrait(Kind kind, const llvm::Record *def)
-    : def(def), kind(kind){};
+    : def(def), kind(kind) {}
 
 llvm::StringRef mlir::tblgen::NativeOpTrait::getTrait() const {
   return def->getValueAsString("trait");

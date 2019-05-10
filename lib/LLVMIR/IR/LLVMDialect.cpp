@@ -97,7 +97,7 @@ static const char *const *getICmpPredicateNames() {
                                       /*UGT*/ "ugt",
                                       /*UGE*/ "uge"};
   return predicateNames;
-};
+}
 
 // Returns a value of the ICmp predicate corresponding to the given mnemonic.
 // Returns -1 if there is no such mnemonic.

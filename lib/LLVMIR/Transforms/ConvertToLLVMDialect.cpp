@@ -944,7 +944,7 @@ void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
       ::ensureDistinctSuccessors(bb);
     }
   }
-};
+}
 
 // Create a set of converters that live in the pass object by passing them a
 // reference to the LLVM IR dialect.  Store the module associated with the

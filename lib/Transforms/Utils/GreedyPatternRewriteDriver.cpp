@@ -143,7 +143,7 @@ private:
   std::vector<Operation *> worklist;
   DenseMap<Operation *, unsigned> worklistMap;
 };
-}; // end anonymous namespace
+} // end anonymous namespace
 
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
