@@ -1754,6 +1754,39 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     return matmul.operation.node()->def();
   };
 
+  // Additional test cases specific to MatMul
+  {
+    // Can only transpose A if it is 2D in TRT
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
+  }
+  {
+    // B must always have 2 non-batch dimensions
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestTensor("weights", {2}, /*batch_size=*/1);
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Second input must either be a constant, or contain at least 2 "
+        "non-batch dimensions.");
+  }
+  {
+    // We can never transpose weights that are not 2D.
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestWeights<float>("input", {1, 1, 2}, {0, 1});
+    AddTestTensor("weights", {2, 2}, /*batch_size=*/1);
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Cannot currently transpose constant input if it is not 2 dimensional");
+  }
   TestMatMulHelper(get_matmul_nodedef, "MatMul");
 }
 

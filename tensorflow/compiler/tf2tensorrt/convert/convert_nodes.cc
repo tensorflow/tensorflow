@@ -4079,7 +4079,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
       (transpose_b && input_b.is_weights() &&
        input_b.GetTrtDims().nbDims != 2)) {
     return errors::InvalidArgument(
-        "Cannot currently transpose input if it is a non-2D constant");
+        "Cannot currently transpose constant input if it is not 2 dimensional");
   }
 
   // If A is a tensor, we can only transpose if it is at least 3D in TF,
