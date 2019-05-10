@@ -941,6 +941,7 @@ cc_library(
         ":edit_distance_op",
         ":extract_image_patches_op",
         ":extract_volume_patches_op",
+        ":fingerprint_op",
         ":gather_nd_op",
         ":gather_op",
         ":guarantee_const_op",
@@ -1028,6 +1029,28 @@ tf_kernel_library(
     name = "edit_distance_op",
     prefix = "edit_distance_op",
     deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "fingerprint_op",
+    prefix = "fingerprint_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_cc_test(
+    name = "fingerprint_op_test",
+    size = "small",
+    srcs = ["fingerprint_op_test.cc"],
+    kernels = [":fingerprint_op"],
+    deps = [
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -1583,10 +1606,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -1711,6 +1734,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2561,6 +2585,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:virtual_cluster",

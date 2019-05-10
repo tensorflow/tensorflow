@@ -1117,7 +1117,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 5, 14):
+    if not compat.forward_compatible(2019, 6, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

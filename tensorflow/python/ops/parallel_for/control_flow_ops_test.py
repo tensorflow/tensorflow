@@ -101,6 +101,12 @@ class PForTest(PForTestCase):
     with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
+  def test_vectorized_map(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    result = pfor_control_flow_ops.vectorized_map(
+        compute, array_ops.ones((10, 5, 3)))
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):

@@ -112,31 +112,25 @@ void LIFOManager::RemoveCurrNode() {
   curr_pos_ = nodes_.end();  // Reset curr_pos_.
 }
 
-FirstReadyManager::FirstReadyManager() : ReadyNodeManager() {
+HeapReadyManager::HeapReadyManager() : ReadyNodeManager() {
   std::make_heap(nodes_.begin(), nodes_.end());
 }
 
-Status FirstReadyManager::Init(
+Status HeapReadyManager::Init(
     const std::unordered_map<const NodeDef*, NodeState>* node_map) {
-  // Reset the node state since different instances of the scheduler can reuse
+  // Resets the node state since different instances of the scheduler can reuse
   // the same node_manager.
   node_map_ = node_map;
   nodes_.clear();
   waiting_queue_.clear();
-  greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
-      // Use Node name as tie-breaker for deterministic node scheduling.
-      return a->name().compare(b->name()) > 0;
-    } else {
-      // Note: we need a node with minimum time_ready, not maximum; hence, using
-      // a > b for comparison function.
-      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
-    }
-  };
+
+  // Sets up the comparator for the heap.
+  greater_ = Greater();
+
   return Status::OK();
 }
 
-const NodeDef* FirstReadyManager::GetCurrNode() {
+const NodeDef* HeapReadyManager::GetCurrNode() {
   if (nodes_.empty()) {
     // Nothing in the node_; probably, the very first call. Move waiting_queue_
     // to node_.
@@ -146,7 +140,7 @@ const NodeDef* FirstReadyManager::GetCurrNode() {
   return nodes_.front();
 }
 
-void FirstReadyManager::RemoveCurrNode() {
+void HeapReadyManager::RemoveCurrNode() {
   if (nodes_.empty()) {
     // Make sure that there is a node to be removed at the front of nodes_.
     GetCurrNode();
@@ -156,11 +150,11 @@ void FirstReadyManager::RemoveCurrNode() {
   DrainWaitingQueue();
 }
 
-bool FirstReadyManager::Empty() const {
+bool HeapReadyManager::Empty() const {
   return nodes_.empty() && waiting_queue_.empty();
 }
 
-void FirstReadyManager::DrainWaitingQueue() {
+void HeapReadyManager::DrainWaitingQueue() {
   for (const auto* node : waiting_queue_) {
     // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
     // the first element is the node with minimum time_ready.
@@ -168,6 +162,44 @@ void FirstReadyManager::DrainWaitingQueue() {
     std::push_heap(nodes_.begin(), nodes_.end(), greater_);
   }
   waiting_queue_.clear();
+}
+
+std::function<bool(const NodeDef*, const NodeDef*)>
+FirstReadyManager::Greater() {
+  auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
+    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
+      // Use Node name as tie-breaker for deterministic node scheduling.
+      return a->name().compare(b->name()) > 0;
+    } else {
+      // Note: we need a node with minimum time_ready, not maximum; hence, using
+      // a > b for comparison function.
+      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
+    }
+  };
+  return greater;
+}
+
+std::function<bool(const NodeDef*, const NodeDef*)>
+PriorityReadyManager::Greater() {
+  auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
+    return node_priority_.at(a->name()) > node_priority_.at(b->name());
+  };
+  return greater;
+}
+
+Status PriorityReadyManager::SetPriority(
+    const std::unordered_map<string, int>& node_priority) {
+  // Checks each node has a unique priority.
+  std::unordered_set<int> priorities;
+  for (const auto& it : node_priority_) {
+    if (priorities.find(it.second) != priorities.end()) {
+      return errors::InvalidArgument("Non-unique priority found");
+    }
+    priorities.insert(it.second);
+  }
+
+  node_priority_ = node_priority;
+  return Status::OK();
 }
 
 CompositeNodeManager::CompositeNodeManager()

@@ -1521,7 +1521,7 @@ void DOT_ReorderContracting(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);

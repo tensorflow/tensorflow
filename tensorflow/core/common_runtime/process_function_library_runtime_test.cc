@@ -43,7 +43,7 @@ namespace {
 
 class TestClusterFLR : public DistributedFunctionLibraryRuntime {
  public:
-  TestClusterFLR() {}
+  explicit TestClusterFLR(DeviceMgr* device_mgr) : device_mgr_(device_mgr) {}
 
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
@@ -60,9 +60,12 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
+  DeviceMgr* remote_device_mgr() const override { return device_mgr_; }
+
  private:
   mutex mu_;
   int next_handle_ GUARDED_BY(mu_) = 0;
+  DeviceMgr* device_mgr_;
 };
 
 // TODO(b/128707168): Tests requiring a GPU device are currently always skipped
@@ -101,7 +104,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    cluster_flr_.reset(new TestClusterFLR());
+    cluster_flr_.reset(new TestClusterFLR(device_mgr_.get()));
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, nullptr, cluster_flr_.get()));

@@ -5,6 +5,7 @@ tensorflow/contrib/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/main.py
 tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/__init__.py
 tensorflow/contrib/mpi/BUILD
+tensorflow/stream_executor/build_defs.bzl
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/pip_package/README
 tensorflow/tools/pip_package/MANIFEST.in
@@ -257,7 +258,6 @@ tensorflow/third_party/__init__.py
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/third_party/eigen.BUILD
-tensorflow/stream_executor/build_defs.bzl
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compat_template.__init__.py

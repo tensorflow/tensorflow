@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -47,14 +47,14 @@ void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
 static std::shared_ptr<PySharedDeviceBuffer>
 BufferFromScopedShapedBufferIterator(
     const Shape& on_device_shape, int device_ordinal,
-    DeviceMemoryAllocator* allocator,
+    se::DeviceMemoryAllocator* allocator,
     ShapeTree<se::DeviceMemoryBase>::iterator* iterator,
     const ShapeTree<se::DeviceMemoryBase>::iterator& end,
     const std::shared_ptr<BufferDefinitionEvent>& definition_event) {
   CHECK(*iterator != end);
 
-  OwningDeviceMemory device_memory((*iterator)->second, device_ordinal,
-                                   allocator);
+  se::OwningDeviceMemory device_memory((*iterator)->second, device_ordinal,
+                                       allocator);
   (*iterator)->second = se::DeviceMemoryBase();
   ++*iterator;
 
@@ -90,7 +90,7 @@ PySharedDeviceBuffer::FromScopedShapedBuffer(
 /* static */ StatusOr<std::shared_ptr<PySharedDeviceBuffer>>
 PySharedDeviceBuffer::MakeTuple(
     std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
-    TransferManager* transfer_manager, DeviceMemoryAllocator* allocator,
+    TransferManager* transfer_manager, se::DeviceMemoryAllocator* allocator,
     int device_ordinal,
     std::shared_ptr<BufferDefinitionEvent> definition_event) {
   std::vector<Shape> child_shapes;
@@ -102,7 +102,7 @@ PySharedDeviceBuffer::MakeTuple(
 
   Shape shape = ShapeUtil::MakeTupleShape(child_shapes);
   TF_ASSIGN_OR_RETURN(
-      OwningDeviceMemory device_memory,
+      se::OwningDeviceMemory device_memory,
       allocator->Allocate(device_ordinal,
                           transfer_manager->GetByteSizeRequirement(shape)));
   return std::make_shared<PySharedDeviceBuffer>(
@@ -113,10 +113,10 @@ PySharedDeviceBuffer::MakeTuple(
 /* static */ StatusOr<std::shared_ptr<PySharedDeviceBuffer>>
 PySharedDeviceBuffer::MakeArray(
     Shape on_device_shape, TransferManager* transfer_manager,
-    DeviceMemoryAllocator* allocator, int device_ordinal,
+    se::DeviceMemoryAllocator* allocator, int device_ordinal,
     std::shared_ptr<BufferDefinitionEvent> definition_event) {
   TF_ASSIGN_OR_RETURN(
-      OwningDeviceMemory device_memory,
+      se::OwningDeviceMemory device_memory,
       allocator->Allocate(
           device_ordinal,
           transfer_manager->GetByteSizeRequirement(on_device_shape)));
@@ -153,7 +153,7 @@ ShapedBuffer PySharedDeviceBuffer::AsShapedBuffer(
 }
 
 PySharedDeviceBuffer::PySharedDeviceBuffer(
-    Shape on_device_shape, OwningDeviceMemory device_memory,
+    Shape on_device_shape, se::OwningDeviceMemory device_memory,
     std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
     std::shared_ptr<BufferDefinitionEvent> definition_event)
     : on_device_shape_(std::move(on_device_shape)),

@@ -157,7 +157,7 @@ class BaseGPUDevice : public LocalDevice {
   TfGpuId tf_gpu_id_;
   const bool sync_every_op_ = false;
   const int32 max_streams_;
-  std::unique_ptr<EventMgr> em_;
+  EventMgr* em_ = nullptr;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
   int32 pending_cap_ = 0;

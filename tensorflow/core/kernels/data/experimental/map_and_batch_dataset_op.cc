@@ -207,6 +207,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
+      string BuildTraceMeName() override {
+        int64 parallelism;
+        {
+          tf_shared_lock l(*mu_);
+          parallelism = num_parallel_calls_->value;
+        }
+        return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
+      }
+
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == model::kAutoTune) {

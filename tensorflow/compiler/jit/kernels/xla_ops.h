@@ -40,7 +40,7 @@ class XlaPlatformInfo {
                            se::Platform::Id platform_id,
                            const XlaDevice::Metadata* xla_device_metadata,
                            std::unique_ptr<XlaAllocator> xla_allocator,
-                           xla::DeviceMemoryAllocator* device_allocator)
+                           se::DeviceMemoryAllocator* device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
@@ -55,7 +55,7 @@ class XlaPlatformInfo {
     return xla_device_metadata_ && xla_device_metadata_->UseMultipleStreams();
   }
 
-  xla::DeviceMemoryAllocator* allocator() const {
+  se::DeviceMemoryAllocator* allocator() const {
     return device_allocator_ ? device_allocator_ : xla_allocator_.get();
   }
   DeviceType device_type() const { return device_type_; }
@@ -86,7 +86,7 @@ class XlaPlatformInfo {
   // then device_allocator_ is null and xla_allocator_ points to an appropriate
   // XlaAllocator instance.
   std::unique_ptr<XlaAllocator> xla_allocator_;
-  xla::DeviceMemoryAllocator* device_allocator_;
+  se::DeviceMemoryAllocator* device_allocator_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
 };

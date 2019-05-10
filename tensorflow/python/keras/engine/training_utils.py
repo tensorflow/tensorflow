@@ -993,10 +993,11 @@ def check_steps_argument(input_data, steps, steps_name):
   return False
 
 
-def cast_single_tensor(x):
+def cast_single_tensor(x, dtype=None):
   x = ops.convert_to_tensor(x)
+  dtype = dtype or K.floatx()
   if x.dtype.is_floating:
-    return math_ops.cast(x, dtype=K.floatx())
+    return math_ops.cast(x, dtype=dtype)
   return x
 
 
@@ -1011,6 +1012,25 @@ def cast_if_floating_dtype(x):
     Converted input.
   """
   return nest.map_structure(cast_single_tensor, x)
+
+
+def cast_if_floating_to_model_input_dtypes(x, model):
+  """Casts the given data tensors to the dtypes of the model inputs.
+
+  Casts only if the input is already a floating point type.
+
+  Args:
+    x: tensor or list/tuple of tensors.
+    model: The model.
+
+  Returns:
+    Converted input. Each tensor is casted to the corresponding input in
+    `model.inputs`.
+  """
+  # TODO(b/131372221): We should probably cast even if the input is not
+  # floating-point.
+  input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
+  return nest.map_structure(cast_single_tensor, x, input_dtypes)
 
 
 def get_output_sample_weight(skip_target_weighing_indices, sample_weight_mode,

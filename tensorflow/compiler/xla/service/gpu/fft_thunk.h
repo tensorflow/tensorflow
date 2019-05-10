@@ -38,7 +38,7 @@ namespace gpu {
 class FftScratchAllocator : public se::ScratchAllocator {
  public:
   FftScratchAllocator(int device_ordinal,
-                      DeviceMemoryAllocator* memory_allocator);
+                      se::DeviceMemoryAllocator* memory_allocator);
 
   int64 GetMemoryLimitInBytes(se::Stream* stream) override;
 
@@ -49,8 +49,8 @@ class FftScratchAllocator : public se::ScratchAllocator {
 
  private:
   const int device_ordinal_;
-  DeviceMemoryAllocator* memory_allocator_;
-  std::vector<OwningDeviceMemory> allocated_buffers_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 

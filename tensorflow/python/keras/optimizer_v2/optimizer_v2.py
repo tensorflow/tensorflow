@@ -674,7 +674,7 @@ class OptimizerV2(trackable.Trackable):
     if "learning_rate" in config:
       if isinstance(config["learning_rate"], dict):
         config["learning_rate"] = learning_rate_schedule.deserialize(
-            config["learning_rate"])
+            config["learning_rate"], custom_objects=custom_objects)
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):

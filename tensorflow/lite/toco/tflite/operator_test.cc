@@ -818,6 +818,31 @@ TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
 
+TEST_F(OperatorTest, VersioningUnpackTest) {
+  UnpackOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[0]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 2);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+}
+
 TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest<BatchToSpaceNDOperator>();
 }

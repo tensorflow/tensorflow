@@ -418,7 +418,12 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   GemmParams<AccumScalar, DstScalar> params;
-  params.bias = bias_data.data();
+  if (use_golden || !std::is_floating_point<AccumScalar>::value ||
+      (random_engine() % 2)) {
+    // cpu_backend_gemm supports bias=null only in the float path. Test that
+    // in 50% of float testcases.
+    params.bias = bias_data.data();
+  }
   if (!std::is_floating_point<AccumScalar>::value) {
     // some large int32 value. Not being a multiple of a large
     // power of two helps testing rounding behavior.
@@ -545,7 +550,7 @@ TYPED_TEST(CpuBackendGemmTest, Square) {
 
 TYPED_TEST(CpuBackendGemmTest, SquarePowerOfTwo) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 64; size <= 128; size++) {
+  for (int size = 64; size <= 128; size *= 2) {
     shapes.push_back(std::make_tuple(size, size, size));
   }
   TestRandomGemms<TypeParam>(shapes);
@@ -569,7 +574,7 @@ TYPED_TEST(CpuBackendGemmTest, VectorTimesMatrix) {
 
 TYPED_TEST(CpuBackendGemmTest, MatrixTimesNarrow) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 100; size++) {
+  for (int size = 1; size < 50; size++) {
     shapes.push_back(std::make_tuple(size, size, 2));
     shapes.push_back(std::make_tuple(size, size, 3));
     shapes.push_back(std::make_tuple(size, size, 4));
@@ -607,7 +612,7 @@ TYPED_TEST(CpuBackendGemmTest, InnerProduct) {
 
 TYPED_TEST(CpuBackendGemmTest, OuterProduct) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 200; size++) {
+  for (int size = 1; size < 100; size++) {
     shapes.push_back(std::make_tuple(size, 1, size));
   }
   TestRandomGemms<TypeParam>(shapes);

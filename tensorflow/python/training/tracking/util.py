@@ -201,8 +201,12 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
+    reader = None
     for saveable in python_saveables:
+      if reader is None:
+        # Lazily create the NewCheckpointReader, since this requires file access
+        # and we may not have any Python saveables.
+        reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
       spec_names = [spec.name for spec in saveable.specs]
       saveable.python_restore([reader.get_tensor(name) for name in spec_names])
 

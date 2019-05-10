@@ -157,8 +157,8 @@ class Layer(module.Module):
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
-    # and whether the layer's updates are run during training
-    self.trainable = trainable
+    # and whether the layer's updates are run during training.
+    self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
     self.stateful = False
@@ -196,10 +196,6 @@ class Layer(module.Module):
     self._metrics_tensors = {}
 
     self._set_dtype_and_policy(dtype)
-
-    self._call_fn_args = function_utils.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in self._call_fn_args or
-                                   hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Dependencies tracked via attribute assignment.
@@ -565,11 +561,8 @@ class Layer(module.Module):
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if (not hasattr(self, '_compute_previous_mask') or
-        self._compute_previous_mask):
+    if self._should_compute_mask:
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
-      if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly
@@ -579,7 +572,7 @@ class Layer(module.Module):
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
     # every layer/mode call because layer/model may be reused.
-    if (context.executing_eagerly() and
+    if (base_layer_utils.is_in_eager_or_tf_function() and
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
@@ -709,6 +702,16 @@ class Layer(module.Module):
     return self._dynamic
 
   @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    for layer in getattr(self, '_layers', []):
+      layer.trainable = value
+
+  @property
   def activity_regularizer(self):
     """Optional regularizer function for the output of this layer."""
     return self._activity_regularizer
@@ -831,7 +834,7 @@ class Layer(module.Module):
     model = tf.keras.Model(inputs, outputs)
     # Actvity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
-    ````
+    ```
 
     If this is not the case for your loss (if, for example, your loss references
     a `Variable` of one of the model's layers), you can wrap your loss in a
@@ -887,7 +890,9 @@ class Layer(module.Module):
         continue
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
-      if tf_utils.is_symbolic_tensor(loss):
+      # TF Functions should take the eager path.
+      if (tf_utils.is_symbolic_tensor(loss) and
+          not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
@@ -2036,6 +2041,17 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _call_fn_args(self):
+    if getattr(self, '__call_fn_args', None) is None:
+      self.__call_fn_args = function_utils.fn_args(self.call)
+    return self.__call_fn_args
+
+  @property
+  def _should_compute_mask(self):
+    return ('mask' in self._call_fn_args or
+            getattr(self, 'compute_mask', None) is not None)
 
 
 class Node(object):

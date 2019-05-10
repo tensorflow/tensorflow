@@ -221,20 +221,20 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
         auto conv_output_scaled =
             conv_output.cast<ScaleType>() * conv_input_scale;
-        auto side_input_scaled =
-            side_input.cast<ScaleType>() * side_input_scale;
-
-        if (activation_mode == ActivationMode::NONE) {
-          output = (conv_output_scaled + bias + side_input_scaled)
+        ScaleType lower_bound = (activation_mode == ActivationMode::NONE
+                                     ? static_cast<ScaleType>(kMinRange)
+                                     : 0);
+        if (side_input_scale == 0.0f) {
+          output = (conv_output_scaled + bias)
                        .round()
-                       .clip(static_cast<ScaleType>(kMinRange),
-                             static_cast<ScaleType>(kMaxRange))
+                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
                        .template cast<T>();
-
-        } else if (activation_mode == ActivationMode::RELU) {
+        } else {
+          auto side_input_scaled =
+              side_input.cast<ScaleType>() * side_input_scale;
           output = (conv_output_scaled + bias + side_input_scaled)
                        .round()
-                       .clip(0, static_cast<ScaleType>(kMaxRange))
+                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
                        .template cast<T>();
         }
       }
@@ -518,9 +518,8 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
-void LogFusedConvAutotuneResults(
-    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
-    const se::dnn::BatchDescriptor& input_desc,
+void LogFusedConvForwardAutotuneResults(
+    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -529,7 +528,7 @@ void LogFusedConvAutotuneResults(
   AutotuningLog log;
   {
     ConvolutionProto instr;
-    instr.set_kind(kind);
+    instr.set_kind(se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION);
     *instr.mutable_input() = input_desc.ToProto(element_type);
     *instr.mutable_filter() = filter_desc.ToProto(element_type);
     *instr.mutable_output() = output_desc.ToProto(element_type);
@@ -936,8 +935,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    internal::LogFusedConvAutotuneResults(
-        se::dnn::ConvolutionKind::FORWARD,
+    internal::LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_desc,
         filter_desc, output_desc, conv_desc, conv_input_scale, side_input_scale,
         dnn_activation_mode, stream->parent(), results);

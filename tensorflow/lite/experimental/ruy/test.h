@@ -1396,11 +1396,14 @@ void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
   spec_unclamped.multiplier_exponent_perchannel =
       spec->multiplier_exponent_perchannel;
   Mul<Path::kReference>(lhs, rhs, spec_unclamped, &context, &unclamped_dst);
-  std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
-  const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
-  RUY_CHECK_LT(clamp_count, size);
-  spec->clamp_min = unclamped_dst_data[clamp_count];
-  spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  // If dst is std::int32_t, no need to set the clamp min/max.
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) {
+    std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
+    const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
+    RUY_CHECK_LT(clamp_count, size);
+    spec->clamp_min = unclamped_dst_data[clamp_count];
+    spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
@@ -1409,7 +1412,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
   if (!use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
-    MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    // If destination is std::int32_t, no dst_zero_point is necessary.
+    if (std::is_same<DstScalar, std::int32_t>::value) {
+      dst_zero_point = 0;
+    } else {
+      MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    }
   }
   life_stage = LifeStage::kHasZeroPoints;
 }

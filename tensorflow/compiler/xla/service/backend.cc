@@ -134,7 +134,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     }
   }
   // Create a memory allocator for the valid stream executors.
-  memory_allocator_ = absl::make_unique<StreamExecutorMemoryAllocator>(
+  memory_allocator_ = absl::make_unique<se::StreamExecutorMemoryAllocator>(
       platform, stream_executors);
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';

@@ -1490,6 +1490,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         3 * (1 + 4 + 9 + 16),
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1497,7 +1498,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     model = sequential.Sequential([layer])
     model_input = {"x": constant_op.constant([[1.]]),
                    "y": constant_op.constant([[2.]])}
-    self.assertAllClose([[1., 2.]], model.predict(model_input))
+    self.assertAllClose([[1., 2.]], model.predict(model_input, steps=1))
     loaded = self.cycle(model, cycles)
     output, = loaded._default_save_signature(model_input).values()
     self.assertAllClose([[1., 2.]], output)
@@ -1532,6 +1533,16 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         dict(out=2., out_1=3.),
         loaded.signatures["serving_default"](constant_op.constant(1.)))
+
+  def test_tuple_signature(self, cycles):
+    root = util.Checkpoint()
+    root.f = def_function.function(
+        lambda: (array_ops.ones([]), array_ops.zeros([])),
+        input_signature=())
+    for _ in range(cycles):
+      root = self.cycle(root, 1, signatures=root.f)
+    self.assertEqual(({"output_0": 1., "output_1": 0.}),
+                     self.evaluate(root.signatures["serving_default"]()))
 
   def test_model_with_custom_function_attached(self, cycles):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))

@@ -1047,15 +1047,17 @@ class TrainingTest(keras_parameterized.TestCase):
     model.add_loss(2 * math_ops.reduce_mean(
         keras.losses.mean_absolute_error(targets, outputs)))
 
+    model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs))
+
     model.compile(
-        keras.optimizer_v2.gradient_descent.SGD(0.033333),
+        keras.optimizer_v2.gradient_descent.SGD(0.025),
         loss=keras.losses.MeanAbsoluteError(),
         run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.array([[0.], [1.], [2.]])
     y = np.array([[0.5], [2.], [3.5]])
     history = model.fit([x, y], y, batch_size=3, epochs=5)
-    self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
+    self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
 
   @keras_parameterized.run_all_keras_modes
   def test_unconditional_add_loss_correctness(self):
@@ -1127,6 +1129,36 @@ class TrainingTest(keras_parameterized.TestCase):
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=5)
 
     self.assertLen(model.trainable_variables, 3)
+
+  # TODO(b/131372221): Make this work with subclassed models.
+  @keras_parameterized.run_with_all_model_types(exclude_models=['subclass'])
+  @keras_parameterized.run_all_keras_modes
+  def test_model_dtype(self):
+
+    class AssertTypeLayer(keras.layers.Layer):
+
+      def __init__(self, assert_type=None, **kwargs):
+        super(AssertTypeLayer, self).__init__(**kwargs)
+        self.assert_type = assert_type
+
+      def call(self, inputs):
+        assert inputs.dtype.name == self.assert_type, (
+            'Input tensor has type %s which does not match assert type %s' %
+            (inputs.dtype.name, self.assert_type))
+        return inputs + 1.
+
+    for dtype in ('float16', 'float32', 'float64'):
+      model = testing_utils.get_model_from_layers([AssertTypeLayer(dtype)],
+                                                  input_shape=(10,),
+                                                  input_dtype=dtype)
+      model.compile('sgd', 'mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+
+      x = np.ones((10, 10), dtype=dtype)
+      y = np.ones((10, 10), dtype=dtype)
+      model.fit(x, y)
+      model.test_on_batch(x, y)
+      model(x)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
@@ -2578,6 +2610,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model = keras.models.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+
+    if context.executing_eagerly():
+      # This is not a use case in v1 graph mode.
+      mean_result = metrics_module.Mean()(y)
+      with self.assertRaisesRegex(
+          ValueError, 'Expected a symbolic Tensor for the metric value'):
+        model.add_metric(mean_result, name='metric_2')
+
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):
       with keras.backend.get_graph().as_default():
@@ -2705,6 +2745,13 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model = keras.models.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_3', aggregation='mean')
+
+    if context.executing_eagerly():
+      # This is not a use case in v1 graph mode.
+      mean_result = metrics_module.Mean()(y)
+      with self.assertRaisesRegex(
+          ValueError, 'Expected a symbolic Tensor for the metric value'):
+        model.add_metric(mean_result, name='metric_4')
 
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):

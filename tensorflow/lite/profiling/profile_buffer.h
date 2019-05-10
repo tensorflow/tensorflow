@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_PROFILE_BUFFER_H_
 #define TENSORFLOW_LITE_PROFILING_PROFILE_BUFFER_H_
 
-#include <sys/time.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>

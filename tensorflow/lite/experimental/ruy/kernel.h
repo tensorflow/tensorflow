@@ -248,8 +248,8 @@ struct KernelParams8bit {
   std::int32_t rhs_stride;
   std::int32_t dst_stride;
   std::int32_t depth;
-  std::int16_t clamp_min;
-  std::int16_t clamp_max;
+  std::int32_t clamp_min;
+  std::int32_t clamp_max;
   std::uint8_t flags;
   std::uint8_t dst_type_id;
   const std::int32_t zero_data[LhsCols] = {0};

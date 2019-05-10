@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace tensorflow {
@@ -45,8 +45,7 @@ namespace tensorflow {
 class XRTBufferAllocation : public core::RefCounted {
  public:
   XRTBufferAllocation(const se::DeviceMemoryBase& allocation,
-                      int device_ordinal,
-                      xla::DeviceMemoryAllocator* allocator);
+                      int device_ordinal, se::DeviceMemoryAllocator* allocator);
   ~XRTBufferAllocation() override;
 
   // The region of device memory being wrapped.
@@ -69,7 +68,7 @@ class XRTBufferAllocation : public core::RefCounted {
   uint64 size_ = 0;
   se::DeviceMemoryBase allocation_;
   int device_ordinal_;
-  xla::DeviceMemoryAllocator* allocator_;
+  se::DeviceMemoryAllocator* allocator_;
 };
 
 // Entry in the resource manager corresponding to an allocation handle returned
@@ -197,14 +196,14 @@ class XRTTupleAllocation : public ResourceBase {
 
  private:
   // Creates a new handle with (tuple) shape.
-  XRTTupleAllocation(int device_ordinal, xla::DeviceMemoryAllocator* allocator,
+  XRTTupleAllocation(int device_ordinal, se::DeviceMemoryAllocator* allocator,
                      const xla::Shape& on_host_shape,
                      const xla::Shape& on_device_shape);
 
   // Inherits the allocations represented in buffer, which must have the same
   // shape as buffers_.
   void InitializeFromShapedBuffer(const xla::ShapedBuffer& shaped_buffer,
-                                  xla::DeviceMemoryAllocator* allocator,
+                                  se::DeviceMemoryAllocator* allocator,
                                   int device_ordinal);
 
   // Takes a tree 'elements' where each leaf is an allocation, validates that
@@ -214,12 +213,12 @@ class XRTTupleAllocation : public ResourceBase {
   // grafted on.
   static Status ExpandTreeOfTuples(
       const xla::ShapeTree<ExpandedTupleInput>& elements, int device_ordinal,
-      xla::DeviceMemoryAllocator* allocator, xla::Shape* host_shape,
+      se::DeviceMemoryAllocator* allocator, xla::Shape* host_shape,
       xla::Shape* device_shape);
 
   // Location of the memory that is being managed.
   int device_ordinal_;
-  xla::DeviceMemoryAllocator* allocator_;
+  se::DeviceMemoryAllocator* allocator_;
 
   // The shape that the caller thinks the tuple has.
   const xla::Shape on_host_shape_;

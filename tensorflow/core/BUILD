@@ -944,6 +944,7 @@ tf_cuda_library(
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
+        "framework/typed_allocator.h",
         "framework/types.h",
         "public/version.h",
         "util/activation_mode.h",
@@ -1177,7 +1178,10 @@ tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
     ],
-    deps = [":protos_all_cc"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_gen_op_libs(
@@ -1742,6 +1746,10 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "platform/**/env_time.cc",
+            "platform/**/logging.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/rocm.h",
@@ -1873,6 +1881,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        ":platform_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1884,7 +1893,6 @@ cc_library(
     srcs = if_emscripten([":mobile_srcs_no_runtime"]),
     copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
     defines = ["TENSORFLOW_LITE_PROTOS"],
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -1896,6 +1904,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@zlib_archive//:zlib",
     ],
@@ -1938,6 +1947,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -3327,7 +3337,7 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],

@@ -731,9 +731,6 @@ class DatasetBaseIterator : public IteratorBase {
 
   ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
-  // The sequence of iterators leading up to this iterator.
-  const string& prefix() const override { return params_.prefix; }
-
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
   }
@@ -741,6 +738,15 @@ class DatasetBaseIterator : public IteratorBase {
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return params_.dataset->output_shapes();
   }
+
+  // The sequence of iterators leading up to this iterator.
+  const string& prefix() const override { return params_.prefix; }
+
+  // Returns a name to be used for the TraceMe event.
+  //
+  // NOTE: TraceMe support passing key value pairs of "arguments" using the
+  // following format "name#arg_1=value_,...,arg_n=value_n".
+  virtual string BuildTraceMeName() { return params_.prefix; }
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final;

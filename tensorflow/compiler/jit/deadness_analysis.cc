@@ -371,7 +371,8 @@ class PredicateFactory {
                              Predicate** predicate) {
     TensorId tensor_id(node->name(), output_idx);
 
-    bool is_boolean_tensor = node->output_type(tensor_id.index()) == DT_BOOL;
+    bool is_boolean_tensor =
+        BaseType(node->output_type(tensor_id.index())) == DT_BOOL;
     TF_RET_CHECK(!must_be_true || is_boolean_tensor);
 
     if (node->type_string() == "Const" && must_be_true) {
