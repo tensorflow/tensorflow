@@ -71,6 +71,10 @@ Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
   mlir::BlockAndValueMapping mapper;
   Function *outlinedFunc = new mlir::Function(loc, kernelFuncName, type);
   outlinedFunc->getBody().takeBody(launchOp.getBody());
+  Builder builder(&module);
+  outlinedFunc->getAttrList().set(
+      builder.getIdentifier(gpu::GPUDialect::getKernelFuncAttrName()),
+      builder.getUnitAttr());
   injectGpuIndexOperations(module, loc, outlinedFunc);
   module.getFunctions().push_back(outlinedFunc);
   return outlinedFunc;

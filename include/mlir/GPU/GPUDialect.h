@@ -38,6 +38,9 @@ public:
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName();
+
+  /// Get the name of the attribute used to annotate outlined kernel functions.
+  static StringRef getKernelFuncAttrName() { return "gpu.kernel"; }
 };
 
 /// Utility class for the GPU dialect to represent triples of `Value`s

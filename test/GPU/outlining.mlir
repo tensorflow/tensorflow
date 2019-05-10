@@ -26,6 +26,7 @@ func @launch() {
 }
 
 // CHECK: func @launch_kernel(%arg0: f32, %arg1: memref<?xf32, 1>)
+// CHECK-NEXT: attributes {gpu.kernel}
 // CHECK-NEXT: %0 = "gpu.block_id"() {dimension: "x"} : () -> index
 // CHECK-NEXT: %1 = "gpu.block_id"() {dimension: "y"} : () -> index
 // CHECK-NEXT: %2 = "gpu.block_id"() {dimension: "z"} : () -> index
