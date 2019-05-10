@@ -444,8 +444,9 @@ public:
 
 protected:
   /// Get a memory buffer for the given file, or the main file of the source
-  /// manager if one doesn't exist.
-  const llvm::MemoryBuffer &getBufferForFile(StringRef filename);
+  /// manager if one doesn't exist. If no file is available, nullptr is
+  /// returned.
+  const llvm::MemoryBuffer *getBufferForFile(StringRef filename);
 
   /// The source manager that we are wrapping.
   llvm::SourceMgr &mgr;

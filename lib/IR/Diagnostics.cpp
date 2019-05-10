@@ -278,21 +278,25 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
 }
 
 /// Get a memory buffer for the given file, or nullptr if one is not found.
-const llvm::MemoryBuffer &
+const llvm::MemoryBuffer *
 SourceMgrDiagnosticHandler::getBufferForFile(StringRef filename) {
   // Check for an existing mapping to the buffer id for this file.
   auto bufferIt = filenameToBuf.find(filename);
   if (bufferIt != filenameToBuf.end())
-    return *bufferIt->second;
+    return bufferIt->second;
 
   // Look for a buffer in the manager that has this filename.
   for (unsigned i = 1, e = mgr.getNumBuffers() + 1; i != e; ++i) {
     auto *buf = mgr.getMemoryBuffer(i);
     if (buf->getBufferIdentifier() == filename)
-      return *(filenameToBuf[filename] = buf);
+      return filenameToBuf[filename] = buf;
   }
 
-  return *(filenameToBuf[filename] = mgr.getMemoryBuffer(mgr.getMainFileID()));
+  // Otherwise, default to the main file buffer, if it exists.
+  const llvm::MemoryBuffer *newBuf = nullptr;
+  if (mgr.getNumBuffers() != 0)
+    newBuf = mgr.getMemoryBuffer(mgr.getMainFileID());
+  return filenameToBuf[filename] = newBuf;
 }
 
 /// Get a memory buffer for the given file, or the main file of the source
@@ -305,7 +309,9 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
     return llvm::SMLoc();
 
   // Get the buffer for this filename.
-  auto &membuf = getBufferForFile(fileLoc->getFilename());
+  auto *membuf = getBufferForFile(fileLoc->getFilename());
+  if (!membuf)
+    return llvm::SMLoc();
 
   // TODO: This should really be upstreamed to be a method on llvm::SourceMgr.
   // Doing so would allow it to use the offset cache that is already maintained
@@ -314,8 +320,8 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   unsigned columnNo = fileLoc->getColumn();
 
   // Scan for the correct line number.
-  const char *position = membuf.getBufferStart();
-  const char *end = membuf.getBufferEnd();
+  const char *position = membuf->getBufferStart();
+  const char *end = membuf->getBufferEnd();
 
   // We start counting line and column numbers from 1.
   --lineNo;
@@ -341,7 +347,7 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(Location loc) {
   // If the line/column counter was invalid, return a pointer to the start of
   // the buffer.
   if (lineNo || position + columnNo > end)
-    return llvm::SMLoc::getFromPointer(membuf.getBufferStart());
+    return llvm::SMLoc::getFromPointer(membuf->getBufferStart());
 
   // Otherwise return the right pointer.
   return llvm::SMLoc::getFromPointer(position + columnNo);
@@ -372,7 +378,7 @@ struct SourceMgrDiagnosticVerifierHandlerImpl {
 
   /// Computes the expected diagnostics for the given source buffer.
   MutableArrayRef<ExpectedDiag>
-  computeExpectedDiags(const llvm::MemoryBuffer &buf);
+  computeExpectedDiags(const llvm::MemoryBuffer *buf);
 
   /// The current status of the verifier.
   LogicalResult status;
@@ -413,12 +419,15 @@ SourceMgrDiagnosticVerifierHandlerImpl::getExpectedDiags(StringRef bufName) {
 /// Computes the expected diagnostics for the given source buffer.
 MutableArrayRef<ExpectedDiag>
 SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
-    const llvm::MemoryBuffer &buf) {
-  auto &expectedDiags = expectedDiagsPerFile[buf.getBufferIdentifier()];
+    const llvm::MemoryBuffer *buf) {
+  // If the buffer is invalid, return an empty list.
+  if (!buf)
+    return llvm::None;
+  auto &expectedDiags = expectedDiagsPerFile[buf->getBufferIdentifier()];
 
   // Scan the file for expected-* designators.
   SmallVector<StringRef, 100> lines;
-  buf.getBuffer().split(lines, '\n');
+  buf->getBuffer().split(lines, '\n');
   for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
     SmallVector<StringRef, 3> matches;
     if (!expected.match(lines[lineNo], &matches))
@@ -462,7 +471,7 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
   // Compute the expected diagnostics for each of the current files in the
   // source manager.
   for (unsigned i = 0, e = mgr.getNumBuffers(); i != e; ++i)
-    (void)impl->computeExpectedDiags(*mgr.getMemoryBuffer(i + 1));
+    (void)impl->computeExpectedDiags(mgr.getMemoryBuffer(i + 1));
 
   // Register a handler to verfy the diagnostics.
   ctx->getDiagEngine().setHandler(
