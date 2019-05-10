@@ -1,5 +1,5 @@
-Tensorflow
-----------
+Tutorial
+--------
 
 Tensorflow is a powerful graph-modeling framework that can be used for the
 development, training and deployment of deep learning models. In the Graphcore
