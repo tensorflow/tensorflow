@@ -11,7 +11,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 package(
-    default_visibility = ["//tensorflow/stream_executor:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
 )
 
 # Filegroup used to collect source files for the dependency check.

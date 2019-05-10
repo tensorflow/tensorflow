@@ -73,12 +73,19 @@ class RegisterCustomCallTarget {
       custom_call_target_register, counter)(                               \
       symbol, reinterpret_cast<void*>(address), platform)
 
-#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address)      \
-  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, "Host", \
+#define XLA_REGISTER_CUSTOM_CALL_TARGET(function, platform) \
+  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function, platform)
+
+#define XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address, platform)  \
+  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, platform, \
                                                   __COUNTER__)
 
+// Convenience overloads for registering custom-call targets on the CPU.
 #define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(function) \
-  XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function)
+  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function, "Host")
+
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address) \
+  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address, "Host")
 
 }  // namespace xla
 
