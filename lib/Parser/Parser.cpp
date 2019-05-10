@@ -3203,7 +3203,7 @@ public:
 
   /// Parse a function name like '@foo' and return the name in a form that can
   /// be passed to resolveFunctionName when a function type is available.
-  virtual ParseResult parseFunctionName(StringRef &result, llvm::SMLoc &loc) {
+  ParseResult parseFunctionName(StringRef &result, llvm::SMLoc &loc) override {
     if (parseOptionalFunctionName(result, loc))
       return emitError(loc, "expected function name");
     return success();
@@ -3320,8 +3320,8 @@ public:
   }
 
   /// Resolve a parse function name and a type into a function reference.
-  virtual ParseResult resolveFunctionName(StringRef name, FunctionType type,
-                                          llvm::SMLoc loc, Function *&result) {
+  ParseResult resolveFunctionName(StringRef name, FunctionType type,
+                                  llvm::SMLoc loc, Function *&result) override {
     result = parser.resolveFunctionReference(name, loc, type);
     return failure(result == nullptr);
   }
@@ -3355,7 +3355,7 @@ public:
   /// Parse a region argument.  Region arguments define new values, so this also
   /// checks if the values with the same name has not been defined yet.  The
   /// type of the argument will be resolved later by a call to `parseRegion`.
-  ParseResult parseRegionArgument(OperandType &argument) {
+  ParseResult parseRegionArgument(OperandType &argument) override {
     // Use parseOperand to fill in the OperandType structure.
     if (parseOperand(argument))
       return failure();

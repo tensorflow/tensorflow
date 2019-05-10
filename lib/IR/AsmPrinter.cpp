@@ -1140,22 +1140,24 @@ public:
              bool printBlockTerminator = true);
 
   void printOperation(Operation *op);
-  void printGenericOp(Operation *op);
+  void printGenericOp(Operation *op) override;
 
   // Implement OpAsmPrinter.
-  raw_ostream &getStream() const { return os; }
-  void printType(Type type) { ModulePrinter::printType(type); }
-  void printAttribute(Attribute attr) { ModulePrinter::printAttribute(attr); }
-  void printAttributeAndType(Attribute attr) {
+  raw_ostream &getStream() const override { return os; }
+  void printType(Type type) override { ModulePrinter::printType(type); }
+  void printAttribute(Attribute attr) override {
+    ModulePrinter::printAttribute(attr);
+  }
+  void printAttributeAndType(Attribute attr) override {
     ModulePrinter::printAttributeAndType(attr);
   }
-  void printFunctionReference(Function *func) {
+  void printFunctionReference(Function *func) override {
     return ModulePrinter::printFunctionReference(func);
   }
-  void printOperand(Value *value) { printValueID(value); }
+  void printOperand(Value *value) override { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<StringRef> elidedAttrs = {}) {
+                             ArrayRef<StringRef> elidedAttrs = {}) override {
     return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
   };
 
