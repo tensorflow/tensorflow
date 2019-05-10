@@ -31,10 +31,14 @@ final class EagerOperationBuilder implements OperationBuilder {
   }
 
   @Override
-  public Operation build() {
-    // TODO (karllessard) Execute the eager operation and pass output tensor handles to new
-    // EagerOperation class
-    throw new UnsupportedOperationException("Eager execution is not supported yet");
+  public EagerOperation build() {
+    long[] tensorHandles = execute(nativeRef.opHandle);
+    EagerOperation operation =
+        new EagerOperation(session, nativeRef.opHandle, tensorHandles, type, name);
+    // Release our reference to the native op handle now that we transferred its
+    // ownership to the EagerOperation
+    nativeRef.clear();
+    return operation;
   }
 
   @Override
@@ -44,7 +48,7 @@ final class EagerOperationBuilder implements OperationBuilder {
   }
 
   @Override
-  public OperationBuilder addInputList(Output<?>[] inputs) {
+  public EagerOperationBuilder addInputList(Output<?>[] inputs) {
     long[] inputHandles = new long[inputs.length];
     for (int i = 0; i < inputs.length; ++i) {
       inputHandles[i] = inputs[i].getUnsafeNativeHandle();
@@ -60,18 +64,18 @@ final class EagerOperationBuilder implements OperationBuilder {
   }
 
   @Override
-  public OperationBuilder setDevice(String device) {
+  public EagerOperationBuilder setDevice(String device) {
     setDevice(nativeRef.opHandle, device);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, String value) {
+  public EagerOperationBuilder setAttr(String name, String value) {
     return setAttr(name, value.getBytes(StandardCharsets.UTF_8));
   }
 
   @Override
-  public OperationBuilder setAttr(String name, String[] values) {
+  public EagerOperationBuilder setAttr(String name, String[] values) {
     Charset utf8 = StandardCharsets.UTF_8;
     Object[] objects = new Object[values.length];
     for (int i = 0; i < values.length; ++i) {
@@ -82,55 +86,55 @@ final class EagerOperationBuilder implements OperationBuilder {
   }
 
   @Override
-  public OperationBuilder setAttr(String name, byte[] values) {
+  public EagerOperationBuilder setAttr(String name, byte[] values) {
     setAttrString(nativeRef.opHandle, name, values);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, long value) {
+  public EagerOperationBuilder setAttr(String name, long value) {
     setAttrInt(nativeRef.opHandle, name, value);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, long[] values) {
+  public EagerOperationBuilder setAttr(String name, long[] values) {
     setAttrIntList(nativeRef.opHandle, name, values);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, float value) {
+  public EagerOperationBuilder setAttr(String name, float value) {
     setAttrFloat(nativeRef.opHandle, name, value);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, float[] values) {
+  public EagerOperationBuilder setAttr(String name, float[] values) {
     setAttrFloatList(nativeRef.opHandle, name, values);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, boolean value) {
+  public EagerOperationBuilder setAttr(String name, boolean value) {
     setAttrBool(nativeRef.opHandle, name, value);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, boolean[] values) {
+  public EagerOperationBuilder setAttr(String name, boolean[] values) {
     setAttrBoolList(nativeRef.opHandle, name, values);
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, DataType value) {
+  public EagerOperationBuilder setAttr(String name, DataType value) {
     setAttrType(nativeRef.opHandle, name, value.c());
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, DataType[] values) {
+  public EagerOperationBuilder setAttr(String name, DataType[] values) {
     int[] c = new int[values.length];
     for (int i = 0; i < values.length; ++i) {
       c[i] = values[i].c();
@@ -140,26 +144,26 @@ final class EagerOperationBuilder implements OperationBuilder {
   }
 
   @Override
-  public OperationBuilder setAttr(String name, Tensor<?> value) {
+  public EagerOperationBuilder setAttr(String name, Tensor<?> value) {
     setAttrTensor(nativeRef.opHandle, name, value.getNativeHandle());
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, Tensor<?>[] values) {
+  public EagerOperationBuilder setAttr(String name, Tensor<?>[] values) {
     // TODO (karllessard) could be supported by adding this attribute type in the eager C API
     throw new UnsupportedOperationException(
         "Tensor list attributes are not supported in eager mode");
   }
 
   @Override
-  public OperationBuilder setAttr(String name, Shape value) {
+  public EagerOperationBuilder setAttr(String name, Shape value) {
     setAttrShape(nativeRef.opHandle, name, value.asArray(), value.numDimensions());
     return this;
   }
 
   @Override
-  public OperationBuilder setAttr(String name, Shape[] values) {
+  public EagerOperationBuilder setAttr(String name, Shape[] values) {
     int[] numDimensions = new int[values.length];
     int totalNumDimensions = 0;
     for (int idx = 0; idx < values.length; ++idx) {
