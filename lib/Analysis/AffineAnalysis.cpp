@@ -610,21 +610,6 @@ static void addOrderingConstraints(const FlatAffineConstraints &srcDomain,
   }
 }
 
-// Returns true if 'isEq' constraint in 'dependenceDomain' has a single
-// non-zero coefficient at (rowIdx, idPos). Returns false otherwise.
-// TODO(andydavis) Move this function to FlatAffineConstraints.
-static bool hasSingleNonZeroAt(unsigned idPos, unsigned rowIdx, bool isEq,
-                               FlatAffineConstraints *dependenceDomain) {
-  unsigned numCols = dependenceDomain->getNumCols();
-  for (unsigned j = 0; j < numCols - 1; ++j) {
-    int64_t v = isEq ? dependenceDomain->atEq(rowIdx, j)
-                     : dependenceDomain->atIneq(rowIdx, j);
-    if ((j == idPos && v == 0) || (j != idPos && v != 0))
-      return false;
-  }
-  return true;
-}
-
 // Computes distance and direction vectors in 'dependences', by adding
 // variables to 'dependenceDomain' which represent the difference of the IVs,
 // eliminating all other variables, and reading off distance vectors from
