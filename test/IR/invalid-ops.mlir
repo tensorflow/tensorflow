@@ -2,7 +2,7 @@
 
 func @dim(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(%0){index: "xyz"} : (tensor<1xf32>)->i32 // expected-error {{'std.dim' op requires an integer attribute named 'index'}}
+  "std.dim"(%0){index: "xyz"} : (tensor<1xf32>)->index // expected-error {{attribute 'index' failed to satisfy constraint: arbitrary integer attribute}}
   return
 }
 
@@ -10,7 +10,7 @@ func @dim(tensor<1xf32>) {
 
 func @dim2(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(){index: "xyz"} : ()->i32 // expected-error {{'std.dim' op requires a single operand}}
+  "std.dim"(){index: "xyz"} : ()->index // expected-error {{'std.dim' op requires a single operand}}
   return
 }
 
@@ -18,7 +18,7 @@ func @dim2(tensor<1xf32>) {
 
 func @dim3(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(%0){index: 1} : (tensor<1xf32>)->i32 // expected-error {{'std.dim' op index is out of range}}
+  "std.dim"(%0){index: 1} : (tensor<1xf32>)->index // expected-error {{'std.dim' op index is out of range}}
   return
 }
 

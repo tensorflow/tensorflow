@@ -46,39 +46,6 @@ public:
 #define GET_OP_CLASSES
 #include "mlir/StandardOps/Ops.h.inc"
 
-/// The "br" operation represents a branch operation in a function.
-/// The operation takes variable number of operands and produces no results.
-/// The operand number and types for each successor must match the
-/// arguments of the block successor. For example:
-///
-///   ^bb2:
-///      %2 = call @someFn()
-///      br ^bb3(%2 : tensor<*xf32>)
-///   ^bb3(%3: tensor<*xf32>):
-///
-class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
-                           OpTrait::ZeroResult, OpTrait::IsTerminator> {
-public:
-  friend Operation;
-  using Op::Op;
-
-  static StringRef getOperationName() { return "std.br"; }
-
-  static void build(Builder *builder, OperationState *result, Block *dest,
-                    ArrayRef<Value *> operands = {});
-
-  // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  /// Return the block this branch jumps to.
-  Block *getDest();
-  void setDest(Block *block);
-
-  /// Erase the operand at 'index' from the operand list.
-  void eraseOperand(unsigned index);
-};
-
 /// The "call" operation represents a direct call to a function.  The operands
 /// and result types of the call must match the specified function type.  The
 /// callee is encoded as a function attribute named "callee".
@@ -457,36 +424,6 @@ public:
   static bool isClassFor(Operation *op);
 };
 
-/// The "dim" operation takes a memref or tensor operand and returns an
-/// "index".  It requires a single integer attribute named "index".  It
-/// returns the size of the specified dimension.  For example:
-///
-///   %1 = dim %0, 2 : tensor<?x?x?xf32>
-///
-class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult,
-                        OpTrait::HasNoSideEffect> {
-public:
-  friend Operation;
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState *result,
-                    Value *memrefOrTensor, unsigned index);
-
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
-
-  /// This returns the dimension number that the 'dim' is inspecting.
-  unsigned getIndex() {
-    return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
-  }
-
-  static StringRef getOperationName() { return "std.dim"; }
-
-  // Hooks to customize behavior of this op.
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-};
-
 // DmaStartOp starts a non-blocking DMA operation that transfers data from a
 // source memref to a destination memref. The source and destination memref need
 // not be of the same dimensionality, but need to have the same elemental type.
@@ -682,42 +619,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-};
-
-/// The "extract_element" op reads a tensor or vector and returns one element
-/// from it specified by an index list. The output of extract is a new value
-/// with the same type as the elements of the tensor or vector. The arity of
-/// indices matches the rank of the accessed value (i.e., if a tensor is of rank
-/// 3, then 3 indices are required for the extract).  The indices should all be
-/// of affine_int type.
-///
-/// For example:
-///
-///   %3 = extract_element %0[%1, %2] : vector<4x4xi32>
-///
-class ExtractElementOp
-    : public Op<ExtractElementOp, OpTrait::VariadicOperands, OpTrait::OneResult,
-                OpTrait::HasNoSideEffect> {
-public:
-  friend Operation;
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState *result, Value *aggregate,
-                    ArrayRef<Value *> indices = {});
-
-  Value *getAggregate() { return getOperand(0); }
-
-  operand_range getIndices() {
-    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
-  }
-
-  static StringRef getOperationName() { return "std.extract_element"; }
-
-  // Hooks to customize behavior of this op.
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The

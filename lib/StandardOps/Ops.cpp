@@ -61,9 +61,9 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<BranchOp, CallOp, CallIndirectOp, CmpFOp, CmpIOp, CondBranchOp,
-                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
-                MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
+  addOperations<CallOp, CallIndirectOp, CmpFOp, CmpIOp, CondBranchOp,
+                DmaStartOp, DmaWaitOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
+                StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -374,12 +374,7 @@ void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
-void BranchOp::build(Builder *builder, OperationState *result, Block *dest,
-                     ArrayRef<Value *> operands) {
-  result->addSuccessor(dest, operands);
-}
-
-ParseResult BranchOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *result) {
   Block *dest;
   SmallVector<Value *, 4> destOperands;
   if (parser->parseSuccessorAndUseList(dest, destOperands))
@@ -388,9 +383,9 @@ ParseResult BranchOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void BranchOp::print(OpAsmPrinter *p) {
+static void printBranchOp(OpAsmPrinter *p, BranchOp op) {
   *p << "br ";
-  p->printSuccessorAndUseList(getOperation(), 0);
+  p->printSuccessorAndUseList(op.getOperation(), 0);
 }
 
 Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
@@ -1297,21 +1292,13 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // DimOp
 //===----------------------------------------------------------------------===//
 
-void DimOp::build(Builder *builder, OperationState *result,
-                  Value *memrefOrTensor, unsigned index) {
-  result->addOperands(memrefOrTensor);
-  auto type = builder->getIndexType();
-  result->addAttribute("index", builder->getIntegerAttr(type, index));
-  result->types.push_back(type);
+static void printDimOp(OpAsmPrinter *p, DimOp op) {
+  *p << "dim " << *op.getOperand() << ", " << op.getIndex();
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
+  *p << " : " << op.getOperand()->getType();
 }
 
-void DimOp::print(OpAsmPrinter *p) {
-  *p << "dim " << *getOperand() << ", " << getIndex();
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"index"});
-  *p << " : " << getOperand()->getType();
-}
-
-ParseResult DimOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
   IntegerAttr indexAttr;
   Type type;
@@ -1326,25 +1313,25 @@ ParseResult DimOp::parse(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(indexType, result->types));
 }
 
-LogicalResult DimOp::verify() {
+static LogicalResult verify(DimOp op) {
   // Check that we have an integer index operand.
-  auto indexAttr = getAttrOfType<IntegerAttr>("index");
+  auto indexAttr = op.getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
-    return emitOpError("requires an integer attribute named 'index'");
+    return op.emitOpError("requires an integer attribute named 'index'");
   uint64_t index = indexAttr.getValue().getZExtValue();
 
-  auto type = getOperand()->getType();
+  auto type = op.getOperand()->getType();
   if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
     if (index >= static_cast<uint64_t>(tensorType.getRank()))
-      return emitOpError("index is out of range");
+      return op.emitOpError("index is out of range");
   } else if (auto memrefType = type.dyn_cast<MemRefType>()) {
     if (index >= memrefType.getRank())
-      return emitOpError("index is out of range");
+      return op.emitOpError("index is out of range");
 
   } else if (type.isa<UnrankedTensorType>()) {
     // ok, assumed to be in-range.
   } else {
-    return emitOpError("requires an operand with tensor or memref type");
+    return op.emitOpError("requires an operand with tensor or memref type");
   }
 
   return success();
@@ -1355,11 +1342,10 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
   // Constant fold dim when the size along the index referred to is a constant.
   auto opType = getOperand()->getType();
   int64_t indexSize = -1;
-  if (auto tensorType = opType.dyn_cast<RankedTensorType>()) {
+  if (auto tensorType = opType.dyn_cast<RankedTensorType>())
     indexSize = tensorType.getShape()[getIndex()];
-  } else if (auto memrefType = opType.dyn_cast<MemRefType>()) {
+  else if (auto memrefType = opType.dyn_cast<MemRefType>())
     indexSize = memrefType.getShape()[getIndex()];
-  }
 
   if (indexSize >= 0)
     return IntegerAttr::get(IndexType::get(context), indexSize);
@@ -1641,24 +1627,16 @@ void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-void ExtractElementOp::build(Builder *builder, OperationState *result,
-                             Value *aggregate, ArrayRef<Value *> indices) {
-  auto aggregateType = aggregate->getType().cast<VectorOrTensorType>();
-  result->addOperands(aggregate);
-  result->addOperands(indices);
-  result->types.push_back(aggregateType.getElementType());
-}
-
-void ExtractElementOp::print(OpAsmPrinter *p) {
-  *p << "extract_element " << *getAggregate() << '[';
-  p->printOperands(getIndices());
+static void printExtractElementOp(OpAsmPrinter *p, ExtractElementOp op) {
+  *p << "extract_element " << *op.getAggregate() << '[';
+  p->printOperands(op.getIndices());
   *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getAggregate()->getType();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getAggregate()->getType();
 }
 
-ParseResult ExtractElementOp::parse(OpAsmParser *parser,
-                                    OperationState *result) {
+static ParseResult parseExtractElementOp(OpAsmParser *parser,
+                                         OperationState *result) {
   OpAsmParser::OperandType aggregateInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   VectorOrTensorType type;
@@ -1674,25 +1652,26 @@ ParseResult ExtractElementOp::parse(OpAsmParser *parser,
       parser->addTypeToList(type.getElementType(), result->types));
 }
 
-LogicalResult ExtractElementOp::verify() {
-  if (getNumOperands() == 0)
-    return emitOpError("expected an aggregate to index into");
+static LogicalResult verify(ExtractElementOp op) {
+  if (op.getNumOperands() == 0)
+    return op.emitOpError("expected an aggregate to index into");
 
-  auto aggregateType = getAggregate()->getType().dyn_cast<VectorOrTensorType>();
+  auto aggregateType =
+      op.getAggregate()->getType().dyn_cast<VectorOrTensorType>();
   if (!aggregateType)
-    return emitOpError("first operand must be a vector or tensor");
+    return op.emitOpError("first operand must be a vector or tensor");
 
-  if (getType() != aggregateType.getElementType())
-    return emitOpError("result type must match element type of aggregate");
+  if (op.getType() != aggregateType.getElementType())
+    return op.emitOpError("result type must match element type of aggregate");
 
-  for (auto *idx : getIndices())
+  for (auto *idx : op.getIndices())
     if (!idx->getType().isIndex())
-      return emitOpError("index to extract_element must have 'index' type");
+      return op.emitOpError("index to extract_element must have 'index' type");
 
   // Verify the # indices match if we have a ranked type.
   auto aggregateRank = aggregateType.getRank();
-  if (aggregateRank != -1 && aggregateRank != getNumOperands() - 1)
-    return emitOpError("incorrect number of indices for extract_element");
+  if (aggregateRank != -1 && aggregateRank != op.getNumOperands() - 1)
+    return op.emitOpError("incorrect number of indices for extract_element");
 
   return success();
 }

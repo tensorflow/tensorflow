@@ -134,6 +134,40 @@ def AndOp : IntArithmeticOp<"and", [Commutative]> {
   let hasFolder = 1;
 }
 
+def BranchOp : Op<Standard_Dialect, "br", [Terminator]> {
+  let summary = "branch operation";
+  let description = [{
+    The "br" operation represents a branch operation in a function.
+    The operation takes variable number of operands and produces no results.
+    The operand number and types for each successor must match the arguments of
+    the block successor. For example:
+
+      ^bb2:
+        %2 = call @someFn()
+        br ^bb3(%2 : tensor<*xf32>)
+      ^bb3(%3: tensor<*xf32>):
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let parser = [{ return parseBranchOp(parser, result); }];
+  let printer = [{ return printBranchOp(p, *this); }];
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, Block *dest,"
+    "ArrayRef<Value *> operands = {}", [{
+      result->addSuccessor(dest, operands);
+  }]>];
+
+  let extraClassDeclaration = [{
+    Block *getDest();
+    void setDest(Block *block);
+
+    /// Erase the operand at 'index' from the operand list.
+    void eraseOperand(unsigned index);
+  }];
+}
+
 def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
   let summary = "constant";
 
@@ -177,6 +211,42 @@ def DeallocOp : Op<Standard_Dialect, "dealloc"> {
   let hasCanonicalizer = 0b1;
 }
 
+def DimOp : Op<Standard_Dialect, "dim", [NoSideEffect]> {
+  let summary = "dimension index operation";
+  let description = [{
+    The "dim" operation takes a memref or tensor operand and returns an "index".
+    It requires a single integer attribute named "index". It returns the size
+    of the specified dimension. For example:
+
+      %1 = dim %0, 2 : tensor<?x?x?xf32>
+  }];
+
+  let arguments = (ins AnyTypeOf<[MemRef<AnyType>, Tensor],
+                                 "any tensor or memref type">:$memrefOrTensor,
+                       APIntAttr:$index);
+  let results = (outs Index);
+
+  let parser = [{ return parseDimOp(parser, result); }];
+  let printer = [{ return printDimOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *memrefOrTensor,"
+    "unsigned index", [{
+      auto indexType = builder->getIndexType();
+      auto indexAttr = builder->getIntegerAttr(indexType, index);
+      build(builder, result, indexType, memrefOrTensor, indexAttr);
+    }]>];
+
+  let extraClassDeclaration = [{
+    unsigned getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    }
+  }];
+
+  let hasConstantFolder = 0b1;
+}
+
 def DivFOp : FloatArithmeticOp<"divf"> {
   let summary = "floating point division operation";
 }
@@ -188,6 +258,47 @@ def DivISOp : IntArithmeticOp<"divis"> {
 
 def DivIUOp : IntArithmeticOp<"diviu"> {
   let summary = "unsigned integer division operation";
+  let hasConstantFolder = 0b1;
+}
+
+def ExtractElementOp : Op<Standard_Dialect, "extract_element", [NoSideEffect]> {
+  let summary = "element extract operation";
+  let description = [{
+    The "extract_element" op reads a tensor or vector and returns one element
+    from it specified by an index list. The output of extract is a new value
+    with the same type as the elements of the tensor or vector. The arity of
+    indices matches the rank of the accessed value (i.e., if a tensor is of rank
+    3, then 3 indices are required for the extract).  The indices should all be
+    of affine_int type. For example:
+
+      %0 = extract_element %0[%1, %2] : vector<4x4xi32>
+  }];
+
+  let arguments = (ins VectorOrTensor:$aggregate,
+                       Variadic<Index>:$indices);
+  let results = (outs AnyType);
+
+  let parser = [{ return parseExtractElementOp(parser, result); }];
+  let printer = [{ return printExtractElementOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *aggregate,"
+    "ArrayRef<Value *> indices = {}", [{
+      auto resType = aggregate->getType().cast<VectorOrTensorType>()
+                                         .getElementType();
+      build(builder, result, resType, aggregate, indices);
+    }]>];
+
+  let extraClassDeclaration = [{
+    Value *getAggregate() { return getOperand(0); }
+
+    operand_range getIndices() {
+      return {getOperation()->operand_begin() + 1,
+              getOperation()->operand_end()};
+    }
+  }];
+
   let hasConstantFolder = 0b1;
 }
 

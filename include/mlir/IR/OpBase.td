@@ -340,6 +340,8 @@ class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
   list<int> dimensions = dims;
 }
 
+def VectorOrTensor : Type<IsVectorOrTensorTypePred, "vector or tensor">;
+
 // Tensor type.
 
 // This represents a generic tensor without constraints on elemental type,
