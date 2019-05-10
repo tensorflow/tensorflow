@@ -477,7 +477,6 @@ private:
   /// They are wrapped in a `toy` dialect (see next chapter) and get printed:
   ///   !toy.array<2, 2>
   template <typename T> mlir::Type getType(T shape) {
-    mlir::Type elementType = mlir::FloatType::getF64(&context);
     std::string typeName = "array";
     if (!shape.empty()) {
       typeName += "<";

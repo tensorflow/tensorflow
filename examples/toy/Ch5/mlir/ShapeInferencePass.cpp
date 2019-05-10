@@ -367,7 +367,6 @@ public:
       SmallVector<mlir::Type, 1> retTy;
       if (ret.getNumOperands())
         retTy.push_back(ret.getOperand()->getType());
-      mlir::Type elementType = mlir::FloatType::getF64(&getContext());
       std::vector<mlir::Type> argumentsType;
       for (auto arg : f->getArguments())
         argumentsType.push_back(arg->getType());
