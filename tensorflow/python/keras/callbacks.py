@@ -921,18 +921,18 @@ class ModelCheckpoint(Callback):
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return
 
-    if (self.load_weights_on_restart and self.filepath is not None and
-        os.path.exists(self.filepath)):
+    filepath_to_load = self._get_most_recently_modified_file_matching_pattern(
+        self.filepath)
+    if (self.load_weights_on_restart and filepath_to_load is not None and
+        os.path.exists(filepath_to_load)):
       try:
         # `filepath` may contain placeholders such as `{epoch:02d}`, and thus
         # it attempts to load the most recently modified file with file name
         # matching the pattern.
-        self.model.load_weights(
-            self._get_most_recently_modified_file_matching_pattern(
-                self.filepath))
+        self.model.load_weights(filepath_to_load)
       except (IOError, ValueError) as e:
         raise ValueError('Error loading file from {}. Reason: {}'.format(
-            self.filepath, e))
+            filepath_to_load, e))
 
   def on_train_end(self, logs=None):
     logs = logs or {}
@@ -1052,8 +1052,21 @@ class ModelCheckpoint(Callback):
 
     Pattern may contain python formatting placeholder. If
     `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
-    check for most recently modified one that matches the pattern. This utility
-    function is best demonstrated via an example:
+    check for most recently modified one that matches the pattern.
+
+    In the rare case where there are more than one pattern-matching file having
+    the same modified time that is most recent among all, return the filepath
+    that is largest (by `>` operator, lexicographically using the numeric
+    equivalents). This provides a tie-breaker when multiple files are most
+    recent. Note that a larger `filepath` can sometimes indicate a later time of
+    modification (for instance, when epoch/batch is used as formatting option),
+    but not necessarily (when accuracy or loss is used). The tie-breaker is
+    put in the logic as best effort to return the most recent, and to avoid
+    undeterministic result.
+
+    Modified time of a file is obtained with `os.path.getmtime()`.
+
+    This utility function is best demonstrated via an example:
 
     ```python
     file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
@@ -1093,14 +1106,36 @@ class ModelCheckpoint(Callback):
 
     latest_mod_time = 0
     file_path_with_latest_mod_time = None
+    n_file_with_latest_mod_time = 0
+    file_path_with_largest_file_name = None
+
     for file_name in os.listdir(dir_name):
+      # Only consider if `file_name` matches the pattern.
       if re.match(base_name_regex, file_name):
         file_path = os.path.join(dir_name, file_name)
         mod_time = os.path.getmtime(file_path)
+        if (file_path_with_largest_file_name is None or
+            file_path > file_path_with_largest_file_name):
+          file_path_with_largest_file_name = file_path
         if mod_time > latest_mod_time:
           latest_mod_time = mod_time
           file_path_with_latest_mod_time = file_path
-    return file_path_with_latest_mod_time
+          # In the case a file with later modified time is found, reset
+          # the counter for the number of files with latest modified time.
+          n_file_with_latest_mod_time = 1
+        elif mod_time == latest_mod_time:
+          # In the case a file has modified time tied with the most recent,
+          # increment the counter for the number of files with latest modified
+          # time by 1.
+          n_file_with_latest_mod_time += 1
+
+    if n_file_with_latest_mod_time == 1:
+      # Return the sole file that has most recent modified time.
+      return file_path_with_latest_mod_time
+    else:
+      # If there are more than one file having latest modified time, return
+      # the file path with the largest file name.
+      return file_path_with_largest_file_name
 
 
 @keras_export('keras.callbacks.EarlyStopping')
