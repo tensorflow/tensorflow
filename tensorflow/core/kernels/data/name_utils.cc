@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -20,10 +21,10 @@ namespace name_utils {
 
 string ToString(const DatasetType& dataset_type) {
   switch (dataset_type) {
-    case RANGE_DATASET:
-      return "range";
-    case MAP_DATASET:
+    case MAP:
       return "map";
+    case RANGE:
+      return "range";
     default:
       LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
   }
@@ -32,10 +33,10 @@ string ToString(const DatasetType& dataset_type) {
 
 string OpName(const DatasetType& dataset_type) {
   switch (dataset_type) {
-    case RANGE_DATASET:
-      return "RangeDataset";
-    case MAP_DATASET:
+    case MAP:
       return "MapDataset";
+    case RANGE:
+      return "RangeDataset";
     default:
       LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
   }
@@ -45,17 +46,17 @@ string OpName(const DatasetType& dataset_type) {
 string DatasetDebugString(const DatasetType& dataset_type,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return StrCat(OpName(dataset_type), "Op::Dataset");
+    return strings::StrCat(OpName(dataset_type), "Op::Dataset");
   }
 
   string debug_str;
-  StrAppend(&debug_str, OpName(dataset_type), "Op(");
+  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(");
   auto iter = args.begin();
   while (iter != args.end() - 1) {
-    StrAppend(&debug_str, *iter, ", ");
+    strings::StrAppend(&debug_str, *iter, ", ");
     ++iter;
   }
-  StrAppend(&debug_str, *iter, ")::Dataset");
+  strings::StrAppend(&debug_str, *iter, ")::Dataset");
   return debug_str;
 }
 

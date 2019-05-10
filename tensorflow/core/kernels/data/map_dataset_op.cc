@@ -28,8 +28,6 @@ namespace {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-using namespace tensorflow::data::name_utils;
-
 class MapDatasetOp : public UnaryDatasetOpKernel {
  public:
   using MapIteratorFunction =
@@ -80,8 +78,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
-          Iterator::Params{this, IteratorPrefix(MAP_DATASET, prefix)});
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, name_utils::IteratorPrefix(name_utils::MAP, prefix)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -92,7 +90,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override {
-      return DatasetDebugString(MAP_DATASET);
+      return name_utils::DatasetDebugString(name_utils::MAP);
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }

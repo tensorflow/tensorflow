@@ -37,8 +37,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-using namespace tensorflow::data::name_utils;
-
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
  public:

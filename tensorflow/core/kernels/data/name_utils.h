@@ -17,39 +17,52 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
 namespace name_utils {
-using namespace tensorflow::strings;
 
 enum DatasetType {
-  RANGE_DATASET = 0,
-  MAP_DATASET = 1,
+  MAP = 0,
+  RANGE = 1,
 };
 
 // Returns the base name of the dataset.
+//
+// e.g. ToString(MAP) -> "map".
 string ToString(const DatasetType& dataset_type);
 
 // Returns the dataset op name.
+//
+// e.g. OpName(MAP) -> "MapDataset".
 string OpName(const DatasetType& dataset_type);
 
+// Returns a human-readable debug string for this dataset in the format of
+// "FooDatasetOp(arg1, arg2, ...)::Dataset".
+//
+// e.g. DatasetDebugString(MAP, {}) -> "MapDatasetOp::Dataset";
+// DatasetDebugString(RANGE, {"0", "10", "3"}) ->
+// "RangeDatasetOp(0, 10, 3)::Dataset".
 string DatasetDebugString(const DatasetType& dataset_type,
                           std::initializer_list<StringPiece> args);
 
 // Returns a human-readable debug string for this dataset in the format of
-// "FooDatasetOp(arg1, arg2, ...)::Dataset"
+// "FooDatasetOp(arg1, arg2, ...)::Dataset".
+//
+// e.g. DatasetDebugString(MAP) -> "MapDatasetOp::Dataset";
+// DatasetDebugString(RANGE, 0, 10, 3) -> "RangeDatasetOp(0, 10, 3)::Dataset".
 template <typename... Args>
 string DatasetDebugString(const DatasetType& dataset_type,
                           const Args&... args) {
-  return DatasetDebugString(dataset_type,
-                            {static_cast<const AlphaNum&>(args).Piece()...});
+  return DatasetDebugString(
+      dataset_type, {static_cast<const strings::AlphaNum&>(args).Piece()...});
 }
 
 // Returns a string that identifies the sequence of iterators leading up to
 // the iterator of this dataset.
+//
+// e.g. IteratorPrefix(MAP, "Iterator::range") -> "Iterator::range::map".
 string IteratorPrefix(const DatasetType& dataset_type, const string& prefix);
 
 }  // namespace name_utils

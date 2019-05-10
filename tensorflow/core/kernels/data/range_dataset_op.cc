@@ -24,8 +24,6 @@ namespace {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-using namespace tensorflow::data::name_utils;
-
 class RangeDatasetOp : public DatasetOpKernel {
  public:
   explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
@@ -56,8 +54,8 @@ class RangeDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
-          Iterator::Params{this, IteratorPrefix(RANGE_DATASET, prefix)});
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, name_utils::IteratorPrefix(name_utils::RANGE, prefix)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -72,7 +70,8 @@ class RangeDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() const override {
-      return DatasetDebugString(RANGE_DATASET, start_, stop_, step_);
+      return name_utils::DatasetDebugString(name_utils::RANGE, start_, stop_,
+                                            step_);
     }
 
     int64 Cardinality() const override {
