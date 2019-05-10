@@ -168,6 +168,87 @@ def BranchOp : Op<Standard_Dialect, "br", [Terminator]> {
   }];
 }
 
+def CallOp : Op<Standard_Dialect, "call"> {
+  let summary = "call operation";
+  let description = [{
+    The "call" operation represents a direct call to a function.  The operands
+    and result types of the call must match the specified function type.  The
+    callee is encoded as a function attribute named "callee".
+
+      %2 = call @my_add(%0, %1) : (f32, f32) -> f32
+  }];
+
+  let arguments = (ins FunctionAttr:$callee, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>);
+
+  let parser = [{ return parseCallOp(parser, result); }];
+  let printer = [{ return printCallOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Function *callee,"
+    "ArrayRef<Value *> operands = {}", [{
+      result->addOperands(operands);
+      result->addAttribute("callee", builder->getFunctionAttr(callee));
+      result->addTypes(callee->getType().getResults());
+  }]>];
+
+  let extraClassDeclaration = [{
+    Function *getCallee() {
+      return getAttrOfType<FunctionAttr>("callee").getValue();
+    }
+
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+  }];
+}
+
+def CallIndirectOp : Op<Standard_Dialect, "call_indirect"> {
+  let summary = "indirect call operation";
+  let description = [{
+    The "call_indirect" operation represents an indirect call to a value of
+    function type.  Functions are first class types in MLIR, and may be passed
+    as arguments and merged together with block arguments.  The operands
+    and result types of the call must match the specified function type.
+
+      %3 = call_indirect %2(%0, %1) : (f32, f32) -> f32
+  }];
+
+  let arguments = (ins FunctionType:$callee, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>);
+
+  let parser = [{ return parseCallIndirectOp(parser, result); }];
+  let printer = [{ return printCallIndirectOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, Value *callee,"
+    "ArrayRef<Value *> operands = {}", [{
+      result->operands.push_back(callee);
+      result->addOperands(operands);
+      result->addTypes(callee->getType().cast<FunctionType>().getResults());
+  }]>];
+
+  let extraClassDeclaration = [{
+    Value *getCallee() { return getOperand(0); }
+
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    operand_iterator arg_operand_begin() { return ++operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+  }];
+
+  let hasCanonicalizer = 0b1;
+}
+
 def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
   let summary = "constant";
 

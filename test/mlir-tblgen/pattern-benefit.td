@@ -23,12 +23,12 @@ def Z_AddOp : NS_Op<"add"> {
 }
 
 // Define rewrite patterns.
-def : Pat<(X_AddOp (X_AddOp $lhs, $rhs), $rhs), (Y_AddOp $lhs, $rhs, $rhs)>;
+def bena : Pat<(X_AddOp (X_AddOp $lhs, $rhs), $rhs), (Y_AddOp $lhs, $rhs, $rhs)>;
 
-// CHECK-LABEL: struct GeneratedConvert0
-// CHECK: GeneratedConvert0(MLIRContext *context) : RewritePattern("x.add", 2, context) {}
+// CHECK-LABEL: struct bena
+// CHECK: RewritePattern("x.add", 2, context) {}
 
-def : Pat<(X_AddOp $lhs, $rhs), (Z_AddOp $lhs), [(IfEqual $lhs, $rhs)], (addBenefit 100)>;
+def benb : Pat<(X_AddOp $lhs, $rhs), (Z_AddOp $lhs), [(IfEqual $lhs, $rhs)], (addBenefit 100)>;
 
-// CHECK-LABEL: struct GeneratedConvert1
-// CHECK: GeneratedConvert1(MLIRContext *context) : RewritePattern("x.add", 101, context) {}
+// CHECK-LABEL: struct benb
+// CHECK: RewritePattern("x.add", 101, context) {}

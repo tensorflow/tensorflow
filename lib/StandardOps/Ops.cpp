@@ -61,9 +61,8 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<CallOp, CallIndirectOp, CmpFOp, CmpIOp, CondBranchOp,
-                DmaStartOp, DmaWaitOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
-                StoreOp, TensorCastOp,
+  addOperations<CmpFOp, CmpIOp, CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp,
+                MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -402,14 +401,7 @@ void BranchOp::eraseOperand(unsigned index) {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-void CallOp::build(Builder *builder, OperationState *result, Function *callee,
-                   ArrayRef<Value *> operands) {
-  result->addOperands(operands);
-  result->addAttribute("callee", builder->getFunctionAttr(callee));
-  result->addTypes(callee->getType().getResults());
-}
-
-ParseResult CallOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   StringRef calleeName;
   llvm::SMLoc calleeLoc;
   FunctionType calleeType;
@@ -430,39 +422,37 @@ ParseResult CallOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void CallOp::print(OpAsmPrinter *p) {
+static void printCallOp(OpAsmPrinter *p, CallOp op) {
   *p << "call ";
-  p->printFunctionReference(getCallee());
+  p->printFunctionReference(op.getCallee());
   *p << '(';
-  p->printOperands(getOperands());
+  p->printOperands(op.getOperands());
   *p << ')';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"callee"});
-  *p << " : " << getCallee()->getType();
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
+  *p << " : " << op.getCallee()->getType();
 }
 
-LogicalResult CallOp::verify() {
+static LogicalResult verify(CallOp op) {
   // Check that the callee attribute was specified.
-  auto fnAttr = getAttrOfType<FunctionAttr>("callee");
+  auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
-    return emitOpError("requires a 'callee' function attribute");
+    return op.emitOpError("requires a 'callee' function attribute");
 
   // Verify that the operand and result types match the callee.
   auto fnType = fnAttr.getValue()->getType();
-  if (fnType.getNumInputs() != getNumOperands())
-    return emitOpError("incorrect number of operands for callee");
+  if (fnType.getNumInputs() != op.getNumOperands())
+    return op.emitOpError("incorrect number of operands for callee");
 
-  for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
-    if (getOperand(i)->getType() != fnType.getInput(i))
-      return emitOpError("operand type mismatch");
-  }
+  for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i)
+    if (op.getOperand(i)->getType() != fnType.getInput(i))
+      return op.emitOpError("operand type mismatch");
 
-  if (fnType.getNumResults() != getNumResults())
-    return emitOpError("incorrect number of results for callee");
+  if (fnType.getNumResults() != op.getNumResults())
+    return op.emitOpError("incorrect number of results for callee");
 
-  for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i) {
-    if (getResult(i)->getType() != fnType.getResult(i))
-      return emitOpError("result type mismatch");
-  }
+  for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i)
+    if (op.getResult(i)->getType() != fnType.getResult(i))
+      return op.emitOpError("result type mismatch");
 
   return success();
 }
@@ -498,15 +488,8 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
 };
 } // end anonymous namespace.
 
-void CallIndirectOp::build(Builder *builder, OperationState *result,
-                           Value *callee, ArrayRef<Value *> operands) {
-  auto fnType = callee->getType().cast<FunctionType>();
-  result->operands.push_back(callee);
-  result->addOperands(operands);
-  result->addTypes(fnType.getResults());
-}
-
-ParseResult CallIndirectOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCallIndirectOp(OpAsmParser *parser,
+                                       OperationState *result) {
   FunctionType calleeType;
   OpAsmParser::OperandType callee;
   llvm::SMLoc operandsLoc;
@@ -524,39 +507,37 @@ ParseResult CallIndirectOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->addTypesToList(calleeType.getResults(), result->types));
 }
 
-void CallIndirectOp::print(OpAsmPrinter *p) {
+static void printCallIndirectOp(OpAsmPrinter *p, CallIndirectOp op) {
   *p << "call_indirect ";
-  p->printOperand(getCallee());
+  p->printOperand(op.getCallee());
   *p << '(';
-  auto operandRange = getOperands();
+  auto operandRange = op.getOperands();
   p->printOperands(++operandRange.begin(), operandRange.end());
   *p << ')';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"callee"});
-  *p << " : " << getCallee()->getType();
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
+  *p << " : " << op.getCallee()->getType();
 }
 
-LogicalResult CallIndirectOp::verify() {
+static LogicalResult verify(CallIndirectOp op) {
   // The callee must be a function.
-  auto fnType = getCallee()->getType().dyn_cast<FunctionType>();
+  auto fnType = op.getCallee()->getType().dyn_cast<FunctionType>();
   if (!fnType)
-    return emitOpError("callee must have function type");
+    return op.emitOpError("callee must have function type");
 
   // Verify that the operand and result types match the callee.
-  if (fnType.getNumInputs() != getNumOperands() - 1)
-    return emitOpError("incorrect number of operands for callee");
+  if (fnType.getNumInputs() != op.getNumOperands() - 1)
+    return op.emitOpError("incorrect number of operands for callee");
 
-  for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i) {
-    if (getOperand(i + 1)->getType() != fnType.getInput(i))
-      return emitOpError("operand type mismatch");
-  }
+  for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i)
+    if (op.getOperand(i + 1)->getType() != fnType.getInput(i))
+      return op.emitOpError("operand type mismatch");
 
-  if (fnType.getNumResults() != getNumResults())
-    return emitOpError("incorrect number of results for callee");
+  if (fnType.getNumResults() != op.getNumResults())
+    return op.emitOpError("incorrect number of results for callee");
 
-  for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i) {
-    if (getResult(i)->getType() != fnType.getResult(i))
-      return emitOpError("result type mismatch");
-  }
+  for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i)
+    if (op.getResult(i)->getType() != fnType.getResult(i))
+      return op.emitOpError("result type mismatch");
 
   return success();
 }

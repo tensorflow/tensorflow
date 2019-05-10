@@ -309,6 +309,11 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+// Function Type
+
+// Any function type.
+def FunctionType : Type<CPred<"$_self.isa<FunctionType>()">, "function type">;
+
 // A container type is a type that has another type embedded within it.
 class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
                     string descr> :
