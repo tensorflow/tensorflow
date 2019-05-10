@@ -389,11 +389,13 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
+        ":kernel_util",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//third_party/eigen3",
+        "@gemmlowp",
     ],
 )
 
