@@ -387,19 +387,19 @@ def _SymGrad(op, out_grads):
 
 def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled.
-     Also, apply mixed precision attributes to their respective gradient ops"""
+     Also apply mixed precision attributes to their respective gradient ops."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
     xla_separate_compiled_gradients = func.definition.attr[
         "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
-    #TODO(mconley): Add auto mixed precision support when applicable
+    # TODO(mconley) Add mixed precision scope support to funcdefs
     auto_mixed_precision_scope = False
   else:
     try:
       auto_mixed_precision_include = op.get_attr(
-          "_AutoMixedPrecisionSegmentInclude")
+          "_AutoMixedPrecisionScopeInclude")
       auto_mixed_precision_scope = True
     except ValueError:
       auto_mixed_precision_scope = False
@@ -416,15 +416,15 @@ def _MaybeCompile(scope, op, func, grad_fn):
 
   if auto_mixed_precision_scope:
     auto_mixed_precision_attrs = {
-        "_AutoMixedPrecisionSegmentInclude": attr_value_pb2.AttrValue(
-                   b=auto_mixed_precision_include)
+        "_AutoMixedPrecisionScopeInclude": attr_value_pb2.AttrValue(
+            b=auto_mixed_precision_include)
     }
   else:
     auto_mixed_precision_attrs = {}
 
   if not xla_compile:
-    with ops.get_default_graph()._attr_scope(
-         auto_mixed_precision_attrs):  # pylint: disable=protected-access
+    with ops.get_default_graph()._attr_scope(  # pylint: disable=protected-access
+        auto_mixed_precision_attrs):
       return grad_fn()
 
 

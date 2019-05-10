@@ -47,10 +47,10 @@ def auto_mixed_precision_scope(select=True):
   the graph when the mixed precision graph rewrite is enabled.
 
   A 'False' value for select means that the graph rewrite optimization pass
-  will totally ignore the scope, which gaurantees the nodes within will remain
+  will ignore the scope, which guarantees the nodes within will remain
   unconverted. This may result in other nodes outside of the scope not being
   converted to fp16 which otherwise would have been, depending on the graph's
-  structure and conversion algorithm.
+  structure.
 
   Args:
     select: A boolean whose value determines whether to allow the graph rewrite
@@ -61,8 +61,8 @@ def auto_mixed_precision_scope(select=True):
 
   """
 
-  segment_include = attr_value_pb2.AttrValue(b=select)
-  attrs = {"_AutoMixedPrecisionSegmentInclude": segment_include}
+  scope_include = attr_value_pb2.AttrValue(b=select)
+  attrs = {"_AutoMixedPrecisionScopeInclude": scope_include}
   # pylint: disable=protected-access
   with ops.get_default_graph()._attr_scope(attrs):
     yield

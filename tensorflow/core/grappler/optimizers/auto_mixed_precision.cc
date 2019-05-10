@@ -1063,10 +1063,10 @@ bool AutoMixedPrecisionImpl::IsOnGPU(const NodeDef& node) const {
   return false;
 }
 
-// Returns whether the node has been disabled via allow_segment_rewrite
+// Returns whether the node has been disabled via auto_mixed_precision_scope.
 bool AutoMixedPrecisionImpl::IsScopeDisabled(const NodeDef& node) const {
-  if (node.attr().count("_AutoMixedPrecisionSegmentInclude")) {
-    return !node.attr().at("_AutoMixedPrecisionSegmentInclude").b();
+  if (node.attr().count("_AutoMixedPrecisionScopeInclude")) {
+    return !node.attr().at("_AutoMixedPrecisionScopeInclude").b();
   }
   return false;
 }
