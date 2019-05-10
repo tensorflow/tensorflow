@@ -330,6 +330,7 @@ cuda_py_test(
     shard_count = 14,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/132384649): Flakily times out.
     ],
 )
 
