@@ -1691,11 +1691,13 @@ Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
-    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld) {
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    bool* modified) {
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile("extract_outside_compilation_before", *g, fld);
   }
 
+  *modified = false;
   auto node_name_index = g->BuildNodeNameIndex();
   for (auto& iter : clusters) {
     string xla_cluster_name = iter.first;
@@ -1711,6 +1713,7 @@ Status ExtractOutsideCompilation(
         func_name_attrs, func_name_attrs.name(), host_graph_func_name,
         host_compute_core, flr, fld, &shape_inference_graphs,
         &has_outside_compilation));
+    *modified |= has_outside_compilation;
 
     string pivot_name = absl::StrCat(xla_cluster_name, "/pivot");
     Node* pivot_node = node_name_index[pivot_name];

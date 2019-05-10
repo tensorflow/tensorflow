@@ -537,8 +537,9 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
                      XlaClusterInfo{func, func_name_attrs, xla_computation_node,
                                     std::map<string, int>{}});
   }
+  bool modified;
   s = ExtractOutsideCompilation("_encapsulate", "_outside", clusters,
-                                graph_out.get(), flr, lib_def.get());
+                                graph_out.get(), flr, lib_def.get(), &modified);
   if (!s.ok()) return s;
 
   GraphDef graphdef_out;
