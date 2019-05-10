@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_feed_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -34,7 +35,7 @@ namespace poplarplugin {
 
 struct FeedInfo {
   std::string stream_prefix;
-  std::string config;
+  PoplarFeedConfig config;
   Shape shape;
 };
 using OutfeedInfos = std::vector<FeedInfo>;

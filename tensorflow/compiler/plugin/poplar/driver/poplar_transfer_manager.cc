@@ -106,6 +106,16 @@ void PoplarXfeedQueueManager::set_size(size_t size) {
   max_size_ = size;
 }
 
+void PoplarXfeedQueueManager::set_queue_name(const std::string& name) {
+  tensorflow::mutex_lock l(mu_);
+  queue_name_ = name;
+}
+
+const std::string PoplarXfeedQueueManager::queue_name() const {
+  tensorflow::mutex_lock l(mu_);
+  return queue_name_;
+}
+
 size_t PoplarXfeedQueueManager::WaitForBuffers(size_t num_expected) {
   tensorflow::mutex_lock l(mu_);
   while (enqueued_buffers_.size() < num_expected) {

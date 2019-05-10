@@ -37,16 +37,14 @@ class OneHotTopK(test_util.TensorFlowTestCase):
             axis=inputs["axis"])
 
       # We run once on the CPU to get the expected result, then on the IPU to compare the two.
-      cpuRun = expected == None
+      cpuRun = expected is None
 
       with ops.device('cpu'):
         pa = array_ops.placeholder(np.int32, inputs["shape"], name="a")
         report = gen_ipu_ops.ipu_event_trace()
 
       # Check if we should be running on IPU or cpu.
-      device = "/device:IPU:0"
-      if cpuRun:
-        device = "cpu:0"
+      device = "cpu:0" if cpuRun else "/device:IPU:0"
 
       with ops.device(device):
         out = model(pa)

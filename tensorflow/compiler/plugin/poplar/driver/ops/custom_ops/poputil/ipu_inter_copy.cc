@@ -24,7 +24,7 @@ class IpuInterCopyOp : public PoplibsOpDef {
 };
 
 StatusOr<poplar::program::Program> IpuInterCopyOp::Creator(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    poplar::Graph&, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
@@ -54,7 +54,8 @@ StatusOr<poplar::program::Program> IpuInterCopyOp::Creator(
   for (int index = 0; index < src_sharding.size(); index++) {
     if (src_sharding[index] != dst_sharding[index]) {
       out = poputil::copyToIpu(
-          res.main_graph, out, seq, dst_sharding[index], GetDebugName(inst),
+          GetReplicatedGraph(res), out, seq, dst_sharding[index],
+          GetDebugName(inst),
           poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
 
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, index, out));

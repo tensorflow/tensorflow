@@ -384,8 +384,7 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
     opts: An IpuOptions session control protobuf.
     num_ipus: List of IPUs per Tensorflow device
     sharded: Deprecated.
-    number_of_replicas: The number of replicas to divide the device into. This
-      should be a divisor of the number of IPUs.
+    number_of_replicas: Deprecated.
 
   Returns:
     The IpuOptions configuration protobuf, configured for auto-selecting a set
@@ -397,25 +396,22 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
   if not isinstance(num_ipus, (int, list, tuple)):
     raise Exception("`num_ipus` must be an integer, list or tuple.")
 
-  if number_of_replicas is not None:
-    if type(number_of_replicas) is not type(num_ipus):
-      raise Exception("`number_of_replicas` must be same type as `num_ipus`")
-
   if sharded:
     logging.warning("`sharded` has been deprecated.  Mark operations with a "
                     "sharding attribute to enable sharding")
 
+  if number_of_replicas:
+    logging.warning("`number_of_replicas` has been deprecated. The number of "
+                    " replicas is automatically calculated from the device "
+                    " and any sharding (if present).")
+
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
     dev.auto_count = num_ipus
-    if isinstance(number_of_replicas, (int)):
-      dev.num_replicas = number_of_replicas
   else:
     for i, n in enumerate(num_ipus):
       dev = opts.device_config.add()
       dev.auto_count = n
-      if isinstance(number_of_replicas, (list, tuple)):
-        dev.num_replicas = number_of_replicas[i]
 
   return opts
 
@@ -589,10 +585,9 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
 
   Args:
     opts: An IpuOptions session control protobuf.
-    indicies: List of IPU configuration indicies.
+    indices: List of IPU configuration indices.
     sharded: Deprecated.
-    number_of_replicas: The number of replicas to divide the device into. This
-      should be a divisor of the number of IPUs.
+    number_of_replicas: Deprecated.
   Returns:
     The IpuOptions configuration protobuf, with a number of devices selected by
     IPU configuration index.
@@ -602,21 +597,23 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     raise Exception("IPU devices have already been configured.")
 
   if not isinstance(indices, (list, tuple)):
-    raise Exception("`indicies` must be a list or tuple.")
+    raise Exception("`indices` must be a list or tuple.")
 
-  if number_of_replicas is not None:
-    if not isinstance(number_of_replicas, (list, tuple)):
-      raise Exception("`number_of_replicas` must be a list or tuple.")
+  if len(set(indices)) != len(indices):
+    raise Exception("All device indeicies in `indices` must be unique.")
 
   if sharded:
     logging.warning("`sharded` has been deprecated.  Mark operations with a "
                     "sharding attribute to enable sharding")
 
+  if number_of_replicas:
+    logging.warning("`number_of_replicas` has been deprecated. The number of "
+                    " replicas is automatically calculated from the device "
+                    " and any sharding (if present).")
+
   for n, i in enumerate(indices):
     dev = opts.device_config.add()
     dev.cfg_index = i
-    if isinstance(number_of_replicas, (list, tuple)):
-      dev.num_replicas = number_of_replicas[n]
 
   return opts
 

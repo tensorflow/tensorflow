@@ -49,7 +49,8 @@ TEST_F(OutfeedTest, OutfeedTuple) {
   auto input_global =
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
   XlaOp token = CreateToken(&builder);
-  XlaOp outfeed = OutfeedWithToken(input, token, shape, "");
+  XlaOp outfeed =
+      OutfeedWithToken(input, token, shape, "\010\001\022\005feed1\032\003all");
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
   std::unique_ptr<GlobalData> result;
@@ -97,7 +98,8 @@ TEST_F(OutfeedTest, OutfeedTupleOfAdd) {
   XlaOp tuple_input = Tuple(&builder, {add_result_a, add_result_b});
   Shape outfeed_shape = builder.GetShape(tuple_input).ValueOrDie();
   XlaOp token = CreateToken(&builder);
-  XlaOp outfeed = OutfeedWithToken(tuple_input, token, outfeed_shape, "");
+  XlaOp outfeed = OutfeedWithToken(tuple_input, token, outfeed_shape,
+                                   "\010\001\022\005feed2\032\003all");
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
   std::unique_ptr<GlobalData> result;
@@ -138,7 +140,8 @@ TEST_F(OutfeedTest, SingleOutfeed) {
 
   XlaOp add_result = Add(input1, input2);
   XlaOp outfeed_token = CreateToken(&builder);
-  XlaOp outfeed = OutfeedWithToken(add_result, outfeed_token, shape, "");
+  XlaOp outfeed = OutfeedWithToken(add_result, outfeed_token, shape,
+                                   "\010\001\022\005feed3\032\003all");
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
 
@@ -191,8 +194,8 @@ TEST_F(OutfeedTest, OutfeedInWhileLoop) {
     auto result = Add(prev, addend);
     auto added_values = Add(ConstantR0<float>(&builder, 1.0f), values);
     auto token = CreateToken(&builder);
-    auto outfeed_token =
-        OutfeedWithToken(added_values, token, outfeed_shape, "");
+    auto outfeed_token = OutfeedWithToken(added_values, token, outfeed_shape,
+                                          "\010\001\022\005feed4\032\003all");
     // Outfeed token should be replaced with an empty tuple by the
     // root token replacer pass
     auto counter_inc = Add(counter, ConstantR0<int32>(&builder, 1));
@@ -277,8 +280,8 @@ TEST_F(OutfeedTest, OutfeedInWhileLoopGetAllSingleThread) {
     auto result = Add(prev, addend);
     auto added_values = Add(ConstantR0<float>(&builder, 1.0f), values);
     auto token = CreateToken(&builder);
-    auto outfeed_token =
-        OutfeedWithToken(added_values, token, outfeed_shape, "all");
+    auto outfeed_token = OutfeedWithToken(added_values, token, outfeed_shape,
+                                          "\010\001\022\005feed5\032\003all");
     // Outfeed token should be replaced with an empty tuple by the
     // root token replacer pass
     auto counter_inc = Add(counter, ConstantR0<int32>(&builder, 1));
@@ -357,7 +360,8 @@ TEST_F(OutfeedTest, OutfeedInWhileLoopGetLastSingleThread) {
     auto added_values = Add(ConstantR0<float>(&builder, 1.0f), values);
     auto token = CreateToken(&builder);
     auto outfeed_token =
-        OutfeedWithToken(added_values, token, outfeed_shape, "get_last");
+        OutfeedWithToken(added_values, token, outfeed_shape,
+                         "\010\001\022\005feed6\032\010get_last");
     // Outfeed token should be replaced with an empty tuple by the
     // root token replacer pass
     auto counter_inc = Add(counter, ConstantR0<int32>(&builder, 1));

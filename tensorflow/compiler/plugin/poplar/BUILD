@@ -37,8 +37,11 @@ xla_proto_library(
     srcs = [
       "driver/backend_config.proto",
       "driver/poplar_executable.proto",
+      "driver/poplar_feed_config.proto",
     ],
-    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
+    deps = [
+      "//tensorflow/compiler/xla:xla_data_proto",
+    ],
 )
 
 tf_proto_library(

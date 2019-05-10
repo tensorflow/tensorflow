@@ -230,14 +230,14 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
   for (const auto& infeed : executable.infeed_infos_) {
     auto* feed = proto.add_infeeds();
     feed->set_stream_prefix(infeed.stream_prefix);
-    feed->set_config(infeed.config);
+    *(feed->mutable_config()) = infeed.config;
     *(feed->mutable_shape()) = infeed.shape.ToProto();
   }
 
   for (const auto& outfeed : executable.outfeed_infos_) {
     auto* feed = proto.add_infeeds();
     feed->set_stream_prefix(outfeed.stream_prefix);
-    feed->set_config(outfeed.config);
+    *(feed->mutable_config()) = outfeed.config;
     *(feed->mutable_shape()) = outfeed.shape.ToProto();
   }
 

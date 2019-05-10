@@ -380,6 +380,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                           PoplarExecutable::Deserialize(
                               std::move(module), std::move(profile_printer),
                               std::move(profile_index_map), filename));
+      // When restoring the executable we still need to make sure all the
+      // outfeeds are unique.
+      TF_RETURN_IF_ERROR(poplarExecutor->RegisterOutfeeds(
+          poplar_executable->GetOutfeedInfos()));
 
       std::unique_ptr<Executable> executable;
       executable.reset(poplar_executable);
@@ -394,12 +398,27 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
+  // Work out the IPU division for this IPU.
+  // Given device with `num_ipus` IPU chips, we get the number of shards
+  // `num_shards` and the replication factor is `num_ipus`/`num_shards` (and
+  // we also make sure `num_ipus` % `num_shards` == 0).
+  const auto num_ipus = dev.getTarget().getNumIPUs();
+  const auto num_shards = MaximalShard(module.get()) + 1;
+  const auto replication_factor = num_ipus / num_shards;
+  // Check that it's divisible.
+  if (num_ipus % num_shards) {
+    return xla::ResourceExhaustedStrCat(
+        "Trying to compile a graph for an IPU device with ", num_ipus,
+        " IPUs and ", num_shards,
+        " shards. The number of shards needs to "
+        " divide the number of IPUs.");
+  }
+
   CompilerResources resources(dev, poplarExecutor->GetConvolutionOptions(),
                               poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
                               poplarExecutor->MergeInfeedCopies(),
-                              poplarExecutor->GetNumberOfReplicas(),
-                              module.get());
+                              replication_factor, module.get());
 
   resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
   poplin::addCodelets(resources.main_graph);
@@ -410,7 +429,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   poplar::Graph* sharding_main_graph = &resources.main_graph;
 
-  const auto replication_factor = resources.replication_factor;
   if (replication_factor > 1) {
     if (!IsValidReplicatedGraph(module.get())) {
       if (!tensorflow::GetPoplarXlaFlags().force_replicated_mode) {
@@ -435,14 +453,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   if (ShardingEnabled(module.get())) {
     auto num_ipus = sharding_main_graph->getTarget().getNumIPUs();
     // Check that we have enough IPUs for this sharding configuration.
-    auto maximal_shard = MaximalShard(module.get());
-    if (maximal_shard >= num_ipus) {
-      return xla::ResourceExhaustedStrCat(
-          "Trying to compile a graph for ", maximal_shard + 1,
-          " shards, however the Multi-IPU device ordinal ",
-          stream_exec->device_ordinal(), " is a configuration which has ",
-          num_ipus, " IPU", (num_ipus > 1 ? "s." : "."));
-    }
     auto tiles_per_ipu = sharding_main_graph->getTarget().getTilesPerIPU();
     for (unsigned ipu = 0; ipu < num_ipus; ++ipu) {
       resources.shard_graphs.emplace_back(
@@ -529,7 +539,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloMemoryScheduler>(
         size_function, CreateSyncListMemoryScheduler(
                            poplarExecutor->GetMaxAllReduceBufferSize()));
-
     pipeline.AddPass<CombineAllReduce>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
@@ -594,6 +603,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     poplar::program::Sequence main_program;
 
+    // Register the outfeeds which this executable creates.
+    TF_RETURN_IF_ERROR(
+        poplarExecutor->RegisterOutfeeds(resources.annotations.outfeed_infos));
     // Set up the random seed
     auto seed_setup = InitializeSeed(resources.main_graph, *sharding_main_graph,
                                      replication_factor);

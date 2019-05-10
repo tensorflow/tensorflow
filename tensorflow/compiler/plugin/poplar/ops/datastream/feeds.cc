@@ -24,7 +24,8 @@ using shape_inference::ShapeHandle;
 
 REGISTER_OP("PopDatastreamInfeedDequeue")
     .Output("outputs: output_types")
-    .Attr("infeed_id: string")
+    .Attr("feed_id: string")
+    .Attr("replication_factor: int")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()
@@ -43,7 +44,7 @@ A placeholder op for multiple values that will be fed into the computation
 simultaneously as an XLA tuple.
 
 outputs: A list of tensors that will be provided using the infeed mechanism.
-infeed_id: The id of the iterator used for this dequeue.
+feed_id: The id of the iterator used for this dequeue.
 output_types: The element types of each element in `outputs`.
 output_shapes: The shapes of each tensor in `outputs`.
 )doc");
@@ -51,7 +52,7 @@ output_shapes: The shapes of each tensor in `outputs`.
 REGISTER_OP("IPUConsumeDataset")
     .Input("input_dataset: variant")
     .Attr("device_ordinal: int = 0")
-    .Attr("id: string")
+    .Attr("feed_id: string")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()
@@ -61,7 +62,8 @@ REGISTER_OP("PopDatastreamOutfeedEnqueue")
     .Input("inputs: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("outfeed_mode: string='all'")
-    .Attr("device_ordinal: int = 0")
+    .Attr("feed_id: string")
+    .Attr("replication_factor: int")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
@@ -73,7 +75,6 @@ output_types: The element types of each element in `outputs`.
 outfeed_mode: 'all' or 'get_last', default is 'all'. In 'all'-mode all outfed
   values are enqueued for reading on the host. In 'get_last'-mode a single value
   is queued to be passed to the host.
-device_ordinal: The IPU device to use.
 
 )doc");
 
@@ -82,6 +83,8 @@ REGISTER_OP("PopDatastreamOutfeedDequeue")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("device_ordinal: int = 0")
+    .Attr("feed_id: string")
+    .Attr("replication_factor: int")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(

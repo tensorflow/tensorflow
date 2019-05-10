@@ -23,6 +23,7 @@ from tensorflow.contrib import ipu
 from tensorflow.keras import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -466,6 +467,39 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       for i in range(20):
         self.assertAllClose(outfed[i], np.broadcast_to(i + 1, [4, 4]))
 
+  def testMultipleOutfeedsRepeatNonTuple(self):
+
+    outfeed_queue1 = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
+    outfeed_queue2 = ipu_outfeed_queue.IPUOutfeedQueue(next_feed_id())
+
+    def body(v):
+      outfeed1 = outfeed_queue1.enqueue(v)
+      outfeed2 = outfeed_queue2.enqueue(v * 2)
+      v = v + 1
+      return (v, outfeed1, outfeed2)
+
+    def my_net(v):
+      r = loops.repeat(20, body, (v))
+      return r
+
+    with ops.device('cpu'):
+      v = array_ops.placeholder(np.float32, [4, 4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[v])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    outfeed1 = outfeed_queue1.dequeue()
+    outfeed2 = outfeed_queue2.dequeue()
+    with session_lib.Session() as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Only one IPUOutfeedQueue supported per graph'):
+        result = sess.run(res, {v: np.ones([4, 4], np.float32)})
+
   def testSingleInfeedOutfeedRepeatNonTuple(self):
     dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
@@ -801,6 +835,149 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
       # Check that a scalar is returned instead of a numpy array
       self.assertTrue(type(outfed) == np.float32)
+
+  def testTwoOutfeedsDifferentPrograms(self):
+
+    outfeed_queue1 = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id())
+    outfeed_queue2 = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id())
+
+    def body1(v):
+      outfeed = outfeed_queue1.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net1(v):
+      r = loops.repeat(5, body1, (v))
+      return r
+
+    def body2(v):
+      outfeed = outfeed_queue2.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net2(v):
+      r = loops.repeat(7, body2, (v))
+      return r
+
+    with ops.device('cpu'):
+      v1 = array_ops.placeholder(np.float32, [4, 4])
+      v2 = array_ops.placeholder(np.float32, [5, 5])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res1 = ipu_compiler.compile(my_net1, inputs=[v1])
+      res2 = ipu_compiler.compile(my_net2, inputs=[v2])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    outfeed1 = outfeed_queue1.dequeue()
+    outfeed2 = outfeed_queue2.dequeue()
+    with session_lib.Session() as sess:
+      result1 = sess.run(res1, {v1: np.ones([4, 4], np.float32)})
+      self.assertAllClose(result1[0], np.broadcast_to(6, [4, 4]))
+      outfed1 = sess.run(outfeed1)
+      for i in range(5):
+        self.assertAllClose(outfed1[i], np.broadcast_to(i + 1, [4, 4]))
+
+      result2 = sess.run(res2, {v2: np.full([5, 5], 4, np.float32)})
+      self.assertAllClose(result2[0], np.broadcast_to(11, [5, 5]))
+      outfed2 = sess.run(outfeed2)
+      for i in range(7):
+        self.assertAllClose(outfed2[i], np.broadcast_to(i + 4, [5, 5]))
+
+  def testTwoOutfeedsDifferentProgramsAccessingDiscartedData(self):
+
+    outfeed_queue1 = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id())
+    outfeed_queue2 = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id())
+
+    def body1(v):
+      outfeed = outfeed_queue1.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net1(v):
+      r = loops.repeat(5, body1, (v))
+      return r
+
+    def body2(v):
+      outfeed = outfeed_queue2.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net2(v):
+      r = loops.repeat(7, body2, (v))
+      return r
+
+    with ops.device('cpu'):
+      v1 = array_ops.placeholder(np.float32, [4, 4])
+      v2 = array_ops.placeholder(np.float32, [5, 5])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res1 = ipu_compiler.compile(my_net1, inputs=[v1])
+      res2 = ipu_compiler.compile(my_net2, inputs=[v2])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    outfeed1 = outfeed_queue1.dequeue()
+    outfeed2 = outfeed_queue2.dequeue()
+    with session_lib.Session() as sess:
+      result1 = sess.run(res1, {v1: np.ones([4, 4], np.float32)})
+      self.assertAllClose(result1[0], np.broadcast_to(6, [4, 4]))
+      result2 = sess.run(res2, {v2: np.full([5, 5], 4, np.float32)})
+      self.assertAllClose(result2[0], np.broadcast_to(11, [5, 5]))
+      with self.assertRaisesRegexp(errors.UnavailableError,
+                                   'Trying to access IPUOutfeedQueue with id'):
+        outfed1 = sess.run(outfeed1)
+
+  def testTwoOutfeedsDifferentProgramsSameFeedName(self):
+
+    outfeed_queue1 = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="a")
+    outfeed_queue2 = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="a")
+
+    def body1(v):
+      outfeed = outfeed_queue1.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net1(v):
+      r = loops.repeat(5, body1, (v))
+      return r
+
+    def body2(v):
+      outfeed = outfeed_queue2.enqueue(v)
+      v = v + 1
+      return (v, outfeed)
+
+    def my_net2(v):
+      r = loops.repeat(7, body2, (v))
+      return r
+
+    with ops.device('cpu'):
+      v1 = array_ops.placeholder(np.float32, [4, 4])
+      v2 = array_ops.placeholder(np.float32, [5, 5])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res1 = ipu_compiler.compile(my_net1, inputs=[v1])
+      res2 = ipu_compiler.compile(my_net2, inputs=[v2])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    outfeed1 = outfeed_queue1.dequeue()
+    outfeed2 = outfeed_queue2.dequeue()
+    with session_lib.Session() as sess:
+      result1 = sess.run(res1, {v1: np.ones([4, 4], np.float32)})
+      with self.assertRaisesRegexp(errors.FailedPreconditionError,
+                                   'Outfeed with id=\'a\' already exists'):
+        result2 = sess.run(res2, {v2: np.full([5, 5], 4, np.float32)})
 
 
 if __name__ == "__main__":

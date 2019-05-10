@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_feed_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
@@ -56,13 +58,23 @@ void XlaShapesFromAttr(OpKernelConstruction* ctx,
     result.emplace_back(TensorShapeToXLAShape(xla_type, shapes[i]));
   }
 }
+
+void GetFeedConfig(OpKernelConstruction* ctx,
+                   xla::poplarplugin::PoplarFeedConfig& config) {
+  std::string feed_id;
+  int64 replication_factor;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("feed_id", &feed_id));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("replication_factor", &replication_factor));
+  config.set_feed_id(feed_id);
+  config.set_replication_factor(replication_factor);
+}
 }  // namespace
 
 class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
  public:
   explicit PopDatastreamInfeedDequeueOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("infeed_id", &infeed_id_));
+    GetFeedConfig(ctx, config_);
     XlaShapesFromAttr(ctx, xla_shapes_);
   }
 
@@ -71,15 +83,20 @@ class PopDatastreamInfeedDequeueOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     auto tuple_shape = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
-    xla::XlaOp output_tuple = xla::Infeed(b, tuple_shape, infeed_id_);
+    std::string config_str;
+    if (!config_.SerializeToString(&config_str)) {
+      ctx->CtxFailureWithWarning(errors::FailedPrecondition(
+          "Could not serialize the infeed configuration."));
+    }
+    xla::XlaOp output_tuple = xla::Infeed(b, tuple_shape, config_str);
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       ctx->SetOutput(i, xla::GetTupleElement(output_tuple, i));
     }
   }
 
  private:
+  xla::poplarplugin::PoplarFeedConfig config_;
   std::vector<xla::Shape> xla_shapes_;
-  std::string infeed_id_;
   TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamInfeedDequeueOp);
 };
 
@@ -90,7 +107,7 @@ class IPUConsumeDatasetOp : public OpKernel {
   explicit IPUConsumeDatasetOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), device_ordinal_(0) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("id", &id_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("feed_id", &id_));
 
     OP_REQUIRES(ctx, device_ordinal_ >= 0,
                 errors::InvalidArgument("Need device_ordinal >= 0, got ",
@@ -134,9 +151,16 @@ REGISTER_KERNEL_BUILDER(Name("IPUConsumeDataset").Device(DEVICE_CPU),
 class PopDatastreamOutfeedEnqueueOp : public XlaOpKernel {
  public:
   explicit PopDatastreamOutfeedEnqueueOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), device_ordinal_(0) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("outfeed_mode", &outfeed_mode_));
+      : XlaOpKernel(ctx) {
+    GetFeedConfig(ctx, config_);
+
+    std::string outfeed_mode = "all";
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("outfeed_mode", &outfeed_mode));
+    OP_REQUIRES(
+        ctx, outfeed_mode == "all" || outfeed_mode == "get_last",
+        errors::InvalidArgument("Unkown outfeed_mode : ", outfeed_mode,
+                                ", supported values are 'all' and 'get_last'"));
+    config_.set_mode(outfeed_mode);
   }
 
   ~PopDatastreamOutfeedEnqueueOp() override{};
@@ -144,11 +168,6 @@ class PopDatastreamOutfeedEnqueueOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const auto num_inputs = ctx->num_inputs();
-
-    OP_REQUIRES(
-        ctx, outfeed_mode_ == "all" || outfeed_mode_ == "get_last",
-        errors::InvalidArgument("Unkown outfeed_mode : ", outfeed_mode_,
-                                ", supported values are 'all' and 'get_last'"));
 
     std::vector<xla::XlaOp> inputs;
     std::vector<xla::Shape> xla_shapes;
@@ -177,14 +196,18 @@ class PopDatastreamOutfeedEnqueueOp : public XlaOpKernel {
       outfeed_input = inputs[0];
     }
 
+    std::string config_str;
+    if (!config_.SerializeToString(&config_str)) {
+      ctx->CtxFailureWithWarning(errors::FailedPrecondition(
+          "Could not serialize the outfeed configuration."));
+    }
     xla::XlaOp outfeed_token = CreateToken(b);
     xla::XlaOp outfeed = OutfeedWithToken(outfeed_input, outfeed_token,
-                                          outfeed_shape, outfeed_mode_);
+                                          outfeed_shape, config_str);
   }
 
  private:
-  int device_ordinal_;
-  std::string outfeed_mode_ = "all";
+  xla::poplarplugin::PoplarFeedConfig config_;
   TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamOutfeedEnqueueOp);
 };
 
@@ -194,6 +217,7 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
  public:
   explicit PopDatastreamOutfeedDequeueOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), device_ordinal_(0) {
+    GetFeedConfig(ctx, config_);
     OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
 
     OP_REQUIRES(ctx, device_ordinal_ >= 0,
@@ -243,6 +267,19 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
 
     auto* outfeed_queue_manager =
         xla::poplarplugin::GetXfeedManager(device_ordinal_)->outfeed();
+
+    OP_REQUIRES(
+        ctx, outfeed_queue_manager->queue_name() == config_.feed_id(),
+        errors::Unavailable(
+            "Trying to access IPUOutfeedQueue with id='", config_.feed_id(),
+            "', however "
+            "the last executed IPUOutfeedQueue has id='",
+            outfeed_queue_manager->queue_name(),
+            "'. If "
+            "multiple IPUOutfeedQueues are registered to the same "
+            "TensorFlow device, only the results from the most "
+            "recently executed IPUOutfeedQueue are preserved."));
+
     size_t num_available = outfeed_queue_manager->size();
     if (num_available < num_outputs_) {
       num_available = outfeed_queue_manager->WaitForBuffers(num_outputs_);
@@ -299,6 +336,7 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
   std::vector<TensorShape> tensor_shapes_;
   bool outfeed_all_;
   size_t num_outputs_;
+  xla::poplarplugin::PoplarFeedConfig config_;
   TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamOutfeedDequeueOp);
 };
 

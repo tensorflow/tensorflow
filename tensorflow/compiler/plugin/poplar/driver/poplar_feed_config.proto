@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package xla.poplarplugin;
+
+// Message which is stored as the config field for an HloInstruction for an
+// HloInfeedInstruction/HloOutfeedInstruction instruction.
+message PoplarFeedConfig {
+	// The replication factor of this feed.
+	int64 replication_factor = 1;
+
+	// The unique name of this feed.
+	string feed_id = 2;
+
+	// Optional mode.
+	string mode = 3;
+};
