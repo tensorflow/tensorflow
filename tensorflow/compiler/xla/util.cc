@@ -111,7 +111,7 @@ std::vector<int64> InversePermutation(
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
+    output_permutation.at(input_permutation.at(i)) = i;
   }
   return output_permutation;
 }
@@ -121,7 +121,7 @@ std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1[p2[i]]);
+    output.push_back(p1.at(p2.at(i)));
   }
   return output;
 }

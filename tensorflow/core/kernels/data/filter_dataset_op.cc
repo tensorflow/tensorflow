@@ -149,6 +149,9 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
           if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
               result[0].NumElements() != 1) {
+            // Clear the output tensor list since there were errors with Filter
+            // prediction result.
+            out_tensors->clear();
             return errors::InvalidArgument(
                 "Filter predicate `f` must return a scalar bool.");
           }

@@ -184,6 +184,25 @@ py_test(
 )
 
 py_test(
+    name = "snapshot_dataset_benchmark",
+    srcs = ["snapshot_dataset_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "unbatch_benchmark",
     srcs = ["unbatch_benchmark.py"],
     srcs_version = "PY2AND3",

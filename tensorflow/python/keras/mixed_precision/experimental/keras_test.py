@@ -405,6 +405,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # Layer does not have weight regularizer
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
+  # TODO(reedwm): Add and fix test where cloning=False is passed to
+  # Model.compile. Currently the test fails if cloning=False is passed.
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn

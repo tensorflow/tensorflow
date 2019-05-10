@@ -70,6 +70,8 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *instr.mutable_output() = output_desc.ToProto(element_type);
     *instr.mutable_conv_desc() = conv_desc.ToProto();
     log.mutable_instr()->PackFrom(std::move(instr));
+    instr.set_conv_scale(1);
+    instr.set_side_value_scale(0);
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
@@ -80,9 +82,8 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   Logger::Singleton()->LogProto(log);
 }
 
-void LogFusedConvAutotuneResults(
-    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
-    const se::dnn::BatchDescriptor& input_desc,
+void LogFusedConvForwardAutotuneResults(
+    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -91,7 +92,7 @@ void LogFusedConvAutotuneResults(
   AutotuningLog log;
   {
     ConvolutionProto instr;
-    instr.set_kind(kind);
+    instr.set_kind(se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION);
     *instr.mutable_input() = input_desc.ToProto(element_type);
     *instr.mutable_filter() = filter_desc.ToProto(element_type);
     *instr.mutable_output() = output_desc.ToProto(element_type);

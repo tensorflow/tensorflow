@@ -130,6 +130,7 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   def apply_gradients(self, grads_and_vars, name=None):
     if distribution_strategy_context.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
+    grads_and_vars = tuple(grads_and_vars)
     return distribution_strategy_context.get_replica_context().merge_call(
         self._apply_gradients_cross_replica, args=(grads_and_vars, name))
 

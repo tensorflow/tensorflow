@@ -182,7 +182,6 @@ cc_library(
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
-        ":custom_call_target_registry",
         ":disassembler",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
@@ -203,6 +202,7 @@ cc_library(
         "@llvm//:orc_jit",
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
@@ -944,17 +944,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
-)
-
-cc_library(
-    name = "custom_call_target_registry",
-    srcs = [
-        "custom_call_target_registry.cc",
-    ],
-    hdrs = [
-        "custom_call_target_registry.h",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(

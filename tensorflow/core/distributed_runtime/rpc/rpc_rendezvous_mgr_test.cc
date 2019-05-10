@@ -71,7 +71,7 @@ class RpcRendezvousMgrTest : public ::testing::Test {
         worker_session_("rpc_session", "/job:mnist/replica:1/task:2",
                         std::unique_ptr<WorkerCacheInterface>(cache_),
                         std::unique_ptr<DeviceMgr>(),
-                        std::unique_ptr<GraphMgr>()),
+                        std::unique_ptr<GraphMgr>(), nullptr),
         rmgr_(&env) {
     env.env = Env::Default();
   }

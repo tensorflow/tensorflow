@@ -135,6 +135,10 @@ class Model(network.Network):
 
     self._run_eagerly = None
 
+    # The epoch at which the checkpoint is saved. Used for fault-tolerance.
+    # See `_maybe_load_initial_epoch_from_ckpt()` for more information.
+    self._ckpt_saved_epoch = None
+
   def get_weights(self):
     """Retrieves the weights of the model.
 
@@ -2909,6 +2913,32 @@ class Model(network.Network):
   @property
   def _feed_loss_fns(self):
     return [t.loss_fn for t in self._training_targets if t.feedable]
+
+  def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
+    """Maybe load initial epoch from ckpt considering possible worker recovery.
+
+    When `_ckpt_saved_epoch` attribute is not None in a `Model` object at the
+    time the training starts, this is under multi-worker training setting and
+    indicates the worker is recovering from previous failure. In this case,
+    infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
+    unfinished training from certain epoch.
+
+    Arguments:
+      initial_epoch: The original initial_epoch user passes in in `fit()`.
+      mode: The training mode.
+
+    Returns:
+      If the training is recovering from previous failure under multi-worker
+      training setting, return the epoch the training is supposed to continue
+      at. Otherwise, return the `initial_epoch` the user passes in.
+    """
+    # TODO(rchao): Add recovery for validation case
+    # (when mode == ModeKeys.TEST).
+    if mode == ModeKeys.TRAIN and self._ckpt_saved_epoch is not None:
+      # The most recently saved epoch is one epoch prior to the epoch it failed
+      # at, so return '_ckpt_saved_epoch' plus one.
+      return int(self._ckpt_saved_epoch) + 1
+    return initial_epoch
 
 
 class DistributedCallbackModel(Model):

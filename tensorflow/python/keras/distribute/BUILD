@@ -327,9 +327,10 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/keras",
     ],
-    shard_count = 4,
+    shard_count = 14,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/132384649): Flakily times out.
     ],
 )
 

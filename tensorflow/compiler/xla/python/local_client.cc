@@ -78,7 +78,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -101,8 +101,8 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
         "Argument to RegisterCpuCustomCallTargetRegistry was not a "
         "xla._CPU_CUSTOM_CALL_TARGET capsule.");
   }
-  cpu::CustomCallTargetRegistry::Global()->Register(
-      std::string(fn_name.begin(), fn_name.end()), static_cast<void*>(capsule));
+  CustomCallTargetRegistry::Global()->Register(fn_name,
+                                               static_cast<void*>(capsule));
   return Status::OK();
 }
 

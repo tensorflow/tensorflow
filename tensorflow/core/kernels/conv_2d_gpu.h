@@ -434,13 +434,22 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
 
-    CHECK(dst_filter_format == FORMAT_OIHW)
-        << "Unsupported output layout: " << ToString(dst_filter_format);
+    if (dst_filter_format == FORMAT_OIHW) {
+      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+                                   config.block_count, config.thread_per_block,
+                                   0, d.stream(), config.virtual_thread_count,
+                                   in.data(), combined_dims, out.data()));
 
-    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count,
-                                 in.data(), combined_dims, out.data()));
+    } else if (dst_filter_format == FORMAT_OHWI) {
+      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 1, 2, 0>,
+                                   config.block_count, config.thread_per_block,
+                                   0, d.stream(), config.virtual_thread_count,
+                                   in.data(), combined_dims, out.data()));
+
+    } else {
+      LOG(ERROR) << "Unsupported filter format: "
+                 << ToString(dst_filter_format);
+    }
   }
 };
 

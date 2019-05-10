@@ -609,8 +609,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, launch, context, stream,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
-            LogFusedConvAutotuneResults(
-                se::dnn::ConvolutionKind::FORWARD,
+            LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_desc, filter_desc,
                 output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
                 stream->parent(), results);

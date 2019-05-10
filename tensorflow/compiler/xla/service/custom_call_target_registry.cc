@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 
 namespace xla {
-namespace cpu {
 
 CustomCallTargetRegistry* CustomCallTargetRegistry::Global() {
   static auto* registry = new CustomCallTargetRegistry;
@@ -35,5 +34,4 @@ void* CustomCallTargetRegistry::Lookup(const std::string& symbol) const {
   return it == registered_symbols_.end() ? nullptr : it->second;
 }
 
-}  // namespace cpu
 }  // namespace xla

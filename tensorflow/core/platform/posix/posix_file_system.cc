@@ -335,10 +335,9 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   string translated_target = TranslateName(target);
   // O_WRONLY | O_CREAT:
   //   Open file for write and if file does not exist, create the file.
-  // S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH:
-  //   Create the file with permission of 0644
-  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT,
-                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  // When creating file, use the same permissions as original
+  mode_t mode = sbuf.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
+  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT, mode);
   if (target_fd < 0) {
     close(src_fd);
     return IOError(target, errno);

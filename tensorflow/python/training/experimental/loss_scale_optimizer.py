@@ -171,6 +171,7 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
       return self._optimizer.apply_gradients(grads_and_vars, global_step, name)
 
     replica_context = distribution_strategy_context.get_replica_context()
+    grads_and_vars = tuple(grads_and_vars)
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
     return replica_context.merge_call(

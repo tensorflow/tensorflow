@@ -198,12 +198,22 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cublas_lib",
+    actual = if_static(
+        "@local_config_cuda//cuda:cublas",
+        ":cublas_stub",
+    ),
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
     name = "cublas_plugin",
     srcs = if_cuda_is_configured(["cuda_blas.cc"]),
     hdrs = if_cuda_is_configured(["cuda_blas.h"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        ":cublas_lib",
         ":cuda_activation",
         ":cuda_gpu_executor",
         ":cuda_platform_id",
@@ -223,10 +233,7 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-    ] + if_static(
-        ["@local_config_cuda//cuda:cublas"],
-        [":cublas_stub"],
-    )) + [
+    ]) + [
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
@@ -244,6 +251,15 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cufft_lib",
+    actual = if_static(
+        "@local_config_cuda//cuda:cufft",
+        ":cufft_stub",
+    ),
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
     name = "cufft_plugin",
     srcs = if_cuda_is_configured(["cuda_fft.cc"]),
@@ -255,6 +271,7 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_helpers",
+        ":cufft_lib",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:fft",
@@ -264,10 +281,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + if_static(
-        ["@local_config_cuda//cuda:cufft"],
-        [":cufft_stub"],
-    )),
+    ]),
     alwayslink = True,
 )
 
@@ -280,6 +294,15 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
+)
+
+alias(
+    name = "cudnn_lib",
+    actual = if_static(
+        "@local_config_cuda//cuda:cudnn",
+        ":cudnn_stub",
+    ),
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -296,6 +319,7 @@ cc_library(
         ":cuda_stream",
         ":cuda_timer",
         ":cudnn_version",
+        ":cudnn_lib",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
@@ -309,10 +333,7 @@ cc_library(
         "//tensorflow/stream_executor:temporary_device_memory",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-    ]) + tf_additional_cudnn_plugin_deps() + if_cuda_is_configured(if_static(
-        ["@local_config_cuda//cuda:cudnn"],
-        [":cudnn_stub"],
-    )) + ["@com_google_absl//absl/synchronization"],
+    ]) + tf_additional_cudnn_plugin_deps() + ["@com_google_absl//absl/synchronization"],
     alwayslink = True,
 )
 
@@ -327,6 +348,15 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "curand_lib",
+    actual = if_static(
+        "@local_config_cuda//cuda:curand",
+        ":curand_stub",
+    ),
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
     name = "curand_plugin",
     srcs = if_cuda_is_configured(["cuda_rng.cc"]),
@@ -337,6 +367,7 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_helpers",
+        ":curand_lib",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -346,10 +377,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + if_static(
-        ["@local_config_cuda//cuda:curand"],
-        [":curand_stub"],
-    )),
+    ]),
     alwayslink = True,
 )
 

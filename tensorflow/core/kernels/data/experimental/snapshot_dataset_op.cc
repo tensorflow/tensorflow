@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -34,6 +35,10 @@ namespace data {
 namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
+
+const uint64 kReaderBufferSize = 8 * 1024 * 1024;  // 8 MB
+
+const char* kCompressionType = io::compression::kGzip;
 
 const uint64 kOneDayInMicroseconds = 24L * 60L * 60L * 1e6L;
 
@@ -75,9 +80,8 @@ Status ReadMetadataFile(const string& fingerprint_dir,
   TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
   string record_bytes;
-  auto reader = absl::make_unique<io::RecordReader>(file.get());
-  uint64 offset = 0;
-  TF_CHECK_OK(reader->ReadRecord(&offset, &record_bytes));
+  auto reader = absl::make_unique<io::SequentialRecordReader>(file.get());
+  TF_CHECK_OK(reader->ReadRecord(&record_bytes));
 
   metadata->ParseFromString(record_bytes);
   return Status::OK();
@@ -265,7 +269,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           if (current_read_filename_ != snapshot_data_filename) {
             current_reader_.reset();
             current_read_file_.reset();
-            current_read_offset_ = 0;
 
             // The current implementation here assumes that tensors are stored
             // in files which are named sequentially. If a file doesn't exist
@@ -279,14 +282,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
             TF_CHECK_OK(Env::Default()->NewRandomAccessFile(
                 snapshot_data_filename, &current_read_file_));
-            current_reader_ =
-                absl::make_unique<io::RecordReader>(current_read_file_.get());
+            auto reader_options =
+                io::RecordReaderOptions::CreateRecordReaderOptions(
+                    kCompressionType);
+            reader_options.buffer_size = kReaderBufferSize;
+
+            current_reader_ = absl::make_unique<io::SequentialRecordReader>(
+                current_read_file_.get(), reader_options);
             current_read_filename_ = snapshot_data_filename;
           }
 
           string record_bytes;
-          Status s =
-              current_reader_->ReadRecord(&current_read_offset_, &record_bytes);
+          Status s = current_reader_->ReadRecord(&record_bytes);
 
           if (errors::IsOutOfRange(s)) {
             *end_of_sequence = true;
@@ -319,9 +326,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
 
         string current_read_filename_ GUARDED_BY(mu_);
-        uint64 current_read_offset_ GUARDED_BY(mu_);
         std::unique_ptr<RandomAccessFile> current_read_file_ GUARDED_BY(mu_);
-        std::unique_ptr<io::RecordReader> current_reader_ GUARDED_BY(mu_);
+        std::unique_ptr<io::SequentialRecordReader> current_reader_
+            GUARDED_BY(mu_);
 
         int64 next_index_ GUARDED_BY(mu_) = 0;
 
@@ -396,10 +403,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             current_writer_.reset();
             current_write_file_.reset();
 
+            auto writer_options =
+                io::RecordWriterOptions::CreateRecordWriterOptions(
+                    kCompressionType);
+
             TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
                 snapshot_data_filename, &current_write_file_));
-            current_writer_ =
-                absl::make_unique<io::RecordWriter>(current_write_file_.get());
+            current_writer_ = absl::make_unique<io::RecordWriter>(
+                current_write_file_.get(), writer_options);
             current_write_filename_ = snapshot_data_filename;
           }
 

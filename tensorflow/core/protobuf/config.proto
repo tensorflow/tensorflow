@@ -492,6 +492,12 @@ message ConfigProto {
     // but in the case where there is a lot of spinning may result in lower
     // CPU usage.
     bool disable_thread_spinning = 9;
+
+    // When true, WorkerSessions are created with device attributes from the
+    // full cluster.
+    // This is helpful when a worker wants to partition a graph
+    // (for example during a PartitionedCallOp).
+    bool share_cluster_devices_in_session = 10;
   };
 
   Experimental experimental = 16;
