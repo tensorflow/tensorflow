@@ -101,7 +101,21 @@ func @launch_func_no_function_attribute(%sz : index) {
 
 // -----
 
-func @kernel_1(%arg1 : !llvm<"float*">) attributes { nvvm.kernel: true } {
+func @kernel_1(%arg1 : !llvm<"float*">) {
+  return
+}
+
+func @launch_func_missing_kernel_attr(%sz : index, %arg : !llvm<"float*">) {
+  // expected-error@+1 {{kernel function is missing the 'gpu.kernel' attribute}}
+  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz, %arg)
+      {kernel: @kernel_1 : (!llvm<"float*">) -> ()}
+      : (index, index, index, index, index, index, !llvm<"float*">) -> ()
+  return
+}
+
+// -----
+
+func @kernel_1(%arg1 : !llvm<"float*">) attributes { gpu.kernel } {
   return
 }
 
@@ -116,7 +130,7 @@ func @launch_func_kernel_operand_size(%sz : index, %arg : !llvm<"float*">) {
 
 // -----
 
-func @kernel_1(%arg1 : !llvm<"float*">) attributes { nvvm.kernel: true } {
+func @kernel_1(%arg1 : !llvm<"float*">) attributes { gpu.kernel } {
   return
 }
 

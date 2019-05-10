@@ -138,6 +138,10 @@ public:
   /// The number of launch configuration operands, placed at the leading
   /// positions of the operand list.
   static constexpr unsigned kNumConfigOperands = 6;
+
+private:
+  /// The name of the function attribute specifying the kernel to launch.
+  static StringRef getKernelAttrName() { return "kernel"; }
 };
 
 #define GET_OP_CLASSES

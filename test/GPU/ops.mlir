@@ -54,7 +54,7 @@ func @nested_isolation(%sz : index) {
 }
 
 func @kernel_1(%arg0 : f32, %arg1 : memref<?xf32, 1>)
-    attributes { nvvm.kernel: true } {
+    attributes { gpu.kernel } {
   %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
   %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
   %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)

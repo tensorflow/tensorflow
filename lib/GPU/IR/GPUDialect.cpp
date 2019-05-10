@@ -304,7 +304,8 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
   result->addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
   result->addOperands(kernelOperands);
-  result->addAttribute("kernel", builder->getFunctionAttr(kernelFunc));
+  result->addAttribute(getKernelAttrName(),
+                       builder->getFunctionAttr(kernelFunc));
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState *result,
@@ -316,7 +317,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 Function *LaunchFuncOp::kernel() {
-  return this->getAttr("kernel").dyn_cast<FunctionAttr>().getValue();
+  return this->getAttr(getKernelAttrName()).dyn_cast<FunctionAttr>().getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
@@ -328,13 +329,18 @@ Value *LaunchFuncOp::getKernelOperand(unsigned i) {
 }
 
 LogicalResult LaunchFuncOp::verify() {
-  auto kernelAttr = this->getAttr("kernel");
+  auto kernelAttr = this->getAttr(getKernelAttrName());
   if (!kernelAttr) {
     return emitOpError("attribute 'kernel' must be specified");
   } else if (!kernelAttr.isa<FunctionAttr>()) {
     return emitOpError("attribute 'kernel' must be a function");
   }
   Function *kernelFunc = this->kernel();
+  if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
+          GPUDialect::getKernelFuncAttrName())) {
+    return emitError("kernel function is missing the '" +
+                     GPUDialect::getKernelFuncAttrName() + "' attribute");
+  }
   unsigned numKernelFuncArgs = kernelFunc->getNumArguments();
   if (getNumKernelOperands() != numKernelFuncArgs) {
     return emitOpError("got " + Twine(getNumKernelOperands()) +
