@@ -21,6 +21,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+/**
+ * Unit tests for {@link EagerOperationBuilder} class.
+ */
 @RunWith(JUnit4.class)
 public class EagerOperationBuilderTest {
 
@@ -32,6 +35,7 @@ public class EagerOperationBuilderTest {
       new EagerOperationBuilder(session, "Add", "add");
       fail();
     } catch (IllegalStateException e) {
+      // expected
     }
   }
 
@@ -45,6 +49,7 @@ public class EagerOperationBuilderTest {
       opBuilder.setAttr("dtype", DataType.FLOAT);
       fail();
     } catch (IllegalStateException e) {
+      // expected
     }
   }
 
@@ -58,7 +63,9 @@ public class EagerOperationBuilderTest {
       try {
         opBuilder(session, "Const", "var").addControlInput(asrt);
         fail();
-      } catch (UnsupportedOperationException e) {}
+      } catch (UnsupportedOperationException e) {
+        // expected
+      }
     }
   }
   

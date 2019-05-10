@@ -22,6 +22,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+/**
+ * Unit tests for {@link EagerOperation} class.
+ */
 @RunWith(JUnit4.class)
 public class EagerOperationTest {
   
@@ -32,7 +35,9 @@ public class EagerOperationTest {
     try {
       new EagerOperation(session, 1L, new long[] {1L}, "Add", "add");
       fail();
-    } catch (IllegalStateException e) {}
+    } catch (IllegalStateException e) {
+      // expected
+    }
   }
   
   @Test
@@ -72,12 +77,16 @@ public class EagerOperationTest {
       try {
         split.inputListLength("no_such_input");
         fail();
-      } catch (IllegalArgumentException e) {}
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
 
       try {
         split.outputListLength("no_such_output");
         fail();
-      } catch (IllegalArgumentException e) {}
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
     }
   }
   
@@ -105,7 +114,9 @@ public class EagerOperationTest {
     try {
       add.outputListLength("z");
       fail();
-    } catch (IllegalStateException e) {}
+    } catch (IllegalStateException e) {
+      // expected
+    }
   }
   
   private static EagerOperationBuilder opBuilder(EagerSession session, String type, String name) {
