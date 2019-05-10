@@ -95,7 +95,7 @@ private:
 /// a plain walk over operations to match flat patterns but the current
 /// implementation is competitive nonetheless.
 using FilterFunctionType = std::function<bool(Operation &)>;
-static bool defaultFilterFunction(Operation &) { return true; }
+inline bool defaultFilterFunction(Operation &) { return true; }
 struct NestedPattern {
   NestedPattern(ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
