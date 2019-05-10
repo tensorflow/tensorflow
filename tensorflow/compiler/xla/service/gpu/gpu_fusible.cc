@@ -172,7 +172,8 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kDynamicSlice ||
           instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
           (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop &&
+	   !instr.IsMultiOutputFusion()) ||
           instr.opcode() == HloOpcode::kGather ||
           instr.opcode() == HloOpcode::kIota ||
           instr.opcode() == HloOpcode::kPad ||
