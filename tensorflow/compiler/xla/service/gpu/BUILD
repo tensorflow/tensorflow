@@ -581,6 +581,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:core",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "//tensorflow/stream_executor:event",
@@ -1246,6 +1247,7 @@ tf_cc_test(
         ":buffer_comparator",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:core",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor:device_memory",

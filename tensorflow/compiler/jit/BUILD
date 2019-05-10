@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
+        "//tensorflow/core:core",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
