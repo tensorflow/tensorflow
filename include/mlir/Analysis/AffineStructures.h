@@ -104,9 +104,6 @@ private:
 
   SmallVector<AffineExpr, 8> constraints;
   SmallVector<bool, 8> eqFlags;
-  /// A pointer to the IR's context to store all newly created
-  /// AffineExprStorage's.
-  MLIRContext *context;
 };
 
 /// An AffineValueMap is an affine map plus its ML value operands and

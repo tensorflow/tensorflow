@@ -198,15 +198,14 @@ AffineMap MutableAffineMap::getAffineMap() const {
 }
 
 MutableIntegerSet::MutableIntegerSet(IntegerSet set, MLIRContext *context)
-    : numDims(set.getNumDims()), numSymbols(set.getNumSymbols()),
-      context(context) {
+    : numDims(set.getNumDims()), numSymbols(set.getNumSymbols()) {
   // TODO(bondhugula)
 }
 
 // Universal set.
 MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols,
                                      MLIRContext *context)
-    : numDims(numDims), numSymbols(numSymbols), context(context) {}
+    : numDims(numDims), numSymbols(numSymbols) {}
 
 //===----------------------------------------------------------------------===//
 // AffineValueMap.
