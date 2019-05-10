@@ -250,7 +250,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   Status ConfigurePoplarDevice(const IpuOptions&);
 
-  const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
+  bool HasPoplarDevice();
+
+  // Requires HasPoplarDevice() to return true.
+  const poplar::Device& GetPoplarDevice() { return poplar_device_; };
 
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 

@@ -230,7 +230,6 @@ PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
       current_engine_(nullptr),
       device_open_(false),
-      poplar_device_(poplar::Device::createCPUDevice()),
       poplar_device_hash_(0),
       hardware_configured_(false),
       thread_pool_(tensorflow::Env::Default(), "poplar_executor_threadpool",
@@ -540,6 +539,20 @@ static bool DeviceConfigurationsEqual(const IpuOptions& a,
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
 }
 
+bool PoplarExecutor::HasPoplarDevice() {
+  const bool force_ipu_model = tensorflow::GetPoplarXlaFlags().use_ipu_model;
+  // If the device has not been configured via configure_ipu_system, but we have
+  // requested an IPU model, then we create a CPU device.
+  if (!device_open_ && force_ipu_model) {
+    // Poplar CPU device
+    poplar_device_ = poplar::Device::createCPUDevice();
+    if (poplar_device_.attach()) {
+      device_open_ = true;
+    }
+  }
+  return device_open_;
+}
+
 Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   if (!DeviceConfigurationsEqual(cfg, current_config_) &&
       hardware_configured_) {
@@ -668,12 +681,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
         model.compileIPUCode =
             current_config_.ipu_model_config().compile_ipu_code();
         poplar_device_ = model.createDevice();
-        if (poplar_device_.attach()) {
-          opened = true;
-        }
-      } else {
-        // Poplar CPU device
-        poplar_device_ = poplar::Device::createCPUDevice();
         if (poplar_device_.attach()) {
           opened = true;
         }
