@@ -53,6 +53,7 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
+import io
 import os
 import glob
 import platform
@@ -119,7 +120,7 @@ def _at_least_version(actual_version, required_version):
 
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
-  for line in open(path, "r").readlines():
+  for line in io.open(path, "r", encoding="utf-8").readlines():
     match = re.match("#define %s +(\d+)" % name, line)
     if match:
       return match.group(1)
