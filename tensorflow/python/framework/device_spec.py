@@ -364,7 +364,7 @@ class DeviceSpecV2(object):
 
     Returns:
       Return `True` if `other` is also a DeviceSpec instance and has same value as the current instance.
-      Return False otherwise.
+      Return `False` otherwise.
     """
     return (isinstance(other, self.__class__) and
             self.to_string() == other.to_string())
