@@ -123,7 +123,8 @@ public final class OvicClassifierTest {
   public void ovicClassifier_mismatchedInputResolutionFails() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, lowResModel);
     int[] inputDims = classifier.getInputDims();
-    assertThat((inputDims[1] == 128) && (inputDims[2] == 128)).isTrue();
+    assertThat(inputDims[1] == 128).isTrue();
+    assertThat(inputDims[2] == 128).isTrue();
     try {
       testResult = classifier.classifyByteBuffer(testImage);
       fail();
