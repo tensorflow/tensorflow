@@ -4675,7 +4675,6 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pack"] = ConvertPack;
@@ -4684,7 +4683,6 @@ static void RegisterValidatableOpConverters(
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
   (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
@@ -4722,6 +4720,11 @@ static void RegisterValidatableOpConverters(
   }
   for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
     (*registration)[arg_minmax_type] = ConvertArgMinMax;
+  }
+  // The following are no-ops during inference and will not be mapped to any TRT
+  // layer.
+  for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
+    (*registration)[identity_op_type] = ConvertIdentity;
   }
 }
 
