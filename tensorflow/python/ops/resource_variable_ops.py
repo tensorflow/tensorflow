@@ -1710,24 +1710,29 @@ class UninitializedVariable(ResourceVariable):
     # Store the graph key so optimizers know how to only retrieve variables from
     # this graph. Guaranteed to be the same as the eager graph_key.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    self._shape = shape
-    self._dtype = dtype
+    self._shape = tensor_shape.as_shape(shape)
+    self._dtype = dtypes.as_dtype(dtype)
     with ops.init_scope():
-      handle_name = ops.name_from_scope_name(name)
-      unique_id = "%s_%d" % (handle_name, ops.uid())
-      shared_name = context.shared_name(unique_id)
-      self._handle = variable_handle_from_shape_and_dtype(
-          shape=shape, dtype=dtype, shared_name=shared_name,
-          name=name, graph_mode=self._in_graph_mode,
-          extra_handle_data=extra_handle_data)
-      if self._in_graph_mode:
-        with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          # Manually assign reads to the handle's device to avoid log
-          # messages.
-          with ops.device(self._handle.device):
-            value = self._read_variable_op()
-          self._graph_element = value
-        ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+      with ops.name_scope(name, "Variable") as name:
+        handle_name = ops.name_from_scope_name(name)
+        if self._in_graph_mode:
+          shared_name = handle_name
+          unique_id = shared_name
+        else:
+          unique_id = "%s_%d" % (handle_name, ops.uid())
+          shared_name = context.shared_name(unique_id)
+        self._handle = variable_handle_from_shape_and_dtype(
+            shape=shape, dtype=dtype, shared_name=shared_name,
+            name=name, graph_mode=self._in_graph_mode,
+            extra_handle_data=extra_handle_data)
+        if self._in_graph_mode:
+          with ops.name_scope("Read"), ops.colocate_with(self._handle):
+            # Manually assign reads to the handle's device to avoid log
+            # messages.
+            with ops.device(self._handle.device):
+              value = self._read_variable_op()
+            self._graph_element = value
+          ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint

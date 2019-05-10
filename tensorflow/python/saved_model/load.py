@@ -26,7 +26,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -262,8 +261,6 @@ class _Loader(object):
         proto, self._concrete_functions), setattr
 
   def _recreate_variable(self, proto):
-    # TODO(andresp): Can we use the checkpointed value as initializer?
-    dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
     name = proto.name if proto.name else None
     if name is not None:
       dbg_name = name
@@ -273,8 +270,9 @@ class _Loader(object):
         variables.validate_synchronization_aggregation_trainable(
             proto.synchronization, proto.aggregation, proto.trainable,
             name=dbg_name))
-    return variables.Variable(
-        dummy_value,
+    return resource_variable_ops.UninitializedVariable(
+        shape=proto.shape,
+        dtype=proto.dtype,
         name=name,
         trainable=trainable,
         synchronization=synchronization,

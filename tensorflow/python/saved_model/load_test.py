@@ -35,6 +35,7 @@ from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -117,6 +118,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       imported = self.cycle(root, cycles)
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
+
+  def test_partially_defined_variable_shape(self, cycles):
+
+    class MakeVariable(module.Module):
+
+      def __init__(self):
+        self.v = None
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None], dtypes.int64)])
+      def make_variable(self, initial_value):
+        if self.v is None:
+          self.v = variables.Variable(initial_value)
+
+    m = MakeVariable()
+    m.make_variable([1, 2, 3])
+    m = self.cycle(m, cycles)
+    m.v.assign([1, 2, 3, 4])
+    self.assertEqual([None], tensor_shape.as_shape(m.v.shape).as_list())
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
