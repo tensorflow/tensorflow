@@ -148,7 +148,6 @@ public:
   OpMethod(StringRef retType, StringRef name, StringRef params,
            Property property, bool declOnly);
 
-  OpMethodSignature &signature();
   OpMethodBody &body();
 
   // Returns true if this is a static method.
@@ -262,8 +261,6 @@ OpMethod::OpMethod(StringRef retType, StringRef name, StringRef params,
                    OpMethod::Property property, bool declOnly)
     : properties(property), isDeclOnly(declOnly),
       methodSignature(retType, name, params), methodBody(declOnly) {}
-
-OpMethodSignature &OpMethod::signature() { return methodSignature; }
 
 OpMethodBody &OpMethod::body() { return methodBody; }
 
