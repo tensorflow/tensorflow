@@ -19,19 +19,20 @@ limitations under the License.
 // For this reason, we avoid relying on TensorFlow and instead only use the
 // standard C++ library.
 
+#include <map>
 #include <mutex>  // NOLINT
 #include <string>
-#include <unordered_map>
 
 namespace xla {
 
-// The CPU JIT compiler uses this registry to resolve symbolic CustomCall
-// targets; so when using the CPU JIT, CustomCall targets need to be registered
-// here with the symbol name used in the CustomCall.
+// XLA JIT compilers use this registry to resolve symbolic CustomCall targets;
+// so when using XLA as a JIT, CustomCall targets need to be registered here
+// with the symbol name used in the CustomCall.
 //
-// The XLA AOT compiler links using a standard offline linker; so when compiling
-// in AOT mode, you *also* need to make sure the name of the callee (presumably
-// implemented in C++) matches up with the symbolic name used in the CustomCall.
+// The XLA:CPU ahead-of-time (AOT) compiler links using a standard offline
+// linker; so when compiling in CPU AOT mode, you *also* need to make sure the
+// name of the callee (presumably implemented in C++) matches up with the
+// symbolic name used in the CustomCall.
 //
 // We maintain the registry in both the JIT and the AOT cases for simplicity,
 // but we only use it when running in JIT mode.
@@ -39,32 +40,42 @@ class CustomCallTargetRegistry {
  public:
   static CustomCallTargetRegistry* Global();
 
-  void Register(const std::string& symbol, void* address);
-  void* Lookup(const std::string& symbol) const;
+  void Register(const std::string& symbol, void* address,
+                const std::string& platform);
+  void* Lookup(const std::string& symbol, const std::string& platform) const;
 
  private:
-  std::unordered_map<std::string, void*> registered_symbols_;
+  // Maps the pair (symbol, platform) to a C function implementing a custom call
+  // named `symbol` for StreamExecutor platform `platform`.
+  //
+  // Different platforms have different ABIs.  TODO(jlebar): Describe them!
+  //
+  // (We std::map rather than std::unordered_map because the STL doesn't provide
+  // a default hasher for pair<string, string>, and we want to avoid pulling in
+  // dependencies that might define this.)
+  std::map<std::pair<std::string, std::string>, void*> registered_symbols_;
   mutable std::mutex mu_;
 };
 
 class RegisterCustomCallTarget {
  public:
-  explicit RegisterCustomCallTarget(const std::string& name, void* address) {
-    CustomCallTargetRegistry::Global()->Register(name, address);
+  explicit RegisterCustomCallTarget(const std::string& name, void* address,
+                                    const std::string& platform) {
+    CustomCallTargetRegistry::Global()->Register(name, address, platform);
   }
 };
 
-#define XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT(a, b) a##b
+#define XLA_REGISTER_CUSTOM_CALL_CONCAT(a, b) a##b
 
-#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address,  \
-                                                            counter)          \
-  static ::xla::RegisterCustomCallTarget XLA_CPU_REGISTER_CUSTOM_CALL_CONCAT( \
-      custom_call_target_register, counter)(symbol,                           \
-                                            reinterpret_cast<void*>(address))
+#define XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address,   \
+                                                        platform, counter) \
+  static ::xla::RegisterCustomCallTarget XLA_REGISTER_CUSTOM_CALL_CONCAT(  \
+      custom_call_target_register, counter)(                               \
+      symbol, reinterpret_cast<void*>(address), platform)
 
-#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address)  \
-  XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, \
-                                                      __COUNTER__)
+#define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(symbol, address)      \
+  XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM_HELPER(symbol, address, "Host", \
+                                                  __COUNTER__)
 
 #define XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(function) \
   XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function)

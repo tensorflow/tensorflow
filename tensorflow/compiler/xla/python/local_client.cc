@@ -101,8 +101,8 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
         "Argument to RegisterCpuCustomCallTargetRegistry was not a "
         "xla._CPU_CUSTOM_CALL_TARGET capsule.");
   }
-  CustomCallTargetRegistry::Global()->Register(fn_name,
-                                               static_cast<void*>(capsule));
+  CustomCallTargetRegistry::Global()->Register(
+      fn_name, static_cast<void*>(capsule), "Host");
   return Status::OK();
 }
 
