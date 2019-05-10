@@ -52,6 +52,7 @@ py_test(
     srcs = [
         "policy_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":policy",
@@ -78,6 +79,7 @@ py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
+    python_version = "PY2",
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -128,6 +130,7 @@ py_test(
     name = "loss_scale_test",
     size = "medium",
     srcs = ["loss_scale_test.py"],
+    python_version = "PY2",
     deps = [
         ":loss_scale",
         "//tensorflow/python:client_testlib",

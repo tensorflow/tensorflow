@@ -15,6 +15,7 @@ py_binary(
     data = [
         "//tensorflow/tools/tensorflow_builder/data/golden:cuda_cc_golden",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cuda_compute_capability",
@@ -26,6 +27,7 @@ py_binary(
 py_binary(
     name = "cuda_compute_capability",
     srcs = ["data/cuda_compute_capability.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "@absl_py//absl:app",
