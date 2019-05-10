@@ -815,6 +815,33 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
+  def test_concrete_function_captures(self, cycles):
+
+    class Root(module.Module):
+
+      def __init__(self):
+        self.v = variables.Variable(1.)
+        self.v1 = variables.Variable(1.)
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def use_v(self, x):
+        return self.v + self.v1 + 1.
+
+    root = Root()
+    self.assertIn(root.v.handle,
+                  root.use_v.get_concrete_function().graph.captures)
+    for _ in range(cycles):
+      root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
+    func_captures = root.use_v.get_concrete_function().graph.captures
+    self.assertLen(func_captures, 2)
+    self.assertIn(root.v.handle, func_captures)
+    self.assertIn(root.v1.handle, func_captures)
+    signature_captures = root.signatures["serving_default"].graph.captures
+    self.assertLen(signature_captures, 2)
+    self.assertIn(root.v.handle, signature_captures)
+    self.assertIn(root.v1.handle, signature_captures)
+
   def test_concrete_function_arg_names(self, cycles):
 
     @def_function.function(

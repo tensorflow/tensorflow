@@ -110,6 +110,13 @@ class _Loader(object):
       # itself.
       concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+      if bound_inputs:
+        for bound_input, internal_capture in zip(
+            bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
+          concrete_function.graph.captures[bound_input] = internal_capture
+          # Setting "captures" first means "capture" won't create a new
+          # placeholder for this input.
+          concrete_function.graph.capture(bound_input)
 
   def _get_tensor_from_node(self, node_id):
     """Resolves a node id into a tensor to be captured for a function."""
