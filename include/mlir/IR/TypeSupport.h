@@ -69,7 +69,7 @@ private:
   // when initializing a newly constructed type storage object.
   void initializeDialect(const Dialect &newDialect) { dialect = &newDialect; }
 
-  /// The registered information for the current type.
+  /// The dialect for this type.
   const Dialect *dialect;
 
   /// Space for subclasses to store data.

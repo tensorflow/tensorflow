@@ -136,6 +136,9 @@ public:
   /// Return the context this attribute belongs to.
   MLIRContext *getContext() const;
 
+  /// Get the dialect this attribute is registered to.
+  const Dialect &getDialect() const;
+
   /// Return true if this field is, or contains, a function attribute.
   bool isOrContainsFunction() const;
 

@@ -173,33 +173,38 @@ protected:
 
   /// This method is used by derived classes to add their types to the set.
   template <typename... Args> void addTypes() {
-    VariadicTypeAdder<Args...>::addToSet(*this);
+    VariadicSymbolAdder<Args...>::addToSet(*this);
+  }
+
+  /// This method is used by derived classes to add their attributes to the set.
+  template <typename... Args> void addAttributes() {
+    VariadicSymbolAdder<Args...>::addToSet(*this);
   }
 
   // It would be nice to define this as variadic functions instead of a nested
   // variadic type, but we can't do that: function template partial
   // specialization is not allowed, and we can't define an overload set
   // because we don't have any arguments of the types we are pushing around.
-  template <typename First, typename... Rest> struct VariadicTypeAdder {
+  template <typename First, typename... Rest> struct VariadicSymbolAdder {
     static void addToSet(Dialect &dialect) {
-      VariadicTypeAdder<First>::addToSet(dialect);
-      VariadicTypeAdder<Rest...>::addToSet(dialect);
+      VariadicSymbolAdder<First>::addToSet(dialect);
+      VariadicSymbolAdder<Rest...>::addToSet(dialect);
     }
   };
 
-  template <typename First> struct VariadicTypeAdder<First> {
+  template <typename First> struct VariadicSymbolAdder<First> {
     static void addToSet(Dialect &dialect) {
-      dialect.addType(First::getClassID());
+      dialect.addSymbol(First::getClassID());
     }
   };
-
-  // Register a type with its given unqiue type identifer.
-  void addType(const ClassID *const typeID);
 
   // Enable support for unregistered operations.
   void allowUnknownOperations(bool allow = true) { allowUnknownOps = allow; }
 
 private:
+  // Register a symbol(e.g. type) with its given unique class identifier.
+  void addSymbol(const ClassID *const classID);
+
   Dialect(const Dialect &) = delete;
   void operator=(Dialect &) = delete;
 

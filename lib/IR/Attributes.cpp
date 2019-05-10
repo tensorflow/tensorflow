@@ -46,16 +46,6 @@ void AttributeStorage::setType(Type type) {
   typeAndContainsFunctionAttrPair.setPointer(type.getAsOpaquePointer());
 }
 
-/// Returns a functor used to initialize new attribute storage instances.
-std::function<void(AttributeStorage *)>
-AttributeUniquer::getInitFn(MLIRContext *ctx) {
-  return [ctx](AttributeStorage *storage) {
-    // If the attribute did not provide a type, then default to NoneType.
-    if (!storage->getType())
-      storage->setType(NoneType::get(ctx));
-  };
-}
-
 //===----------------------------------------------------------------------===//
 // Attribute
 //===----------------------------------------------------------------------===//
@@ -69,6 +59,9 @@ Type Attribute::getType() const { return impl->getType(); }
 
 /// Return the context this attribute belongs to.
 MLIRContext *Attribute::getContext() const { return getType().getContext(); }
+
+/// Get the dialect this attribute is registered to.
+const Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 
 bool Attribute::isOrContainsFunction() const {
   return impl->isOrContainsFunctionCache();
@@ -359,23 +352,19 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
                                          ArrayRef<char> data) {
   assert((type.getSizeInBits() <= data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
-
-  Attribute::Kind kind;
   switch (type.getElementType().getKind()) {
   case StandardTypes::BF16:
   case StandardTypes::F16:
   case StandardTypes::F32:
   case StandardTypes::F64:
-    kind = Attribute::Kind::DenseFPElements;
-    break;
+    return AttributeUniquer::get<DenseFPElementsAttr>(
+        type.getContext(), Attribute::Kind::DenseFPElements, type, data);
   case StandardTypes::Integer:
-    kind = Attribute::Kind::DenseIntElements;
-    break;
+    return AttributeUniquer::get<DenseIntElementsAttr>(
+        type.getContext(), Attribute::Kind::DenseIntElements, type, data);
   default:
     llvm_unreachable("unexpected element type");
   }
-  return AttributeUniquer::get<DenseElementsAttr>(type.getContext(), kind, type,
-                                                  data);
 }
 
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,

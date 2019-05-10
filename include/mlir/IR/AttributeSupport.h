@@ -54,6 +54,12 @@ public:
   /// Get the type of this attribute.
   Type getType() const;
 
+  /// Get the dialect of this attribute.
+  const Dialect &getDialect() const {
+    assert(dialect && "Malformed attribute storage object.");
+    return *dialect;
+  }
+
 protected:
   /// Construct a new attribute storage instance with the given type and a
   /// boolean that signals if the derived attribute is or contains a function
@@ -68,7 +74,14 @@ protected:
   /// Set the type of this attribute.
   void setType(Type type);
 
+  // Set the dialect for this storage instance. This is used by the
+  // AttributeUniquer when initializing a newly constructed storage object.
+  void initializeDialect(const Dialect &newDialect) { dialect = &newDialect; }
+
 private:
+  /// The dialect for this attribute.
+  const Dialect *dialect;
+
   /// This field is a pair of:
   ///  - The type of the attribute value.
   ///  - A boolean that is true if this is, or contains, a function attribute.
@@ -99,7 +112,7 @@ public:
   template <typename T, typename Kind, typename... Args>
   static T get(MLIRContext *ctx, Kind kind, Args &&... args) {
     return ctx->getAttributeUniquer().get<typename T::ImplType>(
-        getInitFn(ctx), static_cast<unsigned>(kind),
+        getInitFn(ctx, T::getClassID()), static_cast<unsigned>(kind),
         std::forward<Args>(args)...);
   }
 
@@ -112,7 +125,8 @@ public:
 
 private:
   /// Returns a functor used to initialize new attribute storage instances.
-  static std::function<void(AttributeStorage *)> getInitFn(MLIRContext *ctx);
+  static std::function<void(AttributeStorage *)>
+  getInitFn(MLIRContext *ctx, const ClassID *const attrID);
 };
 } // namespace detail
 

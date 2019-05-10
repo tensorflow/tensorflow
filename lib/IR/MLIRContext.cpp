@@ -132,13 +132,17 @@ safeGetOrCreate(ContainerTy &container, KeyT &&key,
 }
 
 namespace {
-/// A builtin dialect to define types/etc that are necessary for the
-/// validity of the IR.
+/// A builtin dialect to define types/etc that are necessary for the validity of
+/// the IR.
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
-    addTypes<FunctionType, OpaqueType, FloatType, IndexType, IntegerType,
-             VectorType, RankedTensorType, UnrankedTensorType, MemRefType,
-             ComplexType, TupleType, NoneType>();
+    addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseIntElementsAttr,
+                  DenseFPElementsAttr, FloatAttr, FunctionAttr, IntegerAttr,
+                  IntegerSetAttr, OpaqueElementsAttr, SparseElementsAttr,
+                  SplatElementsAttr, StringAttr, TypeAttr, UnitAttr>();
+    addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
+             MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
+             UnrankedTensorType, VectorType>();
   }
 };
 
@@ -323,8 +327,9 @@ public:
   /// operations.
   llvm::StringMap<AbstractOperation> registeredOperations;
 
-  /// This is a mapping from type identifier to Dialect for registered types.
-  DenseMap<const ClassID *, Dialect *> registeredTypes;
+  /// This is a mapping from class identifier to Dialect for registered
+  /// attributes and types.
+  DenseMap<const ClassID *, Dialect *> registeredDialectSymbols;
 
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
@@ -552,14 +557,14 @@ void Dialect::addOperation(AbstractOperation opInfo) {
   }
 }
 
-/// Register a dialect-specific type with the current context.
-void Dialect::addType(const ClassID *const typeID) {
+/// Register a dialect-specific symbol(e.g. type) with the current context.
+void Dialect::addSymbol(const ClassID *const classID) {
   auto &impl = context->getImpl();
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
-  if (!impl.registeredTypes.insert({typeID, this}).second) {
-    llvm::errs() << "error: type already registered.\n";
+  if (!impl.registeredDialectSymbols.insert({classID, this}).second) {
+    llvm::errs() << "error: dialect symbol already registered.\n";
     abort();
   }
 }
@@ -816,6 +821,15 @@ SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
+static Dialect &lookupDialectForSymbol(MLIRContext *ctx,
+                                       const ClassID *const classID) {
+  auto &impl = ctx->getImpl();
+  auto it = impl.registeredDialectSymbols.find(classID);
+  assert(it != impl.registeredDialectSymbols.end() &&
+         "symbol is not registered.");
+  return *it->second;
+}
+
 /// Returns the storage unqiuer used for constructing type storage instances.
 /// This should not be used directly.
 StorageUniquer &MLIRContext::getTypeUniquer() { return getImpl().typeUniquer; }
@@ -823,10 +837,7 @@ StorageUniquer &MLIRContext::getTypeUniquer() { return getImpl().typeUniquer; }
 /// Get the dialect that registered the type with the provided typeid.
 const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
                                                  const ClassID *const typeID) {
-  auto &impl = ctx->getImpl();
-  auto it = impl.registeredTypes.find(typeID);
-  assert(it != impl.registeredTypes.end() && "typeID is not registered.");
-  return *it->second;
+  return lookupDialectForSymbol(ctx, typeID);
 }
 
 //===----------------------------------------------------------------------===//
@@ -837,6 +848,18 @@ const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
 /// instances. This should not be used directly.
 StorageUniquer &MLIRContext::getAttributeUniquer() {
   return getImpl().attributeUniquer;
+}
+
+/// Returns a functor used to initialize new attribute storage instances.
+std::function<void(AttributeStorage *)>
+AttributeUniquer::getInitFn(MLIRContext *ctx, const ClassID *const attrID) {
+  return [ctx, attrID](AttributeStorage *storage) {
+    storage->initializeDialect(lookupDialectForSymbol(ctx, attrID));
+
+    // If the attribute did not provide a type, then default to NoneType.
+    if (!storage->getType())
+      storage->setType(NoneType::get(ctx));
+  };
 }
 
 /// Perform a three-way comparison between the names of the specified
