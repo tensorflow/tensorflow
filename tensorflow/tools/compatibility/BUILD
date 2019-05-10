@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",  # @unused
     "tf_cc_test",  # @unused
+    "py_test",
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -54,6 +55,9 @@ py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":tf_upgrade_lib",
         "//tensorflow/python:client_testlib",

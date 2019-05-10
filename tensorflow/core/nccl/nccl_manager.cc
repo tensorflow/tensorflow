@@ -48,9 +48,11 @@ struct NcclManager::NcclStream {
  public:
   NcclStream() {}
   ~NcclStream() {
+    VLOG(2) << "Entered ~NcclStream " << this;
     mutex_lock l(mu);
     shutdown_requested = true;
     cv.notify_all();
+    VLOG(2) << "Done ~NcclStream " << this;
   }
 
   se::StreamExecutor* executor = nullptr;
@@ -179,8 +181,8 @@ struct NcclManager::Collective {
   Status status;
 };
 
-NcclManager::NcclManager() {}
-NcclManager::~NcclManager() {}
+NcclManager::NcclManager() { VLOG(2) << "New NcclManager " << this; }
+NcclManager::~NcclManager() { VLOG(2) << "~NcclManager " << this; }
 NcclManager* NcclManager::instance() {
   static NcclManager* instance = new NcclManager();
   return instance;
@@ -550,6 +552,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     // Find collective to run.
     std::pair<Collective*, int> next_launch;
     {
+      VLOG(2) << "Locking mutex nccl_stream " << nccl_stream;
       mutex_lock l(nccl_stream->mu);
       while (nccl_stream->pending_launches_.empty()) {
         if (nccl_stream->shutdown_requested) {

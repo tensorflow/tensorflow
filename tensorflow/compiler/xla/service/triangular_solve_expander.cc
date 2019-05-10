@@ -317,13 +317,9 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
         auto a_row =
             MaybeConjugate(SliceInMinorDims(a, start, end), conjugate_a);
         if (left_side) {
-          remainder =
-              b_row - BatchDot(MaybeTransposeInMinorDims(a_row, transpose_a), x,
-                               precision);
+          remainder = b_row - BatchDot(a_row, transpose_a, x, false, precision);
         } else {
-          remainder =
-              b_row - BatchDot(x, MaybeTransposeInMinorDims(a_row, transpose_a),
-                               precision);
+          remainder = b_row - BatchDot(x, false, a_row, transpose_a, precision);
         }
       }
 
@@ -332,12 +328,11 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       auto start_index = ConstantR0WithType(builder, S32, j * block_size);
       std::vector<XlaOp> update_starts = {start_index, zero};
       if (left_side) {
-        x_update = BatchDot(MaybeTransposeInMinorDims(inv_block, transpose_a),
-                            remainder, precision);
+        x_update =
+            BatchDot(inv_block, transpose_a, remainder, false, precision);
       } else {
-        x_update = BatchDot(remainder,
-                            MaybeTransposeInMinorDims(inv_block, transpose_a),
-                            precision);
+        x_update =
+            BatchDot(remainder, false, inv_block, transpose_a, precision);
         std::swap(update_starts[0], update_starts[1]);
       }
       x = DynamicUpdateSliceInMinorDims(x, x_update, /*starts=*/update_starts);

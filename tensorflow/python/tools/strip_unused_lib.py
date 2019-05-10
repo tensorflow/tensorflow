@@ -80,7 +80,7 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])
 
   if not_found:
-    raise KeyError("The following input nodes were not found: %s\n" % not_found)
+    raise KeyError("The following input nodes were not found: %s" % not_found)
 
   output_graph_def = graph_util.extract_sub_graph(inputs_replaced_graph_def,
                                                   output_node_names)

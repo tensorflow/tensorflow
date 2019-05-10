@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -563,10 +567,12 @@ Status EagerLocalExecute(EagerOperation* op,
     }
     const string& device_name =
         device == nullptr ? unspecified_device_name : device->name();
-    if (ctx->LogDevicePlacement()) {
-      LOG(INFO) << "Executing op " << ndef.op() << " in device " << device_name;
-    } else {
-      VLOG(1) << "Executing op " << ndef.op() << " in device " << device_name;
+    if (ctx->LogDevicePlacement() || VLOG_IS_ON(1)) {
+      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
+                                   device_name);
+      if (!logging::LogToListeners(msg)) {
+        LOG(INFO) << msg;
+      }
     }
 
     FunctionLibraryRuntime* flr =
@@ -683,7 +689,9 @@ Status EagerLocalExecute(EagerOperation* op,
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
+  ctx->Ref();
   return [ctx, eager_client, context_id, op_id, output_num]() {
+    auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
     if (!ctx->HasActiveRemoteContext(context_id)) {
       // This means that this tensor was pointing to a remote device, which
       // has been changed out from under us. Simply return since there is
@@ -1056,9 +1064,12 @@ Status EagerExecute(EagerOperation* op,
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 
-  if (op->EagerContext()->LogDevicePlacement()) {
-    LOG(INFO) << "Executing op " << op->Name() << " in device "
-              << op->Device()->name();
+  if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 op->Device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
 
   return EagerRemoteExecute(op, retvals->data(), num_retvals);

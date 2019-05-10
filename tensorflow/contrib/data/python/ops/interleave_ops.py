@@ -46,7 +46,7 @@ def parallel_interleave(map_func,
   # Preprocess 4 files concurrently.
   filenames = tf.data.Dataset.list_files("/path/to/data/train*.tfrecords")
   dataset = filenames.apply(
-      tf.contrib.data.parallel_interleave(
+      tf.data.experimental.parallel_interleave(
           lambda filename: tf.data.TFRecordDataset(filename),
           cycle_length=4))
   ```
@@ -146,7 +146,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to
@@ -175,7 +175,7 @@ def choose_from_datasets(datasets, choice_dataset):
   # Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2]`.
   choice_dataset = tf.data.Dataset.range(3).repeat(3)
 
-  result = tf.contrib.data.choose_from_datasets(datasets, choice_dataset)
+  result = tf.data.experimental.choose_from_datasets(datasets, choice_dataset)
   ```
 
   The elements of `result` will be:

@@ -122,21 +122,6 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_op_helpers",
-    srcs = ["conv_op_helpers.cc"],
-    hdrs = ["conv_op_helpers.h"],
-    deps = [
-        ":arithmetic",
-        ":constants",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "loops",
     srcs = ["loops.cc"],
     hdrs = ["loops.h"],
@@ -486,6 +471,7 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
+    # Blacklisted because the tests are flaky.
     blacklisted_backends = [
         "cpu",
         "gpu",

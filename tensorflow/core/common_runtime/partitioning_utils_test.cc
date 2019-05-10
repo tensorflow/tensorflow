@@ -183,9 +183,11 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  Status status =
-      UpdateArgAndRetvalMetadata(graph.get(), &arg_indices, &ret_indices,
-                                 &arg_alloc_attrs, &ret_alloc_attrs);
+  string device_type = "CPU";
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckIndices({3}, arg_indices);

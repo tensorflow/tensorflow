@@ -17,7 +17,6 @@ cc_library(
         ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",
         ":latency_all_edges",
-        ":make_numa_aware",
         ":make_sloppy",
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",
@@ -28,6 +27,7 @@ cc_library(
         ":noop_elimination",
         ":parallel_batch",
         ":shuffle_and_repeat_fusion",
+        ":slack",
     ],
 )
 
@@ -207,6 +207,7 @@ cc_library(
         "graph_utils.h",
     ],
     deps = [
+        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -313,38 +314,6 @@ tf_cc_test(
     deps = [
         ":graph_utils",
         ":latency_all_edges",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/grappler:grappler_item",
-    ],
-)
-
-cc_library(
-    name = "make_numa_aware",
-    srcs = ["make_numa_aware.cc"],
-    hdrs = ["make_numa_aware.h"],
-    deps = [
-        ":graph_utils",
-        ":optimizer_base",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ] + tf_protos_all(),
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "make_numa_aware_test",
-    srcs = ["make_numa_aware_test.cc"],
-    deps = [
-        ":graph_test_utils",
-        ":graph_utils",
-        ":make_numa_aware",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -730,6 +699,45 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "slack",
+    srcs = ["slack.cc"],
+    hdrs = [
+        "slack.h",
+    ],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "slack_test",
+    srcs = ["slack_test.cc"],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":slack",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/kernels/data",
     ],
 )
 

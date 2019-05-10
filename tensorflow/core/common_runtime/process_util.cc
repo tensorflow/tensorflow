@@ -99,7 +99,7 @@ int32 NumIntraOpThreadsFromEnvironment() {
 
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
-  if (inter_op != 0) return inter_op;
+  if (inter_op > 0) return inter_op;
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
     // MKL library executes ops in parallel using OMP threads

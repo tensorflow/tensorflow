@@ -203,10 +203,6 @@ class InputDataTest(test.TestCase):
     self._runGetDataTest("mfcc", 30)
 
   @test_util.run_deprecated_v1
-  def testGetDataMicro(self):
-    self._runGetDataTest("micro", 20)
-
-  @test_util.run_deprecated_v1
   def testGetUnprocessedData(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")

@@ -25,6 +25,7 @@ import csv
 import io
 import json
 import os
+import re
 import tempfile
 import time
 
@@ -42,6 +43,7 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -421,6 +423,7 @@ class Callback(object):
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
           Reference of the model being trained.
+      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
@@ -901,10 +904,14 @@ class ModelCheckpoint(Callback):
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return
 
-    if (self.load_weights_on_restart and self.filepath is not None and
-        os.path.exists(self.filepath)):
+    if self.load_weights_on_restart:
       try:
-        self.model.load_weights(self.filepath)
+        # `filepath` may contain placeholders such as `{epoch:02d}`, and thus
+        # it attempts to load the most recently modified file with file name
+        # matching the pattern.
+        self.model.load_weights(
+            self._get_most_recently_modified_file_matching_pattern(
+                self.filepath))
       except (IOError, ValueError) as e:
         raise ValueError('Error loading file from {}. Reason: {}'.format(
             self.filepath, e))
@@ -990,6 +997,61 @@ class ModelCheckpoint(Callback):
         os.close(file_handle)
         os.remove(filepath)
 
+  def _get_most_recently_modified_file_matching_pattern(self, pattern):
+    """Returns the most recently modified filepath matching pattern.
+
+    Pattern may contain python formatting placeholder. If
+    `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
+    check for most recently modified one that matches the pattern. This utility
+    function is best demonstrated via an example:
+
+    ```python
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      # Write something to each of the files
+    self.assertEqual(
+        _get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+    ```
+
+    Arguments:
+        pattern: The file pattern that may optionally contain python placeholder
+            such as `{epoch:02d}`.
+
+    Returns:
+        The most recently modified file's full filepath matching `pattern`. If
+        `pattern` does not contain any placeholder, this returns the filepath
+        that
+        exactly matches `pattern`. Returns `None` if no match is found.
+    """
+    dir_name = os.path.dirname(pattern)
+    base_name = os.path.basename(pattern)
+    base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
+
+    # If tf.train.latest_checkpoint tells us there exists a latest checkpoint,
+    # use that as it is more robust than `os.path.getmtime()`.
+    latest_tf_checkpoint = checkpoint_management.latest_checkpoint(dir_name)
+    if latest_tf_checkpoint is not None and re.match(
+        base_name_regex, os.path.basename(latest_tf_checkpoint)):
+      return latest_tf_checkpoint
+
+    latest_mod_time = 0
+    file_path_with_latest_mod_time = None
+    for file_name in os.listdir(dir_name):
+      if re.match(base_name_regex, file_name):
+        file_path = os.path.join(dir_name, file_name)
+        mod_time = os.path.getmtime(file_path)
+        if mod_time > latest_mod_time:
+          latest_mod_time = mod_time
+          file_path_with_latest_mod_time = file_path
+    return file_path_with_latest_mod_time
+
 
 @keras_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
@@ -1018,6 +1080,16 @@ class EarlyStopping(Callback):
           the epoch with the best value of the monitored quantity.
           If False, the model weights obtained at the last step of
           training are used.
+
+  Example:
+
+  ```python
+  callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+  # This callback will stop the training when there is no improvement in
+  # the validation loss for three consecutive epochs.
+  model.fit(data, labels, epochs=100, callbacks=[callback],
+      validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self,
@@ -1167,6 +1239,20 @@ class LearningRateScheduler(Callback):
           (integer, indexed from 0) and returns a new
           learning rate as output (float).
       verbose: int. 0: quiet, 1: update messages.
+
+  ```python
+  # This function keeps the learning rate at 0.001 for the first ten epochs
+  # and decreases it exponentially after that.
+  def scheduler(epoch):
+    if epoch < 10:
+      return 0.001
+    else:
+      return 0.001 * tf.math.exp(0.1 * (10 - epoch))
+
+  callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
+  model.fit(data, labels, epochs=100, callbacks=[callback],
+            validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self, schedule, verbose=0):
@@ -1238,6 +1324,14 @@ class TensorBoard(Callback):
       profile_batch: Profile the batch to sample compute characteristics. By
         default, it will profile the second batch. Set profile_batch=0 to
         disable profiling. Must run in TensorFlow eager mode.
+      embeddings_freq: frequency (in epochs) at which embedding layers will
+        be visualized. If set to 0, embeddings won't be visualized.
+      embeddings_metadata: a dictionary which maps layer name to a file name in
+        which metadata for this embedding layer is saved. See the
+        [details](
+          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
+        about metadata files format. In case if the same metadata file is
+        used for all embedding layers, string can be passed.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1252,6 +1346,8 @@ class TensorBoard(Callback):
                write_images=False,
                update_freq='epoch',
                profile_batch=2,
+               embeddings_freq=0,
+               embeddings_metadata=None,
                **kwargs):
     super(TensorBoard, self).__init__()
     self._validate_kwargs(kwargs)
@@ -1264,6 +1360,8 @@ class TensorBoard(Callback):
       self.update_freq = 1
     else:
       self.update_freq = update_freq
+    self.embeddings_freq = embeddings_freq
+    self.embeddings_metadata = embeddings_metadata
 
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
@@ -1292,17 +1390,21 @@ class TensorBoard(Callback):
     if kwargs.get('write_grads', False):
       logging.warning('`write_grads` will be ignored in TensorFlow 2.0 '
                       'for the `TensorBoard` Callback.')
-    if kwargs.get('embeddings_freq', False):
-      logging.warning('Embeddings will be ignored in TensorFlow 2.0 '
-                      'for the `TensorBoard` Callback.')
     if kwargs.get('batch_size', False):
       logging.warning('`batch_size` is no longer needed in the '
                       '`TensorBoard` Callback and will be ignored '
                       'in TensorFlow 2.0.')
+    if kwargs.get('embeddings_layer_names', False):
+      logging.warning('`embeddings_layer_names` is not supported in '
+                      'TensorFlow 2.0. Instead, all `Embedding` layers '
+                      'will be visualized.')
+    if kwargs.get('embeddings_data', False):
+      logging.warning('`embeddings_data` is not supported in TensorFlow '
+                      '2.0. Instead, all `Embedding` variables will be '
+                      'visualized.')
 
     unrecognized_kwargs = set(kwargs.keys()) - {
-        'write_grads', 'embeddings_freq', 'embeddings_layer_names',
-        'embeddings_metadata', 'embeddings_data', 'batch_size'
+        'write_grads', 'embeddings_layer_names', 'embeddings_data', 'batch_size'
     }
 
     # Only allow kwargs that were supported in V1.
@@ -1327,6 +1429,48 @@ class TensorBoard(Callback):
             if summary_writable:
               summary_ops_v2.keras_model('keras', self.model, step=0)
 
+    if self.embeddings_freq:
+      self._configure_embeddings()
+
+  def _configure_embeddings(self):
+    """Configure the Projector for embeddings."""
+    # TODO(omalleyt): Add integration tests.
+    from tensorflow.python.keras.layers import embeddings
+    try:
+      from tensorboard.plugins import projector
+    except ImportError:
+      raise ImportError('Failed to import TensorBoard. Please make sure that '
+                        'TensorBoard integration is complete."')
+    config = projector.ProjectorConfig()
+    for layer in self.model.layers:
+      if isinstance(layer, embeddings.Embedding):
+        embedding = config.embeddings.add()
+        embedding.tensor_name = layer.embeddings.name
+
+        if self.embeddings_metadata is not None:
+          if isinstance(self.embeddings_metadata, str):
+            embedding.metadata_path = self.embeddings_metadata
+          else:
+            if layer.name in embedding.metadata_path:
+              embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
+
+    if self.embeddings_metadata:
+      raise ValueError('Unrecognized `Embedding` layer names passed to '
+                       '`keras.callbacks.TensorBoard` `embeddings_metadata` '
+                       'argument: ' + str(self.embeddings_metadata.keys()))
+
+    class DummyWriter(object):
+      """Dummy writer to conform to `Projector` API."""
+
+      def __init__(self, logdir):
+        self.logdir = logdir
+
+      def get_logdir(self):
+        return self.logdir
+
+    writer = DummyWriter(self.log_dir)
+    projector.visualize_embeddings(writer, config)
+
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.
 
@@ -1342,7 +1486,7 @@ class TensorBoard(Callback):
 
     A writer will be created if it does not yet exist.
 
-    Args:
+    Arguments:
       writer_name: The name of the directory for which to create or
         retrieve a writer. Should be either `self._train_run_name` or
         `self._validation_run_name`.
@@ -1365,6 +1509,10 @@ class TensorBoard(Callback):
     """Writes scalar summaries for metrics on every training batch.
 
     Performs profiling if current batch is in profiler_batches.
+
+    Arguments:
+      batch: Integer, index of batch within the current epoch.
+      logs: Dict. Metric results for this batch.
     """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
@@ -1387,6 +1535,9 @@ class TensorBoard(Callback):
 
     if self.histogram_freq and epoch % self.histogram_freq == 0:
       self._log_weights(epoch)
+
+    if self.embeddings_freq and epoch % self.embeddings_freq == 0:
+      self._log_embeddings(epoch)
 
   def on_train_end(self, logs=None):
     if self._is_tracing:
@@ -1492,6 +1643,11 @@ class TensorBoard(Callback):
     if len(shape) == 4 and shape[-1] in [1, 3, 4]:
       summary_ops_v2.image(weight_name, w_img, step=epoch)
 
+  def _log_embeddings(self, epoch):
+    embeddings_ckpt = os.path.join(self.log_dir, 'train',
+                                   'keras_embedding.ckpt-{}'.format(epoch))
+    self.model.save_weights(embeddings_ckpt)
+
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
@@ -1512,22 +1668,20 @@ class ReduceLROnPlateau(Callback):
 
   Arguments:
       monitor: quantity to be monitored.
-      factor: factor by which the learning rate will
-          be reduced. new_lr = lr * factor
-      patience: number of epochs with no improvement
-          after which learning rate will be reduced.
+      factor: factor by which the learning rate will be reduced. new_lr = lr *
+        factor
+      patience: number of epochs with no improvement after which learning rate
+        will be reduced.
       verbose: int. 0: quiet, 1: update messages.
-      mode: one of {auto, min, max}. In `min` mode,
-          lr will be reduced when the quantity
-          monitored has stopped decreasing; in `max`
-          mode it will be reduced when the quantity
-          monitored has stopped increasing; in `auto`
-          mode, the direction is automatically inferred
-          from the name of the monitored quantity.
-      min_delta: threshold for measuring the new optimum,
-          to only focus on significant changes.
-      cooldown: number of epochs to wait before resuming
-          normal operation after lr has been reduced.
+      mode: one of {auto, min, max}. In `min` mode, lr will be reduced when the
+        quantity monitored has stopped decreasing; in `max` mode it will be
+        reduced when the quantity monitored has stopped increasing; in `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      min_delta: threshold for measuring the new optimum, to only focus on
+        significant changes.
+      cooldown: number of epochs to wait before resuming normal operation after
+        lr has been reduced.
       min_lr: lower bound on the learning rate.
   """
 

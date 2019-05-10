@@ -1952,8 +1952,12 @@ def cond(pred,
   with ops.name_scope(name, "cond", [pred]):
     if context.executing_eagerly():
       if pred:
-        return _UnpackIfSingleton(true_fn())
-      return _UnpackIfSingleton(false_fn())
+        result = true_fn()
+      else:
+        result = false_fn()
+      if not strict:
+        result = _UnpackIfSingleton(result)
+      return result
 
     # Add the Switch to the graph.
     if isinstance(pred, bool):
@@ -3466,7 +3470,7 @@ def while_loop(cond,
           return x
         return ops.convert_to_tensor(x)
 
-      loop_vars = nest.map_structure(convert, loop_vars)
+      loop_vars = nest.map_structure(convert, loop_vars, expand_composites=True)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:

@@ -76,6 +76,10 @@ class Backend(object):
     """Deletes buffer `c_buffer`."""
 
   @abc.abstractmethod
+  def make_tuple(self, c_buffers, device_ordinal):
+    """Makes a tuple from a sequence of backend buffer objects."""
+
+  @abc.abstractmethod
   def destructure_tuple(self, c_buffer):
     """Destructures a tuple buffer into a sequence of buffers."""
 
@@ -99,15 +103,17 @@ class Backend(object):
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None):
+  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
       xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+      asynchronous: A boolean; should we enable asynchronous execution?
+        (Experimental.)
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(xla_platform_id)
+    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -120,6 +126,9 @@ class LocalBackend(Backend):
 
   def delete_buffer(self, c_buffer):
     c_buffer.Delete()
+
+  def make_tuple(self, c_buffers, device_ordinal):
+    return _xla.PyLocalBuffer.MakeTuple(c_buffers, self.client, device_ordinal)
 
   def destructure_tuple(self, c_buffer):
     return c_buffer.DestructureTuple()
@@ -135,6 +144,8 @@ class LocalBackend(Backend):
       argument_layouts = c_computation.GetProgramShape().Parameters()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout.as_xla_shape()
+    options.debug_options.xla_cpu_fast_math_honor_infs = True
+    options.debug_options.xla_cpu_fast_math_honor_nans = True
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
                                         options, self.client)
 
@@ -148,10 +159,18 @@ class LocalBackend(Backend):
     return executable.ExecutePerReplica(per_replica_args)
 
 
+def _cpu_backend_factory():
+  return LocalBackend(platform='cpu', xla_platform_id='Host', asynchronous=True)
+
+
+def _gpu_backend_factory():
+  return LocalBackend(platform='gpu', xla_platform_id='CUDA')
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
-    ('cpu', lambda: LocalBackend(platform='cpu', xla_platform_id='Host')),
-    ('gpu', lambda: LocalBackend(platform='gpu', xla_platform_id='CUDA')),
+    ('cpu', _cpu_backend_factory),
+    ('gpu', _gpu_backend_factory),
 ])
 
 
@@ -322,6 +341,13 @@ class Buffer(object):
         for cbuf, (_, device) in zip(cbufs, pyvals_and_devices)
     ]
 
+  @staticmethod
+  def make_tuple(buffers, backend=None, device=0):
+    backend = backend or get_local_backend()
+    buf = backend.make_tuple([b.c_buffer for b in buffers],
+                             device_ordinal=device)
+    return Buffer(buf, backend, device)
+
   def to_py(self):
     return self.c_buffer.ToPython()
 
@@ -340,7 +366,6 @@ class Buffer(object):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
     result = self._backend.destructure_tuple(self.c_buffer)
-    self.delete()
     return tuple(
         Buffer(sub_buffer, device=self._device, backend=self._backend)
         for sub_buffer in result)
@@ -1592,11 +1617,11 @@ class ComputationBuilder(object):
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
-    return ops.Sort(operand, [], dimension)
+    return ops.Sort(self._builder, [operand], dimension)
 
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
-    return ops.Sort(keys, [values], dimension)
+    return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""
@@ -1634,6 +1659,13 @@ class ComputationBuilder(object):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers)
+
+  def Fft(self, operand, fft_type, fft_lengths):
+    """Enqueues a FFT operation onto the computation."""
+    return ops.Fft(operand, fft_type, fft_lengths)
+
+
+FftType = _xla.FftType
 
 
 _UNARY_OPS = [

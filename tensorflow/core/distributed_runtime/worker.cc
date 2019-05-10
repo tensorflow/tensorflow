@@ -196,6 +196,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for RunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });
@@ -293,6 +294,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 
   // Before we start doing anything, we set the RPC cancellation.
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for PartialRunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });

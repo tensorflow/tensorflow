@@ -23,6 +23,7 @@ limitations under the License.
 namespace stream_executor {
 class Stream;
 class Platform;
+class DeviceMemoryAllocator;
 }  // namespace stream_executor
 
 namespace Eigen {
@@ -31,7 +32,6 @@ struct ThreadPoolDevice;
 
 namespace xla {
 
-class DeviceMemoryAllocator;
 class DeviceAssignment;
 class ExecutionProfile;
 
@@ -39,8 +39,9 @@ class ExecutionProfile;
 class ExecutableRunOptions {
  public:
   // Specifies the allocator to use during execution.
-  ExecutableRunOptions& set_allocator(DeviceMemoryAllocator* allocator);
-  DeviceMemoryAllocator* allocator() const;
+  ExecutableRunOptions& set_allocator(
+      stream_executor::DeviceMemoryAllocator* allocator);
+  stream_executor::DeviceMemoryAllocator* allocator() const;
 
   // If set, this is the device to run the computation on. Valid device_ordinal
   // values are: 0 to # of devices - 1. These values are identical to the device
@@ -87,7 +88,7 @@ class ExecutableRunOptions {
   int rng_seed() const;
 
  private:
-  DeviceMemoryAllocator* allocator_ = nullptr;
+  stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
   const DeviceAssignment* device_assignment_ = nullptr;
   stream_executor::Stream* stream_ = nullptr;

@@ -479,10 +479,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         ctx.config.tpu_config.initial_infeed_sleep_secs)
 
     # When using model parallelism, the TPU is pre-initialized at startup to
-    # fetch mesh information.  We skip re-initializing it here to avoid
-    # suspected issues due to the mesh layout changing on the second
-    # initialization.
-    self._should_initialize_tpu = not ctx.model_parallelism_enabled
+    # fetch mesh information. We skip re-initializing it here for
+    # MeshTensorFlow since it places variables on TPU directly. Reinitialize tpu
+    # is causing the variable corruption since the previous allocated memory
+    # might be overwritten for other purpose.
+    if (ctx.model_parallelism_enabled and
+        (ctx.config.tpu_config.per_host_input_for_training is
+         tpu_config.InputPipelineConfig.BROADCAST)):
+      self._should_initialize_tpu = False
+    else:
+      self._should_initialize_tpu = True
+
     self._tpu_compile_op = tpu_compile_op
 
   def begin(self):
@@ -3825,8 +3832,7 @@ def export_estimator_savedmodel(estimator,
                                 serving_input_receiver_fn,
                                 assets_extra=None,
                                 as_text=False,
-                                checkpoint_path=None,
-                                strip_default_attrs=False):
+                                checkpoint_path=None):
   """Export `Estimator` trained model for TPU inference.
 
   Args:
@@ -3840,8 +3846,6 @@ def export_estimator_savedmodel(estimator,
     as_text: whether to write the SavedModel proto in text format.
     checkpoint_path: The checkpoint path to export.  If `None` (the default),
       the most recent checkpoint found within the model directory is chosen.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs.
 
   Returns:
     The string path to the exported directory.
@@ -3857,9 +3861,8 @@ def export_estimator_savedmodel(estimator,
       train_batch_size=2048,  # Does not matter.
       eval_batch_size=2048,  # Does not matter.
   )
-  return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
-                               assets_extra, as_text, checkpoint_path,
-                               strip_default_attrs)
+  return est.export_saved_model(export_dir_base, serving_input_receiver_fn,
+                                assets_extra, as_text, checkpoint_path)
 
 
 def model_fn_inference_on_tpu(model_fn,

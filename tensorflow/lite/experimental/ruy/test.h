@@ -297,17 +297,13 @@ void MakeRandomVector(RandomRange range, int size, std::vector<Scalar>* dst) {
   }
 }
 
-enum class LayoutStyle { kPackedLinear, kLinear, kBlocked };
+enum class LayoutStyle { kPackedLinear, kLinear };
 
-void MakeLayout(int rows, int cols, int kernel_rows, int kernel_cols,
-                Order order, Order kernel_order, LayoutStyle layout_style,
+void MakeLayout(int rows, int cols, Order order, LayoutStyle layout_style,
                 Layout* layout) {
   layout->rows = rows;
   layout->cols = cols;
   layout->order = order;
-  layout->kernel.order = kernel_order;
-  layout->kernel.rows = kernel_rows;
-  layout->kernel.cols = kernel_cols;
 
   const int packed_stride = order == Order::kColMajor ? rows : cols;
 
@@ -340,12 +336,10 @@ void VerifyConsistentFields(const StorageMatrix<Scalar>& storage_matrix) {
 }
 
 template <typename Scalar>
-void MakeRandom(int rows, int cols, int kernel_rows, int kernel_cols,
-                Order order, Order kernel_order, Scalar zero_point,
+void MakeRandom(int rows, int cols, Order order, Scalar zero_point,
                 LayoutStyle layout_style, RandomRange range,
                 StorageMatrix<Scalar>* storage_matrix) {
-  MakeLayout(rows, cols, kernel_rows, kernel_cols, order, kernel_order,
-             layout_style, &storage_matrix->matrix.layout);
+  MakeLayout(rows, cols, order, layout_style, &storage_matrix->matrix.layout);
   storage_matrix->matrix.zero_point = zero_point;
   UniformRandomDistribution<Scalar> data_dist(range);
   MakeRandomVector(&data_dist, FlatSize(storage_matrix->matrix.layout),
@@ -443,13 +437,8 @@ struct TestSet final {
   int rows = 0;
   int cols = 0;
   int depth = 0;
-  int kernel_rows = 1;
-  int kernel_cols = 1;
-  int kernel_depth = 1;
   Order lhs_order = Order::kRowMajor;
   Order rhs_order = Order::kColMajor;
-  Order lhs_kernel_order = Order::kRowMajor;
-  Order rhs_kernel_order = Order::kColMajor;
   Order dst_order = Order::kColMajor;
   LayoutStyle layout_style = LayoutStyle::kPackedLinear;
   ExpectedOutcome expected_outcome = ExpectedOutcome::kSuccess;
@@ -526,7 +515,6 @@ void EvalRuy(Path path, Tuning tuning, const Matrix<LhsScalar>& lhs,
 template <typename Scalar, gemmlowp::MapOrder tOrder>
 void WrapGemmlowp(const Matrix<Scalar>& src,
                   gemmlowp::MatrixMap<const Scalar, tOrder>* dst) {
-  RUY_CHECK(IsLinear(src.layout));
   RUY_CHECK(src.layout.order == (tOrder == gemmlowp::MapOrder::ColMajor
                                      ? Order::kColMajor
                                      : Order::kRowMajor));
@@ -537,7 +525,6 @@ void WrapGemmlowp(const Matrix<Scalar>& src,
 template <typename Scalar, gemmlowp::MapOrder tOrder>
 void WrapGemmlowpMutable(Matrix<Scalar>* src,
                          gemmlowp::MatrixMap<Scalar, tOrder>* dst) {
-  RUY_CHECK(IsLinear(src->layout));
   RUY_CHECK(src->layout.order == (tOrder == gemmlowp::MapOrder::ColMajor
                                       ? Order::kColMajor
                                       : Order::kRowMajor));
@@ -706,9 +693,6 @@ template <Order LhsOrder, Order RhsOrder, Order DstOrder, typename LhsScalar,
           typename RhsScalar, typename DstScalar, typename Spec>
 void EvalEigen(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                const Spec& spec, int max_num_threads, Matrix<DstScalar>* dst) {
-  RUY_CHECK(IsLinear(lhs.layout));
-  RUY_CHECK(IsLinear(rhs.layout));
-  RUY_CHECK(IsLinear(dst->layout));
   RUY_CHECK_EQ(lhs.zero_point, 0);
   RUY_CHECK_EQ(rhs.zero_point, 0);
   RUY_CHECK_EQ(dst->zero_point, 0);
@@ -802,9 +786,9 @@ void EvalEigenTensor(const Matrix<Scalar>& lhs, const Matrix<Scalar>& rhs,
   RUY_CHECK_EQ(spec.multiplier_exponent, 0);
 
   // Eigen::TensorMap only supports packed layouts
-  RUY_CHECK(IsPackedLinear(lhs.layout));
-  RUY_CHECK(IsPackedLinear(rhs.layout));
-  RUY_CHECK(IsPackedLinear(dst->layout));
+  RUY_CHECK(IsPacked(lhs.layout));
+  RUY_CHECK(IsPacked(rhs.layout));
+  RUY_CHECK(IsPacked(dst->layout));
 
   using TensorLhsType =
       Eigen::TensorMap<Eigen::Tensor<const Scalar, 2, Eigen::ColMajor>>;
@@ -1412,11 +1396,14 @@ void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
   spec_unclamped.multiplier_exponent_perchannel =
       spec->multiplier_exponent_perchannel;
   Mul<Path::kReference>(lhs, rhs, spec_unclamped, &context, &unclamped_dst);
-  std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
-  const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
-  RUY_CHECK_LT(clamp_count, size);
-  spec->clamp_min = unclamped_dst_data[clamp_count];
-  spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  // If dst is std::int32_t, no need to set the clamp min/max.
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) {
+    std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
+    const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
+    RUY_CHECK_LT(clamp_count, size);
+    spec->clamp_min = unclamped_dst_data[clamp_count];
+    spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
@@ -1425,7 +1412,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
   if (!use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
-    MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    // If destination is std::int32_t, no dst_zero_point is necessary.
+    if (std::is_same<DstScalar, std::int32_t>::value) {
+      dst_zero_point = 0;
+    } else {
+      MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    }
   }
   life_stage = LifeStage::kHasZeroPoints;
 }
@@ -1433,11 +1425,9 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
   RUY_CHECK(life_stage == LifeStage::kHasZeroPoints);
-  MakeRandom(rows, depth, kernel_rows, kernel_depth, lhs_order,
-             lhs_kernel_order, lhs_zero_point, layout_style,
+  MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
              RandomRange::kAvoidMinValue, &lhs);
-  MakeRandom(depth, cols, kernel_depth, kernel_cols, rhs_order,
-             rhs_kernel_order, rhs_zero_point, layout_style,
+  MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
              RandomRange::kGeneral, &rhs);
   life_stage = LifeStage::kHasLhsRhs;
 }
@@ -1527,12 +1517,11 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   paths_bitfield = paths_bitfield & kAllPaths;
   paths = PathsBitfieldAsVector(paths_bitfield);
 
-  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
-
 #ifdef RUY_TEST_EXTERNAL_PATHS
 
-  if (!getenv("NOEXT") && IsLinear(lhs.matrix.layout) &&
-      IsLinear(rhs.matrix.layout)) {
+  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
+
+  if (!getenv("NOEXT")) {
     if (SupportsGemmlowp<TestSetType>::kValue) {
 #ifdef GEMMLOWP_SSE4
       const bool gemmlowp_supported = !spec.multiplier_fixedpoint_perchannel;
@@ -1569,8 +1558,8 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
       TestResult<DstScalar>& result = results.back();
       result.path = path;
       result.tuning = tuning;
-      MakeRandom(rows, cols, 1, 1, dst_order, dst_order, dst_zero_point,
-                 layout_style, RandomRange::kGeneral, &result.storage_matrix);
+      MakeRandom(rows, cols, dst_order, dst_zero_point, layout_style,
+                 RandomRange::kGeneral, &result.storage_matrix);
     }
   }
 
@@ -1578,8 +1567,8 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
     results.emplace_back();
     TestResult<DstScalar>& result = results.back();
     result.external_path = external_path;
-    MakeRandom(rows, cols, 1, 1, dst_order, dst_order, dst_zero_point,
-               layout_style, RandomRange::kGeneral, &result.storage_matrix);
+    MakeRandom(rows, cols, dst_order, dst_zero_point, layout_style,
+               RandomRange::kGeneral, &result.storage_matrix);
   }
 
   life_stage = LifeStage::kHasResultPaths;
@@ -1918,8 +1907,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
 }
 
 template <typename TestSetType>
-void TestPackedLinearRCC(int rows, int depth, int cols,
-                         ExpectedOutcome expected_outcome) {
+void TestRCC(int rows, int depth, int cols, ExpectedOutcome expected_outcome) {
   TestSetType test_set;
   test_set.rows = rows;
   test_set.depth = depth;
@@ -1933,9 +1921,23 @@ void TestPackedLinearRCC(int rows, int depth, int cols,
 }
 
 template <typename TestSetType>
-void TestPackedLinearRCC(int rows, int depth, int cols) {
-  TestPackedLinearRCC<TestSetType>(rows, depth, cols,
-                                   ExpectedOutcome::kSuccess);
+void TestRCC(int rows, int depth, int cols) {
+  TestRCC<TestSetType>(rows, depth, cols, ExpectedOutcome::kSuccess);
+}
+
+template <typename TestSetType>
+void TestNonRCC(int rows, int depth, int cols,
+                ExpectedOutcome expected_outcome) {
+  TestSetType test_set;
+  test_set.rows = rows;
+  test_set.depth = depth;
+  test_set.cols = cols;
+  test_set.lhs_order = Order::kColMajor;
+  test_set.rhs_order = Order::kColMajor;
+  test_set.dst_order = Order::kColMajor;
+  test_set.layout_style = LayoutStyle::kPackedLinear;
+  test_set.expected_outcome = expected_outcome;
+  test_set.Run();
 }
 
 template <typename TestSetType>
@@ -1965,50 +1967,6 @@ template <typename TestSetType>
 void TestLinearAllOrders(int rows, int depth, int cols) {
   TestLinearAllOrders<TestSetType>(rows, depth, cols,
                                    ExpectedOutcome::kSuccess);
-}
-
-template <typename TestSetType>
-void TestNonLinearAllOrders(int rows, int depth, int cols, int kernel_rows,
-                            int kernel_depth, int kernel_cols,
-                            ExpectedOutcome expected_outcome) {
-  const std::vector<Order> orders{Order::kColMajor, Order::kRowMajor};
-
-  for (Order lhs_order : orders) {
-    for (Order rhs_order : orders) {
-      for (Order dst_order : orders) {
-        for (Order lhs_kernel_order : orders) {
-          for (Order rhs_kernel_order : orders) {
-            TestSetType test_set;
-            test_set.rows = rows;
-            test_set.depth = depth;
-            test_set.cols = cols;
-            test_set.kernel_rows = kernel_rows;
-            test_set.kernel_depth = kernel_depth;
-            test_set.kernel_cols = kernel_cols;
-            test_set.lhs_order = lhs_order;
-            test_set.rhs_order = rhs_order;
-            test_set.lhs_kernel_order = lhs_kernel_order;
-            test_set.rhs_kernel_order = rhs_kernel_order;
-            test_set.dst_order = dst_order;
-            test_set.layout_style = LayoutStyle::kLinear;
-            test_set.expected_outcome = expected_outcome;
-            test_set.Run();
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename TestSetType>
-void TestNonLinearAllOrders(int rows, int depth, int cols, int kernel_rows,
-                            int kernel_depth, int kernel_cols) {
-  RUY_CHECK_EQ(rows % kernel_rows, 0);
-  RUY_CHECK_EQ(depth % kernel_depth, 0);
-  RUY_CHECK_EQ(cols % kernel_cols, 0);
-  TestNonLinearAllOrders<TestSetType>(rows, depth, cols, kernel_rows,
-                                      kernel_depth, kernel_cols,
-                                      ExpectedOutcome::kSuccess);
 }
 
 }  // namespace ruy

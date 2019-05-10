@@ -124,8 +124,10 @@ class ConvolutionOpModel : public BaseConvolutionOpModel {
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_CONVOLUTION_REF()},
     {"GenericOptimized", ops::builtin::Register_CONVOLUTION_GENERIC_OPT()},
+#ifndef TFLITE_WITH_RUY
     {"MultithreadedOptimized",
      ops::builtin::Register_CONVOLUTION_MULTITHREADED_OPT()},
+#endif
     {"CblasOptimized", ops::builtin::Register_CONVOLUTION_CBLAS_OPT()},
 });
 
@@ -966,8 +968,8 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
        255},
       {TensorType_UINT8,
        {depth, filter_size, filter_size, filter_count},
-       0,
-       255},
+       -128,
+       127},
       {TensorType_UINT8, {}, 0, 255}, stride_width, stride_height, padding,
       ActivationFunctionType_NONE, dilation_width_factor,
       dilation_height_factor);

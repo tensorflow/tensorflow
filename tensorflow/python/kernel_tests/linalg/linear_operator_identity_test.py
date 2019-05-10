@@ -37,13 +37,13 @@ class LinearOperatorIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     # Identity matrix is already Hermitian Positive Definite.
@@ -285,13 +285,13 @@ class LinearOperatorScaledIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
 
@@ -532,4 +532,6 @@ class LinearOperatorScaledIdentityTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorIdentityTest)
+  linear_operator_test_util.add_tests(LinearOperatorScaledIdentityTest)
   test.main()

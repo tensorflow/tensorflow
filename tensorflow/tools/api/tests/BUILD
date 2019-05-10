@@ -1,5 +1,10 @@
 # TensorFlow API backwards compatibility tests.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "py_test",
+)
+
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
 )
@@ -23,7 +28,10 @@ py_test(
         "//tensorflow/tools/api/tests:README.txt",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

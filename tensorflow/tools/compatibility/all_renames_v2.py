@@ -159,6 +159,8 @@ manual_symbol_renames = {
         "tf.CriticalSection",
     "tf.contrib.framework.is_tensor":
         "tf.is_tensor",
+    "tf.contrib.framework.load_variable":
+        "tf.train.load_variable",
     "tf.contrib.framework.nest.assert_same_structure":
         "tf.nest.assert_same_structure",
     "tf.contrib.framework.nest.flatten":
@@ -201,6 +203,8 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.all_summary_ops":
+        "tf.compat.v1.summary.all_v2_summary_ops",
     "tf.contrib.summary.always_record_summaries":
         "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":

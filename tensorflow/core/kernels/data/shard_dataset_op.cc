@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -27,7 +28,9 @@ namespace {
 class ShardDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ShardDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("require_non_empty", &require_non_empty_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
@@ -48,18 +51,19 @@ class ShardDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("Index must be between 0 and ", num_shards - 1,
                                 " (currently index = ", index, ")."));
 
-    *output = new Dataset(ctx, num_shards, index, input);
+    *output = new Dataset(ctx, num_shards, index, require_non_empty_, input);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 num_shards, int64 index,
-            const DatasetBase* input)
+            bool require_non_empty, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           num_shards_(num_shards),
           index_(index),
-          input_(input) {
+          input_(input),
+          require_non_empty_(require_non_empty) {
       input_->Ref();
     }
 
@@ -102,8 +106,13 @@ class ShardDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(num_shards_, &num_shards));
       Node* index = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(index_, &index));
-      TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {input_graph_node, num_shards, index}, output));
+
+      AttrValue require_non_empty_attr;
+      b->BuildAttrValue(require_non_empty_, &require_non_empty_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_graph_node, num_shards, index},
+          {{"require_non_empty", require_non_empty_attr}}, output));
       return Status::OK();
     }
 
@@ -137,6 +146,26 @@ class ShardDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
         } while ((next_index_++ % dataset()->num_shards_) != dataset()->index_);
+
+        while (dataset()->require_non_empty_ &&
+               next_index_ < dataset()->num_shards_) {
+          std::vector<Tensor> unused_result;
+
+          Status s = input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
+          if (*end_of_sequence || errors::IsOutOfRange(s)) {
+            return errors::InvalidArgument(
+                "There aren't enough elements in this dataset for each shard "
+                "to have at least one element (# elems = ",
+                next_index_, ", ", "# shards = ", dataset()->num_shards_,
+                "). If you are using ",
+                "datasets with distribution strategy, consider turning ",
+                "dataset autosharding off with `tf.data.Options`.");
+          } else if (!s.ok()) {
+            return s;
+          }
+
+          next_index_++;
+        }
 
         *out_tensors = std::move(result);
         return Status::OK();
@@ -184,7 +213,10 @@ class ShardDatasetOp : public UnaryDatasetOpKernel {
     const int64 num_shards_;
     const int64 index_;
     const DatasetBase* const input_;
+    const bool require_non_empty_;
   };
+
+  bool require_non_empty_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ShardDataset").Device(DEVICE_CPU),

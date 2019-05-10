@@ -295,7 +295,8 @@ Status FillFunctionBody(
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in tensorflow/python/framework/function.py.
+// function graph_to_function_def(), which is located in
+// tensorflow/python/framework/graph_to_function_def.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,

@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import range
+
 import functools
 import weakref
 
@@ -112,6 +114,14 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       fn(1.0)
+
+  def testRange(self):
+
+    @def_function.function
+    def f(unused_x):
+      return 1.0
+
+    self.assertAllEqual(f(range(5)), 1.0)
 
   def testCorrectVariableCreation(self):
 

@@ -21,6 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
+
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import applications
 from tensorflow.python.keras import backend
@@ -46,7 +48,10 @@ from tensorflow.python.keras.models import Sequential
 
 from tensorflow.python.util.tf_export import keras_export
 
-__version__ = '2.2.4-tf'
+if tf2.enabled():
+  __version__ = '2.3.0-tf'
+else:
+  __version__ = '2.2.4-tf'
 
 keras_export('keras.__version__').export_constant(__name__, '__version__')
 

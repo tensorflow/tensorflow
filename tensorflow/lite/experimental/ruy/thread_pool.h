@@ -68,13 +68,23 @@ class ThreadPool {
   // want to run an unbounded number of tasks on a bounded number of threads,
   // then you need something higher-level than this ThreadPool, that can
   // be layered on top of it by appropriately subclassing Tasks.
-  void Execute(int task_count, Task** tasks_ptrs);
+  //
+  // TaskType must be a subclass of ruy::Task. That is implicitly guarded by
+  // the static_cast in this inline implementation.
+  template <typename TaskType>
+  void Execute(int task_count, TaskType* tasks) {
+    ExecuteImpl(task_count, sizeof(TaskType), static_cast<Task*>(tasks));
+  }
 
  private:
   // Ensures that the pool has at least the given count of threads.
   // If any new thread has to be created, this function waits for it to
   // be ready.
   void CreateThreads(int threads_count);
+
+  // Non-templatized implementation of the public Execute method.
+  // See the inline implementation of Execute for how this is used.
+  void ExecuteImpl(int task_count, int stride, Task* tasks);
 
   // copy construction disallowed
   ThreadPool(const ThreadPool&) = delete;

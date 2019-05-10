@@ -312,6 +312,7 @@ class CollectiveAllReduceStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
+                              ignore_order=False,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
@@ -327,7 +328,10 @@ class CollectiveAllReduceStrategyTestBase(
         next_element = iterator.get_next()
         computed_value = sess.run([values.select_replica(r, next_element)
                                    for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
@@ -342,7 +346,10 @@ class CollectiveAllReduceStrategyTestBase(
           next_element = iterator.get_next()
           computed_value = sess.run([values.select_replica(r, next_element)
                                      for r in range(len(devices))])
-          self.assertEqual(expected_value, computed_value)
+          if ignore_order:
+            self.assertCountEqual(expected_value, computed_value)
+          else:
+            self.assertEqual(expected_value, computed_value)
 
 
 class DistributedCollectiveAllReduceStrategyTest(
@@ -413,7 +420,6 @@ class DistributedCollectiveAllReduceStrategyTest(
         num_gpus=num_gpus,
         use_core_strategy=use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(yuefengz): Update how we use num_gpus and required_gpus
   @combinations.generate(
       combinations.combine(
@@ -422,8 +428,7 @@ class DistributedCollectiveAllReduceStrategyTest(
           required_gpus=1,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def DISABLED_testMakeInputFnIterator(self, num_gpus, use_dataset,
-                                       use_core_strategy):
+  def testMakeInputFnIterator(self, num_gpus, use_dataset, use_core_strategy):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -450,6 +455,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(
@@ -576,7 +582,7 @@ class LocalCollectiveAllReduceStrategy(
           required_gpus=2,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def DISABLED_testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
@@ -599,6 +605,7 @@ class LocalCollectiveAllReduceStrategy(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(

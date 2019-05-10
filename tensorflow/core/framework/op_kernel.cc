@@ -702,9 +702,10 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  AllocationAttributes logged_attr(allocation_attr);
-  logged_attr.allocation_will_be_logged = true;
-  Tensor new_tensor(a, type, shape, logged_attr);
+  Tensor new_tensor(a, type, shape,
+                    AllocationAttributes(allocation_attr.no_retry_on_failure,
+                                         /* allocation_will_be_logged= */ true,
+                                         allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -750,6 +751,9 @@ Status OpKernelContext::allocate_temp(
       int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
+  } else if (record_memory_consumption_) {
+    mutex_lock l(stats_mu_);
+    temp_memory_allocated_ += out_temp->TotalBytes();
   }
   return s;
 }
@@ -774,6 +778,10 @@ Status OpKernelContext::allocate_persistent(DataType type,
         int64 alloc_id = a->AllocationId(t->tensor_data().data());
         record_persistent_memory_allocation(alloc_size, alloc_id);
       }
+    } else if (record_memory_consumption_) {
+      mutex_lock l(stats_mu_);
+      persistent_memory_allocated_ +=
+          out_persistent->AccessTensor(this)->TotalBytes();
     }
   }
   return s;
@@ -1124,28 +1132,31 @@ namespace {
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
-Status FindKernelRegistration(const DeviceType& device_type,
-                              const NodeDef& node_def,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
+Status FindKernelRegistration(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, AttrSlice node_attrs, const KernelRegistration** reg,
+    bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
   // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_def, kKernelAttr);
+  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
 
-  const string key = Key(node_def.op(), device_type, label);
+  const string key = Key(node_op, device_type, label);
   auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            FormatNodeDefForError(node_def), "': '",
-            ProtoShortDebugString((*reg)->def), "' and '",
+            FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                  experimental_debug_info),
+            "': '", ProtoShortDebugString((*reg)->def), "' and '",
             ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
@@ -1154,6 +1165,16 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
+}
+
+Status FindKernelRegistration(const DeviceType& device_type,
+                              const NodeDef& node_def,
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
+  return FindKernelRegistration(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(),
+      AttrSlice(&node_def.attr()), reg, was_attr_mismatch);
 }
 
 }  // namespace
@@ -1168,29 +1189,44 @@ bool KernelDefAvailable(const DeviceType& device_type,
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
-Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name) {
+Status FindKernelDef(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
+    const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
-  TF_RETURN_IF_ERROR(
-      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch));
+  TF_RETURN_IF_ERROR(FindKernelRegistration(
+      device_type, node_name, has_experimental_debug_info,
+      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
     Status s = errors::NotFound(
-        "No registered '", node_def.op(), "' OpKernel for ",
+        "No registered '", node_op, "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
-        FormatNodeDefForError(node_def));
+        FormatNodeDefForError(node_name, has_experimental_debug_info,
+                              experimental_debug_info));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
-          "Requested Attributes: ", SummarizeAttrs(node_def));
+          "Requested Attributes: ",
+          SummarizeAttrsHelper(node_attrs, node_device));
     }
-    errors::AppendToMessage(
-        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(&s,
+                            ".  Registered:", KernelsRegisteredForOp(node_op));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
   return Status::OK();
+}
+
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
+                     const KernelDef** def, string* kernel_class_name) {
+  return FindKernelDef(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(), node_def.device(),
+      AttrSlice(&node_def.attr()), def, kernel_class_name);
 }
 
 Status SupportedDeviceTypesForNode(

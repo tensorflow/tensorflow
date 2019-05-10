@@ -34,7 +34,7 @@ def parse_example_dataset(features, num_parallel_calls=1):
   and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
   `SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
   and `SparseFeature` is mapped to a `SparseTensor`, and each
-  `FixedLenFeature` is mapped to a `Tensor`. See `tf.parse_example` for more
+  `FixedLenFeature` is mapped to a `Tensor`. See `tf.io.parse_example` for more
   details about feature dictionaries.
 
   Args:

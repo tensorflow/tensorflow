@@ -20,12 +20,8 @@ package(
     ],
 )
 
-# NB! Removing the cc_header_only_library import breaks the OSS build since
-# copybara injects some build rules that use it.
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
@@ -212,6 +208,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:optional_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -265,7 +262,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -273,6 +269,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -519,8 +516,9 @@ cc_library(
         "partially_decluster_pass.h",
     ],
     deps = [
+        "compilability_check_util",
         ":common",
-        ":device_info_cache",
+        ":device_util",
         ":encapsulate_util",
         ":flags",
         ":resource_operation_safety_analysis",
@@ -582,21 +580,35 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
-    name = "device_info_cache",
-    srcs = ["device_info_cache.cc"],
-    hdrs = ["device_info_cache.h"],
+    name = "device_util",
+    srcs = ["device_util.cc"],
+    hdrs = ["device_util.h"],
     deps = [
-        ":xla_cluster_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "device_util_test",
+    srcs = ["device_util_test.cc"],
+    deps = [
+        ":device_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -764,6 +776,34 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/core:ops",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "compilability_check_util",
+    srcs = ["compilability_check_util.cc"],
+    hdrs = ["compilability_check_util.h"],
+    deps = [
+        ":common",
+        ":device_util",
+        ":flags",
+        ":resource_operation_safety_analysis",
+        ":union_find",
+        ":xla_cluster_util",
+        "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

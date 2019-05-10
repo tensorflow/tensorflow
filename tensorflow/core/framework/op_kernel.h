@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-
 #include <utility>
 #include <vector>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/rendezvous.h"
@@ -1225,6 +1226,8 @@ class OpKernelContext {
 
   bool input_is_ref(int index) const;
 
+  void set_record_memory_consumption(bool v) { record_memory_consumption_ = v; }
+
   // Used by OpKernel implementations to track actively running deferred ops.
   //
   // A deferred op is one whose Compute method returns (or whose ComputeAsync
@@ -1245,6 +1248,7 @@ class OpKernelContext {
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);
+  bool record_memory_consumption_ = false;
 
   // Internal method to add a tensor's buffer to the list of buffers
   // referenced during the execution of the Op, so that GPUs may
@@ -1432,6 +1436,17 @@ class Name : public KernelDefBuilder {
 
 // Checks whether a given kernel is registered on device_type.
 bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
+
+// If node of node_name, experimental_debug_info, node_op, node_device and
+// node_attrs has a corresponding kernel registered on device_type, returns OK
+// and fill in the kernel def and kernel_class_name. <def> and
+// <kernel_class_name> may be null.
+Status FindKernelDef(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
+    const KernelDef** def, string* kernel_class_name);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and

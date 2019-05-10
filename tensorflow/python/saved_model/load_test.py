@@ -37,6 +37,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
@@ -1295,6 +1297,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
 
+  def test_partial_bind_only_first_argument(self, cycles):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3. Only then we get some more "
+                    "advanced inspection of partials where this is allowed.")
+
+    def f(x, y):
+      return x + y
+
+    partial_func = functools.partial(f, x=5)
+    tf_func = def_function.function(partial_func)
+
+    root = tracking.AutoTrackable()
+    root.f = tf_func
+    self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(y=constant_op.constant(9)), 14)
+
   def test_partial_with_passed_fn_as_default(self, cycles):
 
     def f(x, y):
@@ -1311,6 +1331,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = self.cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
+
+  def test_partial_with_input_signature(self, cycles):
+
+    def full_function(a, b, c=3.0):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=4)
+    self.assertAllEqual((1, 2.0, 4), partial(2.0))
+
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
+    func = def_function.function(partial, input_signature=signature)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    a, b, c = root.f(2.0)
+    self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 2.0, 4))
+
+    root = self.cycle(root, cycles)
+    a, b, c = root.f(3.0)
+    self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 3.0, 4))
 
   def test_convert_to_input_signature(self, cycles):
 
@@ -1450,6 +1490,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         3 * (1 + 4 + 9 + 16),
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1457,7 +1498,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     model = sequential.Sequential([layer])
     model_input = {"x": constant_op.constant([[1.]]),
                    "y": constant_op.constant([[2.]])}
-    self.assertAllClose([[1., 2.]], model.predict(model_input))
+    self.assertAllClose([[1., 2.]], model.predict(model_input, steps=1))
     loaded = self.cycle(model, cycles)
     output, = loaded._default_save_signature(model_input).values()
     self.assertAllClose([[1., 2.]], output)
@@ -1477,6 +1518,32 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
 
+  def test_multi_output_layer(self, cycles):
+
+    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(base_layer.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name="out")(inp)
+    model = training_lib.Model(inp, out)
+    loaded = self.cycle(model, cycles)
+    self.assertAllClose(
+        dict(out=2., out_1=3.),
+        loaded.signatures["serving_default"](constant_op.constant(1.)))
+
+  def test_tuple_signature(self, cycles):
+    root = util.Checkpoint()
+    root.f = def_function.function(
+        lambda: (array_ops.ones([]), array_ops.zeros([])),
+        input_signature=())
+    for _ in range(cycles):
+      root = self.cycle(root, 1, signatures=root.f)
+    self.assertEqual(({"output_0": 1., "output_1": 0.}),
+                     self.evaluate(root.signatures["serving_default"]()))
+
   def test_model_with_custom_function_attached(self, cycles):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
 
@@ -1491,6 +1558,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         original,
         root.model.traced_call(array_ops.zeros([1, 1])).numpy())
+
+  def test_version_info(self, cycles):
+    root = util.Checkpoint()
+    root = self.cycle(root, cycles)
+    self.assertEqual(versions.__version__, root.tensorflow_version)
+    self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)

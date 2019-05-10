@@ -195,11 +195,15 @@ class Generator(tracking.AutoTrackable):
                                        dtype=SEED_TYPE)
       else:
         state = create_rng_state(seed, algorithm)
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = algorithm
     else:
       assert seed is None
-      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(copy_from.state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = copy_from.algorithm
 
   def reset(self, seed):
@@ -224,6 +228,40 @@ class Generator(tracking.AutoTrackable):
   def _standard_normal(self, shape, dtype):
     return gen_stateful_random_ops.stateful_standard_normal_v2(
         self.state.handle, self.algorithm, shape, dtype=dtype)
+
+  @property
+  def key(self):
+    """The 'key' part of the state of a counter-based RNG.
+
+    For a counter-base RNG algorithm such as Philox and ThreeFry (as
+    described in paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
+    (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)),
+    the RNG state consists of two parts: counter and key. The output is
+    generated via the formula: output=hash(key, counter), i.e. a hashing of
+    the counter parametrized by the key. Two RNGs with two different keys can
+    be thought as generating two independent random-number streams (a stream
+    is formed by increasing the counter).
+
+    Returns:
+      A scalar which is the 'key' part of the state, if the RNG algorithm is
+        counter-based; otherwise it raises a ValueError.
+    """
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      return self._state_var[-1]
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
+
+  def skip(self, delta):
+    """Advance the counter of a counter-based RNG.
+
+    Args:
+      delta: the amount of advancement. The state of the RNG after
+        `skip(n)` will be the same as that after `normal([n])`
+        (or any other distribution). The actual increment added to the
+        counter is an unspecified implementation detail.
+    """
+    gen_stateful_random_ops.rng_skip(self.state.handle, self.algorithm, delta)
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.

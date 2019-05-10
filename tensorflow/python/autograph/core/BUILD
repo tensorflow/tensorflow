@@ -19,7 +19,6 @@ py_library(
     srcs = [
         "config.py",
         "converter.py",
-        "errors.py",
         "function_wrapping.py",
         "naming.py",
         "unsupported_features_checker.py",
@@ -56,7 +55,6 @@ py_library(
 py_test(
     name = "converter_test",
     srcs = ["converter_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -66,25 +64,8 @@ py_test(
 )
 
 py_test(
-    name = "errors_test",
-    srcs = ["errors_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":core",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-py_test(
     name = "function_wrapping_test",
     srcs = ["function_wrapping_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -95,7 +76,6 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

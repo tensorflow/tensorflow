@@ -115,7 +115,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(skyewm): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -479,7 +479,7 @@ def _make_inputs_match(true_graph, false_graph, true_inputs, false_inputs):
 
 
 def _make_output_composite_tensors_match(true_graph, false_graph):
-  """Rewrites {true,false}_graph's outputs to use the same _TensorLike classes.
+  """Modifies true_graph and false_graph so they have the same output signature.
 
   Currently the only transformation implemented is turning a Tensor into an
   equivalent IndexedSlices if the other branch returns an IndexedSlices.
@@ -656,7 +656,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         tensor in self._forward_graph.outputs):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
       if tensor not in self.captures:

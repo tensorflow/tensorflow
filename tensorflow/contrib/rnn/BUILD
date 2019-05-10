@@ -99,6 +99,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["optonly"],
     xla_enabled = True,
 )
 

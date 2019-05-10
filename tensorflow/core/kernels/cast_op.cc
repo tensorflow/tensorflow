@@ -168,7 +168,8 @@ Status CpuCastOp::Prepare() {
   return work_ == nullptr ? Unimplemented() : Status::OK();
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 class GpuCastOp : public CastOpBase {
  public:
   explicit GpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
@@ -222,7 +223,8 @@ class GpuCastOp : public CastOpBase {
 
 REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_CAST_GPU(srctype, dsttype)                    \
   REGISTER_KERNEL_BUILDER(Name("Cast")                         \
                               .TypeConstraint<srctype>("SrcT") \

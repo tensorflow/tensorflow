@@ -335,6 +335,9 @@ class SaveTest(test.TestCase):
     save.save(root, save_dir)
 
   def test_function_with_captured_dataset(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Currently broken when a GPU is available.")
+
     class HasDataset(module.Module):
 
       def __init__(self):

@@ -88,16 +88,6 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const string& prefix) const;
 
-  // Returns a step ID for use when running an `InstantiatedCapturedFunction`.
-  static int64 generate_step_id() {
-    // Choose a step ID that is guaranteed not to clash with any
-    // Session-generated step ID. DirectSession only generates
-    // non-negative step IDs (contiguous, starting from 0), and
-    // MasterSession generates 56-bit random step IDs whose MSB is
-    // always 0, so a negative random step ID should suffice.
-    return -std::abs(static_cast<int64>(random::New64()));
-  }
-
  private:
   InstantiatedCapturedFunction(
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,

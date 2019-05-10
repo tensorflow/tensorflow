@@ -66,7 +66,7 @@ class _Loader(object):
     self._restore_checkpoint()
 
     for node in self._nodes:
-      if isinstance(node, tracking.TrackableResource):
+      if isinstance(node, tracking.CapturableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
         if not context.executing_eagerly():
           ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
@@ -122,8 +122,8 @@ class _Loader(object):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
-      elif isinstance(obj, tracking.TrackableResource):
-        # Note: this executes restored functions in the TrackableResource.
+      elif isinstance(obj, tracking.CapturableResource):
+        # Note: this executes restored functions in the CapturableResource.
         return obj.resource_handle
       raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
@@ -344,6 +344,27 @@ def load(export_dir, tags=None):
   assert 6. == imported.f(x=tf.constant(2.)).numpy()
   ```
 
+  _Importing SavedModels from TensorFlow 1.x_
+
+  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
+  graph instead of `tf.function` objects. These SavedModels will have functions
+  corresponding to their signatures in the `.signatures` attribute, but also
+  have a `.prune` method which allows you to extract functions for new
+  subgraphs. This is equivalent to importing the SavedModel and naming feeds and
+  fetches in a Session from TensorFlow 1.x.
+
+  ```python
+  imported = tf.saved_model.load(path_to_v1_saved_model)
+  pruned = imported.prune("x:0", "out:0")
+  pruned(tf.ones([]))
+  ```
+
+  See `tf.compat.v1.wrap_function` for details. These SavedModels also have a
+  `.variables` attribute containing imported variables, and a `.graph` attribute
+  representing the whole imported graph. For SavedModels exported from
+  `tf.saved_model.save`, variables are instead assigned to whichever attributes
+  they were assigned before export.
+
   Args:
     export_dir: The SavedModel directory to load from.
     tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
@@ -380,6 +401,9 @@ def load(export_dir, tags=None):
                        saved_model_proto,
                        export_dir)
       root = loader.get(0)
+    root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
+    root.tensorflow_git_version = (
+        meta_graph_def.meta_info_def.tensorflow_git_version)
   else:
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)

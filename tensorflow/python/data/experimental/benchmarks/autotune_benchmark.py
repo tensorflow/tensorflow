@@ -22,7 +22,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import math_ops
@@ -78,13 +77,12 @@ class AutotuneBenchmark(test.Benchmark):
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
-    dataset = dataset.apply(
-        batching.map_and_batch(
-            math_ops.matmul,
-            num_parallel_calls=optimization.AUTOTUNE,
-            batch_size=batch_size))
+    dataset = dataset.map(
+        math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.batch(batch_size=batch_size)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.autotune = autotune
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)

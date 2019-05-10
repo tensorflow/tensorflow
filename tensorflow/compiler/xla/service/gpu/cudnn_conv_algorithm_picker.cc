@@ -256,9 +256,9 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const auto device_ordinal = stream_exec_->device_ordinal();
 
   // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  optional<StreamExecutorMemoryAllocator> se_allocator;
+  // se::StreamExecutorMemoryAllocator for stream_exec_.
+  se::DeviceMemoryAllocator* allocator;
+  optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
@@ -306,8 +306,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
   };
 
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator);
+  RedzoneAllocator input_output_allocator(device_ordinal, allocator,
+                                          hlo_module_config);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -346,7 +349,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator);
+    RedzoneAllocator scratch_allocator(device_ordinal, allocator,
+                                       hlo_module_config);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -388,7 +392,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, allocator, reference_result_buffer, result_buffer);
+          &stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
@@ -416,21 +420,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       }
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
-      auto comp =
-          BufferComparator::Create(result_shape, stream.parent(), compiler_);
-      if (comp.ok()) {
-        comparator.emplace(comp.ConsumeValueOrDie());
-        reference_result_buffer = result_buffer;
-        TF_ASSIGN_OR_RETURN(result_buffer,
-                            input_output_allocator.AllocateBytes(
-                                &stream, reference_result_buffer.size()));
-        initialize_buffer(result_buffer);
-        first_algorithm = alg;
-      } else {
-        LOG(ERROR) << "Fail to initialize buffer comparator: " << comp.status()
-                   << ", instruction: " << instr->ToString();
-        CHECK(!crash_on_checking_failure);
-      }
+      comparator.emplace(result_shape, hlo_module_config);
+      reference_result_buffer = result_buffer;
+      TF_ASSIGN_OR_RETURN(result_buffer,
+                          input_output_allocator.AllocateBytes(
+                              &stream, reference_result_buffer.size()));
+      initialize_buffer(result_buffer);
+      first_algorithm = alg;
     }
   }
 

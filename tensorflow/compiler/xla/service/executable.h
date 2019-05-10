@@ -24,13 +24,11 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -40,6 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 
@@ -47,13 +47,13 @@ namespace xla {
 // leftover buffers to be released by the caller.
 struct ExecutionOutput {
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<OwningDeviceMemory> to_be_released)
+                  std::vector<se::OwningDeviceMemory> to_be_released)
       : result(std::move(result)), to_be_released(std::move(to_be_released)) {}
   ScopedShapedBuffer result;
 
   // Leftover buffers for the caller to release. Elements in this list are
   // donated input memory buffers that are not reused by XLA as outputs.
-  std::vector<OwningDeviceMemory> to_be_released;
+  std::vector<se::OwningDeviceMemory> to_be_released;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform

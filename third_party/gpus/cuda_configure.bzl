@@ -335,10 +335,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
     return "\n".join(inc_entries)
 
 def enable_cuda(repository_ctx):
-    if "TF_NEED_CUDA" in repository_ctx.os.environ:
-        enable_cuda = repository_ctx.os.environ["TF_NEED_CUDA"].strip()
-        return enable_cuda == "1"
-    return False
+    """Returns whether to build with CUDA support."""
+    return int(repository_ctx.os.environ.get("TF_NEED_CUDA", False))
 
 def matches_version(environ_version, detected_version):
     """Checks whether the user-specified version matches the detected version.
@@ -691,13 +689,16 @@ def _get_cuda_config(repository_ctx):
 
     is_windows = _is_windows(repository_ctx)
     cuda_version = config["cuda_version"].split(".")
-    cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_version[0], cuda_version[1])
+    cuda_major = cuda_version[0]
+    cuda_minor = cuda_version[1]
+
+    cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_major, cuda_minor)
     cudnn_version = ("64_%s" if is_windows else "%s") % config["cudnn_version"]
 
     # cuda_lib_version is for libraries like cuBLAS, cuFFT, cuSOLVER, etc.
     # It changed from 'x.y' to just 'x' in CUDA 10.1.
-    if (int(cuda_version[0]), int(cuda_version[1])) >= (10, 1):
-        cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_version[0]
+    if (int(cuda_major), int(cuda_minor)) >= (10, 1):
+        cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
     else:
         cuda_lib_version = cuda_version
 
@@ -982,8 +983,9 @@ def _create_local_cuda_repository(repository_ctx):
             out_dir = "cuda/extras/CUPTI/include",
         ),
     ]
+    included_files = _read_dir(repository_ctx, cuda_include_path)
 
-    if cublas_include_path != cuda_include_path:
+    if not any([file.endswith("cublas.h") for file in included_files]):
         copy_rules.append(make_copy_files_rule(
             repository_ctx,
             name = "cublas-include",
@@ -1022,7 +1024,6 @@ def _create_local_cuda_repository(repository_ctx):
     ))
 
     # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
-    included_files = _read_dir(repository_ctx, cuda_include_path)
     if not any([file.endswith("cudnn.h") for file in included_files]):
         copy_rules.append(make_copy_files_rule(
             repository_ctx,

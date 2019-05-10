@@ -2153,6 +2153,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kCeil:
+    case OperatorType::kRound:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kCos:
@@ -2419,6 +2420,10 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kMatrixSetDiag:
       ProcessMatrixSetDiagOperator(model,
                                    static_cast<MatrixSetDiagOperator*>(op));
+      break;
+    case OperatorType::kCTCBeamSearchDecoder:
+      // The sizes of the outputs are only known in runtime based on the input.
+      // Ignore shape progapation here and defer that to the interpreter.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

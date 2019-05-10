@@ -198,8 +198,10 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
-    with self.assertRaises(RuntimeError):
-      context.set_log_device_placement(False)
+
+    # If the setting the device placement is a no-op, do not throw a runtime
+    # exception.
+    context.set_log_device_placement(False)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -492,6 +494,19 @@ class DeviceTest(test.TestCase):
     gpus = config.list_logical_devices('GPU')
     for gpu in gpus:
       self.assertIsNotNone(gpu.name)
+
+  @reset_eager
+  def testV1CompatibilityDummyInivisibleDeviceList(self):
+    gpus = config.list_physical_devices('GPU')
+    if gpus:
+      self.skipTest('Test requires no GPUs')
+
+    # Ensure GPU options left untouched on CPU only environments
+    context.context()._physical_devices = None
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list='0'))
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list, '0')
 
   @test_util.run_gpu_only
   @reset_eager
