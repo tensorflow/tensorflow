@@ -112,6 +112,7 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
     self._optimizer = opt
     self._loss_scale = loss_scale_module.get(loss_scale)
+    self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
