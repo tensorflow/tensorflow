@@ -262,7 +262,7 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
                           float* packed_ptr, int start_col, int end_col);
 
 template <>
-struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 4, 8>, float,
+struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
                 float, float> {
   static void Run(Tuning tuning, const Matrix<float>& src_matrix,
                   PackedMatrix<float>* packed_matrix, int start_col,
