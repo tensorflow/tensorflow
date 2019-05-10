@@ -63,16 +63,10 @@ class XrtBackend(xla_client.Backend):
     return self.context.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.xrt.XrtBuffer.FromLiteral(self.context, device, pyval)
-
-  def delete_buffer(self, c_buffer):
-    c_buffer.Delete()
-
-  def destructure_tuple(self, c_buffer):
-    return c_buffer.DestructureTuple()
+    return _xla.xrt.XrtBuffer.from_literal(self.context, device, pyval)
 
   def make_tuple(self, buffers, device_ordinal):
-    return _xla.xrt.XrtBuffer.MakeTuple(self.context, buffers)
+    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers)
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access

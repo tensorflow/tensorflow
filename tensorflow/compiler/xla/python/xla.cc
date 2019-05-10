@@ -280,13 +280,17 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
-      .def_static("FromPython", &PyLocalBuffer::FromPython)
-      .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
-      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
-      .def("Delete", &PyLocalBuffer::Delete)
-      .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
-      .def("ToPython", &PyLocalBuffer::ToPython)
-      .def("shape", &PyLocalBuffer::on_host_shape);
+      .def_static("from_python", &PyLocalBuffer::FromPython)
+      .def_static("from_python_values", &PyLocalBuffer::FromPythonValues)
+      .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def("delete", &PyLocalBuffer::Delete)
+      .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("to_py", &PyLocalBuffer::ToPython)
+      .def("shape", &PyLocalBuffer::on_host_shape)
+      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("is_deleted", [](const PyLocalBuffer& buffer) {
+        return buffer.device_buffer() == nullptr;
+      });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,

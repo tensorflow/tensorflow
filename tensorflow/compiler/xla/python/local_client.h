@@ -229,6 +229,7 @@ class PyLocalBuffer {
   const std::shared_ptr<PySharedDeviceBuffer>& device_buffer() const {
     return device_buffer_;
   }
+  int device_ordinal() const { return device_buffer_->device_ordinal(); }
 
   void Delete() {
     device_buffer_ = nullptr;

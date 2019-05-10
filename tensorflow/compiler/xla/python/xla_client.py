@@ -71,16 +71,8 @@ class Backend(object):
     ]
 
   @abc.abstractmethod
-  def delete_buffer(self, c_buffer):
-    """Deletes buffer `c_buffer`."""
-
-  @abc.abstractmethod
   def make_tuple(self, c_buffers, device_ordinal):
     """Makes a tuple from a sequence of backend buffer objects."""
-
-  @abc.abstractmethod
-  def destructure_tuple(self, c_buffer):
-    """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
   def compile(self, computation, compile_options):
@@ -116,19 +108,14 @@ class LocalBackend(Backend):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.PyLocalBuffer.FromPython(pyval, self.client, device)
+    return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
   def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.PyLocalBuffer.FromPythonValues(pyvals_and_devices, self.client)
-
-  def delete_buffer(self, c_buffer):
-    c_buffer.Delete()
+    return _xla.PyLocalBuffer.from_python_values(pyvals_and_devices,
+                                                 self.client)
 
   def make_tuple(self, c_buffers, device_ordinal):
-    return _xla.PyLocalBuffer.MakeTuple(c_buffers, self.client, device_ordinal)
-
-  def destructure_tuple(self, c_buffer):
-    return c_buffer.DestructureTuple()
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -366,18 +353,12 @@ class Buffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_buffer, backend, device):
-    self.c_buffer = c_buffer
-    self._backend = backend
-    self._device = device
-
   @staticmethod
   def from_pyval(pyval, device=0, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
     pyval = require_numpy_array_layout(pyval)
-    cbuf = backend.buffer_from_pyval(pyval, device)
-    return Buffer(cbuf, backend, device)
+    return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
   def from_pyvals(pyvals_and_devices, backend=None):
@@ -395,43 +376,25 @@ class Buffer(object):
     backend = backend or get_local_backend()
     pyvals_and_devices = [(require_numpy_array_layout(pyval), device)
                           for pyval, device in pyvals_and_devices]
-    cbufs = backend.buffers_from_pyvals(pyvals_and_devices)
-    return [
-        Buffer(cbuf, backend, device)
-        for cbuf, (_, device) in zip(cbufs, pyvals_and_devices)
-    ]
+    return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
   def make_tuple(buffers, backend=None, device=0):
     backend = backend or get_local_backend()
-    buf = backend.make_tuple([b.c_buffer for b in buffers],
-                             device_ordinal=device)
-    return Buffer(buf, backend, device)
+    return backend.make_tuple(buffers, device_ordinal=device)
 
-  def to_py(self):
-    return self.c_buffer.ToPython()
-
-  def shape(self):
-    return self.c_buffer.shape()
-
-  def device(self):
-    return self._device
-
-  def delete(self):
-    if self.c_buffer is not None:
-      self._backend.delete_buffer(self.c_buffer)
-      self.c_buffer = None
-
-  def destructure(self):
-    """Assuming a tuple buffer, unpack it into constituent tuple elements."""
-    assert self.c_buffer is not None
-    result = self._backend.destructure_tuple(self.c_buffer)
-    return tuple(
-        Buffer(sub_buffer, device=self._device, backend=self._backend)
-        for sub_buffer in result)
-
-  def is_deleted(self):
-    return self.c_buffer is None
+  # Buffer is not an instantiable type and exists only for its static methods.
+  # The underlying buffer objects are C++ object with the following
+  # API:
+  # def to_py(self):
+  # def shape(self) -> Shape:
+  # def device(self) -> int:
+  # def delete(self):
+  # def destructure(self) -> [Buffer]
+  # def is_deleted(self) -> bool:
+  #
+  # TODO(phawkins): remove Buffer and its static methods completely, have
+  # clients call methods on Backend to create buffers.
 
 
 # TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
@@ -596,14 +559,12 @@ class Executable(object):
     """Returns a list containing the device ordinals for each replica."""
     return self._device_ordinals
 
-  def Execute(self, arguments=(), check_for_deleted_args=True):
+  def Execute(self, arguments=None, check_for_deleted_args=True):
     """Execute on one replica with Buffer arguments and return value."""
+    arguments = arguments or []
     if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
-    raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._backend.execute(self._c_executable, raw_args)
-    return Buffer(
-        output_buffer, backend=self._backend, device=self._device_ordinals[0])
+    return self._backend.execute(self._c_executable, arguments)
 
   def ExecutePerReplica(self, arguments=None):
     """Execute on many replicas with Buffer arguments and return value.
@@ -632,23 +593,8 @@ class Executable(object):
               'Executing on device {} with argument from device {}'.format(
                   self._device_ordinals[replica], arg.device()))
 
-    # Pull out argument buffer handles
-    # pylint: disable=g-complex-comprehension
-    stripped_args = [
-        [arg.c_buffer for arg in replica_args] for replica_args in arguments
-    ]
-
     # Execute
-    output_buffers = self._backend.execute_replicated(self._c_executable,
-                                                      stripped_args)
-
-    # Wrap output handles in Buffer instances
-    return tuple(
-        Buffer(
-            output_buffer,
-            backend=self._backend,
-            device=self._device_ordinals[replica])
-        for replica, output_buffer in enumerate(output_buffers))
+    return self._backend.execute_replicated(self._c_executable, arguments)
 
   def ExecuteWithPythonValues(self, arguments=()):
     """Execute on one replica with Python values as arguments and output."""
