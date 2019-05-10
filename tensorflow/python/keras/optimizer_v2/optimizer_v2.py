@@ -625,8 +625,7 @@ class OptimizerV2(trackable.Trackable):
     """Get decayed learning rate as a Tensor with dtype=var_dtype."""
     lr_t = self._get_hyper("learning_rate", var_dtype)
     if isinstance(lr_t, learning_rate_schedule.LearningRateSchedule):
-      local_step = math_ops.cast(self.iterations, var_dtype)
-      lr_t = math_ops.cast(lr_t(local_step), var_dtype)
+      lr_t = math_ops.cast(lr_t(self.iterations), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
       decay_t = self._get_hyper("decay", var_dtype)
