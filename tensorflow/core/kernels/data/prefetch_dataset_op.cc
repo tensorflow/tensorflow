@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -105,6 +106,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         cancelled_ = true;
         cond_var_.notify_all();
       }
+    }
+
+    string BuildTraceMeName() override {
+      int64 buffer_limit;
+      {
+        tf_shared_lock l(mu_);
+        buffer_limit = auto_tuner_.buffer_limit();
+      }
+      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {

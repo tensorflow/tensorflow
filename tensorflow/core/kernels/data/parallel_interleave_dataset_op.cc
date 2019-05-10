@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -208,6 +210,15 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         while (current_num_calls_ > 0 || future_num_calls_ > 0) {
           cond_var_->wait(l);
         }
+      }
+
+      string BuildTraceMeName() override {
+        int64 parallelism;
+        {
+          tf_shared_lock l(*mu_);
+          parallelism = num_parallel_calls_->value;
+        }
+        return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
       }
 
       Status Initialize(IteratorContext* ctx) override {
