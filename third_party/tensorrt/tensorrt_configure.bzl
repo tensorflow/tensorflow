@@ -28,14 +28,16 @@ _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
 _DEFINE_TENSORRT_SONAME_PATCH = "#define NV_TENSORRT_SONAME_PATCH"
 
 def _at_least_version(actual_version, required_version):
-  actual = [int(v) for v in actual_version.split(".")]
-  required = [int(v) for v in required_version.split(".")]
-  return actual >= required
+    actual = [int(v) for v in actual_version.split(".")]
+    required = [int(v) for v in required_version.split(".")]
+    return actual >= required
 
 def _update_tensorrt_headers(tensorrt_version):
     if not _at_least_version(tensorrt_version, "6"):
         return
-    _TF_TENSORRT_HEADERS = ["NvInferVersion.h", "NvInfer.h", "NvUtils.h", "NvInferPlugin.h", "NvInferRTSafe.h", "NvInferRTExt.h", "NvInferPluginUtils.h"]
+    _TF_TENSORRT_HEADERS = ["NvInferVersion.h", "NvInfer.h", "NvUtils.h",
+                            "NvInferPlugin.h", "NvInferRTSafe.h",
+                            "NvInferRTExt.h", "NvInferPluginUtils.h"]
 
 def _tpl(repository_ctx, tpl, substitutions):
     repository_ctx.template(
