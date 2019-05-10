@@ -251,8 +251,7 @@ void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
 
   // If this is an ModuleToFunctionPassAdaptorParallel, then we need to merge in
   // the timing data for the other threads.
-  if (auto *asyncMTFPass =
-          dyn_cast<ModuleToFunctionPassAdaptorParallel>(pass)) {
+  if (isa<ModuleToFunctionPassAdaptorParallel>(pass)) {
     // The asychronous pipeline timers should exist as children of root timers
     // for other threads.
     for (auto &rootTimer : llvm::make_early_inc_range(rootTimers)) {

@@ -281,9 +281,9 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
     }
 
     // Next handle DAG leaf: operand or attribute
-    if (auto *operand = opArg.dyn_cast<NamedTypeConstraint *>()) {
+    if (opArg.is<NamedTypeConstraint *>()) {
       emitOperandMatch(tree, i, depth, indent);
-    } else if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
+    } else if (opArg.is<NamedAttribute *>()) {
       emitAttributeMatch(tree, i, depth, indent);
     } else {
       PrintFatalError(loc, "unhandled case when matching op");
