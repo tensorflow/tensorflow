@@ -599,8 +599,6 @@ namespace {
 struct Vectorize : public FunctionPass<Vectorize> {
   Vectorize();
   Vectorize(ArrayRef<int64_t> virtualVectorSize);
-  Vectorize(ArrayRef<int64_t> virtualVectorSize,
-            ArrayRef<int64_t> fastestVaryingPattern);
   void runOnFunction() override;
 
   // The virtual vector size that we vectorize to.
@@ -625,15 +623,6 @@ Vectorize::Vectorize(ArrayRef<int64_t> virtualVectorSize) : Vectorize() {
   if (!virtualVectorSize.empty()) {
     this->vectorSizes.assign(virtualVectorSize.begin(),
                              virtualVectorSize.end());
-  }
-}
-
-Vectorize::Vectorize(ArrayRef<int64_t> virtualVectorSize,
-                     ArrayRef<int64_t> fastestVaryingPattern)
-    : Vectorize(virtualVectorSize) {
-  if (!fastestVaryingPattern.empty()) {
-    this->fastestVaryingPattern.assign(fastestVaryingPattern.begin(),
-                                       fastestVaryingPattern.end());
   }
 }
 
