@@ -481,6 +481,7 @@ class CheckpointManager(object):
   """Deletes old checkpoints.
 
   Example usage:
+
   ```python
   import tensorflow as tf
   checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
