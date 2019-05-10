@@ -63,8 +63,7 @@ void mlir::registerPassPipeline(StringRef arg, StringRef description,
 
 PassInfo::PassInfo(StringRef arg, StringRef description, const PassID *passID,
                    PassAllocatorFunction allocator)
-    : PassRegistryEntry(arg, description, buildDefaultRegistryFn(allocator)),
-      passID(passID) {}
+    : PassRegistryEntry(arg, description, buildDefaultRegistryFn(allocator)) {}
 
 void mlir::registerPass(StringRef arg, StringRef description,
                         const PassID *passID,

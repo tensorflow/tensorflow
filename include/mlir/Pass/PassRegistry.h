@@ -92,10 +92,6 @@ public:
   /// PassRegistration or registerPass.
   PassInfo(StringRef arg, StringRef description, const PassID *passID,
            PassAllocatorFunction allocator);
-
-private:
-  // Unique identifier for pass.
-  const PassID *passID;
 };
 
 /// Register a specific dialect pipeline registry function with the system,
