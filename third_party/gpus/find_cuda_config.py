@@ -451,7 +451,7 @@ def find_cuda_config():
 
     cuda_version = result["cuda_version"]
     cublas_paths = base_paths
-    if cuda_version.split(".") < (10, 1):
+    if tuple(int(v) for v in cuda_version.split(".")) < (10, 1):
       # Before CUDA 10.1, cuBLAS was in the same directory as the toolkit.
       cublas_paths = cuda_paths
     cublas_version = os.environ.get("TF_CUBLAS_VERSION", "")
