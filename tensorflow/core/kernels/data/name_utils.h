@@ -23,12 +23,12 @@ namespace tensorflow {
 namespace data {
 namespace name_utils {
 
+extern const char kPrefixDelimiter[];
+
 // Returns the dataset op name.
 //
 // e.g. OpName("Map") -> "MapDataset".
 string OpName(const string& dataset_type);
-
-namespace internal {
 
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
@@ -39,8 +39,6 @@ namespace internal {
 string DatasetDebugString(const string& dataset_type,
                           std::initializer_list<StringPiece> args);
 
-}  // namespace internal
-
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
@@ -48,7 +46,7 @@ string DatasetDebugString(const string& dataset_type,
 // DatasetDebugString("Range", 0, 10, 3) -> "RangeDatasetOp(0, 10, 3)::Dataset".
 template <typename... Args>
 string DatasetDebugString(const string& dataset_type, const Args&... args) {
-  return internal::DatasetDebugString(
+  return DatasetDebugString(
       dataset_type, {static_cast<const strings::AlphaNum&>(args).Piece()...});
 }
 

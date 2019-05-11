@@ -194,12 +194,14 @@ void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                         output_shapes_, preserve_cardinality_);
 }
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalMapDataset")
                             .Device(DEVICE_GPU)
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         MapDatasetOp);
+}  // namespace
 
 }  // namespace data
 }  // namespace tensorflow

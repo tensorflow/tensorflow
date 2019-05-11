@@ -145,7 +145,10 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   *output = new Dataset(ctx, start, stop, step);
 }
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("RangeDataset").Device(DEVICE_CPU),
                         RangeDatasetOp);
+}  // namespace
+
 }  // namespace data
 }  // namespace tensorflow

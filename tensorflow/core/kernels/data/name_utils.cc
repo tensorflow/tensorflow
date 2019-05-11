@@ -19,6 +19,8 @@ namespace tensorflow {
 namespace data {
 namespace name_utils {
 
+ABSL_CONST_INIT const char kPrefixDelimiter[] = "::";
+
 string OpName(const string& dataset_type) {
   if (dataset_type == "Map") {
     return "MapDataset";
@@ -27,11 +29,9 @@ string OpName(const string& dataset_type) {
   } else if (dataset_type == "Range") {
     return "RangeDataset";
   }
-  LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
-  return "Unknown dataset type";
+  LOG(WARNING) << "Unknown dataset type " << dataset_type << std::endl;
+  return "UnknownDataset";
 }
-
-namespace internal {
 
 string DatasetDebugString(const string& dataset_type,
                           std::initializer_list<StringPiece> args) {
@@ -50,10 +50,8 @@ string DatasetDebugString(const string& dataset_type,
   return debug_str;
 }
 
-}  // namespace internal
-
 string IteratorPrefix(const string& dataset_type, const string& prefix) {
-  return strings::StrCat(prefix, "::", dataset_type);
+  return strings::StrCat(prefix, kPrefixDelimiter, dataset_type);
 }
 
 }  // namespace name_utils

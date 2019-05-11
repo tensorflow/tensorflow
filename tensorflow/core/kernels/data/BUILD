@@ -30,6 +30,7 @@ cc_library(
         ":dataset_utils",
         ":iterator_ops",
         ":name_utils",
+        ":range_dataset_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
