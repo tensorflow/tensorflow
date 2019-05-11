@@ -49,9 +49,6 @@ message HloInstructionProto {
   reserved "called_computation_names";
   reserved 44;
   reserved "replica_group_ids";
-  // Use backend_config instead for custom_call_opaque.
-  reserved 53;
-  reserved "custom_call_opaque";
 
   string name = 1;
   string opcode = 2;
@@ -133,6 +130,9 @@ message HloInstructionProto {
   // Name of a external target (eg, global symbol) to call, only present for
   // kCustomCall.
   string custom_call_target = 28;
+
+  // Opaque string, only present for kCustomCall.
+  string custom_call_opaque = 53;
 
   // Shape of outfeed request.
   xla.ShapeProto outfeed_shape = 29;

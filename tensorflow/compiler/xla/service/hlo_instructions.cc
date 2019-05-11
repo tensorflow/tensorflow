@@ -2088,7 +2088,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
-  proto.set_backend_config(opaque_);
+  proto.set_custom_call_opaque(opaque_);
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
   if (layout_constrained()) {
