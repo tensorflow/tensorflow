@@ -29,7 +29,7 @@ limitations under the License.
 #include "third_party/cub/block/block_store.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
-#include "cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scan_ops.h"

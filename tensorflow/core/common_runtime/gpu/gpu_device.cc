@@ -78,7 +78,7 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA
-#include "cuda/cuda_config.h"
+#include "third_party/gpus/cuda/cuda_config.h"
 #endif
 #endif
 
