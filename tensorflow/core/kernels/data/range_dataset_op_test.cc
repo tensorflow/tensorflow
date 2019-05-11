@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
 namespace tensorflow {
@@ -219,7 +220,7 @@ TEST_F(RangeDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref(range_dataset);
 
   EXPECT_EQ(range_dataset->type_string(),
-            name_utils::OpName(name_utils::RANGE));
+            name_utils::OpName(RangeDatasetOp::kDatasetType));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
@@ -446,8 +447,9 @@ TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
                                            &iterator));
 
-  EXPECT_EQ(iterator->prefix(),
-            name_utils::IteratorPrefix(name_utils::RANGE, "Iterator"));
+  EXPECT_EQ(
+      iterator->prefix(),
+      name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedRangeDatasetOpTest, Roundtrip) {

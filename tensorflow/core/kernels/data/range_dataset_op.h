@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,36 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
 namespace data {
 
-class PrefetchDatasetOp : public UnaryDatasetOpKernel {
+class RangeDatasetOp : public DatasetOpKernel {
  public:
-  static constexpr char kDatasetType[] = "Prefetch";
+  static constexpr char kDatasetType[] = "Range";
 
-  explicit PrefetchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
-    if (ctx->HasAttr("slack_period")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("slack_period", &slack_period_));
-    }
-  }
+  explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
  protected:
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override;
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
   class Dataset;
-  int64 slack_period_ = 0;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_

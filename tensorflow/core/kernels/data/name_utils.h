@@ -23,47 +23,40 @@ namespace tensorflow {
 namespace data {
 namespace name_utils {
 
-enum DatasetType {
-  MAP = 0,
-  RANGE = 1,
-};
-
-// Returns the base name of the dataset.
-//
-// e.g. ToString(MAP) -> "map".
-string ToString(const DatasetType& dataset_type);
-
 // Returns the dataset op name.
 //
-// e.g. OpName(MAP) -> "MapDataset".
-string OpName(const DatasetType& dataset_type);
+// e.g. OpName("Map") -> "MapDataset".
+string OpName(const string& dataset_type);
+
+namespace internal {
 
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
-// e.g. DatasetDebugString(MAP, {}) -> "MapDatasetOp::Dataset";
-// DatasetDebugString(RANGE, {"0", "10", "3"}) ->
+// e.g. DatasetDebugString("Map", {}) -> "MapDatasetOp::Dataset";
+// DatasetDebugString("Range", {"0", "10", "3"}) ->
 // "RangeDatasetOp(0, 10, 3)::Dataset".
-string DatasetDebugString(const DatasetType& dataset_type,
+string DatasetDebugString(const string& dataset_type,
                           std::initializer_list<StringPiece> args);
 
+}  // namespace internal
+
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
-// e.g. DatasetDebugString(MAP) -> "MapDatasetOp::Dataset";
-// DatasetDebugString(RANGE, 0, 10, 3) -> "RangeDatasetOp(0, 10, 3)::Dataset".
+// e.g. DatasetDebugString("Map") -> "MapDatasetOp::Dataset";
+// DatasetDebugString("Range", 0, 10, 3) -> "RangeDatasetOp(0, 10, 3)::Dataset".
 template <typename... Args>
-string DatasetDebugString(const DatasetType& dataset_type,
-                          const Args&... args) {
-  return DatasetDebugString(
+string DatasetDebugString(const string& dataset_type, const Args&... args) {
+  return internal::DatasetDebugString(
       dataset_type, {static_cast<const strings::AlphaNum&>(args).Piece()...});
 }
 
 // Returns a string that identifies the sequence of iterators leading up to
 // the iterator of this dataset.
 //
-// e.g. IteratorPrefix(MAP, "Iterator::range") -> "Iterator::range::map".
-string IteratorPrefix(const DatasetType& dataset_type, const string& prefix);
+// e.g. IteratorPrefix("Map", "Iterator::range") -> "Iterator::Range::Map".
+string IteratorPrefix(const string& dataset_type, const string& prefix);
 
 }  // namespace name_utils
 }  // namespace data

@@ -19,38 +19,28 @@ namespace tensorflow {
 namespace data {
 namespace name_utils {
 
-string ToString(const DatasetType& dataset_type) {
-  switch (dataset_type) {
-    case MAP:
-      return "map";
-    case RANGE:
-      return "range";
-    default:
-      LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
+string OpName(const string& dataset_type) {
+  if (dataset_type == "Map") {
+    return "MapDataset";
+  } else if (dataset_type == "Prefetch") {
+    return "PrefetchDataset";
+  } else if (dataset_type == "Range") {
+    return "RangeDataset";
   }
+  LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
   return "Unknown dataset type";
 }
 
-string OpName(const DatasetType& dataset_type) {
-  switch (dataset_type) {
-    case MAP:
-      return "MapDataset";
-    case RANGE:
-      return "RangeDataset";
-    default:
-      LOG(FATAL) << "Unknown dataset type " << dataset_type << std::endl;
-  }
-  return "Unknown dataset type";
-}
+namespace internal {
 
-string DatasetDebugString(const DatasetType& dataset_type,
+string DatasetDebugString(const string& dataset_type,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(OpName(dataset_type), "Op::Dataset");
+    return strings::StrCat(dataset_type, "Op::Dataset");
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(");
+  strings::StrAppend(&debug_str, dataset_type, "Op(");
   auto iter = args.begin();
   while (iter != args.end() - 1) {
     strings::StrAppend(&debug_str, *iter, ", ");
@@ -60,8 +50,10 @@ string DatasetDebugString(const DatasetType& dataset_type,
   return debug_str;
 }
 
-string IteratorPrefix(const DatasetType& dataset_type, const string& prefix) {
-  return strings::StrCat(prefix, "::", ToString(dataset_type));
+}  // namespace internal
+
+string IteratorPrefix(const string& dataset_type, const string& prefix) {
+  return strings::StrCat(prefix, "::", dataset_type);
 }
 
 }  // namespace name_utils

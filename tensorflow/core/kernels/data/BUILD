@@ -322,6 +322,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "map_dataset_op",
     srcs = ["map_dataset_op.cc"],
+    hdrs = ["map_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
@@ -563,6 +564,7 @@ tf_kernel_library(
     srcs = ["prefetch_dataset_op.cc"],
     hdrs = ["prefetch_dataset_op.h"],
     deps = [
+        ":name_utils",
         ":prefetch_autotuner",
         ":stats_utils",
         "//tensorflow/core:core_cpu_internal",
@@ -691,6 +693,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
+    hdrs = ["range_dataset_op.h"],
     deps = [
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",

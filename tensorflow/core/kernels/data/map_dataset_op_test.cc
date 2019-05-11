@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
@@ -49,7 +50,8 @@ class MapDatasetOpTest : public DatasetOpsTestBase {
         FunctionDefHelper::FunctionRef(func_name, {{"T", DT_INT64}});
 
     NodeDef map_dataset_node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(name_utils::MAP), {input_dataset},
+        kNodeName, name_utils::OpName(MapDatasetOp::kDatasetType),
+        {input_dataset},
         {{"f", func},
          {"Targuments", {}},
          {"output_shapes", gtl::ArraySlice<TensorShape>{{}}},
@@ -251,7 +253,8 @@ TEST_F(MapDatasetOpTest, DatasetTypeString) {
                              map_dataset_context.get(), &map_dataset));
   core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
-  EXPECT_EQ(map_dataset->type_string(), name_utils::OpName(name_utils::MAP));
+  EXPECT_EQ(map_dataset->type_string(),
+            name_utils::OpName(MapDatasetOp::kDatasetType));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
@@ -499,7 +502,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
       map_dataset->MakeIterator(iterator_context.get(), "Iterator", &iterator));
 
   EXPECT_EQ(iterator->prefix(),
-            name_utils::IteratorPrefix(name_utils::MAP, "Iterator"));
+            name_utils::IteratorPrefix(MapDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
