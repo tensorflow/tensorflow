@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_OPERATION_H
 #define MLIR_IR_OPERATION_H
 
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OperationSupport.h"

@@ -23,6 +23,7 @@
 #ifndef MLIR_AFFINEOPS_AFFINEOPS_H
 #define MLIR_AFFINEOPS_AFFINEOPS_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"

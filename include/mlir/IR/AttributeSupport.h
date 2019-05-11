@@ -25,7 +25,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StorageUniquerSupport.h"
 #include "llvm/ADT/PointerIntPair.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace mlir {
 class MLIRContext;

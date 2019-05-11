@@ -19,9 +19,7 @@
 #define MLIR_IR_ATTRIBUTES_H
 
 #include "mlir/IR/AttributeSupport.h"
-#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
 class AffineMap;

@@ -19,7 +19,6 @@
 #define MLIR_IR_TYPES_H
 
 #include "mlir/IR/TypeSupport.h"
-#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 

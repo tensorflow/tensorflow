@@ -22,14 +22,7 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Block.h"
-#include "mlir/IR/Identifier.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ilist.h"
 
 namespace mlir {
 class BlockAndValueMapping;

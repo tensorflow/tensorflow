@@ -24,8 +24,6 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StorageUniquerSupport.h"
-#include "llvm/ADT/StringRef.h"
-#include <memory>
 
 namespace mlir {
 struct ClassID;

@@ -19,7 +19,6 @@
 #define MLIR_IR_STANDARDTYPES_H
 
 #include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
 
 namespace llvm {
 struct fltSemantics;
