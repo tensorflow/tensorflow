@@ -668,6 +668,223 @@ struct GemmlowpOutputPipelineInt8 {
 };
 
 #ifdef USE_NEON
+inline void LegacyFullyConnectedAsGEMVWorkerImpl(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data, int row_start, int row_end) {
+  gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  static constexpr int kPeel = 4;
+  const bool shift_left = (output_shift > 0);
+  for (int k = 0; k < input_size; k += 64) {
+    optimized_ops_preload_l1_stream(input_data + k);
+  }
+  for (int k = 0; k < kPeel * input_size; k += 64) {
+    optimized_ops_preload_l1_stream(filter_data + k);
+  }
+
+  TFLITE_DCHECK_GE(row_end - row_start, kPeel);
+
+  for (int out = row_start; out < row_end; out += kPeel) {
+    out = std::min(out, row_end - kPeel);
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = acc0;
+    int32x4_t acc2 = acc0;
+    int32x4_t acc3 = acc0;
+    const int16x8_t input_offset_vec = vdupq_n_s16(input_offset);
+    const int16x8_t filter_offset_vec = vdupq_n_s16(filter_offset);
+    int in = 0;
+    for (; in <= input_size - 16; in += 16) {
+      const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x16_t filter_val_u8_0 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_1 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_2 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_3 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      int16x8_t input_val_0, input_val_1;
+      uint8x8_t low = vget_low_u8(input_val_u8);
+      uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      low = vget_low_u8(filter_val_u8_0);
+      high = vget_high_u8(filter_val_u8_0);
+      int16x8_t filter_val_0_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_0_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_0_0 = vaddq_s16(filter_val_0_0, filter_offset_vec);
+      filter_val_0_1 = vaddq_s16(filter_val_0_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_1);
+      high = vget_high_u8(filter_val_u8_1);
+      int16x8_t filter_val_1_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_1_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_1_0 = vaddq_s16(filter_val_1_0, filter_offset_vec);
+      filter_val_1_1 = vaddq_s16(filter_val_1_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_2);
+      high = vget_high_u8(filter_val_u8_2);
+      int16x8_t filter_val_2_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_2_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_2_0 = vaddq_s16(filter_val_2_0, filter_offset_vec);
+      filter_val_2_1 = vaddq_s16(filter_val_2_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_3);
+      high = vget_high_u8(filter_val_u8_3);
+      int16x8_t filter_val_3_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_3_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_3_0 = vaddq_s16(filter_val_3_0, filter_offset_vec);
+      filter_val_3_1 = vaddq_s16(filter_val_3_1, filter_offset_vec);
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_0),
+                       vget_low_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_0),
+                       vget_low_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_0),
+                       vget_low_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_0),
+                       vget_low_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_1),
+                       vget_low_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_1),
+                       vget_low_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_1),
+                       vget_low_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_1),
+                       vget_low_s16(input_val_1));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_0),
+                       vget_high_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_0),
+                       vget_high_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_0),
+                       vget_high_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_0),
+                       vget_high_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_1),
+                       vget_high_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_1),
+                       vget_high_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_1),
+                       vget_high_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_1),
+                       vget_high_s16(input_val_1));
+    }
+    for (; in <= input_size - 8; in += 8) {
+      const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x8_t filter_val_u8_0 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_1 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_2 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_3 = vld1_u8(filter_ptr);
+      int16x8_t input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      input_val = vaddq_s16(input_val, input_offset_vec);
+      int16x8_t filter_val_0 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_0));
+      filter_val_0 = vaddq_s16(filter_val_0, filter_offset_vec);
+      int16x8_t filter_val_1 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_1));
+      filter_val_1 = vaddq_s16(filter_val_1, filter_offset_vec);
+      int16x8_t filter_val_2 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_2));
+      filter_val_2 = vaddq_s16(filter_val_2, filter_offset_vec);
+      int16x8_t filter_val_3 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_3));
+      filter_val_3 = vaddq_s16(filter_val_3, filter_offset_vec);
+      acc0 =
+          vmlal_s16(acc0, vget_low_s16(filter_val_0), vget_low_s16(input_val));
+      acc1 =
+          vmlal_s16(acc1, vget_low_s16(filter_val_1), vget_low_s16(input_val));
+      acc2 =
+          vmlal_s16(acc2, vget_low_s16(filter_val_2), vget_low_s16(input_val));
+      acc3 =
+          vmlal_s16(acc3, vget_low_s16(filter_val_3), vget_low_s16(input_val));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0),
+                       vget_high_s16(input_val));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1),
+                       vget_high_s16(input_val));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2),
+                       vget_high_s16(input_val));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3),
+                       vget_high_s16(input_val));
+    }
+    if (in < input_size) {
+      int32 buf[16];
+      vst1q_s32(buf + 0, acc0);
+      vst1q_s32(buf + 4, acc1);
+      vst1q_s32(buf + 8, acc2);
+      vst1q_s32(buf + 12, acc3);
+      for (; in < input_size; in++) {
+        int lane = (in + 8 - input_size) % 4;
+        const int32 input_val = input_data[in] + input_offset;
+        for (int k = 0; k < kPeel; k++) {
+          int32 filter_val =
+              filter_data[in + (out + k) * input_size] + filter_offset;
+          buf[lane + 4 * k] += filter_val * input_val;
+        }
+      }
+      acc0 = vld1q_s32(buf + 0);
+      acc1 = vld1q_s32(buf + 4);
+      acc2 = vld1q_s32(buf + 8);
+      acc3 = vld1q_s32(buf + 12);
+    }
+
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc0), vget_high_s32(acc0));
+    int32x2_t pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc1), vget_high_s32(acc1));
+    int32x2_t pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc2), vget_high_s32(acc2));
+    int32x2_t pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc3), vget_high_s32(acc3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_data + out);
+    reduced = vaddq_s32(reduced, bias_vec);
+    if (shift_left) {
+      const int32 multiplier_power_of_two = 1 << output_shift;
+      reduced = vmulq_n_s32(reduced, multiplier_power_of_two);
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+    } else {
+      // Multiply by the fixed-point multiplier.
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+      // Rounding-shift-right.
+      using gemmlowp::RoundingDivideByPOT;
+      reduced = RoundingDivideByPOT(reduced, -output_shift);
+    }
+    // Add the output offset.
+    const int32x4_t output_offset_vec = vdupq_n_s32(output_offset);
+    reduced = vaddq_s32(reduced, output_offset_vec);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    // Narrow values down to 8 bit unsigned, saturating.
+    uint8x8_t res8 = vqmovun_s16(vcombine_s16(res16, res16));
+    // Apply the clamping from the activation function
+    res8 = vmax_u8(res8, vdup_n_u8(output_activation_min));
+    res8 = vmin_u8(res8, vdup_n_u8(output_activation_max));
+    // Store results to destination.
+    vst1_lane_u8(output_data + out + 0, res8, 0);
+    vst1_lane_u8(output_data + out + 1, res8, 1);
+    vst1_lane_u8(output_data + out + 2, res8, 2);
+    vst1_lane_u8(output_data + out + 3, res8, 3);
+  }
+}
+
 struct LegacyFullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   LegacyFullyConnectedAsGEMVWorkerTask(
       const RuntimeShape& input_shape, const uint8* input_data,
@@ -697,7 +914,7 @@ struct LegacyFullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
         row_end_(row_end) {}
 
   void Run() override {
-    FullyConnectedAsGEMVWorkerImpl(
+    LegacyFullyConnectedAsGEMVWorkerImpl(
         input_shape_, input_data_, input_offset_, filter_shape_, filter_data_,
         filter_offset_, bias_shape_, bias_data_, output_offset_,
         output_multiplier_, output_shift_, output_activation_min_,
@@ -742,7 +959,7 @@ inline void FullyConnectedAsGEMV(
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
-    FullyConnectedAsGEMVWorkerImpl(
+    LegacyFullyConnectedAsGEMVWorkerImpl(
         input_shape, input_data, input_offset, filter_shape, filter_data,
         filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
         output_shift, output_activation_min, output_activation_max,
