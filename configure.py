@@ -293,9 +293,9 @@ def get_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
     yes_reply: optional string for reply when feature is enabled.
@@ -376,9 +376,9 @@ def set_build_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
     bazel_config_name: Name for Bazel --config argument to enable build feature.
@@ -411,9 +411,9 @@ def set_action_env_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
     yes_reply: optional string for reply when feature is enabled.
@@ -456,8 +456,8 @@ def check_bazel_version(min_version, max_version):
   """Check installed bazel version is between min_version and max_version.
 
   Args:
-    min_version: string for minimum bazel version.
-    max_version: string for maximum bazel version.
+    min_version: string for minimum bazel version (must exist!).
+    max_version: string for maximum bazel version (must exist!).
 
   Returns:
     The bazel version detected.
@@ -570,7 +570,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
     ask_for_var: string for how to ask for user input.
     var_default: default value string.
 
@@ -1261,7 +1261,8 @@ def set_windows_build_flags(environ_cp):
   write_to_bazelrc('build --copt=-w --host_copt=-w')
   # Fix winsock2.h conflicts
   write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN')
+      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
+      '--copt=-DNOGDI --host_copt=-DNOGDI')
   # Output more verbose information when something goes wrong
   write_to_bazelrc('build --verbose_failures')
   # The host and target platforms are the same in Windows build. So we don't
@@ -1324,9 +1325,9 @@ def validate_cuda_config(environ_cp):
 
   cuda_libraries = ['cuda', 'cudnn']
   if is_linux():
-    if 'TF_TENSORRT_VERSION' in environ_cp:  # if env variable exists
+    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
       cuda_libraries.append('tensorrt')
-    if environ_cp.get('TF_NCCL_VERSION', None):  # if env variable not empty
+    if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
   proc = subprocess.Popen(
@@ -1387,7 +1388,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.0')
+  current_bazel_version = check_bazel_version('0.24.1', '0.24.1')
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1453,8 +1454,12 @@ def main():
         cuda_env_names = [
             'TF_CUDA_VERSION', 'TF_CUBLAS_VERSION', 'TF_CUDNN_VERSION',
             'TF_TENSORRT_VERSION', 'TF_NCCL_VERSION', 'TF_CUDA_PATHS',
-            'CUDA_TOOLKIT_PATH'
+            # Items below are for backwards compatibility when not using
+            # TF_CUDA_PATHS.
+            'CUDA_TOOLKIT_PATH', 'CUDNN_INSTALL_PATH', 'NCCL_INSTALL_PATH',
+            'NCCL_HDR_PATH', 'TENSORRT_INSTALL_PATH'
         ]
+        # Note: set_action_env_var above already writes to bazelrc.
         for name in cuda_env_names:
           if name in environ_cp:
             write_action_env_to_bazelrc(name, environ_cp[name])

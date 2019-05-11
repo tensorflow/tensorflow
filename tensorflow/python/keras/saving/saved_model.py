@@ -150,11 +150,14 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
     if isinstance(model, sequential.Sequential):
       # If input shape is not directly set in the model, the exported model
       # will infer the expected shapes of the input from the model.
-      if not model.built and input_signature is None:
-        raise ValueError(
-            'Sequential model\'s input shape is unknown. Please build the '
-            'model, or use the input_signature argument to specify the '
-            'model inputs.')
+      if not model.built:
+        raise ValueError('Weights for sequential model have not yet been '
+                         'created. Weights are created when the Model is first '
+                         'called on inputs or `build()` is called with an '
+                         '`input_shape`, or the first layer in the model has '
+                         '`input_shape` during construction.')
+      # TODO(kathywu): Build the model with input_signature to create the
+      # weights before _export_model_variables().
     else:
       raise NotImplementedError(
           'Subclassed models can only be exported for serving. Please set '
@@ -253,8 +256,8 @@ def _export_mode(
 
     # Make sure that iterations variable is added to the global step collection,
     # to ensure that, when the SavedModel graph is loaded, the iterations
-    # variable is returned by `tf.train.get_global_step()`. This is required for
-    # compatibility with the SavedModelEstimator.
+    # variable is returned by `tf.compat.v1.train.get_global_step()`. This is
+    # required for compatibility with the SavedModelEstimator.
     if compile_clone:
       g.add_to_collection(ops.GraphKeys.GLOBAL_STEP, clone.optimizer.iterations)
 
@@ -295,7 +298,11 @@ def _export_mode(
       builder.add_meta_graph(
           model_utils.EXPORT_TAG_MAP[mode],
           signature_def_map=_create_signature_def_map(clone, mode),
-          saver=saver_lib.Saver(clone_var_list),
+          saver=saver_lib.Saver(
+              clone_var_list,
+              # Allow saving Models with no variables. This is somewhat odd, but
+              # it's not necessarily a bug.
+              allow_empty=True),
           init_op=variables.local_variables_initializer(),
           train_op=train_op)
     return None
@@ -306,7 +313,7 @@ def _create_signature_def_map(model, mode):
   inputs_dict = {name: x for name, x in zip(model.input_names, model.inputs)}
   if model.optimizer:
     targets_dict = {x.name.split(':')[0]: x
-                    for x in model.targets if x is not None}
+                    for x in model._targets if x is not None}
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}

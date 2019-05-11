@@ -42,7 +42,7 @@ from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -683,7 +683,7 @@ def standardize_weights(y,
   # Iterator may return sample_weight as 1-tuple
   if isinstance(sample_weight, tuple):
     sample_weight = sample_weight[0]
-  if sample_weight_mode is not None:
+  if sample_weight_mode is not None and sample_weight_mode != 'samplewise':
     if sample_weight_mode != 'temporal':
       raise ValueError('"sample_weight_mode '
                        'should be None or "temporal". '
@@ -866,7 +866,8 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
-      mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
+          mask, None, weights)
       weights *= mask
 
   if y_pred is not None:
@@ -876,7 +877,7 @@ def call_metric_function(metric_fn,
 
 
 def get_loss_function(loss):
-  """Returns the loss function corresponding to the given loss input."""
+  """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
@@ -891,7 +892,14 @@ def get_loss_function(loss):
   # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
   # in `LossFunctionWrapper` class.
   loss_fn = losses.get(loss)
-  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+  # For losses which are given as strings/functions in the compile API,
+  # we always set the loss reduction type to be `SUM_OVER_BATCH_SIZE`
+  # (both in distribution strategy context and otherwise).
+  return losses.LossFunctionWrapper(
+      loss_fn,
+      name=loss_fn.__name__,
+      reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -985,10 +993,11 @@ def check_steps_argument(input_data, steps, steps_name):
   return False
 
 
-def cast_single_tensor(x):
+def cast_single_tensor(x, dtype=None):
   x = ops.convert_to_tensor(x)
+  dtype = dtype or K.floatx()
   if x.dtype.is_floating:
-    return math_ops.cast(x, dtype=K.floatx())
+    return math_ops.cast(x, dtype=dtype)
   return x
 
 
@@ -1005,34 +1014,50 @@ def cast_if_floating_dtype(x):
   return nest.map_structure(cast_single_tensor, x)
 
 
-def get_output_sample_weight_and_mode(skip_target_weighing_indices,
-                                      sample_weight_mode, output_name,
-                                      output_index):
-  """Returns the sample weight and weight mode for a single output."""
-  if output_index in skip_target_weighing_indices:
-    return None, None
+def cast_if_floating_to_model_input_dtypes(x, model):
+  """Casts the given data tensors to the dtypes of the model inputs.
 
+  Casts only if the input is already a floating point type.
+
+  Args:
+    x: tensor or list/tuple of tensors.
+    model: The model.
+
+  Returns:
+    Converted input. Each tensor is casted to the corresponding input in
+    `model.inputs`.
+  """
+  # TODO(b/131372221): We should probably cast even if the input is not
+  # floating-point.
+  input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
+  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+
+
+def get_output_sample_weight(skip_target_weighing_indices, sample_weight_mode,
+                             output_name, output_index):
+  """Returns the sample weight and weight mode for a single output."""
+  if (output_index in skip_target_weighing_indices or
+      sample_weight_mode is None or context.executing_eagerly()):
+    return None
+
+  assert sample_weight_mode in ['temporal', 'samplewise']
   if sample_weight_mode == 'temporal':
     default_value = [[1.]]
     shape = [None, None]
-    mode = 'temporal'
-  else:
+  elif sample_weight_mode == 'samplewise':
     default_value = [1.]
     shape = [None]
-    mode = None
-  if context.executing_eagerly():
-    weight = None
-  else:
-    weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=output_name + '_sample_weights')
-  return weight, mode
+
+  weight = array_ops.placeholder_with_default(
+      constant_op.constant(default_value, dtype=K.floatx()),
+      shape=shape,
+      name=output_name + '_sample_weights')
+  return weight
 
 
-def prepare_sample_weights(output_names, sample_weight_mode,
-                           skip_target_weighing_indices):
-  """Prepares sample weights for the model.
+def prepare_sample_weight_modes(output_names, sample_weight_mode,
+                                skip_target_weighing_indices):
+  """Prepares sample weight modes for the model.
 
   Args:
     output_names: List of model output names.
@@ -1041,44 +1066,44 @@ def prepare_sample_weights(output_names, sample_weight_mode,
       should be skipped.
 
   Returns:
-    A pair of list of sample weights and sample weight modes
-      (one for each output).
+    List of sample weight modes (one for each output).
 
   Raises:
     ValueError: In case of invalid `sample_weight_mode` input.
   """
-  sample_weights = []
-  sample_weight_modes = []
+
   if isinstance(sample_weight_mode, collections.Mapping):
     generic_utils.check_for_unexpected_keys('sample_weight_mode',
                                             sample_weight_mode, output_names)
+
+    sample_weight_modes = []
     for i, name in enumerate(output_names):
-      if (i not in skip_target_weighing_indices and
-          name not in sample_weight_mode):
-        raise ValueError('Output missing from sample_weight_modes dictionary')
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  elif isinstance(sample_weight_mode, list):
+      if i in skip_target_weighing_indices:
+        sample_weight_modes.append(None)
+      elif name not in sample_weight_mode:
+        raise ValueError('Output ' + name +
+                         'missing from `_sample_weight_modes` dictionary')
+      else:
+        sample_weight_modes.append(sample_weight_mode.get(name))
+    return sample_weight_modes
+
+  if isinstance(sample_weight_mode, (list, tuple)):
     if len(sample_weight_mode) != len(output_names):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
                        'The model has ' + str(len(output_names)) +
                        ' outputs, but you passed ' +
-                       str(len(sample_weight_mode)) + 'sample_weight_modes')
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode[i], name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  else:
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode, name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  return sample_weights, sample_weight_modes
+                       str(len(sample_weight_mode)) + '_sample_weight_modes.')
+
+    return [
+        None if i in skip_target_weighing_indices else sample_weight_mode[i]
+        for i in range(len(output_names))
+    ]
+
+  return [
+      None if i in skip_target_weighing_indices else sample_weight_mode
+      for i in range(len(output_names))
+  ]
 
 
 def prepare_loss_functions(loss, output_names):
@@ -1316,14 +1341,17 @@ def is_dataset_or_iterator(data):
 
 def get_iterator(dataset):
   """Create and initialize an iterator from a dataset."""
-  iterator = dataset_ops.make_initializable_iterator(dataset)
+  if context.executing_eagerly():
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+  else:
+    iterator = dataset_ops.make_initializable_iterator(dataset)
   initialize_iterator(iterator)
   return iterator
 
 
 def initialize_iterator(iterator):
-  init_op = iterator.initializer
   if not context.executing_eagerly():
+    init_op = iterator.initializer
     K.get_session((init_op,)).run(init_op)
 
 

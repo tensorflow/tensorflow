@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -443,12 +444,14 @@ struct ProtoHelper<Eigen::half> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : BufferBase(a, a->Allocate<T>(n)), elem_(n) {}
+    : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
+      elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : BufferBase(a, a->Allocate<T>(n, allocation_attr)), elem_(n) {}
+    : BufferBase(a, TypedAllocator::Allocate<T>(a, n, allocation_attr)),
+      elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
@@ -456,7 +459,7 @@ Buffer<T>::~Buffer() {
     if (LogMemory::IsEnabled()) {
       RecordDeallocation();
     }
-    alloc_->Deallocate<T>(static_cast<T*>(data()), elem_);
+    TypedAllocator::Deallocate<T>(alloc_, static_cast<T*>(data()), elem_);
   }
 }
 
@@ -734,7 +737,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
   set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
+  if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
   if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
@@ -748,7 +751,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
     : shape_(shape), buf_(nullptr) {
   set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
+  if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
   if (!allocation_attr.allocation_will_be_logged && buf_ != nullptr &&

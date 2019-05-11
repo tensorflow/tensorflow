@@ -82,6 +82,7 @@ enum class OperatorType : uint8 {
   kTransposeConv,
   kCast,
   kFloor,
+  kRound,
   kGather,
   kResizeBilinear,
   kSin,
@@ -222,6 +223,7 @@ enum class ArrayDataType : uint8 {
   kUint64,  // 10
   kString,
   kComplex64,
+  kFloat16,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -971,9 +973,8 @@ struct TensorFlowIdentityOperator : Operator {
   TensorFlowIdentityOperator() : Operator(OperatorType::kIdentity) {}
 };
 
-// Batch matrix multiplication operator. This comes from the (deprecated)
-// tf.batch_matmul or a tf.matmul that has rank 3. dims(0) is the batch count
-// and it can be trivially unrolled into a series of matmuls on each element.
+// Batch matrix multiplication operator. This comes from a tf.matmul where one
+// of the operands has rank 3 or more.
 //
 // Inputs:
 //   inputs[0]: required: the left-hand side matrix
@@ -1714,6 +1715,16 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Ceil
 struct CeilOperator : Operator {
   CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
+// Round operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Round
+struct RoundOperator : Operator {
+  RoundOperator() : Operator(OperatorType::kRound) {}
 };
 
 // Gather operator. It gathers slices from params according to indices.

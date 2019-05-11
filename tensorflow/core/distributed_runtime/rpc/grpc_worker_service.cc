@@ -186,27 +186,35 @@ class GrpcWorkerServiceThread {
            RequestMessage, ResponseMessage>;
 
   // Handle all non-cancellable simple methods with a standard wrapper.
-#define HANDLE_CALL(method)                                                   \
+  // The boolean `may_block_on_compute_pool` indicates whether or not the
+  // operation may block on activities (such as op execution) that run on the
+  // compute pool.
+#define HANDLE_CALL(method, may_block_on_compute_pool)                        \
   void method##Handler(WorkerCall<method##Request, method##Response>* call) { \
-    Schedule([this, call]() {                                                 \
+    auto closure = [this, call]() {                                           \
       Status s = worker_->method(&call->request, &call->response);            \
       if (!s.ok()) {                                                          \
         VLOG(1) << "Bad response from " << #method << ": " << s;              \
       }                                                                       \
       call->SendResponse(ToGrpcStatus(s));                                    \
-    });                                                                       \
+    };                                                                        \
+    if ((may_block_on_compute_pool)) {                                        \
+      worker_->env()->env->SchedClosure(std::move(closure));                  \
+    } else {                                                                  \
+      worker_->env()->compute_pool->Schedule(std::move(closure));             \
+    }                                                                         \
     ENQUEUE_REQUEST(method, false);                                           \
   }
 
-  HANDLE_CALL(GetStatus);
-  HANDLE_CALL(CreateWorkerSession);
-  HANDLE_CALL(DeleteWorkerSession);
-  HANDLE_CALL(CleanupAll);
-  HANDLE_CALL(RegisterGraph);
-  HANDLE_CALL(DeregisterGraph);
-  HANDLE_CALL(CleanupGraph);
-  HANDLE_CALL(Logging);
-  HANDLE_CALL(Tracing);
+  HANDLE_CALL(GetStatus, false);
+  HANDLE_CALL(CreateWorkerSession, false);
+  HANDLE_CALL(DeleteWorkerSession, true);
+  HANDLE_CALL(CleanupAll, false);
+  HANDLE_CALL(RegisterGraph, false);
+  HANDLE_CALL(DeregisterGraph, false);
+  HANDLE_CALL(CleanupGraph, false);
+  HANDLE_CALL(Logging, false);
+  HANDLE_CALL(Tracing, false);
 
 #undef HANDLE_CALL
 

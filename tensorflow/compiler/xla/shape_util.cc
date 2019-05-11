@@ -96,7 +96,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
   }
-  if (element_type == OPAQUE || element_type == TUPLE) {
+  if (element_type == OPAQUE_TYPE || element_type == TUPLE) {
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
@@ -258,7 +258,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ Shape ShapeUtil::MakeOpaqueShape() {
   Shape result;
-  result.set_element_type(OPAQUE);
+  result.set_element_type(OPAQUE_TYPE);
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(result));
   return result;
 }
@@ -319,7 +319,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case C64:
     case C128:
     case TUPLE:
-    case OPAQUE:
+    case OPAQUE_TYPE:
     case TOKEN:
       return false;
 
@@ -570,7 +570,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       // Tokens require no space.
       return 0;
     case TUPLE:
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << PrimitiveType_Name(primitive_type)
                  << " primitive type has no definitive size";
     default:
@@ -591,7 +591,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return byte_size;
   } else if (shape.element_type() == TOKEN) {
     return 0;
-  } else if (shape.element_type() == OPAQUE) {
+  } else if (shape.element_type() == OPAQUE_TYPE) {
     CHECK_GT(pointer_size, 0);
     return pointer_size;
   }
@@ -653,7 +653,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   // Tokens and opaques can should not have layout or dimensions.
-  if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE) {
+  if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE_TYPE) {
     if (shape.dimensions_size() != 0) {
       return InvalidArgument(
           "shape has %s element type, but has dimensions field: %s",
@@ -1331,8 +1331,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       }
     }
     Shape output_shape_with_layout = output_shape;
-    *output_shape_with_layout.mutable_layout()->mutable_minor_to_major() =
-        layout;
+    *output_shape_with_layout.mutable_layout() = Layout{layout};
     return output_shape_with_layout;
   }
 

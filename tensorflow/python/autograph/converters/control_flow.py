@@ -27,22 +27,6 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
-class SymbolNamer(object):
-  """Describes the interface for ControlFlowTransformer's namer."""
-
-  def new_symbol(self, name_root, reserved_locals):
-    """Generate a new unique symbol.
-
-    Args:
-      name_root: String, used as stem in the new name.
-      reserved_locals: Set(string), additional local symbols that are reserved
-          and which should not be used.
-    Returns:
-      String.
-    """
-    raise NotImplementedError()
-
-
 class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
 
@@ -499,7 +483,7 @@ class ControlFlowTransformer(converter.Base):
             ssf_map)
     else:
       # Loop with no loop-carried state and no early stopping
-      assert not has_extra_test, ('Early stoppiong (e.g. break and/or return) '
+      assert not has_extra_test, ('Early stopping (e.g. break and/or return) '
                                   'should create state variables.')
       loop_nodes = self._for_loop_without_state(node, body_name, node_body)
 

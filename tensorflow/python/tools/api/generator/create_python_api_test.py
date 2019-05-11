@@ -83,20 +83,6 @@ class CreatePythonApiTest(test.TestCase):
     self.assertFalse('compat.v1' in imports,
                      msg='compat.v1 in %s' % str(imports.keys()))
 
-  def testDeprecatedAliasIsAdded(self):
-    imports, footers = create_python_api.get_api_init_text(
-        packages=[create_python_api._DEFAULT_PACKAGE],
-        output_package='tensorflow',
-        api_name='tensorflow',
-        api_version=1)
-    expected_import = (
-        'from tensorflow.python.test_module '
-        'import deprecated_test_op as foo')
-    self.assertTrue(
-        expected_import in str(imports),
-        msg='%s not in %s' % (expected_import, str(imports)))
-    self.assertRegexpMatches(footers['test'], '"foo": "test1.foo"')
-
   def testClassImportIsAdded(self):
     imports, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],

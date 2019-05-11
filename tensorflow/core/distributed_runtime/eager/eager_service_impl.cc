@@ -104,10 +104,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
-  std::unique_ptr<tensorflow::EagerContext> ctx(new tensorflow::EagerContext(
+  tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, nullptr));
+      request->async(), device_mgr, false, r, nullptr);
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -122,9 +122,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     do {
       context_id = random::New64();
     } while (contexts_.find(context_id) != contexts_.end());
-    contexts_.emplace(
-        context_id,
-        new ServerContext(std::move(ctx), request->keep_alive_secs(), env_));
+    contexts_.emplace(context_id,
+                      new ServerContext(ctx, request->keep_alive_secs(), env_));
   }
   response->set_context_id(context_id);
 

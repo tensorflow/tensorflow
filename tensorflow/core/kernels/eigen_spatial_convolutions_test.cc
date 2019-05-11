@@ -1848,4 +1848,14 @@ BM_PackLhs(/*input channels*/ 128,    //
            /*filter channels*/ 1024,  //
            /*filter dims*/ 3, 3,      //
            /*block*/ 56, 256);
+
+BM_PackLhs(/*input channels*/ 30,   //
+           /*filter channels*/ 64,  //
+           /*filter dims*/ 3, 3,    //
+           /*block*/ 256, 56);
+
+BM_PackLhs(/*input channels*/ 50,   //
+           /*filter channels*/ 64,  //
+           /*filter dims*/ 3, 3,    //
+           /*block*/ 56, 256);
 }  // namespace Eigen

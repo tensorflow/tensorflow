@@ -26,21 +26,23 @@ namespace tensorflow {
 
 using errors::InvalidArgument;
 
+template <typename SPLITS_TYPE>
 class RaggedTensorToSparseOp : public OpKernel {
  public:
   using OpKernel::OpKernel;
+  using ConstFlatSplits = typename TTypes<SPLITS_TYPE>::ConstFlat;
 
   void Compute(OpKernelContext* context) override {
     // Read the `rt_nested_splits` input & convert to Eigen tensors.
     OpInputList rt_nested_splits_in;
     OP_REQUIRES_OK(
         context, context->input_list("rt_nested_splits", &rt_nested_splits_in));
-    const int64 rt_nested_splits_len = rt_nested_splits_in.size();
+    const int rt_nested_splits_len = rt_nested_splits_in.size();
     DCHECK_GT(rt_nested_splits_len, 0);  // Enforced by REGISTER_OP.
-    std::vector<TTypes<int64>::ConstFlat> rt_nested_splits;
+    std::vector<ConstFlatSplits> rt_nested_splits;
     rt_nested_splits.reserve(rt_nested_splits_len);
     for (int i = 0; i < rt_nested_splits_len; ++i) {
-      rt_nested_splits.push_back(rt_nested_splits_in[i].flat<int64>());
+      rt_nested_splits.push_back(rt_nested_splits_in[i].flat<SPLITS_TYPE>());
     }
 
     // Read the `rt_dense_values` input.
@@ -135,7 +137,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     sparse_dense_shape(0) = rt_nested_splits_in[0].dim_size(0) - 1;
     for (int dim = 0; dim < rt_nested_splits_len; ++dim) {
       const auto& splits = rt_nested_splits[dim];
-      int64 max_width = 0;
+      SPLITS_TYPE max_width = 0;
       for (int i = 1; i < splits.size(); ++i) {
         max_width = std::max(max_width, splits(i) - splits(i - 1));
       }
@@ -150,7 +152,7 @@ class RaggedTensorToSparseOp : public OpKernel {
  private:
   // Validate `rt_nested_splits` to ensure we don't get any segfaults.
   static ::tensorflow::Status ValidateInputs(
-      std::vector<TTypes<int64>::ConstFlat> rt_nested_splits,
+      std::vector<ConstFlatSplits> rt_nested_splits,
       const Tensor& rt_dense_values_in) {
     for (int i = 0; i < rt_nested_splits.size(); ++i) {
       if (rt_nested_splits[i].size() == 0) {
@@ -160,7 +162,7 @@ class RaggedTensorToSparseOp : public OpKernel {
         return InvalidArgument("First value of ragged splits must be 0.");
       }
       if (i > 0) {
-        int64 last_split =
+        SPLITS_TYPE last_split =
             rt_nested_splits[i - 1](rt_nested_splits[i - 1].size() - 1);
         if (rt_nested_splits[i].size() != last_split + 1) {
           return InvalidArgument(
@@ -206,14 +208,21 @@ class RaggedTensorToSparseOp : public OpKernel {
   // values.
   static bool IsCompleted(
       const std::vector<int64>& pos, int dim,
-      const std::vector<TTypes<int64>::ConstFlat>& rt_nested_splits) {
+      const std::vector<ConstFlatSplits>& rt_nested_splits) {
     int64 current_child = pos[dim + 1];
     int64 limit_child = rt_nested_splits[dim](pos[dim] + 1);
     return current_child >= limit_child;
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse").Device(DEVICE_CPU),
-                        RaggedTensorToSparseOp);
+REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32>("Tsplits"),
+                        RaggedTensorToSparseOp<int32>);
+
+REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("Tsplits"),
+                        RaggedTensorToSparseOp<int64>);
 
 }  // namespace tensorflow

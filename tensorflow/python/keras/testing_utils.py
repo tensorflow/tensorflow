@@ -23,6 +23,7 @@ import threading
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -405,7 +406,7 @@ class _SubclassModelCustomBuild(keras.Model):
     return x
 
 
-def get_model_from_layers(layers, input_shape=None):
+def get_model_from_layers(layers, input_shape=None, input_dtype=None):
   """Builds a model from a sequence of layers."""
   model_type = get_model_type()
   if model_type == 'subclass':
@@ -418,7 +419,8 @@ def get_model_from_layers(layers, input_shape=None):
   if model_type == 'sequential':
     model = keras.models.Sequential()
     if input_shape:
-      model.add(keras.layers.InputLayer(input_shape=input_shape))
+      model.add(keras.layers.InputLayer(input_shape=input_shape,
+                                        dtype=input_dtype))
     for layer in layers:
       model.add(layer)
     return model
@@ -427,7 +429,7 @@ def get_model_from_layers(layers, input_shape=None):
     if not input_shape:
       raise ValueError('Cannot create a functional model from layers with no '
                        'input shape.')
-    inputs = keras.Input(shape=input_shape)
+    inputs = keras.Input(shape=input_shape, dtype=input_dtype)
     outputs = inputs
     for layer in layers:
       outputs = layer(outputs)
@@ -682,3 +684,12 @@ def get_v2_optimizer(name, **kwargs):
     raise ValueError(
         'Could not find requested v2 optimizer: {}\nValid choices: {}'.format(
             name, list(_V2_OPTIMIZER_MAP.keys())))
+
+
+def get_expected_metric_variable_names(var_names, name_suffix=''):
+  """Returns expected metric variable names given names and prefix/suffix."""
+  if tf2.enabled() or context.executing_eagerly():
+    # In V1 eager mode and V2 variable names are not made unique.
+    return [n + ':0' for n in var_names]
+  # In V1 graph mode variable names are made unique using a suffix.
+  return [n + name_suffix + ':0' for n in var_names]

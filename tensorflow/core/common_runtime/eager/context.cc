@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -72,6 +78,10 @@ EagerContext::EagerContext(const SessionOptions& opts,
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
+  // Starts exporting metrics through a platform-specific monitoring API (if
+  // provided). For builds using "tensorflow/core/platform/default", this is
+  // currently a no-op.
+  monitoring::StartExporter();
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
     local_unowned_device_manager_ = nullptr;
@@ -140,15 +150,13 @@ Status EagerContext::SetAsyncForThread(bool async) {
   return Status::OK();
 }
 
-Status EagerContext::ClearCaches() {
+void EagerContext::ClearCaches() {
   // The executor stores pointers to kernels, so we need to make sure that no
   // async eager ops are still executing. We lock the cache during this time as
   // well.
   mutex_lock ml(cache_mu_);
-  TF_RETURN_IF_ERROR(executor_.WaitForAllPendingNodes());
+  executor_.WaitForAllPendingNodes().IgnoreError();
   gtl::STLDeleteValues(&kernel_cache_);
-
-  return Status::OK();
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -166,7 +174,7 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
   return policy_;
 }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 void EagerContext::CloseRemoteContexts() {
   // Close all remote contexts.
   std::vector<eager::CloseContextRequest> requests(remote_contexts_.size());
@@ -196,10 +204,12 @@ void EagerContext::CloseRemoteContexts() {
 
   counter.Wait();
 }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 EagerContext::~EagerContext() {
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
+  ClearCaches();
+
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
@@ -215,10 +225,8 @@ EagerContext::~EagerContext() {
   keep_alive_thread_.reset();
 
   CloseRemoteContexts();
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
-  executor_.WaitForAllPendingNodes().IgnoreError();
-  ClearCaches().IgnoreError();
   rendezvous_->Unref();
 
   for (auto& thread : child_threads_) {
@@ -309,7 +317,7 @@ ScopedStepContainer* EagerContext::StepContainer() {
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   if (remote_device_manager_ == nullptr) return Status::OK();
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
 
   std::vector<eager::RegisterFunctionRequest> requests(remote_contexts_.size());
@@ -340,7 +348,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   for (int i = 0; i < remote_contexts_.size(); i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
 }
 
@@ -399,7 +407,7 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
@@ -444,7 +452,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   devices_map_.clear();
 
   InitDeviceMapAndAsync();
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
 
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
@@ -509,12 +517,11 @@ Status EagerContext::InitializeRemote(
 
   InitDeviceMapAndAsync();
 
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
+  executor_.ClearError();
 
   keep_alive_secs_ = keep_alive_secs;
-
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
-
   // Only schedule a single closure.
   if (keep_alive_thread_ == nullptr) {
     keep_alive_thread_.reset(
@@ -574,6 +581,6 @@ Status EagerContext::InitializeRemote(
   }
   return Status::OK();
 }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 }  // namespace tensorflow

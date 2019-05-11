@@ -950,7 +950,7 @@ class FusedConvInt8CPUTests(object):
           padding=padding_type,
           conv_input_scale=conv_input_scale,
           side_input_scale=side_input_scale,
-          side_input=side_input,
+          side_input=(None if side_input_scale == 0.0 else side_input),
           activation_mode="Relu" if apply_relu else "None",
           data_format="NHWC",
           filter_format="HWIO")
@@ -1045,7 +1045,8 @@ class FusedConvInt8CorrespondenceTests(object):
             padding=padding_type,
             conv_input_scale=conv_input_scale,
             side_input_scale=side_input_scale,
-            side_input=_Int8Roundtrip(_NchwVectCToNhwc, side_input),
+            side_input=(None if side_input_scale == 0.0 else _Int8Roundtrip(
+                _NchwVectCToNhwc, side_input)),
             activation_mode="Relu" if apply_relu else "None",
             data_format="NHWC",
             filter_format="HWIO")
@@ -1060,7 +1061,7 @@ class FusedConvInt8CorrespondenceTests(object):
             padding=padding_type,
             conv_input_scale=conv_input_scale,
             side_input_scale=side_input_scale,
-            side_input=side_input,
+            side_input=(None if side_input_scale == 0.0 else side_input),
             activation_mode="Relu" if apply_relu else "None",
             data_format="NCHW_VECT_C",
             filter_format="OIHW_VECT_I")

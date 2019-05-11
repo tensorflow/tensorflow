@@ -204,20 +204,21 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     return s;
   }
 
-  PyObject* np_array =
-      PyArray_SimpleNewFromData(dim_size, dims, type_num, data);
+  auto* np_array = reinterpret_cast<PyArrayObject*>(
+      PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
+  PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
   if (PyType_Ready(&TensorReleaserType) == -1) {
     return errors::Unknown("Python type initialization failed.");
   }
-  TensorReleaser* releaser = reinterpret_cast<TensorReleaser*>(
+  auto* releaser = reinterpret_cast<TensorReleaser*>(
       TensorReleaserType.tp_alloc(&TensorReleaserType, 0));
   releaser->destructor = new std::function<void()>(std::move(destructor));
-  if (PyArray_SetBaseObject(reinterpret_cast<PyArrayObject*>(np_array),
-                            reinterpret_cast<PyObject*>(releaser)) == -1) {
+  if (PyArray_SetBaseObject(np_array, reinterpret_cast<PyObject*>(releaser)) ==
+      -1) {
     Py_DECREF(releaser);
     return errors::Unknown("Python array refused to use memory.");
   }
-  *result = PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+  *result = PyArray_Return(np_array);
   return Status::OK();
 }
 

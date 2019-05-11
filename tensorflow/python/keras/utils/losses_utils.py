@@ -144,7 +144,7 @@ def _safe_mean(losses, num_present):
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
-  with ops.name_scope(None, 'num_elements', values=[losses]) as scope:
+  with K.name_scope('num_elements') as scope:
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
@@ -182,9 +182,14 @@ def compute_weighted_loss(losses,
     `NONE`, this has the same shape as `losses`; otherwise, it is scalar.
   """
   ReductionV2.validate(reduction)
+
+  # If this function is called directly, then we just default 'AUTO' to
+  # 'SUM_OVER_BATCH_SIZE'. Eg. Canned estimator use cases.
+  if reduction == ReductionV2.AUTO:
+    reduction = ReductionV2.SUM_OVER_BATCH_SIZE
   if sample_weight is None:
     sample_weight = 1.0
-  with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
+  with K.name_scope(name or 'weighted_loss'):
     # Save the `reduction` argument for loss normalization when distributing
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access

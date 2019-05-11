@@ -18,12 +18,39 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+template <typename T>
+Status IsEqual(const Tensor& t1, const Tensor& t2) {
+  if (t1.dtype() != t2.dtype()) {
+    return tensorflow::errors::Internal(
+        "Two tensors have different dtypes: ", DataTypeString(t1.dtype()),
+        " vs. ", DataTypeString(t2.dtype()));
+  }
+  if (!t1.IsSameSize(t2)) {
+    return tensorflow::errors::Internal(
+        "Two tensors have different shapes: ", t1.shape().DebugString(),
+        " vs. ", t2.shape().DebugString());
+  }
+
+  auto flat_t1 = t1.flat<T>();
+  auto flat_t2 = t2.flat<T>();
+  auto length = flat_t1.size();
+
+  for (int i = 0; i < length; ++i) {
+    if (flat_t1(i) != flat_t2(i)) {
+      return tensorflow::errors::Internal(
+          "Two tensors have different values "
+          "at [",
+          i, "]: ", flat_t1(i), " vs. ", flat_t2(i));
+    }
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
-  EXPECT_EQ(a.dtype(), b.dtype());
   switch (a.dtype()) {
-#define CASE(type)                       \
-  case DataTypeToEnum<type>::value:      \
-    test::ExpectTensorEqual<type>(a, b); \
+#define CASE(DT)                           \
+  case DataTypeToEnum<DT>::value:          \
+    TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
@@ -36,7 +63,7 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
 }
 
 template <typename T>
-bool compare(Tensor t1, Tensor t2) {
+bool compare(const Tensor& t1, const Tensor& t2) {
   auto flat_t1 = t1.flat<T>();
   auto flat_t2 = t2.flat<T>();
   auto length = std::min(flat_t1.size(), flat_t2.size());
@@ -49,7 +76,7 @@ bool compare(Tensor t1, Tensor t2) {
 
 Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
                                        std::vector<Tensor> expected_tensors,
-                                       bool expect_items_equal) {
+                                       bool compare_order) {
   if (produced_tensors.size() != expected_tensors.size()) {
     return Status(tensorflow::errors::Internal(
         "The two tensor vectors have different size (", produced_tensors.size(),
@@ -64,7 +91,7 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
         ")"));
   }
 
-  if (expect_items_equal) {
+  if (!compare_order) {
     const DataType& dtype = produced_tensors[0].dtype();
     switch (dtype) {
 #define CASE(DT)                                                \
@@ -190,6 +217,7 @@ Status DatasetOpsTestBase::CreateIteratorContext(
     OpKernelContext* const op_context,
     std::unique_ptr<IteratorContext>* iterator_context) {
   IteratorContext::Params params(op_context);
+  params.resource_mgr = op_context->resource_manager();
   function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   *iterator_context = absl::make_unique<IteratorContext>(params);
@@ -228,6 +256,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+  resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;
   for (const auto& fdef : flib) *(proto.add_function()) = fdef;
@@ -269,6 +298,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   step_container_ =
       absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
   params_->step_container = step_container_.get();
+  params_->resource_manager = resource_mgr_.get();
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();

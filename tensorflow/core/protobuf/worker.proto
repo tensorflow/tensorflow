@@ -67,6 +67,9 @@ message CreateWorkerSessionRequest {
   // If true, any resources such as Variables used in the session will not be
   // shared with other sessions.
   bool isolate_session_state = 3;
+
+  // The device attributes of all the devices in the cluster.
+  repeated DeviceAttributes cluster_device_attributes = 4;
 }
 
 message CreateWorkerSessionResponse {}

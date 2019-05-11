@@ -98,8 +98,8 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(gpu::ScopedActivateExecutorContext context, mutex_lock lock,
-               miopenHandle_t handle)
+  MIOpenHandle(gpu::ScopedActivateExecutorContext context,
+               std::unique_ptr<absl::MutexLock> lock, miopenHandle_t handle)
       : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
@@ -108,7 +108,7 @@ class MIOpenHandle {
 
  private:
   gpu::ScopedActivateExecutorContext context_;
-  mutex_lock lock_;
+  std::unique_ptr<absl::MutexLock> lock_;
   miopenHandle_t handle_;  // Not owned.
 };
 
@@ -318,7 +318,7 @@ class CachedFusionPlans {
                            miopenFusionPlanDescriptor_t* fusion_plan,
                            miopenFusionDirection_t fusion_direction,
                            miopenTensorDescriptor_t input_descriptor) {
-    mutex_lock lock{cached_plans_mutex};
+    absl::MutexLock lock{&cached_plans_mutex};
 
     bool found_cached_plan = false;
 
@@ -342,7 +342,7 @@ class CachedFusionPlans {
 
   // Need to figure out the right place to call this routine.
   static void Clear() {
-    mutex_lock lock{cached_plans_mutex};
+    absl::MutexLock lock{&cached_plans_mutex};
 
     for (auto it : cached_plans) {
       auto status = wrap::miopenDestroyFusionPlan(it.second);
@@ -359,19 +359,19 @@ class CachedFusionPlans {
 
   // Is the Fusion plan corresponding to this hash unsupported.
   static bool IsUnsupportedFusionPlan(uint64 hash) {
-    mutex_lock lock{cached_plans_mutex};
+    absl::MutexLock lock{&cached_plans_mutex};
     return unsupported_plans.count(hash) > 0;
   }
 
   // Mark the given hash value as corresponding to an unsupported fusion plan.
   static void MarkFusionPlanUnsupported(uint64 hash) {
-    mutex_lock lock{cached_plans_mutex};
+    absl::MutexLock lock{&cached_plans_mutex};
     unsupported_plans.insert(hash);
   }
 
  private:
   // Mutex to guard access to all data within this class.
-  static mutex cached_plans_mutex;
+  static absl::Mutex cached_plans_mutex;
 
   // Map of hash-value to MIOpen Fusion plan descriptors.
   // Need to be able share this across more than one stream and hence static.
@@ -382,7 +382,7 @@ class CachedFusionPlans {
   static std::set<uint64> unsupported_plans;
 };
 
-mutex CachedFusionPlans::cached_plans_mutex;
+absl::Mutex CachedFusionPlans::cached_plans_mutex;
 std::map<uint64, miopenFusionPlanDescriptor_t> CachedFusionPlans::cached_plans;
 std::set<uint64> CachedFusionPlans::unsupported_plans;
 
@@ -449,7 +449,7 @@ class MIOpenAccess {
   explicit MIOpenAccess(miopenHandle_t handle) : handle_(handle) {}
 
   ~MIOpenAccess() {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     wrap::miopenDestroy(handle_);
   }
 
@@ -468,7 +468,8 @@ class MIOpenAccess {
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
   MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
-    mutex_lock lock(mutex_);
+    auto lock = absl::make_unique<absl::MutexLock>(&mutex_);
+    mutex_.AssertHeld();
     gpu::ScopedActivateExecutorContext context(executor);
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
@@ -478,7 +479,7 @@ class MIOpenAccess {
 
  private:
   // Guards the enqueueing of MIOpen operations via the handle_ below.
-  mutex mutex_;
+  absl::Mutex mutex_;
 
   // MIOpen library handle.
   miopenHandle_t handle_ GUARDED_BY(mutex_);  // Owned.

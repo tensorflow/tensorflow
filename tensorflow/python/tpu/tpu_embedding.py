@@ -34,6 +34,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu.ops import tpu_ops
 
@@ -322,6 +323,10 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
           self).__init__(learning_rate, False, clip_weight_min, clip_weight_max)
 
 
+DeviceConfig = collections.namedtuple('DeviceConfig',
+                                      ['num_hosts', 'num_cores', 'job_name'])
+
+
 class TPUEmbedding(object):
   """API for using TPU for embedding.
 
@@ -409,10 +414,12 @@ class TPUEmbedding(object):
                feature_to_config_dict,
                batch_size,
                mode,
-               master,
+               master=None,
                optimization_parameters=None,
                cluster_def=None,
-               pipeline_execution_with_tensor_core=False):
+               pipeline_execution_with_tensor_core=False,
+               partition_strategy='div',
+               device_config=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -433,10 +440,20 @@ class TPUEmbedding(object):
         faster, but trained model will be different if step N and step N+1
         involve the same set of embedding IDs. Please see
         `tpu_embedding_configuration.proto` for details.
+      partition_strategy: A string, either 'mod' or 'div', specifying how to map
+        the lookup id to the embedding tensor. For more information see
+        `tf.nn.embedding_lookup_sparse`.
+      device_config: A DeviceConfig instance, used when `master` and
+        `cluster_def` are both `None`.
 
     Raises:
       ValueError: if any input is invalid.
     """
+    if partition_strategy not in ('div', 'mod'):
+      raise ValueError(
+          'Invalid partition_strategy {}'.format(partition_strategy))
+    self._partition_strategy = partition_strategy
+
     _validate_table_to_config_dict(table_to_config_dict)
     # Avoid nondeterminism from `Dict` iteration order by using `OrderedDict`.
     self._table_to_config_dict = _create_ordered_dict(table_to_config_dict)
@@ -452,23 +469,38 @@ class TPUEmbedding(object):
 
     self._batch_size = batch_size
 
-    self._master = master
-    self._cluster_def = cluster_def
-    self._tpu_system_metadata = (
-        tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
-            self._master, cluster_def=self._cluster_def))
-    if self._tpu_system_metadata.num_cores == 0:
-      raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
-                       'TPUs.'.format(self._master))
-    self._num_hosts = self._tpu_system_metadata.num_hosts
-    master_job_name = tpu_system_metadata_lib.master_job(self._master,
-                                                         self._cluster_def)
-    self._hosts = sorted([
-        device.name for device in self._tpu_system_metadata.devices
-        if 'device:CPU:' in device.name and (master_job_name is None or
-                                             master_job_name in device.name)])
-    self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
-    self._num_cores = self._tpu_system_metadata.num_cores
+    if master is None and cluster_def is None:
+      if device_config is None:
+        raise ValueError('When master and cluster_def are both None,'
+                         'device_config must be set but is not.')
+      if device_config.num_cores % device_config.num_hosts:
+        raise ValueError('num_hosts ({}) should divide num_cores ({}) '
+                         'but does not.'.format(device_config.num_cores,
+                                                device_config.num_hosts))
+      self._num_hosts = device_config.num_hosts
+      self._num_cores = device_config.num_cores
+      self._num_cores_per_host = self._num_cores // self._num_hosts
+      self._hosts = [
+          '{}/replica:0/task:{}/device:CPU:0'.format(device_config.job_name, i)
+          for i in range(self._num_hosts)
+      ]
+    else:
+      tpu_system_metadata = (
+          tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
+              master,
+              cluster_def=cluster_def))
+      if tpu_system_metadata.num_cores == 0:
+        raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
+                         'TPUs.'.format(master))
+      self._num_hosts = tpu_system_metadata.num_hosts
+      master_job_name = tpu_system_metadata_lib.master_job(master, cluster_def)
+      self._hosts = []
+      for device in tpu_system_metadata.devices:
+        if 'device:CPU:' in device.name and (
+            master_job_name is None or master_job_name in device.name):
+          self._hosts.append(device.name)
+      self._num_cores_per_host = tpu_system_metadata.num_of_cores_per_host
+      self._num_cores = tpu_system_metadata.num_cores
 
     _validate_batch_size(self._batch_size, self._num_cores)
     self._batch_size_per_core = self._batch_size // self._num_cores
@@ -575,7 +607,10 @@ class TPUEmbedding(object):
       table_descriptor.name = table
 
       table_config = self._table_to_config_dict[table]
-      table_descriptor.vocabulary_size = table_config.vocabulary_size
+      # For small tables, we pad to the number of hosts so that at least one
+      # id will be assigned to each host.
+      table_descriptor.vocabulary_size = max(table_config.vocabulary_size,
+                                             len(self.hosts))
       table_descriptor.dimension = table_config.dimension
 
       table_descriptor.num_features = self._table_to_num_features_dict[table]
@@ -598,7 +633,10 @@ class TPUEmbedding(object):
     config_proto.batch_size_per_tensor_core = self._batch_size_per_core
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
-    config_proto.sharding_strategy = elc.TPUEmbeddingConfiguration.DIV_DEFAULT
+    config_proto.sharding_strategy = (
+        elc.TPUEmbeddingConfiguration.DIV_DEFAULT
+        if self._partition_strategy == 'div' else
+        elc.TPUEmbeddingConfiguration.MOD)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
 
@@ -896,7 +934,7 @@ class TPUEmbedding(object):
         table_gradients.append(gradient)
       interleaved_table_grads = array_ops.reshape(
           array_ops.concat(table_gradients, axis=1),
-          [-1, table_gradients[0].shape[-1]])
+          [-1, array_ops.shape(table_gradients[0])[-1]])
       gradients.append(interleaved_table_grads)
     return tpu_ops.send_tpu_embedding_gradients(
         inputs=gradients, config=self.config_proto.SerializeToString())
@@ -1244,14 +1282,19 @@ def _create_device_fn(hosts):
   def device_fn(op):
     """Returns the `device` for `op`."""
     part_match = re.match(r'.*/part_(\d+)(/|$)', op.name)
+    dummy_match = re.match(r'.*dummy_(\d+).*', op.name)
+    if not part_match and not dummy_match:
+      raise RuntimeError(
+          'Internal Error: Expected {} to contain /part_* or dummy_*'.format(
+              op.name))
 
     if part_match:
       idx = int(part_match.group(1))
     else:
-      raise RuntimeError('Internal Error: '
-                         'Expected %s to contain /part_*.' % op.name)
+      idx = int(dummy_match.group(1))
 
     device = hosts[idx]
+    logging.debug('assigning {} to {}.', op, device)
     return device
 
   return device_fn
@@ -1264,17 +1307,31 @@ def _create_partitioned_variables(name,
                                   initializer,
                                   collections=None):  # pylint: disable=redefined-outer-name
   """Creates ParitionedVariables based on `num_hosts` for `table`."""
-  # TODO(shizhiw): automatically place embedding lookup elsewhere?
-  if vocabulary_size < num_hosts:
-    raise ValueError('`vocabulary_size`({}) is smaller than `num_hosts`({}). '
-                     'As TPU embedding is not optimized for small tables, '
-                     'please consider other ways for this embedding lookup.')
 
-  return list(variable_scope.get_variable(
-      name,
-      shape=(vocabulary_size, embedding_dimension),
-      partitioner=partitioned_variables.fixed_size_partitioner(num_hosts),
-      dtype=dtypes.float32,
-      initializer=initializer,
-      collections=collections,
-      trainable=False))
+  num_slices = min(vocabulary_size, num_hosts)
+
+  var_list = list(
+      variable_scope.get_variable(
+          name,
+          shape=(vocabulary_size, embedding_dimension),
+          partitioner=partitioned_variables.fixed_size_partitioner(num_slices),
+          dtype=dtypes.float32,
+          initializer=initializer,
+          collections=collections,
+          trainable=False))
+
+  if vocabulary_size >= num_hosts:
+    return var_list
+
+  # For padded part, define the dummy variable to be loaded into TPU system.
+  for idx in range(num_hosts - vocabulary_size):
+    var_list.append(
+        variable_scope.get_variable(
+            'dummy_{}_{}'.format(vocabulary_size + idx, name),
+            shape=(1, embedding_dimension),
+            dtype=dtypes.float32,
+            initializer=initializer,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            trainable=False))
+
+  return var_list

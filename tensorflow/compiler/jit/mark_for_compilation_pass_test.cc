@@ -270,11 +270,11 @@ TEST(XlaCompilationTest, FunctionCalls) {
   auto clusters = GetClusters(*graph);
 
   EXPECT_EQ(2, clusters.size());
-  EXPECT_FALSE(clusters["B"].empty());
-  EXPECT_EQ(clusters["B"], clusters["C"]);
+  EXPECT_FALSE(clusters["C"].empty());
+  EXPECT_EQ(clusters["C"], clusters["E"]);
   EXPECT_TRUE(clusters.find("A") == clusters.cend());
+  EXPECT_TRUE(clusters.find("B") == clusters.cend());
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
-  EXPECT_TRUE(clusters.find("E") == clusters.cend());
 }
 
 TEST(XlaCompilationTest, CallXlaDeviceFuncWithResourceOp) {
@@ -330,31 +330,6 @@ TEST(XlaCompilationTest, CallXlaDeviceFuncWithResourceOp) {
   auto clusters = GetClusters(*graph);
 
   EXPECT_NE(clusters["A"], "");
-}
-
-// Metadata-only operators such as Shape/Rank/Size may not be the root of a
-// cluster. This is partially to work around b/26800664, and partially because
-// we should probably prefer to compile metadata operators with their producers
-// wherever possible, rather than their consumers.
-TEST(XlaCompilationTest, MetadataOpsDontStartClusters) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  GraphDef graphdef;
-  {
-    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
-    Node* a =
-        ops::SourceOp("UncompilableNullary", builder.opts().WithName("A"));
-    // While all of the following ops are notionally compilable, none is
-    // permitted
-    // to start a cluster. So nothing should be compiled.
-    Node* b = ops::UnaryOp("Shape", a, builder.opts().WithName("B"));
-    Node* c = ops::UnaryOp("Rank", b, builder.opts().WithName("C"));
-    Node* d = ops::UnaryOp("Size", c, builder.opts().WithName("D"));
-    ops::UnaryOp("Shape", d, builder.opts().WithName("E"));
-    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  }
-  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
-  auto clusters = GetClusters(*graph);
-  EXPECT_EQ(0, clusters.size());  // Nothing should be compiled.
 }
 
 static Status GradForUnaryCwise(FunctionDef* g,
@@ -1133,6 +1108,45 @@ TEST(XlaCompilationTest, DontClusterMergingNodes) {
   EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
   EXPECT_NE(clusters["MatMulCombined_dev1"], clusters["MatMul0_dev0"]);
   EXPECT_NE(clusters["MatMulCombined_dev1"], clusters["MatMul1_dev1"]);
+  EXPECT_EQ(clusters["A_dev0"], clusters["MatMul0_dev0"]);
+  EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
+}
+
+TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
+  // This is similar to the 'DontClusterMergingNodes' above, except
+  // MatMulCombined is placed on the CPU.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  absl::string_view xla_gpu_dev0 = "/job:worker/replica:0/task:0/device:GPU:0";
+  absl::string_view xla_gpu_dev1 = "/job:worker/replica:0/task:0/device:GPU:1";
+  absl::string_view xla_cpu_dev0 = "/job:worker/replica:0/task:0/device:CPU:0";
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  Output a = ops::Tanh(root.WithOpName("tanh_A_dev0"),
+                       ops::Const(root.WithOpName("A_dev0"), 1.0f, {2, 2}));
+  Output b = ops::Tanh(root.WithOpName("tanh_B_dev1"),
+                       ops::Const(root.WithOpName("B_dev1"), 1.0f, {2, 2}));
+  Output matmul0 = ops::MatMul(root.WithOpName("MatMul0_dev0"), a, a);
+  Output matmul1 = ops::MatMul(root.WithOpName("MatMul1_dev1"), b, b);
+
+  Output combined =
+      ops::MatMul(root.WithOpName("MatMulCombined_cpu"), matmul0, matmul1);
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  for (Node* n : graph->nodes()) {
+    if (absl::EndsWith(n->name(), /*suffix=*/"cpu")) {
+      n->set_assigned_device_name(string(xla_cpu_dev0));
+    } else if (absl::EndsWith(n->name(), /*suffix=*/"dev0")) {
+      n->set_assigned_device_name(string(xla_gpu_dev0));
+    } else if (absl::EndsWith(n->name(), /*suffix=*/"dev1")) {
+      n->set_assigned_device_name(string(xla_gpu_dev1));
+    }
+  }
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  // Each of the MatMuls should be in a separate cluster.
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
+  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul0_dev0"]);
+  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul1_dev1"]);
   EXPECT_EQ(clusters["A_dev0"], clusters["MatMul0_dev0"]);
   EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
 }

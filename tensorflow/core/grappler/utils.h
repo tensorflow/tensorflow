@@ -298,6 +298,11 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 
 // Returns Status::OK() if a kernel is registered for node.op() on the device
 // type corresponding to node.device().
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs);
 Status IsKernelRegisteredForNode(const NodeDef& node);
 
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor);

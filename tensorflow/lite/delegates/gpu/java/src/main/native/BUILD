@@ -11,7 +11,6 @@ licenses(["notice"])  # Apache 2.0
 cc_library(
     name = "native",
     srcs = ["gpu_delegate_jni.cc"],
-    hdrs = ["gpu_delegate_jni.h"],
     copts = tflite_copts(),
     linkopts = select({
         "//tensorflow:android": [

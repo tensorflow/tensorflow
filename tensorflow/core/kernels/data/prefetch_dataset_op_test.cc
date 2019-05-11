@@ -38,9 +38,11 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "buffer_size"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+    NodeDef node_def = test::function::NDef(kNodeName, kOpName,
+                                            {"input_dataset", "buffer_size"},
+                                            {{"output_types", output_types},
+                                             {"output_shapes", output_shapes},
+                                             {"slack_period", 0}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }

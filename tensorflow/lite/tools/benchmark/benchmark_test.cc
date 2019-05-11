@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/command_line_flags.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace {
 const std::string* g_model_path = nullptr;
@@ -48,6 +48,7 @@ BenchmarkParams CreateParams() {
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
+  params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   return params;
 }
 

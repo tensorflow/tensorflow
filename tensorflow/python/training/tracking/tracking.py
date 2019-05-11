@@ -150,15 +150,27 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class TrackableResource(base.Trackable):
-  """Base class for all resources that need to be tracked."""
+class CapturableResource(base.Trackable):
+  """Holds a Tensor which a tf.function can capture.
 
-  def __init__(self):
-    global _RESOURCE_TRACKER_STACK
-    for resource_tracker in _RESOURCE_TRACKER_STACK:
-      resource_tracker.add_resource(self)
+  `CapturableResource`s are discovered by traversing the graph of object
+  attributes, e.g. during `tf.saved_model.save`. They are excluded from the
+  scope-based tracking of `TrackableResource`; generally things that require
+  initialization should inherit from `TrackableResource` instead of
+  `CapturableResource` directly.
+  """
 
+  def __init__(self, device=""):
+    """Initialize the `CapturableResource`.
+
+    Args:
+      device: A string indicating a required placement for this resource,
+        e.g. "CPU" if this resource must be created on a CPU device. A blank
+        device allows the user to place resource creation, so generally this
+        should be blank unless the resource only makes sense on one device.
+    """
     self._resource_handle = None
+    self._resource_device = device
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -173,7 +185,8 @@ class TrackableResource(base.Trackable):
   def resource_handle(self):
     """Returns the resource handle associated with this Resource."""
     if self._resource_handle is None:
-      self._resource_handle = self._create_resource()
+      with ops.device(self._resource_device):
+        self._resource_handle = self._create_resource()
     return self._resource_handle
 
   def _list_functions_for_serialization(self):
@@ -193,6 +206,24 @@ class TrackableResource(base.Trackable):
     }
 
 
+class TrackableResource(CapturableResource):
+  """Adds scope tracking to CapturableResource."""
+
+  def __init__(self, device=""):
+    """Initialize the `TrackableResource`.
+
+    Args:
+      device: A string indicating a required placement for this resource,
+        e.g. "CPU" if this resource must be created on a CPU device. A blank
+        device allows the user to place resource creation, so generally this
+        should be blank unless the resource only makes sense on one device.
+    """
+    global _RESOURCE_TRACKER_STACK
+    for resource_tracker in _RESOURCE_TRACKER_STACK:
+      resource_tracker.add_resource(self)
+    super(TrackableResource, self).__init__(device=device)
+
+
 class TrackableAsset(base.Trackable):
   """Base class for asset files which need to be tracked."""
 
@@ -201,7 +232,7 @@ class TrackableAsset(base.Trackable):
     # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.
-    with ops.init_scope():
+    with ops.init_scope(), ops.device("CPU"):
       self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
                                                   name="asset_path")
 

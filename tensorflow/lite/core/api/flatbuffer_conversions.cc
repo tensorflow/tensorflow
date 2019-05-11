@@ -61,9 +61,8 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       *type = kTfLiteFloat32;
       break;
     case TensorType_FLOAT16:
-      error_reporter->Report("Unimplemented data type float16 in tensor\n",
-                             tensor_type);
-      return kTfLiteError;
+      *type = kTfLiteFloat16;
+      break;
     case TensorType_INT16:
       *type = kTfLiteInt16;
       break;
@@ -728,6 +727,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_ROUND:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SELECT:
     case BuiltinOperator_SIN:

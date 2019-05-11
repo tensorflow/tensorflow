@@ -9075,6 +9075,44 @@ op {
   }
 }
 op {
+  name: "BatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "BatchFFT"
   input_arg {
     name: "input"
@@ -19857,6 +19895,45 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+}
+op {
+  name: "DecodePaddedRaw"
+  input_arg {
+    name: "input_bytes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "fixed_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT16
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "little_endian"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -32864,6 +32941,37 @@ op {
   is_commutative: true
 }
 op {
+  name: "LeftShift"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+}
+op {
   name: "Less"
   input_arg {
     name: "x"
@@ -41335,6 +41443,34 @@ op {
   is_commutative: true
 }
 op {
+  name: "MulNoNan"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "MultiDeviceIterator"
   output_arg {
     name: "handle"
@@ -43767,6 +43903,59 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "PaddedBatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "padded_shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "padding_values"
+    type_list_attr: "Toutput_types"
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "Toutput_types"
@@ -47237,6 +47426,87 @@ op {
     }
   }
   is_commutative: true
+}
+op {
+  name: "QuantizedAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
 }
 op {
   name: "QuantizedAvgPool"
@@ -51857,6 +52127,87 @@ op {
     }
   }
   is_commutative: true
+}
+op {
+  name: "QuantizedMul"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
 }
 op {
   name: "QuantizedRelu"
@@ -65783,6 +66134,37 @@ op {
     }
   }
   is_commutative: true
+}
+op {
+  name: "RightShift"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
 }
 op {
   name: "Rint"

@@ -138,8 +138,8 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       return errors::InvalidArgument(
           "number of batch_tensor elements exceeds 2^32-1");
     }
-    CudaLaunchConfig config =
-        GetCudaLaunchConfig(static_cast<int32>(total_count), d);
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(static_cast<int32>(total_count), d);
     return CudaLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
                             config.thread_per_block, 0, d.stream(),
                             config.virtual_thread_count,

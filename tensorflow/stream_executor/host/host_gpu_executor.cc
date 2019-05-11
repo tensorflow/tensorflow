@@ -182,7 +182,8 @@ port::Status HostExecutor::BlockHostUntilDone(Stream *stream) {
   return port::Status::OK();
 }
 
-DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+HostExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
@@ -195,8 +196,7 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
       tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
-  auto built = builder.Build();
-  return built.release();
+  return builder.Build();
 }
 
 bool HostExecutor::SupportsBlas() const {

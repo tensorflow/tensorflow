@@ -91,9 +91,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
-  StatusOr<llvm::Value*> EmitRoundNearestAfz(PrimitiveType prim_type,
-                                             llvm::Value* value) override;
-
   llvm::Value* EmitThreadId() override;
 
  private:
@@ -129,7 +126,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
 };
 

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -50,7 +49,7 @@ AttrSlice::AttrSlice(const NodeDef& node_def)
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
-static string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
+string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
   string ret;
 
   // We sort the attrs so the output is deterministic.
@@ -118,6 +117,13 @@ string FormatNodeForError(const Node& node) {
 
 string FormatNodeDefForError(const NodeDef& node_def) {
   return FormatNodeForError(NodeDebugInfo(node_def));
+}
+
+string FormatNodeDefForError(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info) {
+  return FormatNodeForError(NodeDebugInfo(
+      node_name, has_experimental_debug_info, experimental_debug_info));
 }
 
 void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
@@ -783,6 +789,8 @@ ADD_ATTR(bool)
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
                                 NodeDef* node_def) {
   node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+
+  // Update frame name to avoid multiple LoopCond nodes in one frame.
   if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
     string frame_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
@@ -790,6 +798,13 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
     frame_name = strings::StrCat(prefix, frame_name, suffix);
     attr.set_s(frame_name);
   }
+
+  // Update colocation constraints.
+  auto class_attr = node_def->mutable_attr()->find("_class");
+  if (class_attr != node_def->mutable_attr()->end()) {
+    class_attr->second.set_s(strings::StrCat(prefix, class_attr->second.s()));
+  }
+
   return Status::OK();
 }
 

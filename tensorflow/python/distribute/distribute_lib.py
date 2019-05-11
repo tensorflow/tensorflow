@@ -33,6 +33,7 @@ from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -432,9 +433,27 @@ class Strategy(object):
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
-    Data from the given dataset will be distributed evenly across all the
-    compute replicas. This function assumes that the input dataset is batched
-    by the global batch size.
+    In a multi-worker setting, we will first attempt to distribute the dataset
+    by attempting to detect whether the dataset is being created out of
+    ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
+    attempting to shard the input files. Note that there has to be at least one
+    input file per worker. If you have less than one input file per worker, we
+    suggest that you should disable distributing your dataset using the method
+    below.
+
+    If that attempt is unsuccessful (e.g. the dataset is created from a
+    Dataset.range), we will shard the dataset evenly at the end by appending a
+    `.shard` operation to the end of the processing pipeline. This will cause
+    the entire preprocessing pipeline for all the data to be run on every
+    worker, and each worker will do redundant work. We will print a warning
+    if this method of sharding is selected.
+
+    You can disable dataset distribution using the `auto_shard` option in
+    `tf.data.experimental.DistributeOptions`.
+
+    Within each host, we will also split the data among all the worker devices
+    (if more than one a present), and this will happen even if multi-worker
+    sharding is disabled using the method above.
 
     The following is an example:
 
@@ -442,7 +461,8 @@ class Strategy(object):
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset
-    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
@@ -453,8 +473,8 @@ class Strategy(object):
     ```
 
     Args:
-      dataset: `tf.data.Dataset` that will be distributed evenly across all
-        replicas.
+      dataset: `tf.data.Dataset` that will be sharded across all replicas using
+        the rules stated above.
 
     Returns:
       A `DistributedDataset` which returns inputs for each step of the
@@ -561,10 +581,15 @@ class Strategy(object):
           raise ValueError(
               "`axis` = %r out of range for `value` with rank %d" %
               (axis, v.shape.rank))
-        if v.shape[axis] is not None:
+        # TF v2 returns `None` for unknown dimensions and an integer for
+        # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
+        # or tensor_shape.Dimension(integer). `dimension_value` hides this
+        # difference, always returning `None` or an integer.
+        dim = tensor_shape.dimension_value(v.shape[axis])
+        if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, v.shape[axis]
+          return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
@@ -980,13 +1005,13 @@ class StrategyExtendedV2(object):
     for `d`
   * `with d.extended.colocate_vars_with(v)`: in replica/cross-replica context,
     variables will be created with locality V(`v`). That is, if we write
-    `with d.extended.colocate_vars_with(v1): v2 = tf.get_variable(...)`,
-    then `v2` will have locality V(`v1`), i.e. locality V(`v2`) will equal
-    V(`v1`).
+    `with d.extended.colocate_vars_with(v1):
+    v2 = tf.Variable(...)`, then `v2` will have locality V(`v1`),
+    i.e. locality V(`v2`) will equal V(`v1`).
   * `with d.extended.colocate_vars_with(d.extended.non_slot_devices(...))`: in
     replica/cross-replica context, variables will be created with locality N
-  * `v = tf.get_variable(...)`: in replica/cross-replica context, creates
-    a variable (which by definition will have locality V(`v`), though
+  * `v = tf.Variable(...)`: in replica/cross-replica context,
+    creates a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
   * `d.make_dataset_iterator(dataset)`: in cross-replica
@@ -1124,7 +1149,7 @@ class StrategyExtendedV2(object):
     No operations should be added to the graph inside this scope, it
     should only be used when creating variables (some implementations
     work by changing variable creation, others work by using a
-    tf.colocate_with() scope).
+    tf.compat.v1.colocate_with() scope).
 
     This may only be used inside `self.scope()`.
 
@@ -1132,11 +1157,11 @@ class StrategyExtendedV2(object):
 
     ```
     with strategy.scope():
-      var1 = tf.get_variable(...)
+      var1 = tf.Variable(...)
       with strategy.extended.colocate_vars_with(var1):
         # var2 and var3 will be created on the same device(s) as var1
-        var2 = tf.get_variable(...)
-        var3 = tf.get_variable(...)
+        var2 = tf.Variable(...)
+        var3 = tf.Variable(...)
 
       def fn(v1, v2, v3):
         # operates on v1 from var1, v2 from var2, and v3 from var3
@@ -1835,7 +1860,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _update_non_slot(self, colocate_with, fn, args, kwargs, should_group):
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
-    with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
+    with UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
       if should_group:
         return result

@@ -17,14 +17,20 @@ package_group(
 package_group(
     name = "friends",
     includes = [":internal"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/tools/tf_replay/...",
+        "//tensorflow/...",
+    ],
 )
 
 package(
     default_visibility = [":internal"],
 )
 
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
 
 cc_library(
@@ -286,6 +292,7 @@ cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
+    visibility = [":friends"],
     deps = [
         ":sharding_util",
         ":tf2xla_proto",
@@ -504,6 +511,39 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "rearrange_function_argument_pass",
+    srcs = [
+        "rearrange_function_argument_pass.cc",
+    ],
+    hdrs = [
+        "rearrange_function_argument_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "rearrange_function_argument_pass_registration",
+    srcs = [
+        "rearrange_function_argument_pass_registration.cc",
+    ],
+    deps = [
+        ":rearrange_function_argument_pass",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

@@ -21,7 +21,7 @@ END
   attr {
     name: "key"
     description: <<END
-The key for the keyed hash function passed as a list of two uint64
+The key used to seed the hash function, passed as a list of two uint64
 elements.
 END
   }
@@ -34,8 +34,11 @@ defines the key of the hash function. `key` is an array of 2 elements.
 A strong hash is important when inputs may be malicious, e.g. URLs with
 additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
-hash prevents this by making it difficult, if not infeasible, to compute inputs
-that hash to the same bucket. This comes at a cost of roughly 4x higher compute
+hash can be used to make it difficult to find inputs with a skewed hash value
+distribution over buckets. This requires that the hash function is
+seeded by a high-entropy (random) "key" unknown to the adversary.
+
+The additional robustness comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
 END
 }

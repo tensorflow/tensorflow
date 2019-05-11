@@ -17,22 +17,15 @@ limitations under the License.
 
 #include <memory>
 
-#include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
 namespace depthwise_conv {
-
-constexpr int kDepthwiseConvScratchWorkspaceSize = 10 * 10 * 64;
-constexpr int kDepthwiseConvAdjustedBiasLimit = 64;
-// In cases such as depth multiplication, we want to be able to load data from
-// the workspace that is beyond the valid range. Macro-block sizes are adjusted
-// to allow for this.
-constexpr int kWorkspaceExtension = 16;
 
 #ifdef USE_NEON
 // Lane operations are for clarity and convenience. We want to load and store
@@ -46,6 +39,9 @@ constexpr int kWorkspaceExtension = 16;
   TFLITE_DCHECK_EQ(reinterpret_cast<std::uintptr_t>(dst) % 4, 0); \
   vst1q_lane_u32(reinterpret_cast<uint32_t*>(dst), reg, lane_num)
 
+// Important! Most compilation configurations will compile and run without
+// reinterpret_cast. Sanitizers may fail silently on lane-loading, with an
+// obscure bug or mis-feature probably in unhygienic macro expansion.
 #define vld1q_lane_s8x8(src, reg, lane_num) \
   vld1q_lane_u64(reinterpret_cast<const uint64_t*>(src), reg, lane_num)
 #define vld1_lane_8x4(src, reg, lane_num) \
@@ -54,224 +50,6 @@ constexpr int kWorkspaceExtension = 16;
   vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
 
-#ifndef __aarch64__
-inline int8x16_t vqtbl4q_s8(int8x16x4_t a, int8x16_t b) {
-  const uint8x16_t mask = vtstq_s8(b, vdupq_n_s8(8));
-
-  // Delete bit 3 from the indices.
-  const int8x16_t high_bits = vshrq_n_s8(b, 4);
-  int8x16_t deleted_bit_3 = b;
-  deleted_bit_3 = vsliq_n_s8(deleted_bit_3, high_bits, 3);
-
-  int8x8x4_t repacked_data;
-
-  // Calculate for lower indices.
-  repacked_data.val[0] = vget_low_s8(a.val[0]);
-  repacked_data.val[1] = vget_low_s8(a.val[1]);
-  repacked_data.val[2] = vget_low_s8(a.val[2]);
-  repacked_data.val[3] = vget_low_s8(a.val[3]);
-  const int8x16_t output_for_lower =
-      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
-
-  // Calculate for high indices.
-  repacked_data.val[0] = vget_high_s8(a.val[0]);
-  repacked_data.val[1] = vget_high_s8(a.val[1]);
-  repacked_data.val[2] = vget_high_s8(a.val[2]);
-  repacked_data.val[3] = vget_high_s8(a.val[3]);
-  const int8x16_t output_for_higher =
-      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
-
-  // Merge.
-  int8x16_t output = vbslq_s8(mask, output_for_higher, output_for_lower);
-  return output;
-}
-#endif  // !__aarch64__
-
-// Convenience-compatibility functions.
-// Compatibility: Intrinsics reflect a mixture of older and newer ARM
-//     instructions. This actually results in ZIP1 / ZIP2 asm instructions, but
-//     one intrinsic is provided. Also older instructions operated in place,
-//     and it seems more defensive to assume that some versions of intrinsics
-//     might reflect this
-// Convenience: Callers in these kernels want both ZIP1 and ZIP2, and we do not
-//     want the calling code to get cluttered with unpacking int8x16x2_t.
-inline void vzipq_s8_in_place(int8x16_t* a, int8x16_t* b) {
-  int8x16x2_t r8x16;
-  r8x16 = vzipq_s8(*a, *b);
-  *a = r8x16.val[0];
-  *b = r8x16.val[1];
-}
-
-inline void vzipq_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vzipq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-  *b = vreinterpretq_s8_s16(r16x8.val[1]);
-}
-
-// Similar rationale to the zip-in_place functions, but callers only actually
-// need the TRN1 asm instruction result.
-inline void vtrn1_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vtrnq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-}
-
-// Similar rationale to the zip-in_place functions, but callers only actually
-// need the ZIP1 or ZIP2 asm instruction results.
-inline int8x16_t vzip1q_s8(int8x16_t a, int8x16_t b) {
-  return vzipq_s8(a, b).val[0];
-}
-inline int8x16_t vzip2q_s8(int8x16_t a, int8x16_t b) {
-  return vzipq_s8(a, b).val[1];
-}
-
-inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
-  *left = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*left), 8));
-  *left = vreinterpretq_s8_u32(vsliq_n_u32(vreinterpretq_u32_s8(*left),
-                                           vreinterpretq_u32_s8(*right), 24));
-  *right = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*right), 8));
-}
-
-#ifndef __aarch64__
-inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
-}
-#endif  // !__aarch64__
-
-#ifdef __ARM_FEATURE_DOTPROD
-// The vdotq_lane_s32 takes int8x8t for the rhs parameter, whereas the actual
-// instruction selects from between 4 32-bit (4x8-bit packed) sub-registers, an
-// unusual interpretation of "lane".
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, const int lane) {
-  switch (lane) {
-    case 0:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 0);
-    case 1:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 1);
-    case 2:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            0);
-    case 3:
-    default:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            1);
-  }
-}
-
-#else
-
-inline int32x4_t vdotq_s32(int32x4_t acc, int8x16_t lhs, int8x16_t rhs) {
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), vget_low_s8(rhs)));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), vget_high_s8(rhs)));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, int lane) {
-  int8x8_t lane_rhs;
-  if (lane == 0) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 0));
-  } else if (lane == 1) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 1));
-  } else if (lane == 2) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 0));
-  } else {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 1));
-  }
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), lane_rhs));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), lane_rhs));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-#endif  // !__ARM_FEATURE_DOTPROD
-#endif  // ARM NEON
-
-template <DepthwiseConvOutputRounding output_rounding>
-struct DivideByPOT {};
-
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kAwayFromZero> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return RoundingDivideByPOT(x, exponent);
-  }
-};
-
-#ifdef USE_NEON
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
-  }
-};
-#endif  // ARM NEON
-
-// See CategorizeDotProductKernel for definitive taxonomy.
-enum class DotProduct3x3KernelType {
-  kNone = 0,  // Parameter combination is not supported for dot product kernels.
-  kPlain,
-  kWithDepthMultiplicationStride1,
-  kWithDepthMultiplicationStride2,
-  kStride2,
-};
-
-inline DotProduct3x3KernelType CategorizeDotProductKernel(
-    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    const DepthwiseParams& params) {
-  constexpr int kSymmetricZeroPoint = 128;
-  const int padding =
-      std::max(params.padding_values.width, params.padding_values.height);
-  const int stride = params.stride_width;
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 depth_multiplier = params.depth_multiplier;
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
-
-  bool supported =
-      params.weights_offset == -kSymmetricZeroPoint &&
-      stride == params.stride_height && stride <= 2 && padding <= 1 &&
-      filter_width == 3 && filter_height == 3 && params.output_shift <= 0 &&
-      params.dilation_width_factor == 1 && params.dilation_height_factor == 1 &&
-      (((input_depth % 8) == 0 && depth_multiplier == 1) ||
-       (input_depth == 1 && depth_multiplier > 1));
-
-  if (!supported) {
-    return DotProduct3x3KernelType::kNone;
-  }
-
-  if (params.depth_multiplier == 1) {
-    if (stride == 1) {
-      return DotProduct3x3KernelType::kPlain;
-    } else if (stride == 2) {
-      return DotProduct3x3KernelType::kStride2;
-    } else {
-      return DotProduct3x3KernelType::kNone;
-    }
-  } else {
-    if (stride == 1) {
-      return DotProduct3x3KernelType::kWithDepthMultiplicationStride1;
-    } else if (stride == 2) {
-      return DotProduct3x3KernelType::kWithDepthMultiplicationStride2;
-    } else {
-      return DotProduct3x3KernelType::kNone;
-    }
-  }
-}
-
-#ifdef USE_NEON
-
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
 
@@ -279,29 +57,6 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #include <stddef.h>
-
-// Encapsulates constant parameters used in DepthwiseConv.
-// 64-bit is used for types that will be added to 64-bit addresses in asm.
-struct DepthwiseConvParams {
-  int64_t input_depth;
-  int64_t input_row_size;
-  int64_t output_depth;
-  int64_t output_row_size;
-  int64_t filter_row_size;
-  int32 input_offset;
-  int32 output_offset;
-  int32 filter_offset;
-  int32 output_multiplier;
-  int32 output_activation_min;
-  int32 output_activation_max;
-  int32 output_right_shift;
-  int32 input_width;
-  int32 input_height;
-  int32 stride_width;
-  int32 stride_height;
-  int32 output_width;
-  int32 output_height;
-};
 
 // Represents the number of bytes offset from the start of the
 // DepthwiseConvParams struct. This is used in the asm to load parameters.
@@ -379,49 +134,6 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
               "");
 #endif  // __aarch64__
 #endif  // ARM NEON
-
-// Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
-// 64-bit is used for types that will be added to 64-bit addresses in asm.
-//
-// This structure is specifically designed for use in asm.
-struct DepthwiseConvDotProdParams {
-  int64_t input_depth;
-  int64_t output_depth;
-  int32 stride;
-  int32 bias_increment;
-  //
-  int32 input_offset;
-  int32 output_offset;
-  int32 output_multiplier;
-  int32 output_shift;
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
-  //
-  int32 padding_left;
-  int32 padding_right;
-  int32 padding_top;
-  int32 padding_bottom;
-  //
-  int32 depth_micro_repeats;
-  //
-  int32 width_macro_count;
-  int32 input_width_overall_micro_repeats;
-  int32 input_width_micro_repeats;
-  int32 residual_width;
-  int32 output_width_overall_micro_repeats;
-  int32 output_width_micro_repeats;
-  int32 output_residual_width;
-  int32 workspace_width_micro_repeats;
-  //
-  int32 height_macro_count;
-  int32 inbound_block_height;
-  int32 outbound_block_height;
-  int32 input_height_stride;
-  int32 output_height_stride;
-  int32 workspace_height_stride;
-  //
-  int32 four_over_stride;
-};
 
 #ifdef USE_NEON
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
@@ -574,9 +286,6 @@ static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
 #endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
-template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
-          int32 kStrideWidth, int32 kStrideHeight>
-struct DepthwiseConvWindow {};
 
 template <>
 struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 1,
@@ -652,7 +361,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 1,
         "dup v30.16b, w4\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v31.16b, w0\n"
-        "neg w9, w9\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "add x10, %[bias_ptr], #16\n"
@@ -1586,7 +1294,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 1, 1> {
         "dup v30.16b, w4\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v31.16b, w0\n"
-        "neg w9, w9\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "add x10, %[bias_ptr], #16\n"
@@ -2403,7 +2110,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 2,
         "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
         "cmp %w[output_window_height], #2\n"
         "dup v28.8h, w0\n"
-        "neg w9, w9\n"
         "ldr w1, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
         "dup v26.4s, w9\n"
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
@@ -3436,7 +3142,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 2, 2> {
         "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
         "cmp %w[output_window_height], #2\n"
         "dup v28.8h, w0\n"
-        "neg w9, w9\n"
         "ldr w1, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
         "dup v26.4s, w9\n"
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
@@ -4296,12 +4001,6 @@ struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kUpward, 8, 2, 2> {
   }
 };
 
-enum class EdgeType { kCorner, kHorizontal, kVertical, kCenter };
-
-template <DepthwiseConvOutputRounding output_rounding, EdgeType kEdgeType,
-          int kPadWidth, int kPadHeight>
-struct DepthwiseConvPartial {};
-
 template <>
 struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
                             EdgeType::kCenter, 1, 1> {
@@ -4326,7 +4025,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w10, w10\n"
         "dup v29.4s, w10\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w9\n"
@@ -4440,7 +4138,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w10, w10\n"
         "dup v29.4s, w10\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w9\n"
@@ -4562,7 +4259,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w7, w7\n"
         "dup v29.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w6\n"
@@ -4728,7 +4424,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w7, w7\n"
         "dup v29.4s, w7\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w6\n"
@@ -4888,7 +4583,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5088,7 +4782,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5278,7 +4971,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5483,7 +5175,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
-        "neg w13, w13\n"
         "dup v29.4s, w13\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
@@ -5640,47 +5331,6 @@ struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kUpward,
 #undef OFFSET_OUTPUT_WIDTH
 #undef OFFSET_OUTPUT_HEIGHT
 
-// Copies a subset of the input designated by |input_ptr| into |output_ptr|
-// with the specified output dimensions. Supports output depths of 64 only as
-// this is the cache line size.
-inline void ShuffleInput(const uint8* input_ptr, int64_t input_depth,
-                         int32 input_width, int32 input_height,
-                         int64_t output_depth, int32 output_width,
-                         int32 output_height, uint8* output_ptr) {
-  const int64_t input_row_size = input_depth * input_width;
-  for (int32 y = 0; y < output_height; y++) {
-    const uint8* ptr = input_ptr;
-    for (int32 x = 0; x < output_width; x++) {
-      memcpy(output_ptr, ptr, output_depth);
-      output_ptr += output_depth;
-      ptr += input_depth;
-    }
-    input_ptr += input_row_size;
-  }
-}
-
-// Calculates the input size depending on stride and output.
-inline int32 get_shuffle_input_size(int32 stride, int32 output) {
-  return stride * (output - 1) + 3;
-}
-
-// Indicates the input and output dimensions used when shuffling input
-// activations.
-struct ShuffleParams {
-  int32 output_width;
-  int32 output_height;
-  int32 input_width;
-  int32 input_height;
-
-  ShuffleParams() = default;
-  ShuffleParams(int32 output_width, int32 output_height, int32 stride_width,
-                int32 stride_height)
-      : output_width(output_width),
-        output_height(output_height),
-        input_width(get_shuffle_input_size(stride_width, output_width)),
-        input_height(get_shuffle_input_size(stride_height, output_height)) {}
-};
-
 template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
           int32 kStrideHeight>
 struct DepthwiseConvThroughDepth {
@@ -5688,8 +5338,8 @@ struct DepthwiseConvThroughDepth {
   // |start_depth| to |end_depth|. Keep this not inlined to maintain a small
   // binary size. We use a DepthwiseConvParams struct for read only params
   // to minimize call overhead.
-  static __attribute__((noinline)) void Run(
-      const uint8* input_ptr, const uint8* filter_ptr, const int32* bias_ptr,
+  static void __attribute__((noinline))
+  Run(const uint8* input_ptr, const uint8* filter_ptr, const int32* bias_ptr,
       uint8* output_ptr, int64_t start_depth, int64_t end_depth,
       int64_t input_depth, int64_t input_row_size, int32 output_window_height,
       int32 output_window_width, const DepthwiseConvParams& params) {
@@ -5904,68 +5554,6 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 }
 
-inline bool Fast3x3FilterKernelSupported(
-    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    int32 stride_width, int32 stride_height, int32 dilation_width_factor,
-    int32 dilation_height_factor, int32 pad_width, int32 pad_height,
-    int32 depth_multiplier, const RuntimeShape& output_shape,
-    int32 output_shift) {
-  const int32 input_height = input_shape.Dims(1);
-  const int32 input_width = input_shape.Dims(2);
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
-  const int32 output_height = output_shape.Dims(1);
-  const int32 output_width = output_shape.Dims(2);
-
-  bool supported =
-      filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
-      (stride_width == 1 || stride_width == 2) &&
-      (stride_height == 1 || stride_height == 2) &&
-      (stride_width == stride_height) && (pad_width == 0 || pad_width == 1) &&
-      (pad_height == 0 || pad_height == 1) && (pad_width == pad_height) &&
-      (input_depth % 8) == 0 && (output_shift <= 0) &&
-      dilation_width_factor == 1 && dilation_height_factor == 1;
-
-  if (!supported) {
-    return false;
-  }
-
-  // Handle case where padding is zero but padding type is not kValid.
-  // This would require special boundary case handling that is not supported.
-
-  const int32 out_x = output_width - 1;
-  const int32 out_y = output_height - 1;
-
-  const int32 in_x_origin = (out_x * stride_width) - pad_width;
-  const int32 in_y_origin = (out_y * stride_height) - pad_height;
-
-  const int32 in_x_end = in_x_origin + filter_width;
-  const int32 in_y_end = in_y_origin + filter_height;
-
-  // Supported only if filter on the right and bottom boundary lies completely
-  // within the input if padding is zero.
-  if (pad_width == 0 && pad_height == 0) {
-    return in_x_end <= input_width && in_y_end <= input_height;
-  }
-
-  // Else if padding is 1, supported if bottom right filter lies +1 past input
-  // width and height.
-  supported = in_x_end <= (input_width + 1) && in_y_end <= (input_height + 1);
-
-  if (!supported) {
-    return false;
-  }
-
-  // Shapes with width 1 and height > 1, and vice versa are not supported yet.
-  if (input_width == 1) {
-    supported = (input_width == input_height);
-  } else if (input_height == 1) {
-    supported = (input_width == input_height);
-  }
-  return supported;
-}
-
 template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConv3x3Filter(
     const DepthwiseParams& rt_params, const RuntimeShape& input_shape,
@@ -6002,7 +5590,7 @@ inline void DepthwiseConv3x3Filter(
   params.output_offset = output_offset;
   params.filter_offset = filter_offset;
   params.output_multiplier = output_multiplier;
-  params.output_right_shift = -output_shift;
+  params.output_right_shift = output_shift;
   params.output_activation_min = output_activation_min;
   params.output_activation_max = output_activation_max;
 
@@ -6079,9 +5667,9 @@ inline void DepthwiseConv3x3Filter(
   }
 
   for (int32 b = batch_start; b < batch_end; ++b) {
+    // input_ptr and output_ptr point to the start of each batch
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size +
-                        row_start * params.output_width * params.output_depth;
+    uint8* output_ptr = output_data + b * output_batch_size;
 
     int32 out_x = 0;
     int32 out_y = row_start;
@@ -6097,12 +5685,18 @@ inline void DepthwiseConv3x3Filter(
       end_x = params.output_width - 1;
       out_y = std::max(1, out_y);
       end_y = std::min(params.output_height - 1, end_y);
-      const int in_x = (out_x * stride_width) - pad_width;
-      const int in_y = (out_y * stride_height) - pad_height;
-      input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr +=
-          out_y * params.output_row_size + out_x * params.output_depth;
     }
+
+    // pad_width and pad_height can both be 0 or 1, depending on padding option,
+    // such as Padding_VALID / Padding_SAME.
+    const int in_x = (out_x * stride_width) - pad_width;
+    const int in_y = (out_y * stride_height) - pad_height;
+
+    // input_ptr and output_ptr point to (in_y, in_x) and (out_y, out_x),
+    // respectively. (in_y, in_x) and (out_y, out_x) change along with
+    // row_start.
+    input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
+    output_ptr += out_y * params.output_row_size + out_x * params.output_depth;
 
     // Shuffling shapes that maximize width over the shuffle workspace size
     // perform better since the inputs are closer together, minimizing
@@ -6160,203 +5754,145 @@ inline void DepthwiseConv3x3Filter(
 
 #endif
 
-// Permute filter data, and adjust bias data to account for symmetric input
-// offset. Details are provided in the implementation of the
-// kUseCModel3x3DotProduct version.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
+// Perform any necessary cache hinting and pre-writing.
 template <DepthwiseConvImplementation implementation>
-struct ProcessPerDepth {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
-};
-
-// Copy a macro block of data from the input buffer into the workspace,
-// permuting data within each micro block.
-//
-// (a) Copy a macro block of data, padding as required along the width and
-//     height.
-// (b) Transpose the data within each micro block.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation,
-          DepthwiseConvDepthMultiplication depth_multiplication,
-          int32 max_padding>
-struct PackMacroBlock {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
-};
-
-// Apply filter to macro block of input data and store results. Details are
-// provided in the implementation of the kUseCModel3x3DotProduct version.
-//
-// Parameters for repeats and residual sizes are in terms of outputs.
-//
-// See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation,
-          DepthwiseConvDepthMultiplication depth_multiplication, int32 stride>
-struct KernelMacroBlock {
-  // Routine is contained in a static Run() method. No default template version
-  // is supplied, so that all implementations are deliberate choices of template
-  // specialization.
-  //
-  // Note that the signature of the Run() method will be designed for the asm
-  // implementation rather than conforming to style.
+struct WorkspacePrefetchWrite {
+  static inline void Run(int8 fill_data, int size, int8* workspace) {}
 };
 
 #if defined(USE_NEON) && defined(__aarch64__)
-// Experiments suggest that a modest performance improvement is seen, at least
-// on 855 chipset big cores, with cache hints.
-inline void PreloadInputBlock(
-    const uint8* input_block_data,
-    const DepthwiseConvDotProdParams* function_params) {
-  // Preload.
-  const int input_width_micro_repeats =
-      function_params->input_width_micro_repeats;
-  const int block_height = function_params->inbound_block_height;
-  const int residual_width = function_params->residual_width;
-  const int input_height_stride = function_params->input_height_stride;
-  const int input_depth = function_params->input_depth;
-
-  const int total_width = 4 * input_width_micro_repeats + residual_width;
-  const uint8* row_ptr = input_block_data;
-  for (int k_height = 0; k_height < block_height; ++k_height) {
-    const uint8* ptr = row_ptr;
-    for (int j = 0; j < total_width; ++j) {
-      // Input data is loaded once.
-      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-      ptr += input_depth;
+// Encourage the processor to keep the workspace in cache. Both the cache hint
+// and some memory writes are required.
+//
+// This code is extremely fragile.
+// Do not edit without extensive comparative performance testing.
+// Do not inline without great care.
+// Do not rely on results before and after getting coffee: non-thermal changes
+//    of more than 10% can occur with hidden underlying processor state changes.
+template <>
+struct WorkspacePrefetchWrite<
+    DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
+  static void __attribute__((noinline))
+  Run(int8 fill_data, int size, int8* workspace) {
+    const int8x8_t fill_data_vec = vdup_n_s8(fill_data);
+    int i = 0;
+    for (; i < (size - 15); i += 64) {
+      int8* ptr = workspace + i;
+      asm volatile("prfm pstl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      vst1_lane_u32(reinterpret_cast<uint32_t*>(ptr), fill_data_vec, 0);
     }
-    row_ptr += input_height_stride;
+    vst1_lane_u32(reinterpret_cast<uint32_t*>(workspace + size - 4),
+                  fill_data_vec, 0);
   }
-}
+};
 #endif  // USE_NEON &&__aarch64__
 
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
-  static void ProcessPerDepthNeon(
+  static inline void ProcessPerDepthNeon(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
-    const int depth = function_params->output_depth;
-    const int depth_micro_repeats = function_params->depth_micro_repeats;
-    const int bias_increment = function_params->bias_increment;
+    // Note that argument registers may be reused after parameter loading.
+    // x0 %[filter_data]
+    // x1 %[bias_data]
+    // x2 %[shuffled_filter_data]
+    // x3 %[adjusted_bias_data]
+    // x4 %[function_params]
 
-    constexpr int kSymmetricZeroPoint = 128;
-    constexpr uint8 kSignBit = 0x80;
-    const int32 input_offset = function_params->input_offset;
-    TFLITE_DCHECK_GE(input_offset, -255);
-    TFLITE_DCHECK_LE(input_offset, 0);
-    const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
-    const int8x16_t ones_vector = vdupq_n_s8(1);
-
-    // Simulate NEON-register transposition of subset of filter.
-    int8x16_t filter_reg_0_a;
-    int8x16_t filter_reg_0_b;
-    int8x16_t filter_reg_1_a;
-    int8x16_t filter_reg_1_b;
-    int8x16_t filter_reg_2_a;
-    int8x16_t filter_reg_2_b;
-
-    // Register pairs for each height.
-    // Effect subtraction of zero-point = 128 by XOR of sign bit.
-    const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
-
-    const uint8* filter_block = filter_data;
-    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
-      // Filter data is provided as filter_block[3][3][depth/8][2][4].
-      // height 3, width 3, micro-blocks, sub-block 0 or 1, depth 4.
-      // filter_bank[3][2][4][4]; Sub-block, height 3, depth 4, width 4.
-
-      // Load zero-point into effective position of zero-padding of filter
-      // (register B, upper part).
-      filter_reg_0_b = vdupq_n_u8(kSignBit);
-      filter_reg_1_b = vdupq_n_u8(kSignBit);
-      filter_reg_2_b = vdupq_n_u8(kSignBit);
-
-      const uint8* filter_block_ptr = filter_block;
-      filter_reg_0_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_a, 0);
-      filter_block_ptr += depth;
-      filter_reg_0_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_b, 0);
-      filter_block_ptr += depth;
-      filter_reg_0_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_0_a, 1);
-      filter_block_ptr += depth;
-      filter_reg_1_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_a, 0);
-      filter_block_ptr += depth;
-      filter_reg_1_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_b, 0);
-      filter_block_ptr += depth;
-      filter_reg_1_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_1_a, 1);
-      filter_block_ptr += depth;
-      filter_reg_2_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_a, 0);
-      filter_block_ptr += depth;
-      filter_reg_2_b = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_b, 0);
-      filter_block_ptr += depth;
-      filter_reg_2_a = vld1q_lane_s8x8(filter_block_ptr, filter_reg_2_a, 1);
-
-      filter_reg_0_a = veorq_s8(filter_reg_0_a, sign_bit);
-      filter_reg_0_b = veorq_s8(filter_reg_0_b, sign_bit);
-      filter_reg_1_a = veorq_s8(filter_reg_1_a, sign_bit);
-      filter_reg_1_b = veorq_s8(filter_reg_1_b, sign_bit);
-      filter_reg_2_a = veorq_s8(filter_reg_2_a, sign_bit);
-      filter_reg_2_b = veorq_s8(filter_reg_2_b, sign_bit);
-
-      vzipq_s8_in_place(&filter_reg_0_a, &filter_reg_0_b);
-      vzipq_s8_in_place(&filter_reg_1_a, &filter_reg_1_b);
-      vzipq_s8_in_place(&filter_reg_2_a, &filter_reg_2_b);
-      vzipq_s8x2_in_place(&filter_reg_0_a, &filter_reg_0_b);
-      vzipq_s8x2_in_place(&filter_reg_1_a, &filter_reg_1_b);
-      vzipq_s8x2_in_place(&filter_reg_2_a, &filter_reg_2_b);
-
-      vst1q_s8(shuffled_filter_data, filter_reg_0_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_0_b);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_1_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_1_b);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_2_a);
-      shuffled_filter_data += 16;
-      vst1q_s8(shuffled_filter_data, filter_reg_2_b);
-      shuffled_filter_data += 16;
-
-      int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
-      bias_data += bias_increment;
-      int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
-      bias_data += bias_increment;
-      // For instance, if input_offset == 128, no adjustment is needed.
-
-      int32x4_t filter_sum_a = vdupq_n_s32(0);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_0_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_1_a, ones_vector);
-      filter_sum_a = vdotq_s32(filter_sum_a, filter_reg_2_a, ones_vector);
-      int32x4_t filter_sum_b = vdupq_n_s32(0);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_0_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_1_b, ones_vector);
-      filter_sum_b = vdotq_s32(filter_sum_b, filter_reg_2_b, ones_vector);
-
-      adjusted_bias_data_a = vmlaq_n_s32(adjusted_bias_data_a, filter_sum_a,
-                                         input_offset_difference);
-      adjusted_bias_data_b = vmlaq_n_s32(adjusted_bias_data_b, filter_sum_b,
-                                         input_offset_difference);
-
-      vst1q_s32(adjusted_bias_data, adjusted_bias_data_a);
-      adjusted_bias_data += 4;
-      vst1q_s32(adjusted_bias_data, adjusted_bias_data_b);
-      adjusted_bias_data += 4;
-
-      filter_block += 8;
-    }
+    asm volatile(
+        // %bb.0:
+        "ldp    w12, w11, [%[function_params], #" STR(DP_OFFSET_BIAS_INCREMENT) "]\n"
+        "ldrsw  x9, [%[function_params], #" STR(DP_OFFSET_OUTPUT_DEPTH) "]\n"
+        "ldr    w10, [%[function_params], #" STR(DP_OFFSET_DEPTH_MICRO_REPEATS) "]\n"
+        "mov    x8, xzr\n"
+        "add    w11, w11, #128\n"  // =128
+        "sxtw   x12, w12\n"
+        "movi   v0.16b, #128\n"
+        "dup    v1.4s, w11\n"
+        "lsl    x11, x12, #3\n"
+        "lsl    x12, x12, #2\n"
+        "movi   v2.16b, #1\n"
+        // implicit-def: $q3
+        // implicit-def: $q4
+        // implicit-def: $q5
+        // implicit-def: $q6
+        // implicit-def: $q7
+        // implicit-def: $q16
+        // implicit-def: $q17
+        // implicit-def: $q18
+        // implicit-def: $q19
+        "b      DC_PER_DEPTH_2\n"
+        "   DC_PER_DEPTH_1:\n"  // in Loop: Header=BB177_2 Depth=1
+        "add    x13, %[filter_data], x8, lsl #3\n"
+        "ld1    { v19.d }[0], [x13], x9\n"
+        "movi   v21.2d, #0\n"
+        "movi   v20.2d, #0\n"
+        "add    x8, x8, #1\n"  // =1
+        "ld1    { v18.d }[0], [x13], x9\n"
+        "ld1    { v17.d }[0], [x13], x9\n"
+        "zip1   v22.16b, v19.16b, v18.16b\n"
+        "eor    v22.16b, v22.16b, v0.16b\n"
+        "ld1    { v16.d }[0], [x13], x9\n"
+        "zip1   v23.16b, v17.16b, v0.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "zip1   v24.8h, v22.8h, v23.8h\n"
+        "ld1    { v7.d }[0], [x13], x9\n"
+        "zip2   v22.8h, v22.8h, v23.8h\n"
+        "sdot   v21.4s, v22.16b, v2.16b\n"
+        "sdot   v20.4s, v24.16b, v2.16b\n"
+        "ld1    { v6.d }[0], [x13], x9\n"
+        "zip1   v23.16b, v16.16b, v7.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "ld1    { v5.d }[0], [x13], x9\n"
+        "zip1   v25.16b, v6.16b, v0.16b\n"
+        "eor    v25.16b, v25.16b, v0.16b\n"
+        "zip1   v26.8h, v23.8h, v25.8h\n"
+        "ld1    { v4.d }[0], [x13], x9\n"
+        "zip2   v23.8h, v23.8h, v25.8h\n"
+        "sdot   v21.4s, v23.16b, v2.16b\n"
+        "sdot   v20.4s, v26.16b, v2.16b\n"
+        "ld1    { v3.d }[0], [x13]\n"
+        "zip1   v25.16b, v5.16b, v4.16b\n"
+        "stp    q26, q23, [%[shuffled_filter_data], #32]\n"
+        "stp    q24, q22, [%[shuffled_filter_data]]\n"
+        "zip1   v23.16b, v3.16b, v0.16b\n"
+        "eor    v22.16b, v25.16b, v0.16b\n"
+        "eor    v23.16b, v23.16b, v0.16b\n"
+        "zip1   v24.8h, v22.8h, v23.8h\n"
+        "zip2   v22.8h, v22.8h, v23.8h\n"
+        "stp    q24, q22, [%[shuffled_filter_data], #64]\n"
+        "sdot   v21.4s, v22.16b, v2.16b\n"
+        "ldr    q22, [%[bias_data]]\n"
+        "ldr    q23, [%[bias_data], x12]\n"
+        "sdot   v20.4s, v24.16b, v2.16b\n"
+        "add    %[shuffled_filter_data], x2, #96\n"  // =96
+        "mla    v22.4s, v20.4s, v1.4s\n"
+        "mla    v23.4s, v21.4s, v1.4s\n"
+        "add    %[bias_data], x1, x11\n"
+        "stp    q22, q23, [%[adjusted_bias_data]], #32\n"
+        "   DC_PER_DEPTH_2:\n"  // =>This Inner Loop Header: Depth=1
+        "cmp    w8, w10\n"
+        "b.lt   DC_PER_DEPTH_1\n"
+        :
+        // Outputs.
+        [ filter_data ] "+r"(filter_data),
+        [ bias_data ] "+r"(bias_data),
+        [ shuffled_filter_data ] "+r"(shuffled_filter_data),
+        [ adjusted_bias_data ] "+r"(adjusted_bias_data)
+        :
+        // Inputs.
+        [ function_params ] "r"(function_params)
+        :
+        // Clobbers.
+        "cc", "memory",
+        // We use these NEON registers.
+        "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27",
+        // We use these general-purpose registers.
+        "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x15", "x16");
   }
 
   static inline void Run(const uint8* filter_data, const int32* bias_data,
@@ -6565,11 +6101,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(input_block_data, scratch_block_data, function_params);
   }
 };
@@ -6956,11 +6492,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -7159,10 +6695,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -7219,10 +6751,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
       TFLITE_DCHECK_EQ(start_width, 1);
       TFLITE_DCHECK(leading_width_padding);
       TFLITE_DCHECK(trailing_width_padding);
-      // ASM should use MOVI 64-bit set.
-      padding_mask = vcreate_u64(~0xffffff00L);
 
       for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        half_work_reg = vdup_n_u8(-input_offset);
         half_work_reg = vld1_lane_s8(reinterpret_cast<const int8*>(
                                          input_block_data + input_block_offset),
                                      half_work_reg, 1);
@@ -7234,8 +6765,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             vld1_lane_s8(reinterpret_cast<const int8*>(input_block_data +
                                                        input_block_offset + 2),
                          half_work_reg, 3);
-        half_work_reg =
-            vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
 
         half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
         TFLITE_DCHECK_EQ(scratch_data_offset % 8, 0);
@@ -7309,11 +6838,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -7445,10 +6974,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         // Main copy loop.
         for (; (copy_done + 4) <= copy_size; copy_done += 4) {
-          // Important! Most compilation configurations will compile and run
-          // without the reinterpret_cast. Sanitizers may fail silently on
-          // lane-loading, with a obscure bug or mis-feature probably in
-          // unhygienic macro expansion.
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
@@ -7530,11 +7055,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
-    PreloadInputBlock(input_block_data, function_params);
+  static void __attribute__((noinline))
+  Run(int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    PreloadInputBlock<uint8>(input_block_data, function_params);
     PackMacroBlockNeon(height_block_number, width_block_number,
                        input_block_data, scratch_block_data, function_params);
   }
@@ -7943,7 +7468,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             const bool no_right_block = output_width < 3;
 
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg = vdupq_n_s8(0);
               right_bank_1_reg = vdupq_n_s8(0);
               right_bank_2_reg = vdupq_n_s8(0);
@@ -8082,7 +7607,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
             // Load next sub-micro block of data.
             if (no_right_block) {
-              // Only needed for santizer checks.
+              // Only needed for sanitizer checks.
               right_bank_0_reg_a = vdupq_n_s8(0);
               right_bank_1_reg_a = vdupq_n_s8(0);
               right_bank_2_reg_a = vdupq_n_s8(0);
@@ -8152,10 +7677,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -8420,6 +7945,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           bias_data += kBiasIncrement;
         }
       } else {
+        // block_height == 1.
         int8x16_t filter_reg_0_a;
         int8x16_t filter_reg_1_a;
         int8x16_t filter_reg_2_a;
@@ -8578,10 +8104,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -9221,10 +8747,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -9747,10 +9273,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     }
   }
 
-  static inline void Run(const int8* scratch_block_data,
-                         const int8* filter_workspace, const int32* bias_data,
-                         uint8* output_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     KernelMacroBlockNeon(scratch_block_data, filter_workspace, bias_data,
                          output_block_data, function_params);
   }
@@ -10225,6 +9751,15 @@ inline void DepthwiseConvDotProduct3x3(
   function_params.output_height_stride = output_height_stride;
   function_params.residual_width = residual_micro_width;
 
+  // Prefetch workspace for write, along with any necessary dummy writes.
+  const int max_workspace_height_stride =
+      16 * ((workspace_width_micro_repeats + 3) >> 2) * largest_macro_depth;
+  const int workspace_fill_size = std::min(
+      kDepthwiseConvScratchWorkspaceSize,
+      height_block_size * max_workspace_height_stride + kWorkspaceExtension);
+  WorkspacePrefetchWrite<implementation>::Run(
+      params.weights_offset, workspace_fill_size, macroblock_workspace);
+
   // Main process.
   //
   // Most kernels are nested batch-height-width-depth. Here we proceed over
@@ -10268,6 +9803,15 @@ inline void DepthwiseConvDotProduct3x3(
               : function_params.output_width_micro_repeats + 1;
 
       for (int j_depth = 0; j_depth < depth_overall_macro_count; ++j_depth) {
+        // Process filter and bias data.
+        //
+        function_params.depth_micro_repeats =
+            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
+        ProcessPerDepth<implementation>::Run(
+            filter_data + 64 * j_depth,
+            bias_data + 8 * 2 * bias_increment * j_depth,
+            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
+
         const uint8* input_data_block =
             input_data + b * input_batch_stride +
             j_depth * input_depth_macro_stride +
@@ -10277,15 +9821,6 @@ inline void DepthwiseConvDotProduct3x3(
         uint8* output_data_block = output_data + b * output_batch_stride +
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
-
-        // Process filter and bias data.
-        //
-        function_params.depth_micro_repeats =
-            j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
-        ProcessPerDepth<implementation>::Run(
-            filter_data + 64 * j_depth,
-            bias_data + 8 * 2 * bias_increment * j_depth,
-            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
 
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the

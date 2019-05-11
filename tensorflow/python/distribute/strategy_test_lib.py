@@ -311,7 +311,8 @@ class DistributionTestBase(test.TestCase):
                               devices,
                               expected_values,
                               sess=None,
-                              test_reinitialize=True):
+                              test_reinitialize=True,
+                              ignore_order=False):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(iterator.initialize())
 
@@ -319,7 +320,10 @@ class DistributionTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertEqual(expected_value, computed_value)
+      if ignore_order:
+        self.assertCountEqual(expected_value, computed_value)
+      else:
+        self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
@@ -335,7 +339,10 @@ class DistributionTestBase(test.TestCase):
         computed_value = evaluate([
             values.select_replica(r, next_element) for r in range(len(devices))
         ])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
     with strategy.scope():

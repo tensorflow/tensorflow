@@ -203,6 +203,7 @@ py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    python_version = "PY2",
     shard_count = 8,
     tags = [
         "no_gpu",  # b/127001953
@@ -227,18 +228,18 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "learning_rate_schedule_test",
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(

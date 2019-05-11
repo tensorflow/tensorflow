@@ -182,9 +182,9 @@ class TransformedDistribution(distribution_lib.Distribution):
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Inline(
       forward_fn=tf.exp,
-      inverse_fn=tf.log,
+      inverse_fn=tf.math.log,
       inverse_log_det_jacobian_fn=(
-        lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
+        lambda y: -tf.reduce_sum(tf.math.log(y), axis=-1)),
     name="LogNormalTransformedDistribution")
   ```
 

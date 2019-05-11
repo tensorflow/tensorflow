@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
 #include "tensorflow/core/lib/monitoring/mobile_sampler.h"
 #else
@@ -91,6 +95,11 @@ class Buckets {
   // [-DBL_MAX, ..., bucket_limits[i], bucket_limits[i + 1], ..., DBL_MAX].
   static std::unique_ptr<Buckets> Explicit(
       std::initializer_list<double> bucket_limits);
+
+  // This alternative Explicit Buckets factory method is primarily meant to be
+  // used by the CLIF layer code paths that are incompatible with
+  // initialize_lists.
+  static std::unique_ptr<Buckets> Explicit(std::vector<double> bucket_limits);
 
   virtual const std::vector<double>& explicit_bounds() const = 0;
 };

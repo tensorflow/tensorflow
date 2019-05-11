@@ -11,6 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load(
@@ -59,6 +60,7 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
@@ -83,6 +85,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+    "//tensorflow/python/keras/distribute:mnist_multi_worker_lib",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
@@ -93,6 +96,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
+    "//tensorflow/tools/common:public_api",
+    "//tensorflow/tools/common:test_module1",
+    "//tensorflow/tools/docs:doc_generator_visitor",
+    "//tensorflow/tools/docs:generate_lib",
+    "//tensorflow/tools/docs:parser",
+    "//tensorflow/tools/docs:py_guide_parser",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
@@ -242,6 +251,8 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

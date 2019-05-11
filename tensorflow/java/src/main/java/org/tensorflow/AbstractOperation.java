@@ -24,6 +24,21 @@ package org.tensorflow;
 abstract class AbstractOperation implements Operation {
 
   @Override
+  public Output<?>[] outputList(int idx, int length) {
+    Output<?>[] outputs = new Output<?>[length];
+    for (int i = 0; i < length; ++i) {
+      outputs[i] = output(idx + i);
+    }
+    return outputs;
+  }
+
+  @Override
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public <T> Output<T> output(int idx) {
+    return new Output(this, idx);
+  }
+
+  @Override
   public String toString() {
     return String.format("<%s '%s'>", type(), name());
   }

@@ -55,7 +55,7 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output) {
   const int32 output_size = first_dim_size * slice_size;
-  auto config = GetCudaLaunchConfig(output_size, gpu_device);
+  auto config = GetGpuLaunchConfig(output_size, gpu_device);
 
   TF_CHECK_OK(CudaLaunchKernel(DynamicStitchKernel<T>, config.block_count,
                                config.thread_per_block, 0, gpu_device.stream(),

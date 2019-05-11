@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "cuda/include/cusparse.h"
+#include "third_party/gpus/cuda/include/cusparse.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -210,6 +210,44 @@ static inline Status GtsvImpl(SparseFn op, cusparseHandle_t cusparse_handle,
   }
 
 TF_CALL_LAPACK_TYPES(GTSV_INSTANCE);
+
+#define GTSV_NO_PIVOT_INSTANCE(Scalar, sparse_prefix)                          \
+  template <>                                                                  \
+  Status CudaSparse::GtsvNoPivot<Scalar>(int m, int n, const Scalar* dl,       \
+                                         const Scalar* d, const Scalar* du,    \
+                                         Scalar* B, int ldb) const {           \
+    DCHECK(initialized_);                                                      \
+    return GtsvImpl(SPARSE_FN(gtsv_nopivot, sparse_prefix), *cusparse_handle_, \
+                    m, n, dl, d, du, B, ldb);                                  \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV_NO_PIVOT_INSTANCE);
+
+template <typename Scalar, typename SparseFn>
+static inline Status GtsvStridedBatchImpl(SparseFn op,
+                                          cusparseHandle_t cusparse_handle,
+                                          int m, const Scalar* dl,
+                                          const Scalar* d, const Scalar* du,
+                                          Scalar* x, int batchCount,
+                                          int batchStride) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, AsCudaComplex(dl),
+                                 AsCudaComplex(d), AsCudaComplex(du),
+                                 AsCudaComplex(x), batchCount, batchStride));
+  return Status::OK();
+}
+
+#define GTSV_STRIDED_BATCH_INSTANCE(Scalar, sparse_prefix)                   \
+  template <>                                                                \
+  Status CudaSparse::GtsvStridedBatch<Scalar>(                               \
+      int m, const Scalar* dl, const Scalar* d, const Scalar* du, Scalar* x, \
+      int batchCount, int batchStride) const {                               \
+    DCHECK(initialized_);                                                    \
+    return GtsvStridedBatchImpl(SPARSE_FN(gtsvStridedBatch, sparse_prefix),  \
+                                *cusparse_handle_, m, dl, d, du, x,          \
+                                batchCount, batchStride);                    \
+  }
+
+TF_CALL_LAPACK_TYPES(GTSV_STRIDED_BATCH_INSTANCE);
 
 }  // namespace tensorflow
 

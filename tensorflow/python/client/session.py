@@ -27,6 +27,7 @@ import warnings
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device
@@ -36,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -668,6 +670,19 @@ class BaseSession(SessionInterface):
     if not isinstance(config, config_pb2.ConfigProto):
       raise TypeError(
           'config must be a tf.ConfigProto, but got %s' % type(config))
+
+    if (mixed_precision_global_state.mixed_precision_is_enabled and
+        config.graph_options.rewrite_options.auto_mixed_precision !=
+        rewriter_config_pb2.RewriterConfig.OFF):
+      new_config = config_pb2.ConfigProto()
+      new_config.CopyFrom(config)
+      new_config.graph_options.rewrite_options.auto_mixed_precision = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      config = new_config
+    elif (config.graph_options.rewrite_options.auto_mixed_precision !=
+          rewriter_config_pb2.RewriterConfig.ON):
+      mixed_precision_global_state.non_mixed_precision_session_created = True
+
     self._config = config
     self._add_shapes = config.graph_options.infer_shapes
 
@@ -1425,9 +1440,8 @@ class BaseSession(SessionInterface):
       options_ptr = tf_session.TF_NewBufferFromString(
           compat.as_bytes(callable_options.SerializeToString()))
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          self._handle = tf_session.TF_SessionMakeCallable(
-              session._session, options_ptr, status)
+        self._handle = tf_session.TF_SessionMakeCallable(
+            session._session, options_ptr)
       finally:
         tf_session.TF_DeleteBuffer(options_ptr)
 
@@ -1437,11 +1451,9 @@ class BaseSession(SessionInterface):
       run_metadata = kwargs.get('run_metadata', None)
       try:
         run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
-        # TODO(mrry): Switch to raising an exception from the SWIG wrapper.
-        with errors.raise_exception_on_not_ok_status() as status:
-          ret = tf_session.TF_SessionRunCallable(
-              self._session._session, self._handle, args, status,
-              run_metadata_ptr)
+        ret = tf_session.TF_SessionRunCallable(self._session._session,
+                                               self._handle, args,
+                                               run_metadata_ptr)
         if run_metadata:
           proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
           run_metadata.ParseFromString(compat.as_bytes(proto_data))
@@ -1455,9 +1467,8 @@ class BaseSession(SessionInterface):
       # called before this destructor, in which case `self._session._session`
       # will be `None`.
       if self._handle is not None and self._session._session is not None:
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_SessionReleaseCallable(
-              self._session._session, self._handle, status)
+        tf_session.TF_SessionReleaseCallable(
+            self._session._session, self._handle)
   # pylint: enable=protected-access
 
   # TODO(b/74355905): Reimplement `Session.make_callable()` using this method

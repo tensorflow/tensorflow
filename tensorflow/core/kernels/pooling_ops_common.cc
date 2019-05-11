@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"

@@ -50,8 +50,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
@@ -278,6 +278,14 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRangeMin() const override { return 0.f; }
 
   float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
 #endif
 
  private:
@@ -2481,16 +2489,18 @@ TEST_F(OpConverterTest, ConvertActivation) {
         "The input \"input\" for Relu must be a tensor, at my_act");
   }
 
-  constexpr float kAlpha = 0.2f;
+  constexpr float kLeakyReluAlpha = 0.2f;
+  constexpr float kSeluAlpha = 1.7580993408473768599402175208123f;
+  constexpr float kSeluScale = 1.0507009873554804934193349852946f;
 
   // Get nodedef for activation layer.
   auto get_act_nodedef = [](string op_name) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     if (op_name == "LeakyRelu") {
-      auto act =
-          ops::internal::LeakyRelu(s.WithOpName("my_act"), input,
-                                   ops::internal::LeakyRelu::Alpha(kAlpha));
+      auto act = ops::internal::LeakyRelu(
+          s.WithOpName("my_act"), input,
+          ops::internal::LeakyRelu::Alpha(kLeakyReluAlpha));
       return act.operation.node()->def();
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
@@ -2504,6 +2514,18 @@ TEST_F(OpConverterTest, ConvertActivation) {
     } else if (op_name == "Tanh") {
       auto act = ops::Tanh(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
+    } else if (op_name == "Elu") {
+      auto act = ops::Elu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Selu") {
+      auto act = ops::Selu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Softsign") {
+      auto act = ops::Softsign(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Softplus") {
+      auto act = ops::Softplus(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
     }
     EXPECT_TRUE(false);
     return NodeDef();
@@ -2511,7 +2533,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
   // Get expected output for activation layer.
   auto get_act_output = [](string op_name, float input) -> float {
     if (op_name == "LeakyRelu") {
-      return (input > 0.0f) ? input : input * kAlpha;
+      return (input > 0.0f) ? input : input * kLeakyReluAlpha;
     } else if (op_name == "Relu") {
       return (input > 0.0f) ? input : 0.0f;
     } else if (op_name == "Relu6") {
@@ -2520,14 +2542,33 @@ TEST_F(OpConverterTest, ConvertActivation) {
       return 1.0f / (1.0f + std::exp(-input));
     } else if (op_name == "Tanh") {
       return std::tanh(input);
+    } else if (op_name == "Elu") {
+      return (input > 0.0f) ? input : std::exp(input) - 1;
+    } else if (op_name == "Selu") {
+      return (input > 0.0f) ? kSeluScale * input
+                            : kSeluScale * kSeluAlpha * (std::exp(input) - 1);
+    } else if (op_name == "Softsign") {
+      return input / (std::abs(input) + 1);
+    } else if (op_name == "Softplus") {
+      return std::log(std::exp(input) + 1);
     }
     EXPECT_TRUE(false);
     return 0;
   };
 
+  // Get list of ops to test.
+  std::vector<string> ops_to_test;
+  // Add all ops supported by ConvertUnary.
+  auto* map = ActivationTypeMap();
+  ops_to_test.reserve(map->size());
+  for (auto& pair : *map) {
+    ops_to_test.push_back(pair.first);
+  }
+  // Add other activation ops to test.
+  ops_to_test.push_back("Relu6");
+  ops_to_test.push_back("LeakyRelu");
   // Ok.
-  for (const string& op_name :
-       {"LeakyRelu", "Relu", "Relu6", "Sigmoid", "Tanh"}) {
+  for (const string& op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -2536,13 +2577,18 @@ TEST_F(OpConverterTest, ConvertActivation) {
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
     ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+
+    // Certain activations should set quantization range automatically.
+    auto ranges = quantization_ranges();
     if (op_name == "Relu6") {
-      // Relu6 should set quantization range automatically.
-      auto ranges = quantization_ranges();
       EXPECT_EQ(ranges[output.tensor()], 6.0f);
+    } else if (op_name == "Sigmoid" || op_name == "Tanh" ||
+               op_name == "Softsign") {
+      EXPECT_EQ(ranges[output.tensor()], 1.0f);
     }
 
-    const std::vector<float> input = {-100, -2, -1, 0, 1, 100};
+    // std::exp in Softplus will overflow for input > 88
+    const std::vector<float> input = {-100, -2, -1, 0, 1, 88};
     const DataVec input_data{{"input", test::AsTensor<float>(input)}};
     DataVec output_data{{"my_act", ConstructTensor<float>(6)}};
     BuildAndRun(input_data, &output_data);
@@ -4054,7 +4100,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
   // Add other unary ops to test.
   ops_to_test.push_back("Rsqrt");
   // Ok.
-  for (string op_name : ops_to_test) {
+  for (const string& op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_unary_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -5196,6 +5242,225 @@ TEST_F(OpConverterTest, ConvertSpaceToDepth) {
   TestConvertSpaceToDepth<DT_FLOAT>(this);
   TestConvertSpaceToDepth<DT_HALF>(this);
   TestConvertSpaceToDepth<DT_INT32>(this);
+}
+
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+// Get the NodeDef for ClipByValue.
+NodeDef GetClipByValueNodeDef(DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  auto t = ops::Placeholder(s.WithOpName("t"), dtype);
+  auto clip_value_min = ops::Placeholder(s.WithOpName("clip_value_min"), dtype);
+  auto clip_value_max = ops::Placeholder(s.WithOpName("clip_value_max"), dtype);
+  auto clip = ops::ClipByValue(s.WithOpName("my_clip"), t, clip_value_min,
+                               clip_value_max);
+  return clip.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestConvertClipByValue(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> dims;
+    std::vector<CType> input_value;
+    CType clip_value_min;
+    CType clip_value_max;
+    std::vector<CType> expected_output;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  std::vector<TestParams> params = {
+      {
+          /*dims=*/{1, 2, 3},
+          /*input_value=*/common_input,
+          /*clip_value_min=*/CType(2),
+          /*clip_value_max=*/CType(5),
+          /*expected_output=*/
+          {CType(2), CType(2), CType(2), CType(3), CType(4), CType(5)},
+      },
+      {
+          /*dims=*/{2, 1, 3},
+          /*input_value=*/common_input,
+          /*clip_value_min=*/CType(-1),
+          /*clip_value_max=*/CType(8),
+          /*expected_output=*/common_input,
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetClipByValueNodeDef(dtype);
+    test->AddTestTensor("t", params[i].dims, 1, TfDataTypeToTrt(dtype));
+    test->AddTestWeights<CType>("clip_value_min", {1},
+                                {params[i].clip_value_min});
+    test->AddTestWeights<CType>("clip_value_max", {1},
+                                {params[i].clip_value_max});
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_clip", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].dims, output.tensor()->getDimensions());
+
+    DataVec input_data{{"t", test::AsTensor<CType>(params[i].input_value)}};
+    DataVec output_data{
+        {"my_clip", ConstructTensor<CType>(params[i].expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertClipByValue) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_clip", "ClipByValue", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ClipByValue got 0 inputs but expected 3, at my_clip");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
+    AddTestWeights<float>("t", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("clip_value_min", {1}, {1});
+    AddTestWeights<float>("clip_value_max", {1}, {5});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"t\" for ClipByValue must be a "
+                               "tensor, at my_clip");
+  }
+  {
+    // Clip min is a tensor, should fail.
+    Reset();
+    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
+    AddTestTensor("t", {1, 2, 3});
+    AddTestTensor("clip_value_min", {1});
+    AddTestWeights<float>("clip_value_max", {1}, {1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"clip_value_min\" for ClipByValue "
+                               "must be a constant, at my_clip");
+  }
+  {
+    // Clip max is a tensor, should fail.
+    Reset();
+    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
+    AddTestTensor("t", {1, 2, 3});
+    AddTestWeights<float>("clip_value_min", {1}, {1});
+    AddTestTensor("clip_value_max", {1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"clip_value_max\" for ClipByValue "
+                               "must be a constant, at my_clip");
+  }
+
+  TestConvertClipByValue<DT_FLOAT>(this);
+  TestConvertClipByValue<DT_HALF>(this);
+}
+#endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
+
+// Get the NodeDef for SquaredDifference.
+NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  auto x = ops::Placeholder(s.WithOpName("x"), dtype);
+  auto y = ops::Placeholder(s.WithOpName("y"), dtype);
+  auto squared_diff =
+      ops::SquaredDifference(s.WithOpName("my_squared_diff"), x, y);
+  return squared_diff.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestConvertSquaredDifference(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> dims_x;
+    std::vector<int> dims_y;
+    std::vector<CType> value_x;
+    std::vector<CType> value_y;
+    std::vector<int> expected_output_dims;
+    std::vector<CType> expected_output;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  std::vector<TestParams> params = {
+      {
+          /*dims_x=*/{1, 2, 3},
+          /*dims_y=*/{1, 2, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/CastTestVector<int, CType>({0, -1, 3, 0, 10, -7}),
+          /*expected_output_dims=*/{1, 2, 3},
+          /*expected_output=*/CastTestVector<int, CType>({0, 4, 1, 9, 36, 144}),
+      },
+      {
+          /*dims_x=*/{1, 2, 3},
+          /*dims_y=*/{1, 1, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/CastTestVector<int, CType>({0, 1, 2}),
+          /*expected_output_dims=*/{1, 2, 3},
+          /*expected_output=*/CastTestVector<int, CType>({0, 0, 0, 9, 9, 9}),
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetSquaredDifferenceNodeDef(dtype);
+    test->AddTestTensor("x", params[i].dims_x, 1, TfDataTypeToTrt(dtype));
+    test->AddTestTensor("y", params[i].dims_y, 1, TfDataTypeToTrt(dtype));
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_squared_diff", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    DataVec input_data{{"x", test::AsTensor<CType>(params[i].value_x)},
+                       {"y", test::AsTensor<CType>(params[i].value_y)}};
+    DataVec output_data{
+        {"my_squared_diff",
+         ConstructTensor<CType>(params[i].expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertSquaredDifference) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_squared_diff", "SquaredDifference", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "SquaredDifference got 0 inputs but expected 2, at my_squared_diff");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
+    AddTestWeights<float>("x", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestTensor("y", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"x\" for SquaredDifference must be "
+                               "a tensor, at my_squared_diff");
+  }
+  {
+    // Shapes are not broadcastable, should fail.
+    Reset();
+    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
+    AddTestTensor("x", {2, 3});
+    AddTestTensor("y", {7, 5});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Infeasible broadcast scheme");
+  }
+
+  TestConvertSquaredDifference<DT_FLOAT>(this);
+  TestConvertSquaredDifference<DT_HALF>(this);
 }
 
 }  // namespace convert

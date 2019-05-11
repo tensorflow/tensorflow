@@ -67,6 +67,11 @@ inline const float* GetTensorData(const TfLiteTensor* tensor) {
 }
 
 template <>
+inline const TfLiteFloat16* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.f16 : nullptr;
+}
+
+template <>
 inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.uint8 : nullptr;
 }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
+
 #include <set>
 
 #include "absl/container/flat_hash_map.h"
@@ -21,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -199,6 +200,10 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
 Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
@@ -670,10 +675,23 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
+  if (!ShapeUtil::IsScalar(conditional->operand(0)->shape())) {
+    return InvalidArgument(
+        "The first operand of conditional must be a scalar. Got %s",
+        conditional->operand(0)->shape().DebugString());
+  }
   const int num_branches = conditional->branch_count();
-  if (conditional->operand(0)->shape().element_type() == PRED) {
+  PrimitiveType operand0_type = conditional->operand(0)->shape().element_type();
+  if (operand0_type == PRED) {
     TF_RET_CHECK(num_branches == 2);
   } else {
+    if (operand0_type != S32) {
+      return InvalidArgument(
+          "The first operand of indexed conditional must be a scalar of S32. "
+          "Got"
+          " type %s.",
+          PrimitiveType_Name(operand0_type));
+    }
     TF_RET_CHECK(num_branches >= 1);
   }
   TF_RETURN_IF_ERROR(CheckOperandCount(conditional, num_branches + 1));
@@ -969,7 +987,7 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   if (computation->num_parameters() != layout.parameter_count()) {
     return InternalError(
         "Number of parameters in entry computation layout (%d) must be same "
-        "as number of parameters of entry computation computation (%d)",
+        "as number of parameters of entry computation (%d)",
         layout.parameter_count(), computation->num_parameters());
   }
 
@@ -1486,11 +1504,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
   std::unique_ptr<ShapeVerifier> shape_verifier =
       target_metadata_->GetVerifier();
+  InstructionVerifier instruction_verifier(instruction_can_change_layout_func_);
   for (auto* computation : module->computations()) {
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
-
-    InstructionVerifier instruction_verifier(
-        instruction_can_change_layout_func_);
     TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 

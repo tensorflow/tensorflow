@@ -106,7 +106,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
   Values are not loaded immediately, but when the initializer is run
-  (typically by running a `tf.global_variables_initializer` op).
+  (typically by running a `tf.compat.v1.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -139,15 +139,15 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   #  -- name='old_scope_2/var3', shape=[100, 100]
 
   # Create new model's variables
-  with tf.variable_scope('new_scope_1'):
-    var1 = tf.get_variable('var1', shape=[20, 2],
-                           initializer=tf.zeros_initializer())
-  with tf.variable_scope('new_scope_2'):
-    var2 = tf.get_variable('var2', shape=[50, 4],
-                           initializer=tf.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_1'):
+    var1 = tf.compat.v1.get_variable('var1', shape=[20, 2],
+                           initializer=tf.compat.v1.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_2'):
+    var2 = tf.compat.v1.get_variable('var2', shape=[50, 4],
+                           initializer=tf.compat.v1.zeros_initializer())
     # Partition into 5 variables along the first axis.
-    var3 = tf.get_variable(name='var3', shape=[100, 100],
-                           initializer=tf.zeros_initializer(),
+    var3 = tf.compat.v1.get_variable(name='var3', shape=[100, 100],
+                           initializer=tf.compat.v1.zeros_initializer(),
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.

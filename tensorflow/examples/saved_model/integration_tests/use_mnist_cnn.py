@@ -29,9 +29,9 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 import tensorflow.compat.v2 as tf
+import tensorflow_hub as hub
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
-from tensorflow.examples.saved_model.integration_tests import util
 
 FLAGS = flags.FLAGS
 
@@ -80,9 +80,7 @@ def make_feature_extractor(saved_model_path, trainable,
   if FLAGS.dropout_rate is not None:
     arguments['dropout_rate'] = FLAGS.dropout_rate
 
-  # CustomLayer mimics hub.KerasLayer because the tests are not able to depend
-  # on Hub at the moment.
-  return util.CustomLayer(obj, trainable=trainable, arguments=arguments)
+  return hub.KerasLayer(obj, trainable=trainable, arguments=arguments)
 
 
 def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
