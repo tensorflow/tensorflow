@@ -132,10 +132,18 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
   GraphDef result;
   (*optimizer)->set_deadline_usec(this->deadline_usec());
-  TF_RETURN_IF_ERROR((*optimizer)->Optimize(cluster, *item, &result));
-  item->graph.Swap(&result);
+  Status status = (*optimizer)->Optimize(cluster, *item, &result);
+  if (status.ok()) {
+    // The optimizer succeeded and wrote the optimized graph to result.
+    item->graph.Swap(&result);
+  } else if (errors::IsAborted(status)) {
+    // A status of errors::Aborted just means that the optimizer was a no-op and
+    // did not populate result. Swallow the error status and leave the original
+    // graph in item.
+    status = Status::OK();
+  }
 
-  return Status::OK();
+  return status;
 }
 
 Status TFDataMetaOptimizer::Init(

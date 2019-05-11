@@ -39,8 +39,8 @@ TEST_F(DebugStripperTest, OutputEqualToInput) {
 
   DebugStripper optimizer;
   GraphDef output;
-  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
-  CompareGraphs(item.graph, output);
+  EXPECT_EQ(optimizer.Optimize(nullptr, item, &output),
+            errors::Aborted("Nothing to do."));
 }
 
 TEST_F(DebugStripperTest, StripAssertOnTwoOutputs) {
