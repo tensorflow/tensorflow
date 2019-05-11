@@ -13,7 +13,10 @@ load(
     "tf_additional_cupti_stub_data",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
 package_group(
