@@ -24,9 +24,6 @@
 
 #include "mlir/IR/Location.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/Twine.h"
 #include <functional>
 
 namespace llvm {
@@ -200,30 +197,23 @@ public:
 
   /// Stream operator for inserting new diagnostic arguments.
   template <typename Arg>
-  typename std::enable_if<!std::is_convertible<Arg, Twine>::value ||
-                              std::is_integral<Arg>::value,
+  typename std::enable_if<!std::is_convertible<Arg, StringRef>::value,
                           Diagnostic &>::type
   operator<<(Arg &&val) {
     arguments.push_back(DiagnosticArgument(std::forward<Arg>(val)));
     return *this;
   }
+
+  /// Stream in a string literal.
   Diagnostic &operator<<(const char *val) {
     arguments.push_back(DiagnosticArgument(val));
     return *this;
   }
-  Diagnostic &operator<<(char val) { return *this << Twine(val); }
-  Diagnostic &operator<<(const Twine &val) {
-    // Allocate memory to hold this string.
-    llvm::SmallString<0> data;
-    auto strRef = val.toStringRef(data);
-    strings.push_back(std::unique_ptr<char[]>(new char[strRef.size()]));
-    memcpy(&strings.back()[0], strRef.data(), strRef.size());
 
-    // Add the new string to the argument list.
-    strRef = StringRef(&strings.back()[0], strRef.size());
-    arguments.push_back(DiagnosticArgument(strRef));
-    return *this;
-  }
+  /// Stream in a Twine argument.
+  Diagnostic &operator<<(char val);
+  Diagnostic &operator<<(const Twine &val);
+  Diagnostic &operator<<(Twine &&val);
 
   /// Stream in an Identifier.
   Diagnostic &operator<<(Identifier val);
@@ -435,10 +425,15 @@ private:
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//
 
+namespace detail {
+struct SourceMgrDiagnosticHandlerImpl;
+} // end namespace detail
+
 /// This class is a utility diagnostic handler for use with llvm::SourceMgr.
 class SourceMgrDiagnosticHandler {
 public:
   SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx);
+  ~SourceMgrDiagnosticHandler();
 
   /// Emit the given diagnostic information with the held source manager.
   void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
@@ -455,8 +450,7 @@ private:
   /// Convert a location into the given memory buffer into an SMLoc.
   llvm::SMLoc convertLocToSMLoc(Location loc);
 
-  /// Mapping between file name and buffer pointer.
-  llvm::StringMap<const llvm::MemoryBuffer *> filenameToBuf;
+  std::unique_ptr<detail::SourceMgrDiagnosticHandlerImpl> impl;
 };
 
 //===----------------------------------------------------------------------===//

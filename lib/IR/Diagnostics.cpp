@@ -21,8 +21,8 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
@@ -85,6 +85,31 @@ void DiagnosticArgument::print(raw_ostream &os) const {
 //===----------------------------------------------------------------------===//
 // Diagnostic
 //===----------------------------------------------------------------------===//
+
+/// Convert a Twine to a StringRef. Memory used for generating the StringRef is
+/// stored in 'strings'.
+static StringRef twineToStrRef(const Twine &val,
+                               std::vector<std::unique_ptr<char[]>> &strings) {
+  // Allocate memory to hold this string.
+  llvm::SmallString<64> data;
+  auto strRef = val.toStringRef(data);
+  strings.push_back(std::unique_ptr<char[]>(new char[strRef.size()]));
+  memcpy(&strings.back()[0], strRef.data(), strRef.size());
+
+  // Return a reference to the new string.
+  return StringRef(&strings.back()[0], strRef.size());
+}
+
+/// Stream in a Twine argument.
+Diagnostic &Diagnostic::operator<<(char val) { return *this << Twine(val); }
+Diagnostic &Diagnostic::operator<<(const Twine &val) {
+  arguments.push_back(DiagnosticArgument(twineToStrRef(val, strings)));
+  return *this;
+}
+Diagnostic &Diagnostic::operator<<(Twine &&val) {
+  arguments.push_back(DiagnosticArgument(twineToStrRef(val, strings)));
+  return *this;
+}
 
 /// Stream in an Identifier.
 Diagnostic &Diagnostic::operator<<(Identifier val) {
@@ -226,6 +251,37 @@ void DiagnosticEngine::emit(Diagnostic diag) {
 //===----------------------------------------------------------------------===//
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//
+namespace mlir {
+namespace detail {
+struct SourceMgrDiagnosticHandlerImpl {
+  /// Get a memory buffer for the given file, or nullptr if one is not found.
+  const llvm::MemoryBuffer *getBufferForFile(llvm::SourceMgr &mgr,
+                                             StringRef filename) {
+    // Check for an existing mapping to the buffer id for this file.
+    auto bufferIt = filenameToBuf.find(filename);
+    if (bufferIt != filenameToBuf.end())
+      return bufferIt->second;
+
+    // Look for a buffer in the manager that has this filename.
+    for (unsigned i = 1, e = mgr.getNumBuffers() + 1; i != e; ++i) {
+      auto *buf = mgr.getMemoryBuffer(i);
+      if (buf->getBufferIdentifier() == filename)
+        return filenameToBuf[filename] = buf;
+    }
+
+    // Otherwise, try to load the source file.
+    const llvm::MemoryBuffer *newBuf = nullptr;
+    std::string ignored;
+    if (auto newBufID = mgr.AddIncludeFile(filename, llvm::SMLoc(), ignored))
+      newBuf = mgr.getMemoryBuffer(newBufID);
+    return filenameToBuf[filename] = newBuf;
+  }
+
+  /// Mapping between file name and buffer pointer.
+  llvm::StringMap<const llvm::MemoryBuffer *> filenameToBuf;
+};
+} // end namespace detail
+} // end namespace mlir
 
 /// Return a processable FileLineColLoc from the given location.
 static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
@@ -264,7 +320,7 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
                                                        MLIRContext *ctx)
-    : mgr(mgr) {
+    : mgr(mgr), impl(new SourceMgrDiagnosticHandlerImpl()) {
   // Register a simple diagnostic handler.
   ctx->getDiagEngine().setHandler([this](Diagnostic diag) {
     // Emit the diagnostic.
@@ -275,6 +331,7 @@ SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
       emitDiagnostic(note.getLocation(), note.str(), note.getSeverity());
   });
 }
+SourceMgrDiagnosticHandler::~SourceMgrDiagnosticHandler() {}
 
 void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
                                                 DiagnosticSeverity kind) {
@@ -284,24 +341,7 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
 /// Get a memory buffer for the given file, or nullptr if one is not found.
 const llvm::MemoryBuffer *
 SourceMgrDiagnosticHandler::getBufferForFile(StringRef filename) {
-  // Check for an existing mapping to the buffer id for this file.
-  auto bufferIt = filenameToBuf.find(filename);
-  if (bufferIt != filenameToBuf.end())
-    return bufferIt->second;
-
-  // Look for a buffer in the manager that has this filename.
-  for (unsigned i = 1, e = mgr.getNumBuffers() + 1; i != e; ++i) {
-    auto *buf = mgr.getMemoryBuffer(i);
-    if (buf->getBufferIdentifier() == filename)
-      return filenameToBuf[filename] = buf;
-  }
-
-  // Otherwise, try to load the source file.
-  const llvm::MemoryBuffer *newBuf = nullptr;
-  std::string ignored;
-  if (auto newBufID = mgr.AddIncludeFile(filename, llvm::SMLoc(), ignored))
-    newBuf = mgr.getMemoryBuffer(newBufID);
-  return filenameToBuf[filename] = newBuf;
+  return impl->getBufferForFile(mgr, filename);
 }
 
 /// Get a memory buffer for the given file, or the main file of the source
