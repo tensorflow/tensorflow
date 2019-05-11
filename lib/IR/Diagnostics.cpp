@@ -141,7 +141,7 @@ void InFlightDiagnostic::report() {
   // If this diagnostic is still inflight and it hasn't been abandoned, then
   // report it.
   if (isInFlight()) {
-    owner->emit(*impl);
+    owner->emit(std::move(*impl));
     owner = nullptr;
   }
   impl.reset();
@@ -159,7 +159,7 @@ namespace detail {
 struct DiagnosticEngineImpl {
   /// Emit a diagnostic using the registered issue handle if present, or with
   /// the default behavior if not.
-  void emit(Location loc, StringRef msg, DiagnosticSeverity severity);
+  void emit(Diagnostic diag);
 
   /// A mutex to ensure that diagnostics emission is thread-safe.
   llvm::sys::SmartMutex<true> mutex;
@@ -173,39 +173,24 @@ struct DiagnosticEngineImpl {
 
 /// Emit a diagnostic using the registered issue handle if present, or with
 /// the default behavior if not.
-void DiagnosticEngineImpl::emit(Location loc, StringRef msg,
-                                DiagnosticSeverity severity) {
+void DiagnosticEngineImpl::emit(Diagnostic diag) {
+  llvm::sys::SmartScopedLock<true> lock(mutex);
+
   // If we had a handler registered, emit the diagnostic using it.
-  if (handler) {
-    // TODO(b/131756158) FusedLoc should be handled by the diagnostic handler
-    // instead of here.
-    // Check to see if we are emitting a diagnostic on a fused location.
-    if (auto fusedLoc = loc.dyn_cast<FusedLoc>()) {
-      auto fusedLocs = fusedLoc->getLocations();
-
-      // Emit the original diagnostic with the first location in the fused list.
-      emit(fusedLocs.front(), msg, severity);
-
-      // Emit the rest of the locations as notes.
-      for (Location subLoc : fusedLocs.drop_front())
-        emit(subLoc, "fused from here", DiagnosticSeverity::Note);
-      return;
-    }
-
-    return handler(loc, msg, severity);
-  }
+  if (handler)
+    return handler(std::move(diag));
 
   // Otherwise, if this is an error we emit it to stderr.
-  if (severity != DiagnosticSeverity::Error)
+  if (diag.getSeverity() != DiagnosticSeverity::Error)
     return;
 
   auto &os = llvm::errs();
-  if (!loc.isa<UnknownLoc>())
-    os << loc << ": ";
+  if (!diag.getLocation().isa<UnknownLoc>())
+    os << diag.getLocation() << ": ";
   os << "error: ";
 
   // The default behavior for errors is to emit them to stderr.
-  os << msg << '\n';
+  os << diag << '\n';
   os.flush();
 }
 
@@ -221,7 +206,6 @@ DiagnosticEngine::~DiagnosticEngine() {}
 /// a severity that indicates whether this is an error, warning, etc. Note
 /// that this replaces any existing handler.
 void DiagnosticEngine::setHandler(const HandlerTy &handler) {
-  llvm::sys::SmartScopedLock<true> lock(impl->mutex);
   impl->handler = handler;
 }
 
@@ -233,15 +217,10 @@ auto DiagnosticEngine::getHandler() -> HandlerTy {
 
 /// Emit a diagnostic using the registered issue handler if present, or with
 /// the default behavior if not.
-void DiagnosticEngine::emit(const Diagnostic &diag) {
+void DiagnosticEngine::emit(Diagnostic diag) {
   assert(diag.getSeverity() != DiagnosticSeverity::Note &&
          "notes should not be emitted directly");
-  llvm::sys::SmartScopedLock<true> lock(impl->mutex);
-  impl->emit(diag.getLocation(), diag.str(), diag.getSeverity());
-
-  // Emit any notes that were attached to this diagnostic.
-  for (auto &note : diag.getNotes())
-    impl->emit(note.getLocation(), note.str(), note.getSeverity());
+  impl->emit(std::move(diag));
 }
 
 //===----------------------------------------------------------------------===//
@@ -287,10 +266,14 @@ SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
                                                        MLIRContext *ctx)
     : mgr(mgr) {
   // Register a simple diagnostic handler.
-  ctx->getDiagEngine().setHandler(
-      [this](Location loc, StringRef message, DiagnosticSeverity kind) {
-        emitDiagnostic(loc, message, kind);
-      });
+  ctx->getDiagEngine().setHandler([this](Diagnostic diag) {
+    // Emit the diagnostic.
+    emitDiagnostic(diag.getLocation(), diag.str(), diag.getSeverity());
+
+    // Emit each of the notes.
+    for (auto &note : diag.getNotes())
+      emitDiagnostic(note.getLocation(), note.str(), note.getSeverity());
+  });
 }
 
 void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
@@ -498,16 +481,14 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
     (void)impl->computeExpectedDiags(mgr.getMemoryBuffer(i + 1));
 
   // Register a handler to verfy the diagnostics.
-  ctx->getDiagEngine().setHandler(
-      [&](Location loc, StringRef msg, DiagnosticSeverity kind) {
-        // Process a FileLineColLoc.
-        if (auto fileLoc = getFileLineColLoc(loc))
-          return process(*fileLoc, msg, kind);
+  ctx->getDiagEngine().setHandler([&](Diagnostic diag) {
+    // Process the main diagnostics.
+    process(diag);
 
-        emitDiagnostic(loc, "unexpected " + getDiagKindStr(kind) + ": " + msg,
-                       DiagnosticSeverity::Error);
-        impl->status = failure();
-      });
+    // Process each of the notes.
+    for (auto &note : diag.getNotes())
+      process(note);
+  });
 }
 
 SourceMgrDiagnosticVerifierHandler::~SourceMgrDiagnosticVerifierHandler() {
@@ -536,6 +517,20 @@ LogicalResult SourceMgrDiagnosticVerifierHandler::verify() {
   }
   impl->expectedDiagsPerFile.clear();
   return impl->status;
+}
+
+/// Process a single diagnostic.
+void SourceMgrDiagnosticVerifierHandler::process(Diagnostic &diag) {
+  auto kind = diag.getSeverity();
+
+  // Process a FileLineColLoc.
+  if (auto fileLoc = getFileLineColLoc(diag.getLocation()))
+    return process(*fileLoc, diag.str(), kind);
+
+  emitDiagnostic(diag.getLocation(),
+                 "unexpected " + getDiagKindStr(kind) + ": " + diag.str(),
+                 DiagnosticSeverity::Error);
+  impl->status = failure();
 }
 
 /// Process a FileLineColLoc diagnostic.

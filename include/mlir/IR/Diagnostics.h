@@ -404,13 +404,10 @@ public:
   // schema for their location information.  If they don't, then warnings and
   // notes will be dropped and errors will be emitted to errs.
 
-  using HandlerTy =
-      std::function<void(Location, StringRef, DiagnosticSeverity)>;
+  using HandlerTy = std::function<void(Diagnostic)>;
 
-  /// Set the diagnostic handler for this engine.  The handler is passed
-  /// location information if present (nullptr if not) along with a message and
-  /// a severity that indicates whether this is an error, warning, etc. Note
-  /// that this replaces any existing handler.
+  /// Set the diagnostic handler for this engine. Note that this replaces any
+  /// existing handler.
   void setHandler(const HandlerTy &handler);
 
   /// Return the current diagnostic handler, or null if none is present.
@@ -423,9 +420,9 @@ public:
     return InFlightDiagnostic(this, Diagnostic(loc, severity));
   }
 
-  /// Emit a diagnostic using the registered issue handle if present, or with
+  /// Emit a diagnostic using the registered issue handler if present, or with
   /// the default behavior if not.
-  void emit(const Diagnostic &diag);
+  void emit(Diagnostic diag);
 
 private:
   friend class MLIRContextImpl;
@@ -485,6 +482,9 @@ public:
   LogicalResult verify();
 
 private:
+  /// Process a single diagnostic.
+  void process(Diagnostic &diag);
+
   /// Process a FileLineColLoc diagnostic.
   void process(FileLineColLoc loc, StringRef msg, DiagnosticSeverity kind);
 

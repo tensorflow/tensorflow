@@ -183,9 +183,8 @@ namespace {
 /// ModuleToFunctionPassAdaptorParallel.
 struct ParallelDiagnosticHandler {
   struct ThreadDiagnostic {
-    ThreadDiagnostic(size_t id, Location loc, StringRef msg,
-                     DiagnosticSeverity kind)
-        : id(id), loc(loc), msg(msg), kind(kind) {}
+    ThreadDiagnostic(size_t id, Diagnostic diag)
+        : id(id), diag(std::move(diag)) {}
     bool operator<(const ThreadDiagnostic &rhs) const { return id < rhs.id; }
 
     /// The function id for this diagnostic, this is used for ordering.
@@ -193,22 +192,19 @@ struct ParallelDiagnosticHandler {
     ///       function within its parent module.
     size_t id;
 
-    /// Information for the diagnostic.
-    Location loc;
-    std::string msg;
-    DiagnosticSeverity kind;
+    /// The diagnostic.
+    Diagnostic diag;
   };
 
   ParallelDiagnosticHandler(MLIRContext &ctx)
       : prevHandler(ctx.getDiagEngine().getHandler()), context(ctx) {
-    ctx.getDiagEngine().setHandler(
-        [this](Location loc, StringRef message, DiagnosticSeverity kind) {
-          uint64_t tid = llvm::get_threadid();
-          llvm::sys::SmartScopedLock<true> lock(mutex);
+    ctx.getDiagEngine().setHandler([this](Diagnostic diag) {
+      uint64_t tid = llvm::get_threadid();
+      llvm::sys::SmartScopedLock<true> lock(mutex);
 
-          // Append a new diagnostic.
-          diagnostics.emplace_back(threadToFuncID[tid], loc, message, kind);
-        });
+      // Append a new diagnostic.
+      diagnostics.emplace_back(threadToFuncID[tid], std::move(diag));
+    });
   }
 
   ~ParallelDiagnosticHandler() {
@@ -220,15 +216,13 @@ struct ParallelDiagnosticHandler {
       return;
 
     // Emit the diagnostics back to the context.
-    emitDiagnostics(
-        [&](Location loc, StringRef message, DiagnosticSeverity kind) {
-          return context.getDiagEngine().emit(loc, kind) << message;
-        });
+    emitDiagnostics([&](Diagnostic diag) {
+      return context.getDiagEngine().emit(std::move(diag));
+    });
   }
 
   /// Utility method to emit any held diagnostics.
-  void emitDiagnostics(
-      std::function<void(Location, StringRef, DiagnosticSeverity)> emitFn) {
+  void emitDiagnostics(std::function<void(Diagnostic)> emitFn) {
     // Stable sort all of the diagnostics that were emitted. This creates a
     // deterministic ordering for the diagnostics based upon which function they
     // were emitted for.
@@ -236,7 +230,7 @@ struct ParallelDiagnosticHandler {
 
     // Emit each diagnostic to the context again.
     for (ThreadDiagnostic &diag : diagnostics)
-      emitFn(diag.loc, diag.msg, diag.kind);
+      emitFn(std::move(diag.diag));
   }
 
   /// Set the function id for the current thread.
@@ -276,30 +270,29 @@ struct PrettyStackTraceParallelDiagnosticEntry
       return;
 
     os << "In-Flight Diagnostics:\n";
-    parallelHandler.emitDiagnostics(
-        [&](Location loc, StringRef message, DiagnosticSeverity severity) {
-          os.indent(4);
+    parallelHandler.emitDiagnostics([&](Diagnostic diag) {
+      os.indent(4);
 
-          // Print each diagnostic with the format:
-          //   "<location>: <kind>: <msg>"
-          if (!loc.isa<UnknownLoc>())
-            os << loc << ": ";
-          switch (severity) {
-          case DiagnosticSeverity::Error:
-            os << "error: ";
-            break;
-          case DiagnosticSeverity::Warning:
-            os << "warning: ";
-            break;
-          case DiagnosticSeverity::Note:
-            os << "note: ";
-            break;
-          case DiagnosticSeverity::Remark:
-            os << "remark: ";
-            break;
-          }
-          os << message << '\n';
-        });
+      // Print each diagnostic with the format:
+      //   "<location>: <kind>: <msg>"
+      if (!diag.getLocation().isa<UnknownLoc>())
+        os << diag.getLocation() << ": ";
+      switch (diag.getSeverity()) {
+      case DiagnosticSeverity::Error:
+        os << "error: ";
+        break;
+      case DiagnosticSeverity::Warning:
+        os << "warning: ";
+        break;
+      case DiagnosticSeverity::Note:
+        os << "note: ";
+        break;
+      case DiagnosticSeverity::Remark:
+        os << "remark: ";
+        break;
+      }
+      os << diag << '\n';
+    });
   }
 
   // A reference to the parallel handler to dump on the event of a crash.
