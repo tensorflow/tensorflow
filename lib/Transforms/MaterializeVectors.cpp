@@ -556,12 +556,12 @@ static bool instantiateMaterialization(Operation *op,
   if (op->getNumRegions() != 0)
     return op->emitError("NYI path Op with region"), true;
 
-  if (auto write = op->dyn_cast<VectorTransferWriteOp>()) {
+  if (auto write = dyn_cast<VectorTransferWriteOp>(op)) {
     auto *clone = instantiate(&b, write, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     return clone == nullptr;
   }
-  if (auto read = op->dyn_cast<VectorTransferReadOp>()) {
+  if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
     auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     if (!clone) {

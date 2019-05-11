@@ -238,7 +238,7 @@ public:
       LLVM_DEBUG(llvm::dbgs() << "Inferring shape for: " << *op << "\n");
 
       // The add operation is trivial: propagate the input type as is.
-      if (auto addOp = op->dyn_cast<AddOp>()) {
+      if (auto addOp = llvm::dyn_cast<AddOp>(op)) {
         op->getResult(0)->setType(op->getOperand(0)->getType());
         continue;
       }
@@ -261,7 +261,7 @@ public:
       // catch it but shape inference earlier in the pass could generate an
       // invalid IR (from an invalid Toy input of course) and we wouldn't want
       // to crash here.
-      if (auto mulOp = op->dyn_cast<MulOp>()) {
+      if (auto mulOp = llvm::dyn_cast<MulOp>(op)) {
         auto lhs = mulOp.getLHS()->getType().cast<ToyArrayType>();
         auto rhs = mulOp.getRHS()->getType().cast<ToyArrayType>();
         auto lhsRank = lhs.getShape().size();
@@ -295,7 +295,7 @@ public:
       // for this function, queue the callee in the inter-procedural work list,
       // and return. The current function stays in the work list and will
       // restart after the callee is processed.
-      if (auto callOp = op->dyn_cast<GenericCallOp>()) {
+      if (auto callOp = llvm::dyn_cast<GenericCallOp>(op)) {
         auto calleeName = callOp.getCalleeName();
         auto *callee = getModule().getNamedFunction(calleeName);
         if (!callee) {

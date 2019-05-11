@@ -50,7 +50,7 @@ static void getForwardSliceImpl(Operation *op,
     return;
   }
 
-  if (auto forOp = op->dyn_cast<AffineForOp>()) {
+  if (auto forOp = dyn_cast<AffineForOp>(op)) {
     for (auto &u : forOp.getInductionVar()->getUses()) {
       auto *ownerInst = u.getOwner();
       if (forwardSlice->count(ownerInst) == 0) {

@@ -273,7 +273,7 @@ static void getTileableBands(Function &f,
 
   for (auto &block : f)
     for (auto &op : block)
-      if (auto forOp = op.dyn_cast<AffineForOp>())
+      if (auto forOp = dyn_cast<AffineForOp>(op))
         getMaximalPerfectLoopNest(forOp);
 }
 

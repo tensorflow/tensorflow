@@ -199,11 +199,11 @@ bool ModuleTranslation::convertOperation(Operation &opInst,
 
   // Emit branches.  We need to look up the remapped blocks and ignore the block
   // arguments that were transformed into PHI nodes.
-  if (auto brOp = opInst.dyn_cast<LLVM::BrOp>()) {
+  if (auto brOp = dyn_cast<LLVM::BrOp>(opInst)) {
     builder.CreateBr(blockMapping[brOp.getSuccessor(0)]);
     return false;
   }
-  if (auto condbrOp = opInst.dyn_cast<LLVM::CondBrOp>()) {
+  if (auto condbrOp = dyn_cast<LLVM::CondBrOp>(opInst)) {
     builder.CreateCondBr(valueMapping.lookup(condbrOp.getOperand(0)),
                          blockMapping[condbrOp.getSuccessor(0)],
                          blockMapping[condbrOp.getSuccessor(1)]);
@@ -264,7 +264,7 @@ static Value *getPHISourceValue(Block *current, Block *pred,
 
   // For conditional branches, we need to check if the current block is reached
   // through the "true" or the "false" branch and take the relevant operands.
-  auto condBranchOp = terminator.dyn_cast<LLVM::CondBrOp>();
+  auto condBranchOp = dyn_cast<LLVM::CondBrOp>(terminator);
   assert(condBranchOp &&
          "only branch operations can be terminators of a block that "
          "has successors");

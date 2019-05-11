@@ -92,7 +92,7 @@ void LoopUnrollAndJam::runOnFunction() {
   // unroll-and-jammed by this pass. However, runOnAffineForOp can be called on
   // any for operation.
   auto &entryBlock = getFunction().front();
-  if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
+  if (auto forOp = dyn_cast<AffineForOp>(entryBlock.front()))
     runOnAffineForOp(forOp);
 }
 

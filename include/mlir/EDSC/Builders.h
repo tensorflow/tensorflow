@@ -439,7 +439,7 @@ ValueHandle ValueHandle::create(Args... args) {
   if (op->getNumResults() == 1) {
     return ValueHandle(op->getResult(0));
   } else if (op->getNumResults() == 0) {
-    if (auto f = op->dyn_cast<AffineForOp>()) {
+    if (auto f = dyn_cast<AffineForOp>(op)) {
       return ValueHandle(f.getInductionVar());
     }
   }

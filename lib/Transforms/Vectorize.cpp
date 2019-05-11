@@ -839,8 +839,8 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   loadAndStores.match(loop.getOperation(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
     auto *opInst = ls.getMatchedOperation();
-    auto load = opInst->dyn_cast<LoadOp>();
-    auto store = opInst->dyn_cast<StoreOp>();
+    auto load = dyn_cast<LoadOp>(opInst);
+    auto store = dyn_cast<StoreOp>(opInst);
     LLVM_DEBUG(opInst->print(dbgs()));
     LogicalResult result =
         load ? vectorizeRootOrTerminal(loop.getInductionVar(), load, state)
@@ -982,7 +982,7 @@ static Value *vectorizeOperand(Value *operand, Operation *op,
     return nullptr;
   }
   // 3. vectorize constant.
-  if (auto constant = operand->getDefiningOp()->dyn_cast<ConstantOp>()) {
+  if (auto constant = dyn_cast<ConstantOp>(operand->getDefiningOp())) {
     return vectorizeConstant(
         op, constant,
         VectorType::get(state->strategy->vectorSizes, operand->getType()));
@@ -1012,7 +1012,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   assert(!opInst->isa<VectorTransferWriteOp>() &&
          "vector.transfer_write cannot be further vectorized");
 
-  if (auto store = opInst->dyn_cast<StoreOp>()) {
+  if (auto store = dyn_cast<StoreOp>(opInst)) {
     auto *memRef = store.getMemRef();
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
