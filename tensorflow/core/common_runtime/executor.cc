@@ -1618,7 +1618,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     if (stats_collector_ && !tagged_node.is_dead) {
       // track allocations if and only if we are collecting statistics
       params.track_allocations = true;
-      stats = new NodeExecStatsWrapper(node->name());
+      string name = node->name() + "::" + std::to_string(input_iter)
+                    + "::" + input_frame->frame_name;
+      stats = new NodeExecStatsWrapper(name);
+
       nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
