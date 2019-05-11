@@ -173,10 +173,11 @@ def variable_handle_from_shape_and_dtype(
     return handle
 
 
-def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
+def eager_safe_variable_handle(initial_value, shape, shared_name, name,
+                               graph_mode):
   """Creates a variable handle with information to do shape inference.
 
-  The shape and dtype are read from `initial_value` and stored in the returned
+  The dtype is read from `initial_value` and stored in the returned
   resource tensor's handle data.
 
   If `initial_value.dtype == tf.variant`, we additionally extract the handle
@@ -206,6 +207,8 @@ def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
 
   Args:
     initial_value: A `Tensor`.
+    shape: The shape of the handle data. Can be `TensorShape(None)`
+      (i.e. unknown shape).
     shared_name: A string.
     name: A string.
     graph_mode: A python bool.
@@ -213,7 +216,6 @@ def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
   Returns:
     The handle, a `Tensor` of type `resource`.
   """
-  shape = initial_value.get_shape()
   dtype = initial_value.dtype.base_dtype
   return variable_handle_from_shape_and_dtype(
       shape, dtype, shared_name, name, graph_mode, initial_value)
@@ -369,7 +371,8 @@ class ResourceVariable(variables.VariableV1):
                constraint=None,
                distribute_strategy=None,
                synchronization=None,
-               aggregation=None):
+               aggregation=None,
+               shape=None):
     """Creates a variable.
 
     Args:
@@ -418,6 +421,10 @@ class ResourceVariable(variables.VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -448,7 +455,8 @@ class ResourceVariable(variables.VariableV1):
           dtype=dtype,
           constraint=constraint,
           synchronization=synchronization,
-          aggregation=aggregation)
+          aggregation=aggregation,
+          shape=shape)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -468,7 +476,8 @@ class ResourceVariable(variables.VariableV1):
                       dtype=None,
                       constraint=None,
                       synchronization=None,
-                      aggregation=None):
+                      aggregation=None,
+                      shape=None):
     """Creates a variable.
 
     Args:
@@ -510,6 +519,10 @@ class ResourceVariable(variables.VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -588,12 +601,15 @@ class ResourceVariable(variables.VariableV1):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
+          # Don't use `shape or initial_value.shape` since TensorShape has
+          # overridden `__bool__`.
+          self._shape = shape if shape is not None else initial_value.shape
           self._handle = eager_safe_variable_handle(
               initial_value=initial_value,
+              shape=self._shape,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
-        self._shape = initial_value.shape
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
