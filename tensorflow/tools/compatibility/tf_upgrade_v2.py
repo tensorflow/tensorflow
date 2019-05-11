@@ -683,10 +683,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     )
 
     initializers_no_dtype_comment = (
-        ast_edits.INFO,
-        "Initializers no longer have the "
+        ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
-        "__call__ method.\nThe calls have been converted to compat.v1 for"
+        "__call__ method.\nThe calls have been converted to compat.v1 for "
         "safety (even though they may already have been correct).")
 
     metrics_comment = (
