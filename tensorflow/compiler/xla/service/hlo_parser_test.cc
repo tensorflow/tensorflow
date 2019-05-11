@@ -2502,6 +2502,16 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   EXPECT_EQ(convolution->feature_group_count(), 1);
 }
 
+TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
+  const string text = R"(
+    param = f32[2,5,1,3] parameter(0)
+    transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
+  )";
+  auto status = ParseHloString(text).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Expected eof"));
+}
+
 TEST_F(HloParserTest, IsScheduledIsFalse) {
   const string text = R"(
 HloModule axpy_module, is_scheduled=false

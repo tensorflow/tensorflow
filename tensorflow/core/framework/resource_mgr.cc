@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/framework/resource_mgr.h"
+
+#include <atomic>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -103,6 +103,21 @@ ResourceMgr::ResourceMgr(const string& default_container)
     : default_container_(default_container) {}
 
 ResourceMgr::~ResourceMgr() { Clear(); }
+
+void ResourceMgr::GetContainerResources(
+    const string& container, std::vector<ResourceEntry>* resources) const {
+  resources->clear();
+  mutex_lock l(mu_);
+  Container* b = gtl::FindPtrOrNull(containers_, container);
+  if (b != nullptr) {
+    resources->reserve(b->size());
+    for (auto& key_resource : *b) {
+      ResourceBase* resource = key_resource.second;
+      resource->Ref();
+      resources->emplace_back(key_resource.first.second, resource);
+    }
+  }
+}
 
 void ResourceMgr::Clear() {
   mutex_lock l(mu_);

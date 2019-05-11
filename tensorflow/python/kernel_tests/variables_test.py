@@ -23,11 +23,13 @@ import operator
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -152,6 +154,22 @@ class VariablesTestCase(test.TestCase):
 
       self.evaluate(four)
       self.assertAllClose(4.0, self.evaluate(var))
+
+  def testAssignDifferentShapesEagerNotAllowed(self):
+    with context.eager_mode():
+      var = variables.Variable(np.zeros(shape=[1, 1]))
+      with self.assertRaisesRegexp(ValueError,
+                                   "Shapes.*and.*are incompatible"):
+        var.assign(np.zeros(shape=[2, 2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignDifferentShapesAllowed(self):
+    var = variables.Variable(np.zeros(shape=[1, 1]),
+                             shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(np.zeros(shape=[1, 1]), var.read_value())
+    self.evaluate(var.assign(np.zeros(shape=[2, 2])))
+    self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
 
   def testZeroSizeStringAssign(self):
     with self.cached_session() as sess:

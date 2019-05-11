@@ -67,6 +67,7 @@ class TensorSliceReaderCacheWrapper;
 
 class AsyncOpKernel;
 class CallFrameInterface;
+class DeviceMgr;
 class FunctionLibraryRuntime;
 class OpKernelConstruction;  // declared below
 class OpKernelContext;       // declared below,
@@ -214,10 +215,10 @@ class OpKernel {
   const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
   const MemoryTypeVector output_memory_types_;
-  const int graph_def_version_;
-  const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  const int graph_def_version_;
+  const bool is_internal_;  // True if this is an internal operation
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
@@ -648,6 +649,8 @@ class OpKernelContext {
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
     Rendezvous* rendezvous = nullptr;
+    const std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>*
+        create_rendezvous;
 
     // Mechanism for executing a collective op that needs to coordinate
     // with parallel instances running on other devices.
@@ -1083,6 +1086,10 @@ class OpKernelContext {
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
   Rendezvous* rendezvous() const { return params_->rendezvous; }
+  Status create_rendezvous(const int64 step_id, const DeviceMgr* device_mgr,
+                           Rendezvous** r) const {
+    return (*params_->create_rendezvous)(step_id, device_mgr, r);
+  }
 
   CollectiveExecutor* collective_executor() const {
     return params_->collective_executor;

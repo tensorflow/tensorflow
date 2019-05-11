@@ -61,6 +61,7 @@ tf_py_wrap_cc(
 py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tensorflow_wrap_toco",

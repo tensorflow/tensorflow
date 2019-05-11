@@ -165,6 +165,18 @@ bool LogNotCompilableAndReturn(const Node& node,
   return false;
 }
 
+bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) {
+  // b/127344411: SelfAdjointEigV2 and Svd precision issues.
+  return node.type_string() == "SelfAdjointEigV2" ||
+         node.type_string() == "Svd";
+}
+
+bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
+  // b/128001705: SelfAdjointEigV2 and Svd performance issues.
+  return node.type_string() == "SelfAdjointEigV2" ||
+         node.type_string() == "Svd" || node.type_string() == "Qr";
+}
+
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, int depth, FunctionLibraryRuntime* lib_runtime) {
   // _Arg nodes in a top-level function represent feeds and _Retval nodes in a
@@ -228,8 +240,12 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
                                      "resource variable op in called function");
   }
 
-  if (!op_filter_.allow_svd_op && node.type_string() == "Svd") {
-    return LogNotCompilableAndReturn(node, "Svd ops disabled");
+  if (!op_filter_.allow_slow_and_inaccurate_ops && OpIsInaccurate(node)) {
+    return LogNotCompilableAndReturn(node, "operation with correctness issues");
+  }
+
+  if (!op_filter_.allow_slow_and_inaccurate_ops && OpIsSlow(node)) {
+    return LogNotCompilableAndReturn(node, "slow operation");
   }
 
   return true;
@@ -248,7 +264,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
       registration.elide_assert_and_checknumerics;
   op_filter.allow_ops_producing_or_consuming_variant =
       registration.cluster_variant_ops;
-  op_filter.allow_svd_op = registration.cluster_svd_op;
+  op_filter.allow_slow_and_inaccurate_ops =
+      registration.cluster_slow_and_inaccurate_ops;
   return op_filter;
 }
 

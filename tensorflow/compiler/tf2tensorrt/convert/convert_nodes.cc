@@ -4463,6 +4463,40 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertSquaredDifference(OpConverterParams* params) {
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y", false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  // Broadcast inputs.
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+      inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
+  nvinfer1::ITensor* tensor_l = nullptr;
+  nvinfer1::ITensor* tensor_r = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
+
+  // Subtract x - y.
+  nvinfer1::IElementWiseLayer* sub =
+      params->converter->network()->addElementWise(
+          *tensor_l, *tensor_r, nvinfer1::ElementWiseOperation::kSUB);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sub, node_def.name());
+  // Multiply (x - y) * (x - y).
+  nvinfer1::IElementWiseLayer* mul =
+      params->converter->network()->addElementWise(
+          *sub->getOutput(0), *sub->getOutput(0),
+          nvinfer1::ElementWiseOperation::kPROD);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(mul, node_def.name());
+
+  params->outputs->push_back(TRT_TensorOrWeights(mul->getOutput(0)));
+  return Status::OK();
+}
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
@@ -4731,7 +4765,6 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pack"] = ConvertPack;
@@ -4745,11 +4778,11 @@ static void RegisterValidatableOpConverters(
 #endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
   (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
+  (*registration)["SquaredDifference"] = ConvertSquaredDifference;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
   (*registration)["TopKV2"] = ConvertTopK;
@@ -4782,6 +4815,11 @@ static void RegisterValidatableOpConverters(
   }
   for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
     (*registration)[arg_minmax_type] = ConvertArgMinMax;
+  }
+  // The following are no-ops during inference and will not be mapped to any TRT
+  // layer.
+  for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
+    (*registration)[identity_op_type] = ConvertIdentity;
   }
 }
 

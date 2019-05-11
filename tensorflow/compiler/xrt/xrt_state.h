@@ -106,6 +106,11 @@ class XRTTupleAllocation : public ResourceBase {
                               XRTTupleAllocation** allocation,
                               bool alias_parent_allocation);
 
+  // Runs a compaction cycle which copies the device data to host, frees the
+  // device data, and then reallocate and send back the data.
+  static Status CompactAllocations(ResourceMgr* rm, xla::Backend* backend,
+                                   int device_ordinal);
+
   // A structure describing a leaf of a tree of tuples to expand. Each leaf
   // contains an allocation and indicates whether or not the allocation's handle
   // should be freed after incorporating its buffers into the expanded tree.

@@ -308,7 +308,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             const string child_path = io::JoinPath(current_dir, children[i]);
             // In case the child_path doesn't start with the fixed_prefix, then
             // we don't need to explore this path.
-            if (!str_util::StartsWith(child_path, fixed_prefix)) {
+            if (!absl::StartsWith(child_path, fixed_prefix)) {
               children_dir_status[i] =
                   errors::Cancelled("Operation not needed");
             } else {

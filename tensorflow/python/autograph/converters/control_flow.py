@@ -483,7 +483,7 @@ class ControlFlowTransformer(converter.Base):
             ssf_map)
     else:
       # Loop with no loop-carried state and no early stopping
-      assert not has_extra_test, ('Early stoppiong (e.g. break and/or return) '
+      assert not has_extra_test, ('Early stopping (e.g. break and/or return) '
                                   'should create state variables.')
       loop_nodes = self._for_loop_without_state(node, body_name, node_body)
 

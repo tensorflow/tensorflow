@@ -688,6 +688,27 @@ class XRTReleaseAllAllocationsOp : public OpKernel {
   }
 };
 
+template <class DeviceAccessor>
+class XRTCompactAllocationsOp : public OpKernel {
+ public:
+  explicit XRTCompactAllocationsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTCompactAllocationsOp() override = default;
+  XRTCompactAllocationsOp(const XRTCompactAllocationsOp&) = delete;
+  XRTCompactAllocationsOp& operator=(const XRTCompactAllocationsOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTCompactAllocationsOp::Compute";
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+    class DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
+    OP_REQUIRES_OK(ctx,
+                   XRTTupleAllocation::CompactAllocations(
+                       rm, device_ref.backend(), device_ref.device_ordinal()));
+  }
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_XRT_KERNELS_XRT_STATE_OPS_H_

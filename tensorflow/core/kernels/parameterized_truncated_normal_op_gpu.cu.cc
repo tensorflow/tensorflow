@@ -240,7 +240,7 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output) {
-    const auto config = GetCudaLaunchConfig(num_elements, d);
+    const auto config = GetGpuLaunchConfig(num_elements, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,

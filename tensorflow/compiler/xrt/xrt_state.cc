@@ -340,6 +340,38 @@ typedef XRTBufferAllocation* XRTBufferAllocationPtr;
   return Status::OK();
 }
 
+/* static */ Status XRTTupleAllocation::CompactAllocations(
+    ResourceMgr* rm, xla::Backend* backend, int device_ordinal) {
+  std::vector<ResourceMgr::ResourceEntry> tuples;
+  rm->GetContainerResources(kTupleContainer, &tuples);
+
+  std::vector<std::pair<string, xla::Literal>> host_tuples;
+  for (auto& rm_tuple : tuples) {
+    XRTTupleAllocation* tuple =
+        dynamic_cast<XRTTupleAllocation*>(rm_tuple.resource.get());
+    if (tuple->device_ordinal() == device_ordinal) {
+      xla::Literal literal(tuple->on_host_shape());
+      TF_RETURN_IF_ERROR(tuple->ToLiteral(backend, device_ordinal, &literal));
+      host_tuples.emplace_back(rm_tuple.name, std::move(literal));
+      // At this point there are two references held onto the XRTTupleAllocation
+      // object. One in the ResourceMgr, which we release here, and one held
+      // within the tuples vector, which we release in the tuples.clear() call
+      // below.
+      TF_RETURN_IF_ERROR(
+          rm->Delete<XRTTupleAllocation>(kTupleContainer, rm_tuple.name));
+    }
+  }
+  tuples.clear();
+
+  for (auto& name_literal : host_tuples) {
+    XRTTupleAllocation* tuple;
+    TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateAndTransfer(
+        name_literal.second, backend, device_ordinal, &tuple));
+    TF_RETURN_IF_ERROR(rm->Create(kTupleContainer, name_literal.first, tuple));
+  }
+  return Status::OK();
+}
+
 /* static */ Status XRTTupleAllocation::ExpandTreeOfTuples(
     const xla::ShapeTree<ExpandedTupleInput>& elements, int device_ordinal,
     se::DeviceMemoryAllocator* allocator, xla::Shape* host_shape,

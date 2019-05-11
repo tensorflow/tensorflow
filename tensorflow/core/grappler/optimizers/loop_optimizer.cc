@@ -709,6 +709,11 @@ LoopOptimizer::LoopOptimizer(RewriterConfig::Toggle opt_level,
 
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
+  if (!options_.enable_loop_invariant_node_motion &&
+      !options_.enable_stack_push_removal &&
+      !options_.enable_dead_branch_removal) {
+    return errors::Aborted("Nothing to do.");
+  }
   *optimized_graph = item.graph;
   // Set up helper data structures.
   if (options_.enable_loop_invariant_node_motion) {
@@ -900,9 +905,8 @@ Status LoopOptimizer::RemoveDeadBranches(
   return Status::OK();
 }
 
-void LoopOptimizer::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,
-                             const GraphDef& /*optimized_graph*/,
-                             double /*result*/) {
+void LoopOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
+                             const GraphDef& optimize_output, double result) {
   // Nothing to do for LoopOptimizer.
 }
 

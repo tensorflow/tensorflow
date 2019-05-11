@@ -220,6 +220,7 @@ cc_library(
     name = "shape_inference_helpers",
     srcs = ["shape_inference_helpers.cc"],
     hdrs = ["shape_inference_helpers.h"],
+    visibility = [":friends"],
     deps = ["//tensorflow/core:graph"],
 )
 
@@ -466,6 +467,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

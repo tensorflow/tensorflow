@@ -8,7 +8,10 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 # xla_proto_library() is a convenience wrapper around cc_proto_library.
 def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 0, **kwargs):

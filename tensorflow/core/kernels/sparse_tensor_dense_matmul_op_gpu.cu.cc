@@ -78,7 +78,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
     // TODO(ebrevdo): Should this be alpha * nnz instead of
     // out.size()?  Perhaps p * nnz ?
-    CudaLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,

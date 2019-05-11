@@ -197,6 +197,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking:data_structures",

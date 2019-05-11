@@ -45,9 +45,9 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def(),
-                                              request->isolate_session_state());
+  Status s = env_->session_mgr->CreateSession(
+      request->session_handle(), request->server_def(),
+      request->cluster_device_attributes(), request->isolate_session_state());
   done(s);
 }
 
@@ -72,7 +72,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   }
   if (s.ok()) {
     s = session->graph_mgr->Register(
-        request->session_handle(), request->graph_def(),
+        request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
         request->collective_graph_key(), session->cluster_flr.get(),
         response->mutable_graph_handle());

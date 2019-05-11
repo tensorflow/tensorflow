@@ -13,12 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/nnapi/java/src/main/native/nnapi_delegate_jni.h"
+#include <jni.h>
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(JNIEnv* env,
                                                             jclass clazz) {
   return reinterpret_cast<jlong>(tflite::NnApiDelegate());
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/java/src/main/native/jni_utils.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "tensorflow/lite/java/src/main/native/exception_jni.h"
 
 const char kIllegalArgumentException[] = "java/lang/IllegalArgumentException";
 const char kIllegalStateException[] = "java/lang/IllegalStateException";
@@ -26,7 +26,10 @@ const char kIndexOutOfBoundsException[] = "java/lang/IndexOutOfBoundsException";
 const char kUnsupportedOperationException[] =
     "java/lang/UnsupportedOperationException";
 
-void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
+namespace tflite {
+namespace jni {
+
+void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   const size_t max_msg_len = 512;
@@ -45,7 +48,7 @@ void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
 BufferErrorReporter::BufferErrorReporter(JNIEnv* env, int limit) {
   buffer_ = new char[limit];
   if (!buffer_) {
-    throwException(env, kNullPointerException,
+    ThrowException(env, kNullPointerException,
                    "Internal error: Malloc of BufferErrorReporter to hold %d "
                    "char failed.",
                    limit);
@@ -68,3 +71,6 @@ int BufferErrorReporter::Report(const char* format, va_list args) {
 }
 
 const char* BufferErrorReporter::CachedErrorMessage() { return buffer_; }
+
+}  // namespace jni
+}  // namespace tflite

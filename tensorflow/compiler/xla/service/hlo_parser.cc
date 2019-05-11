@@ -4153,6 +4153,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     }
   }
 
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
+  }
+
   module->AddEntryComputation(builder.Build());
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));

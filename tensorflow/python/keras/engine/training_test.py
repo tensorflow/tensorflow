@@ -1047,15 +1047,17 @@ class TrainingTest(keras_parameterized.TestCase):
     model.add_loss(2 * math_ops.reduce_mean(
         keras.losses.mean_absolute_error(targets, outputs)))
 
+    model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs))
+
     model.compile(
-        keras.optimizer_v2.gradient_descent.SGD(0.033333),
+        keras.optimizer_v2.gradient_descent.SGD(0.025),
         loss=keras.losses.MeanAbsoluteError(),
         run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.array([[0.], [1.], [2.]])
     y = np.array([[0.5], [2.], [3.5]])
     history = model.fit([x, y], y, batch_size=3, epochs=5)
-    self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
+    self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
 
   @keras_parameterized.run_all_keras_modes
   def test_unconditional_add_loss_correctness(self):
@@ -1157,6 +1159,42 @@ class TrainingTest(keras_parameterized.TestCase):
       model.fit(x, y)
       model.test_on_batch(x, y)
       model(x)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_subclassed_model_with_training_arg(self):
+
+    class LayerWithTrainingArg(keras.layers.Layer):
+
+      def call(self, inputs, training=None):
+        self.training = training
+        return inputs
+
+    class ModelWithTrainingArg(keras.Model):
+
+      def __init__(self):
+        super(ModelWithTrainingArg, self).__init__()
+        self.l1 = LayerWithTrainingArg()
+
+      def call(self, inputs, training=None):
+        self.training = training
+        inputs = self.l1(inputs, training=training)
+        return inputs
+
+    x = np.zeros((1, 2))
+    model = ModelWithTrainingArg()
+    model.compile(
+        loss='mse',
+        optimizer='sgd',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, x, epochs=1)
+
+    if testing_utils.should_run_eagerly():
+      expected_training_arg = True
+    else:
+      expected_training_arg = keras.backend.symbolic_learning_phase()
+
+    self.assertEqual(model.training, expected_training_arg)
+    self.assertEqual(model.l1.training, expected_training_arg)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
@@ -2608,6 +2646,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model = keras.models.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+
+    if context.executing_eagerly():
+      # This is not a use case in v1 graph mode.
+      mean_result = metrics_module.Mean()(y)
+      with self.assertRaisesRegex(
+          ValueError, 'Expected a symbolic Tensor for the metric value'):
+        model.add_metric(mean_result, name='metric_2')
+
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):
       with keras.backend.get_graph().as_default():
@@ -2735,6 +2781,13 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model = keras.models.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_3', aggregation='mean')
+
+    if context.executing_eagerly():
+      # This is not a use case in v1 graph mode.
+      mean_result = metrics_module.Mean()(y)
+      with self.assertRaisesRegex(
+          ValueError, 'Expected a symbolic Tensor for the metric value'):
+        model.add_metric(mean_result, name='metric_4')
 
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):

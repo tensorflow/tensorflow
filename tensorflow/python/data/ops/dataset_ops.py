@@ -3397,8 +3397,19 @@ class FilterDataset(UnaryUnchangedStructureDataset):
 class PrefetchDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
-  def __init__(self, input_dataset, buffer_size):
-    """See `Dataset.prefetch()` for details."""
+  def __init__(self, input_dataset, buffer_size, slack_period=None):
+    """See `Dataset.prefetch()` for details.
+
+    Args:
+      input_dataset: The input dataset.
+      buffer_size: See `Dataset.prefetch()` for details.
+      slack_period: (Optional.) An integer. If non-zero, determines the number
+        of GetNext calls before injecting slack into the execution. This may
+        reduce CPU contention at the start of a step. Note that a tensorflow
+        user should not have to set this manually; enable this behavior
+        automatically via `tf.data.Options.experimental_slack` instead. Defaults
+        to None.
+    """
     self._input_dataset = input_dataset
     if buffer_size is None:
       buffer_size = -1  # This is the sentinel for auto-tuning.
@@ -3407,6 +3418,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     variant_tensor = gen_dataset_ops.prefetch_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
+        slack_period=slack_period,
         **flat_structure(self))
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 

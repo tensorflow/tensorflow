@@ -20,21 +20,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
-#ifndef INTEL_MKL_ML_ONLY
-#include "mkldnn.hpp"
 using mkldnn::memory;
 using mkldnn::pooling_backward;
 using mkldnn::pooling_forward;
 using mkldnn::stream;
-#endif
 
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
-
 using mkldnn::memory;
 using mkldnn::pooling_avg;
 using mkldnn::pooling_avg_exclude_padding;
@@ -357,7 +353,6 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     this->SetOp(key, op);
   }
 };
-#endif
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -424,15 +419,9 @@ struct MklPoolParameters {
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const TensorShape& tensor_in_shape);
-#ifdef INTEL_MKL_ML_ONLY
-  void Init(OpKernelContext* context, const std::vector<int32>& ksize,
-            const std::vector<int32>& stride, Padding padding,
-            TensorFormat data_format, const MklShape* mkl_in_shape);
-#else
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const MklDnnShape* mkl_in_shape);
-#endif
 
  private:
   // Common initialization for TensorFlow and MKL formats
@@ -440,8 +429,6 @@ struct MklPoolParameters {
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format);
 };
-
-#ifndef INTEL_MKL_ML_ONLY
 
 template <class T>
 class MklPoolingOpBase : public OpKernel {
@@ -750,7 +737,6 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     return grad_reorder_needed ? target_diff_dst_md : original_input_grad_md;
   }
 };
-#endif  // INTEL_MKL_ML_ONLY
 
 //-------------------------------------------------------------------
 // Utility functions

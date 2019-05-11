@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -182,6 +183,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleBitcastConvert(HloInstruction* bitcast) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
+
+  Status HandleCompare(HloInstruction* compare) override;
 
   Status HandleConcatenate(HloInstruction* concatenate) override;
 
@@ -2209,6 +2212,49 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
         broadcast,
         HloInstruction::CreateBroadcast(
             broadcast->shape(), operand->mutable_operand(0), new_dimensions));
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
+  HloInstruction* lhs;
+  HloInstruction* rhs;
+  CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
+
+  auto replace_with_pred_broadcast = [&](bool value) {
+    return ReplaceWithNewInstruction(
+        compare,
+        HloInstruction::CreateBroadcast(
+            compare->shape(),
+            computation_->AddInstruction(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0(value))),
+            {}));
+  };
+  if (compare->comparison_direction() == ComparisonDirection::kLt &&
+      lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+    return replace_with_pred_broadcast(false);
+  } else if (compare->comparison_direction() == ComparisonDirection::kGt &&
+             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+    return replace_with_pred_broadcast(false);
+  } else if (compare->comparison_direction() == ComparisonDirection::kGe &&
+             lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+    return replace_with_pred_broadcast(true);
+  } else if (compare->comparison_direction() == ComparisonDirection::kLe &&
+             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+    return replace_with_pred_broadcast(true);
+  }
+  if (lhs == rhs &&
+      primitive_util::IsIntegralType(lhs->shape().element_type())) {
+    switch (compare->comparison_direction()) {
+      case ComparisonDirection::kGt:
+      case ComparisonDirection::kLt:
+      case ComparisonDirection::kNe:
+        return replace_with_pred_broadcast(false);
+      case ComparisonDirection::kEq:
+      case ComparisonDirection::kGe:
+      case ComparisonDirection::kLe:
+        return replace_with_pred_broadcast(true);
+    }
   }
   return Status::OK();
 }

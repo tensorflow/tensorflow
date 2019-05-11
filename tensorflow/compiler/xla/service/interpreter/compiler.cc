@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -52,8 +52,8 @@ namespace {
 StatusOr<Literal> HandleEvaluatorCustomCall(
     HloInstruction* custom_call, absl::Span<const Literal*> operands) {
   // Find the target C function in the global registry.
-  auto* registry = xla::cpu::CustomCallTargetRegistry::Global();
-  void* target_fn = registry->Lookup(custom_call->custom_call_target());
+  auto* registry = CustomCallTargetRegistry::Global();
+  void* target_fn = registry->Lookup(custom_call->custom_call_target(), "Host");
   if (!target_fn) {
     return NotFound("Custom call target '%s' was not registered",
                     custom_call->custom_call_target());

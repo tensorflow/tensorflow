@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops.h"
 
 #include <string.h>
+
 #include <map>
 #include <vector>
 
@@ -561,6 +562,15 @@ template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
+// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
+bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
+  int major, minor;
+  CHECK(stream_exec  // Crash OK
+            .GetDeviceDescription()
+            .cuda_compute_capability(&major, &minor));
+  return major >= 7;
+}
+
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -676,6 +686,23 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
+  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
+  // in NHWC data layout. In all other configurations it's more efficient to
+  // run computation in NCHW data format.
+  const bool compute_in_nhwc =
+      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+
+  // We only do one directional conversion: NHWC->NCHW. We never convert in the
+  // other direction. Grappler layout optimizer selects preferred layout and
+  // adds necessary annotations to the graph.
+  // TODO(ezhulenev): Convert in other direction for fp16?
+  const TensorFormat compute_data_format =
+      compute_in_nhwc && data_format == FORMAT_NHWC ? FORMAT_NHWC : FORMAT_NCHW;
+
+  VLOG(3) << "Compute Conv2D with cuDNN:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
+
   const int64 out_batch = GetTensorDim(*output, data_format, 'N');
   const int64 out_rows = GetTensorDim(*output, data_format, 'H');
   const int64 out_cols = GetTensorDim(*output, data_format, 'W');
@@ -708,6 +735,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     // cuDNN only supports padding the same amount on the left and right sides,
     // and on the top and bottom sides. So we manually create a new padded
     // input tensor such that we can pass it to cuDNN.
+    VLOG(4) << "Pad input tensor:"
+            << " padding_top=" << padding_top
+            << " padding_bottom=" << padding_bottom
+            << " padding_left=" << padding_left
+            << " padding_right=" << padding_right;
 
     // TODO(reedwm): In some cases, we can avoid an allocation even if the two
     // padding sides are different. For example, if the input is 2x2, the filter
@@ -750,8 +782,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     in_cols = new_in_cols;
   }
 
-  if (data_format == FORMAT_NHWC) {
-    // Convert the input tensor from NHWC to NCHW.
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the input tensor from NHWC to NCHW.";
+
     TensorShape nchw_shape =
         ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
     if (in_depths > 1) {
@@ -767,28 +800,48 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       // If depth <= 1, then just reshape.
       CHECK(input.CopyFrom(input, nchw_shape));
     }
+  } else {
+    CHECK(data_format == compute_data_format)  // Crash OK
+        << "Illegal data and compute format pair:"
+        << " data_format=" << ToString(data_format)
+        << " compute_data_format=" << ToString(compute_data_format);
   }
 
   CHECK(common_padding_rows >= 0 && common_padding_cols >= 0)  // Crash OK
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
+
+  constexpr auto kComputeInNHWC =
+      std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                      se::dnn::FilterLayout::kOutputYXInput);
+  constexpr auto kComputeInNCHW =
+      std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                      se::dnn::FilterLayout::kOutputInputYX);
+
+  se::dnn::DataLayout compute_data_layout;
+  se::dnn::FilterLayout filter_layout;
+
+  std::tie(compute_data_layout, filter_layout) =
+      compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
+
   se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(in_batch)
       .set_feature_map_count(in_depths)
       .set_height(in_rows)
       .set_width(in_cols)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(out_batch)
       .set_height(out_rows)
       .set_width(out_cols)
       .set_feature_map_count(out_depths)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(patch_rows)
       .set_input_filter_width(patch_cols)
       .set_input_feature_map_count(patch_depths)
-      .set_output_feature_map_count(filter.dim_size(3));
+      .set_output_feature_map_count(filter.dim_size(3))
+      .set_layout(filter_layout);
   se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(row_dilation)
       .set_horizontal_dilation_rate(col_dilation)
@@ -799,22 +852,42 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       .set_group_count(in_depths / patch_depths);
 
   Tensor transformed_filter;
-  OP_REQUIRES_OK(ctx, ctx->allocate_temp(
-                          DataTypeToEnum<T>::value,
-                          TensorShape({filter.dim_size(3), filter.dim_size(2),
-                                       filter.dim_size(0), filter.dim_size(1)}),
-                          &transformed_filter));
-  functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
-      To32Bit(filter.tensor<T, 4>()),
-      To32Bit(transformed_filter.tensor<T, 4>()));
+
+  const auto transform_filter = [&](FilterTensorFormat dst_format) -> void {
+    VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
+            << " to " << ToString(dst_format);
+
+    TensorShape dst_shape =
+        dst_format == FORMAT_OIHW
+            ? TensorShape({filter.dim_size(3), filter.dim_size(2),
+                           filter.dim_size(0), filter.dim_size(1)})
+            : TensorShape({filter.dim_size(3), filter.dim_size(0),
+                           filter.dim_size(1), filter.dim_size(2)});
+
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                           &transformed_filter));
+    functor::TransformFilter<GPUDevice, T, int, 4>()(
+        ctx->eigen_device<GPUDevice>(), dst_format,
+        To32Bit(filter.tensor<T, 4>()),
+        To32Bit(transformed_filter.tensor<T, 4>()));
+  };
+
+  if (compute_data_format == FORMAT_NCHW) {
+    transform_filter(FORMAT_OIHW);
+  } else if (compute_data_format == FORMAT_NHWC) {
+    transform_filter(FORMAT_OHWI);
+  } else {
+    ctx->SetStatus(errors::InvalidArgument("Invalid compute data format: ",
+                                           ToString(compute_data_format)));
+    return;
+  }
 
   Tensor transformed_output;
-  if (data_format == FORMAT_NHWC) {
-    // Only allocate temporary memory when a layout transformation is needed.
+  if (data_format != compute_data_format) {
+    VLOG(4) << "Allocate temporary memory for output in compute data format";
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, out_batch,
+                                ShapeFromFormat(compute_data_format, out_batch,
                                                 out_rows, out_cols, out_depths),
                                 &transformed_output));
   } else {
@@ -842,7 +915,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       in_depths,                // in_depths
       {{in_rows,                // in_rows
         in_cols}},              // in_cols
-      FORMAT_NCHW,              // compute_data_format
+      compute_data_format,      // compute_data_format
       out_depths,               // out_depths
       {{patch_rows,             // filter_rows
         patch_cols,             // filter_cols
@@ -901,6 +974,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
+  VLOG(4) << "Convolution Algorithm: "
+          << algorithm_config.algorithm()->algo_id();
+  VLOG(4) << "tensor_ops_enabled: "
+          << algorithm_config.algorithm()->tensor_ops_enabled();
+
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status =
       stream
@@ -916,8 +994,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         ") filter shape(", filter.shape().DebugString(), ")"));
   }
 
-  // Convert the output tensor back from NCHW to NHWC.
-  if (data_format == FORMAT_NHWC) {
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the output tensor back from NCHW to NHWC.";
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
         const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),

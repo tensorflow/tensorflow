@@ -57,7 +57,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
@@ -609,8 +609,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, launch, context, stream,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
-            LogFusedConvAutotuneResults(
-                se::dnn::ConvolutionKind::FORWARD,
+            LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_desc, filter_desc,
                 output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
                 stream->parent(), results);

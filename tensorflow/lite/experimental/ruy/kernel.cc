@@ -2679,6 +2679,10 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "sub v29.4s, v29.4s, v12.4s\n"
         "sub v30.4s, v30.4s, v11.4s\n"
         "sub v31.4s, v31.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -3280,7 +3284,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, x11\n"
         "231:\n"
 
-        // Write our 8bit values to the destination described by
+        // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
@@ -3330,6 +3334,159 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "blt 250b\n"
         "241:\n"
         "add %[dst_ptr], %[dst_ptr], #16\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // Compute how much of the 8x8 block of destination 32it values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x8, there are some 8x8 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==8 && w2 == 8, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        // Yes, all of the 8x8 block fits, go to fast path.
+        "beq 330f\n"
+        // Not all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #16\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v16)
+        "st1 {v17.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v17)
+        "st1 {v18.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v18)
+        "st1 {v19.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v19)
+        "st1 {v20.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v20)
+        "st1 {v21.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v21)
+        "st1 {v22.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v22)
+        "st1 {v23.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v23)
+        "st1 {v24.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v24)
+        "st1 {v25.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v25)
+        "st1 {v26.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v26)
+        "st1 {v27.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v27)
+        "st1 {v28.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v28)
+        "st1 {v29.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v29)
+        "st1 {v30.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v30)
+        "st1 {v31.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v31)
+
+        "b 331f\n"
+
+        "330:\n"
+        // Yes, all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x4, %[dst_ptr]\n"
+        "mov x3, x4\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v18.4s, v19.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v20.4s, v21.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v20)
+        RUY_MAKE_ZERO(v21)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v22.4s, v23.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v22)
+        RUY_MAKE_ZERO(v23)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v24.4s, v25.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v26.4s, v27.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v28.4s, v29.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v30.4s, v31.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v30)
+        RUY_MAKE_ZERO(v31)
+
+        "331:\n"
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 341f\n"
+
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "350:\n"
+        "mov w5, #0\n"
+        "351:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 351b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #32\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 350b\n"
+        "341:\n"
+        "add %[dst_ptr], %[dst_ptr], #32\n"
         // At this point we have completely finished writing values to the
         // destination matrix for the current block.
 

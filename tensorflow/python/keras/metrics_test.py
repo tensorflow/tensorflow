@@ -934,6 +934,15 @@ class TopKCategoricalAccuracyTest(test.TestCase):
     result = a_obj(y_true, y_pred)
     self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
 
+  def test_weighted(self):
+    a_obj = metrics.TopKCategoricalAccuracy(k=2)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([[0, 1, 0], [1, 0, 0], [0, 0, 1]])
+    y_pred = constant_op.constant([[0, 0.9, 0.1], [0, 0.9, 0.1], [0, 0.9, 0.1]])
+    sample_weight = constant_op.constant((1.0, 0.0, 1.0))
+    result = a_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class SparseTopKCategoricalAccuracyTest(test.TestCase):
@@ -971,6 +980,15 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
     self.evaluate(variables.variables_initializer(a_obj.variables))
     result = a_obj(y_true, y_pred)
     self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
+
+  def test_weighted(self):
+    a_obj = metrics.SparseTopKCategoricalAccuracy(k=2)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([1, 0, 2])
+    y_pred = constant_op.constant([[0, 0.9, 0.1], [0, 0.9, 0.1], [0, 0.9, 0.1]])
+    sample_weight = constant_op.constant((1.0, 0.0, 1.0))
+    result = a_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -234,13 +235,24 @@ def _process_single_batch(model,
       if total_loss is None:
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
+      if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
+        # TODO(reedwm): Make loss_scale public instead of accessing private
+        # _loss_scale attribute.
+        loss_scale = model.optimizer._loss_scale()
+        scaled_total_loss = loss_scale_optimizer.scale_loss(total_loss,
+                                                            loss_scale)
+      else:
+        loss_scale = None
+        scaled_total_loss = total_loss
     if training:
       if not model.trainable_weights:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
       else:
-        grads = tape.gradient(total_loss, model.trainable_weights)
+        grads = tape.gradient(scaled_total_loss, model.trainable_weights)
+        if loss_scale is not None:
+          grads = loss_scale_optimizer.unscale_grads(grads, loss_scale)
         model.optimizer.apply_gradients(zip(grads,
                                             model.trainable_weights))
     return outs, total_loss, output_losses, masks

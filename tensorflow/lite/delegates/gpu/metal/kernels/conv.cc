@@ -701,7 +701,7 @@ kernel void ComputeFunction(
 )";
   for (int i = 0; i < z_out; ++i) {
     const std::string s_i = std::to_string(i);
-    code += "  ACCUM_FLT4 r" + s_i + " = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
+    code += "  float4 r" + s_i + " = float4(0.0f, 0.0f, 0.0f, 0.0f);\n";
   }
   code += R"(
   device FLT4* tmp = filters + gid_z * 4 * params.src_size.w;
@@ -728,7 +728,7 @@ kernel void ComputeFunction(
   )";
   for (int i = 0; i < z_out; ++i) {
     const std::string s_i = std::to_string(i);
-    code += "  r" + s_i + " += TO_ACCUM4_TYPE(bias_loc[" + s_i + "]);\n";
+    code += "  r" + s_i + " += float4(bias_loc[" + s_i + "]);\n";
   }
   for (int i = 0; i < z_out; ++i) {
     const std::string s_i = std::to_string(i);
