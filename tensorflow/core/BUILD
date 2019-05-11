@@ -1002,14 +1002,20 @@ cc_library(
         "framework/allocator.cc",
         "framework/allocator_registry.cc",
         "framework/allocator_registry.h",
+        "framework/numeric_types.h",
         "framework/tracking_allocator.cc",
         "framework/tracking_allocator.h",
+        "framework/type_traits.h",
     ],
-    hdrs = ["framework/allocator.h"],
+    hdrs = [
+        "framework/allocator.h",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -2865,6 +2871,9 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "framework/allocator.cc",
+            "framework/allocator_registry.cc",
+            "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
             "example/feature_util.cc",
             "util/reporter.cc",
@@ -2896,6 +2905,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator",
         ":feature_util",
         ":lib",
         ":lib_internal",
@@ -3519,6 +3529,7 @@ tf_cuda_library(
         ":bfc_allocator",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
         ":stream_executor",
     ],
 )
