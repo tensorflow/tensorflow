@@ -179,6 +179,8 @@ bool CustomGemv(
   return true;
 }
 
+// USE_NEON still allows for x86 where we may be using the arm_neon_sse.h
+// wrapper implementing NEON intrinsics on top of SSE4 intrinsics.
 #ifdef USE_NEON
 
 // Some NEON helper functions used by CustomGemvImpl specializations below,
@@ -443,7 +445,143 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
     }
   }
 };
+
+// The float specialization below is unconditionally faster than ruy
+// because ruy does not currently have any Gemv path.
+// But it is not unconditionally faster than Eigen, which is what is used
+// unless TFLITE_WITH_RUY is defined. Indeed, Eigen has decently efficient
+// Gemv paths, and they may use AVX instructions, while the present
+// NEON intrinsics code maps at best to SSE4 on x86.
+#ifdef TFLITE_WITH_RUY
+
+// We want to use fused multiply-add when it's available (that is, on A64
+// unconditionally and on A32 with VFPv4) because it's often faster, and
+// because non-fused seems not to be available in A64 so a conscentious compiler
+// might emit slow code (separate mul and add instructions) in order to
+// implement the vmlaq_f32 intrinsic with strict bit-for-bit exactness on A64.
+// (Compilers seems to be generating a fused fmla instruction at the moment,
+// but that could change).
+//
+// We still want to support building for A32 without VFPv4.
+inline float32x4_t mul_add(float32x4_t acc, float32x4_t lhs, float32x4_t rhs) {
+#ifdef __ARM_FEATURE_FMA
+  return vfmaq_f32(acc, lhs, rhs);
+#else
+  return vmlaq_f32(acc, lhs, rhs);
 #endif
+}
+
+template <>
+struct CustomGemvImpl<float, float, float, float,
+                      QuantizationFlavor::kFloatingPoint> {
+  // This implementation's inner loop processes 4 rows of the left-hand side
+  // matrix at a time.
+  static constexpr int kKernelRows = 4;
+
+  static bool IsSupportedGivenSufficientlyManyRows(
+      const MatrixParams<float>& lhs_params,
+      const MatrixParams<float>& rhs_params,
+      const MatrixParams<float>& dst_params,
+      const GemmParams<float, float>& params) {
+    // There are no further requirements on the applicability of this kernel,
+    // beyond the left-hand-side matrix having at least kKernelRows rows,
+    // and the type requirements implied in this template partial
+    // specialization.
+    return true;
+  }
+  static void Run(const MatrixParams<float>& lhs_params, const float* lhs_data,
+                  const MatrixParams<float>& rhs_params, const float* rhs_data,
+                  const MatrixParams<float>& dst_params, float* dst_data,
+                  const GemmParams<float, float>& params, int row_start,
+                  int row_end) {
+    // Handle kKernelRows ( == 4) rows of the left-hand side matrix at each
+    // iteration of this for loop.
+    TFLITE_DCHECK_GE(row_end - row_start, kKernelRows);
+    for (int row = row_start; row < row_end; row += kKernelRows) {
+      // Here is the magic where we allow this kernel to handle any odd number
+      // of rows as long as it's >= kKernelRows: the last group of `kKernelRows`
+      // rows will be nudged to fit, possibly by starting at an odd value of
+      // `row`.
+      row = std::min(row, row_end - kKernelRows);
+      const float* filter_ptr = lhs_data + row * lhs_params.cols;
+      // 4 accumulator registers, one for each row being processed.
+      // Each has 4 float32 lanes that corresponds to columns modulo 4, and
+      // will need to be horizontally reduced at the end.
+      float32x4_t acc0 = vdupq_n_f32(0);
+      float32x4_t acc1 = acc0;
+      float32x4_t acc2 = acc0;
+      float32x4_t acc3 = acc0;
+      int in = 0;
+      // As much as possible, handle 4 columns of the left-hand side matrix
+      // at a time. This allows for decent NEON implementation.
+      for (; in <= lhs_params.cols - 4; in += 4) {
+        float32x4_t input_val = vld1q_f32(rhs_data + in);
+        float32x4_t filter_val_0 = vld1q_f32(filter_ptr + 0 * lhs_params.cols);
+        float32x4_t filter_val_1 = vld1q_f32(filter_ptr + 1 * lhs_params.cols);
+        float32x4_t filter_val_2 = vld1q_f32(filter_ptr + 2 * lhs_params.cols);
+        float32x4_t filter_val_3 = vld1q_f32(filter_ptr + 3 * lhs_params.cols);
+        filter_ptr += 4;
+        acc0 = mul_add(acc0, filter_val_0, input_val);
+        acc1 = mul_add(acc1, filter_val_1, input_val);
+        acc2 = mul_add(acc2, filter_val_2, input_val);
+        acc3 = mul_add(acc3, filter_val_3, input_val);
+      }
+      // Leftovers: fewer than 4 columns remain. Very slow code, could be
+      // improved upon if critical in some application.
+      if (in < lhs_params.cols) {
+        float buf[16];
+        vst1q_f32(buf + 0, acc0);
+        vst1q_f32(buf + 4, acc1);
+        vst1q_f32(buf + 8, acc2);
+        vst1q_f32(buf + 12, acc3);
+        for (; in < lhs_params.cols; in++) {
+          int lane = (in + 4 - lhs_params.cols) % 4;
+          const float input_val = rhs_data[in];
+          for (int k = 0; k < 4; k++) {
+            float filter_val = lhs_data[in + (row + k) * lhs_params.cols];
+            buf[lane + 4 * k] += filter_val * input_val;
+          }
+        }
+        acc0 = vld1q_f32(buf + 0);
+        acc1 = vld1q_f32(buf + 4);
+        acc2 = vld1q_f32(buf + 8);
+        acc3 = vld1q_f32(buf + 12);
+      }
+
+      // Horizontally reduce accumulators
+      float32x2_t pairwise_reduced_acc_0 =
+          vpadd_f32(vget_low_f32(acc0), vget_high_f32(acc0));
+      float32x2_t pairwise_reduced_acc_1 =
+          vpadd_f32(vget_low_f32(acc1), vget_high_f32(acc1));
+      float32x2_t pairwise_reduced_acc_2 =
+          vpadd_f32(vget_low_f32(acc2), vget_high_f32(acc2));
+      float32x2_t pairwise_reduced_acc_3 =
+          vpadd_f32(vget_low_f32(acc3), vget_high_f32(acc3));
+      float32x2_t reduced_lo =
+          vpadd_f32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+      float32x2_t reduced_hi =
+          vpadd_f32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+      float32x4_t reduced = vcombine_f32(reduced_lo, reduced_hi);
+      // End of horizontal reduction: now `reduced` is a single float32x4
+      // containing the 4 float32 accumulators corresponding to the 4 rows
+      // being processed.
+
+      if (params.bias) {
+        // Add bias values.
+        reduced = vaddq_f32(reduced, vld1q_f32(params.bias + row));
+      }
+
+      // Clamp and store to destination.
+      reduced = vminq_f32(reduced, vdupq_n_f32(params.clamp_max));
+      reduced = vmaxq_f32(reduced, vdupq_n_f32(params.clamp_min));
+      vst1q_f32(dst_data + row, reduced);
+    }
+  }
+};
+
+#endif  // TFLITE_WITH_RUY
+
+#endif  // USE_NEON
 
 }  // namespace detail
 }  // namespace cpu_backend_gemm
