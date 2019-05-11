@@ -40,7 +40,7 @@ linalg::common::LoopNestRangeBuilder::LoopNestRangeBuilder(
   assert(ivs.size() == indexings.size());
   for (unsigned i = 0, e = indexings.size(); i < e; ++i) {
     auto rangeOp =
-        indexings[i].getValue()->getDefiningOp()->dyn_cast<RangeOp>();
+        llvm::dyn_cast<RangeOp>(indexings[i].getValue()->getDefiningOp());
     if (!rangeOp) {
       continue;
     }

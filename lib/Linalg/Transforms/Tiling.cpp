@@ -319,11 +319,11 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
 // TODO(ntv) expose as a primitive for other passes.
 static LogicalResult tileLinalgOp(Operation *op, ArrayRef<int64_t> tileSizes,
                                   PerFunctionState &state) {
-  if (auto matmulOp = op->dyn_cast<MatmulOp>()) {
+  if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
     return tileLinalgOp(matmulOp, tileSizes, state);
-  } else if (auto matvecOp = op->dyn_cast<MatvecOp>()) {
+  } else if (auto matvecOp = dyn_cast<MatvecOp>(op)) {
     return tileLinalgOp(matvecOp, tileSizes, state);
-  } else if (auto dotOp = op->dyn_cast<DotOp>()) {
+  } else if (auto dotOp = dyn_cast<DotOp>(op)) {
     return tileLinalgOp(dotOp, tileSizes, state);
   }
   return failure();

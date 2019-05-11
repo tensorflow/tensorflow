@@ -271,7 +271,7 @@ public:
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
-    auto result = op->dyn_cast<OpTy>();
+    auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
     return result;
   }

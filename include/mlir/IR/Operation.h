@@ -389,14 +389,6 @@ public:
   // Conversions to declared operations like DimOp
   //===--------------------------------------------------------------------===//
 
-  /// The dyn_cast methods perform a dynamic cast from an Operation to a typed
-  /// Op like DimOp.  This returns a null Op on failure.
-  template <typename OpClass> OpClass dyn_cast() {
-    if (isa<OpClass>())
-      return cast<OpClass>();
-    return OpClass();
-  }
-
   /// The cast methods perform a cast from an Operation to a typed Op like
   /// DimOp.  This aborts if the parameter to the template isn't an instance of
   /// the template type argument.
@@ -417,10 +409,10 @@ public:
   /// including this one.
   void walk(const std::function<void(Operation *)> &callback);
 
-  /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
+  /// Specialization of walk to only visit operations of 'T'.
+  template <typename T> void walk(std::function<void(T)> callback) {
     walk([&](Operation *op) {
-      if (auto derivedOp = op->dyn_cast<OpTy>())
+      if (auto derivedOp = dyn_cast<T>(op))
         callback(derivedOp);
     });
   }
@@ -534,17 +526,6 @@ inline auto Operation::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
 }
 
-/// Provide dyn_cast_or_null functionality for Operation casts.
-template <typename T> T dyn_cast_or_null(Operation *op) {
-  return op ? op->dyn_cast<T>() : T();
-}
-
-/// Provide isa_and_nonnull functionality for Operation casts, i.e. if the
-/// operation is non-null and a class of 'T'.
-template <typename T> bool isa_and_nonnull(Operation *op) {
-  return op && op->isa<T>();
-}
-
 /// This class implements the result iterators for the Operation class
 /// in terms of getResult(idx).
 class ResultIterator final
@@ -597,5 +578,31 @@ inline auto Operation::getResultTypes()
 }
 
 } // end namespace mlir
+
+namespace llvm {
+/// Provide isa functionality for operation casts.
+template <typename T> struct isa_impl<T, ::mlir::Operation> {
+  static inline bool doit(const ::mlir::Operation &op) {
+    return T::classof(const_cast<::mlir::Operation *>(&op));
+  }
+};
+
+/// Provide specializations for operation casts as the resulting T is value
+/// typed.
+template <typename T> struct cast_retty_impl<T, ::mlir::Operation *> {
+  using ret_type = T;
+};
+template <typename T> struct cast_retty_impl<T, ::mlir::Operation> {
+  using ret_type = T;
+};
+template <class T>
+struct cast_convert_val<T, ::mlir::Operation, ::mlir::Operation> {
+  static T doit(::mlir::Operation &val) { return T(&val); }
+};
+template <class T>
+struct cast_convert_val<T, ::mlir::Operation *, ::mlir::Operation *> {
+  static T doit(::mlir::Operation *val) { return T(val); }
+};
+} // end namespace llvm
 
 #endif // MLIR_IR_OPERATION_H

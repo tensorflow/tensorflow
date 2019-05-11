@@ -100,7 +100,7 @@ ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
   if (op->getNumResults() == 1) {
     return ValueHandle(op->getResult(0));
   }
-  if (auto f = op->dyn_cast<AffineForOp>()) {
+  if (auto f = dyn_cast<AffineForOp>(op)) {
     return ValueHandle(f.getInductionVar());
   }
   llvm_unreachable("unsupported operation, use an OperationHandle instead");
@@ -147,8 +147,8 @@ static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
   if (!lbDef || !ubDef)
     return llvm::Optional<ValueHandle>();
 
-  auto lbConst = lbDef->dyn_cast<ConstantIndexOp>();
-  auto ubConst = ubDef->dyn_cast<ConstantIndexOp>();
+  auto lbConst = dyn_cast<ConstantIndexOp>(lbDef);
+  auto ubConst = dyn_cast<ConstantIndexOp>(ubDef);
   if (!lbConst || !ubConst)
     return llvm::Optional<ValueHandle>();
 

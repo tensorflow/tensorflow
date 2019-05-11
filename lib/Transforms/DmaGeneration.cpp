@@ -173,11 +173,11 @@ static void getMultiLevelStrides(const MemRefRegion &region,
 static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
                                   MemRefRegion *region) {
   unsigned rank;
-  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
+  if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
     rank = loadOp.getMemRefType().getRank();
     region->memref = loadOp.getMemRef();
     region->setWrite(false);
-  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
+  } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
     rank = storeOp.getMemRefType().getRank();
     region->memref = storeOp.getMemRef();
     region->setWrite(true);
@@ -483,7 +483,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
       });
 
   for (auto it = curBegin; it != block->end(); ++it) {
-    if (auto forOp = it->dyn_cast<AffineForOp>()) {
+    if (auto forOp = dyn_cast<AffineForOp>(&*it)) {
       // Returns true if the footprint is known to exceed capacity.
       auto exceedsCapacity = [&](AffineForOp forOp) {
         Optional<int64_t> footprint =
@@ -607,10 +607,10 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // Walk this range of operations  to gather all memory regions.
   block->walk(begin, end, [&](Operation *opInst) {
     // Gather regions to allocate to buffers in faster memory space.
-    if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
+    if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
       if (loadOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
-    } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
+    } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
       if (storeOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
     } else {
@@ -739,7 +739,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // For a range of operations, a note will be emitted at the caller.
   AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
-  if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
+  if (llvm::DebugFlag && (forOp = dyn_cast<AffineForOp>(&*begin))) {
     forOp.emitRemark()
         << sizeInKib
         << " KiB of DMA buffers in fast memory space for this block\n";

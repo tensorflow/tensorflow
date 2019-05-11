@@ -46,9 +46,9 @@ void linalg::composeSliceOps(mlir::Function *f) {
 
 void linalg::lowerToFinerGrainedTensorContraction(mlir::Function *f) {
   f->walk([](Operation *op) {
-    if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
+    if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
       matmulOp.writeAsFinerGrainTensorContraction();
-    } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
+    } else if (auto matvecOp = dyn_cast<linalg::MatvecOp>(op)) {
       matvecOp.writeAsFinerGrainTensorContraction();
     } else {
       return;
@@ -205,11 +205,11 @@ writeContractionAsLoops(ContractionOp contraction) {
 
 llvm::Optional<SmallVector<mlir::AffineForOp, 4>>
 linalg::writeAsLoops(Operation *op) {
-  if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
+  if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
     return writeContractionAsLoops(matmulOp);
-  } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
+  } else if (auto matvecOp = dyn_cast<linalg::MatvecOp>(op)) {
     return writeContractionAsLoops(matvecOp);
-  } else if (auto dotOp = op->dyn_cast<linalg::DotOp>()) {
+  } else if (auto dotOp = dyn_cast<linalg::DotOp>(op)) {
     return writeContractionAsLoops(dotOp);
   }
   return llvm::None;
@@ -276,7 +276,7 @@ PatternMatchResult
 Rewriter<linalg::LoadOp>::matchAndRewrite(Operation *op,
                                           PatternRewriter &rewriter) const {
   auto load = op->cast<linalg::LoadOp>();
-  SliceOp slice = load.getView()->getDefiningOp()->dyn_cast<SliceOp>();
+  SliceOp slice = dyn_cast<SliceOp>(load.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : load.getView()->getDefiningOp()->cast<ViewOp>();
   ScopedContext scope(FuncBuilder(load), load.getLoc());
@@ -291,7 +291,7 @@ PatternMatchResult
 Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
                                            PatternRewriter &rewriter) const {
   auto store = op->cast<linalg::StoreOp>();
-  SliceOp slice = store.getView()->getDefiningOp()->dyn_cast<SliceOp>();
+  SliceOp slice = dyn_cast<SliceOp>(store.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : store.getView()->getDefiningOp()->cast<ViewOp>();
   ScopedContext scope(FuncBuilder(store), store.getLoc());

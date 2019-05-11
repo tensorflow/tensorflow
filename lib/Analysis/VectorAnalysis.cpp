@@ -152,7 +152,7 @@ static SetVector<Operation *> getParentsOfType(Operation *op) {
   SetVector<Operation *> res;
   auto *current = op;
   while (auto *parent = current->getParentOp()) {
-    if (auto typedParent = parent->template dyn_cast<T>()) {
+    if (auto typedParent = dyn_cast<T>(parent)) {
       assert(res.count(parent) == 0 && "Already inserted");
       res.insert(parent);
     }
@@ -177,7 +177,7 @@ AffineMap mlir::makePermutationMap(
     }
   }
 
-  if (auto load = op->dyn_cast<LoadOp>()) {
+  if (auto load = dyn_cast<LoadOp>(op)) {
     return ::makePermutationMap(load.getIndices(), enclosingLoopToVectorDim);
   }
 
@@ -198,10 +198,10 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
   VectorType superVectorType;
-  if (auto read = op.dyn_cast<VectorTransferReadOp>()) {
+  if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
     superVectorType = read.getResultType();
     mustDivide = true;
-  } else if (auto write = op.dyn_cast<VectorTransferWriteOp>()) {
+  } else if (auto write = dyn_cast<VectorTransferWriteOp>(op)) {
     superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (op.getNumResults() == 0) {

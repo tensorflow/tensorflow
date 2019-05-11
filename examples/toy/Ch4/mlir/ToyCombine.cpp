@@ -53,7 +53,7 @@ struct SimplifyRedundantTranspose : public mlir::RewritePattern {
     // Look through the input of the current transpose.
     mlir::Value *transposeInput = transpose.getOperand();
     TransposeOp transposeInputOp =
-        mlir::dyn_cast_or_null<TransposeOp>(transposeInput->getDefiningOp());
+        llvm::dyn_cast_or_null<TransposeOp>(transposeInput->getDefiningOp());
     // If the input is defined by another Transpose, bingo!
     if (!transposeInputOp)
       return matchFailure();
@@ -75,7 +75,7 @@ struct SimplifyReshapeConstant : public mlir::RewritePattern {
                   mlir::PatternRewriter &rewriter) const override {
     ReshapeOp reshape = op->cast<ReshapeOp>();
     // Look through the input of the current reshape.
-    ConstantOp constantOp = mlir::dyn_cast_or_null<ConstantOp>(
+    ConstantOp constantOp = llvm::dyn_cast_or_null<ConstantOp>(
         reshape.getOperand()->getDefiningOp());
     // If the input is defined by another constant, bingo!
     if (!constantOp)

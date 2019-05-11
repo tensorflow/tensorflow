@@ -91,7 +91,7 @@ inline llvm::SmallVector<mlir::Value *, 8>
 extractRangesFromViewOrSliceOp(mlir::Value *view) {
   // This expects a viewType which must come from either ViewOp or SliceOp.
   assert(view->getType().isa<linalg::ViewType>() && "expected ViewType");
-  if (auto viewOp = view->getDefiningOp()->dyn_cast<linalg::ViewOp>())
+  if (auto viewOp = llvm::dyn_cast<linalg::ViewOp>(view->getDefiningOp()))
     return viewOp.getRanges();
 
   auto sliceOp = view->getDefiningOp()->cast<linalg::SliceOp>();

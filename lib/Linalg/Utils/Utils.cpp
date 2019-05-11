@@ -68,9 +68,9 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
 
 SmallVector<Value *, 8> mlir::getRanges(Operation *op) {
   SmallVector<Value *, 8> res;
-  if (auto view = op->dyn_cast<ViewOp>()) {
+  if (auto view = dyn_cast<ViewOp>(op)) {
     res.append(view.getIndexings().begin(), view.getIndexings().end());
-  } else if (auto slice = op->dyn_cast<SliceOp>()) {
+  } else if (auto slice = dyn_cast<SliceOp>(op)) {
     for (auto *i : slice.getIndexings())
       if (i->getType().isa<RangeType>())
         res.push_back(i);
@@ -100,7 +100,7 @@ SmallVector<Value *, 8> mlir::getRanges(Operation *op) {
 Value *mlir::createOrReturnView(FuncBuilder *b, Location loc,
                                 Operation *viewDefiningOp,
                                 ArrayRef<Value *> ranges) {
-  if (auto view = viewDefiningOp->dyn_cast<ViewOp>()) {
+  if (auto view = dyn_cast<ViewOp>(viewDefiningOp)) {
     auto indexings = view.getIndexings();
     if (std::equal(indexings.begin(), indexings.end(), ranges.begin()))
       return view.getResult();

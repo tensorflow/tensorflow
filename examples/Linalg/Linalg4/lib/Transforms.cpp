@@ -52,8 +52,8 @@ void linalg::lowerToTiledLoops(mlir::Function *f,
 }
 
 static bool isZeroIndex(Value *v) {
-  return v->getDefiningOp() && v->getDefiningOp()->isa<ConstantIndexOp>() &&
-         v->getDefiningOp()->dyn_cast<ConstantIndexOp>().getValue() == 0;
+  return isa_and_nonnull<ConstantIndexOp>(v->getDefiningOp()) &&
+         cast<ConstantIndexOp>(v->getDefiningOp()).getValue() == 0;
 }
 
 template <typename ConcreteOp>
@@ -178,11 +178,11 @@ writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
 
 llvm::Optional<SmallVector<mlir::AffineForOp, 8>>
 linalg::writeAsTiledViews(Operation *op, ArrayRef<Value *> tileSizes) {
-  if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
+  if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
     return writeContractionAsTiledViews(matmulOp, tileSizes);
-  } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
+  } else if (auto matvecOp = dyn_cast<linalg::MatvecOp>(op)) {
     return writeContractionAsTiledViews(matvecOp, tileSizes);
-  } else if (auto dotOp = op->dyn_cast<linalg::DotOp>()) {
+  } else if (auto dotOp = dyn_cast<linalg::DotOp>(op)) {
     return writeContractionAsTiledViews(dotOp, tileSizes);
   }
   return llvm::None;
@@ -190,11 +190,11 @@ linalg::writeAsTiledViews(Operation *op, ArrayRef<Value *> tileSizes) {
 
 void linalg::lowerToTiledViews(mlir::Function *f, ArrayRef<Value *> tileSizes) {
   f->walk([tileSizes](Operation *op) {
-    if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
+    if (auto matmulOp = dyn_cast<linalg::MatmulOp>(op)) {
       writeAsTiledViews(matmulOp, tileSizes);
-    } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
+    } else if (auto matvecOp = dyn_cast<linalg::MatvecOp>(op)) {
       writeAsTiledViews(matvecOp, tileSizes);
-    } else if (auto dotOp = op->dyn_cast<linalg::DotOp>()) {
+    } else if (auto dotOp = dyn_cast<linalg::DotOp>(op)) {
       writeAsTiledViews(dotOp, tileSizes);
     } else {
       return;

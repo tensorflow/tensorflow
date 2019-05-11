@@ -48,7 +48,7 @@ void TestConstantFold::foldOperation(Operation *op,
   }
   // If this op is a constant that are used and cannot be de-duplicated,
   // remember it for cleanup later.
-  else if (auto constant = op->dyn_cast<ConstantOp>()) {
+  else if (auto constant = dyn_cast<ConstantOp>(op)) {
     existingConstants.push_back(op);
   }
 }
