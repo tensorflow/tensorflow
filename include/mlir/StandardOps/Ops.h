@@ -309,7 +309,7 @@ public:
 
   APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
 
-  static bool isClassFor(Operation *op);
+  static bool classof(Operation *op);
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -332,7 +332,7 @@ public:
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
-  static bool isClassFor(Operation *op);
+  static bool classof(Operation *op);
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -350,7 +350,7 @@ public:
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
-  static bool isClassFor(Operation *op);
+  static bool classof(Operation *op);
 };
 
 // DmaStartOp starts a non-blocking DMA operation that transfers data from a

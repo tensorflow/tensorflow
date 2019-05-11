@@ -407,7 +407,7 @@ public:
 
   /// The is methods return true if the operation is a typed op (like DimOp) of
   /// of the given class.
-  template <typename OpClass> bool isa() { return OpClass::isClassFor(this); }
+  template <typename OpClass> bool isa() { return OpClass::classof(this); }
 
   //===--------------------------------------------------------------------===//
   // Operation Walkers

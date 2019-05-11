@@ -82,7 +82,7 @@ public:
   Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
-  bool (&isClassFor)(Operation *op);
+  bool (&classof)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
   ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
@@ -141,15 +141,15 @@ public:
   /// operations they contain.
   template <typename T> static AbstractOperation get(Dialect &dialect) {
     return AbstractOperation(
-        T::getOperationName(), dialect, T::getOperationProperties(),
-        T::isClassFor, T::parseAssembly, T::printAssembly, T::verifyInvariants,
+        T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
+        T::parseAssembly, T::printAssembly, T::verifyInvariants,
         T::constantFoldHook, T::foldHook, T::getCanonicalizationPatterns);
   }
 
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&isClassFor)(Operation *op),
+      bool (&classof)(Operation *op),
       ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(Operation *op, OpAsmPrinter *p),
       LogicalResult (&verifyInvariants)(Operation *op),
@@ -160,7 +160,7 @@ private:
                                 SmallVectorImpl<Value *> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
-      : name(name), dialect(dialect), isClassFor(isClassFor),
+      : name(name), dialect(dialect), classof(classof),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
         foldHook(foldHook),

@@ -1171,14 +1171,14 @@ void ConstantFloatOp::build(Builder *builder, OperationState *result,
   ConstantOp::build(builder, result, type, builder->getFloatAttr(type, value));
 }
 
-bool ConstantFloatOp::isClassFor(Operation *op) {
-  return ConstantOp::isClassFor(op) &&
+bool ConstantFloatOp::classof(Operation *op) {
+  return ConstantOp::classof(op) &&
          op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
-bool ConstantIntOp::isClassFor(Operation *op) {
-  return ConstantOp::isClassFor(op) &&
+bool ConstantIntOp::classof(Operation *op) {
+  return ConstantOp::classof(op) &&
          op->getResult(0)->getType().isa<IntegerType>();
 }
 
@@ -1199,8 +1199,8 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
-bool ConstantIndexOp::isClassFor(Operation *op) {
-  return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
+bool ConstantIndexOp::classof(Operation *op) {
+  return ConstantOp::classof(op) && op->getResult(0)->getType().isIndex();
 }
 
 void ConstantIndexOp::build(Builder *builder, OperationState *result,

@@ -776,7 +776,7 @@ public:
   /// This hook can be overridden with a more specific implementation in
   /// the subclass of Base.
   ///
-  static bool isClassFor(Operation *op) {
+  static bool classof(Operation *op) {
     return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
