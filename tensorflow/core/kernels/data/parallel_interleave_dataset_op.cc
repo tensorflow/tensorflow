@@ -77,7 +77,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, block_length > 0,
                 errors::InvalidArgument("`block_length` must be > 0"));
 
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
