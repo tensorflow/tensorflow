@@ -215,10 +215,10 @@ class OpKernel {
   const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
   const MemoryTypeVector output_memory_types_;
-  const int graph_def_version_;
-  const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  const int graph_def_version_;
+  const bool is_internal_;  // True if this is an internal operation
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
