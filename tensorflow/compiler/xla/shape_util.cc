@@ -1331,8 +1331,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       }
     }
     Shape output_shape_with_layout = output_shape;
-    *output_shape_with_layout.mutable_layout()->mutable_minor_to_major() =
-        layout;
+    *output_shape_with_layout.mutable_layout() = Layout{layout};
     return output_shape_with_layout;
   }
 
