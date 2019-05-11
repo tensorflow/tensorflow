@@ -19,7 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -88,6 +90,15 @@ struct XlaClusterInfo {
   // A mapping from outside compilation cluster name to its device assignment.
   const std::map<string, int> host_compute_core;
 };
+
+// Finds dependencies between outside compilation clusters, including both data
+// dependencies and control dependencies. cluster_deps maps the name name of an
+// outside compilation cluster to a set of names of outside compilation clusters
+// that it depends on.
+stream_executor::port::StatusOr<
+    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+OutsideCompilationClusterDependencies(
+    const Graph* g, const string& outside_compilation_attr_name);
 
 // Preprocesses edges within the same XLA cluster. It will perform the following
 // operations in order:

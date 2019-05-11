@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/extract_outside_compilation_pass.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -287,15 +289,20 @@ absl::optional<std::vector<PartialTensorShape>> GetInferredInputShapes(
   return results;
 }
 
+string host_compute_node_name(const string& original_oc_name) {
+  return absl::StrCat("outside_compilation_", original_oc_name,
+                      "_host_compute");
+}
+
 // Builds XlaHostCompute NodeDef from the outside compilation call node.
 xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
-    const Node* call_node, const std::map<string, int>& host_compute_core) {
+    const Node* call_node, const std::map<string, int>& host_compute_core,
+    const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
   string original_oc_name;
   TF_RETURN_IF_ERROR(GetNodeAttr(
       call_node->attrs(), "_outside_compilation_subgraph", &original_oc_name));
-  NodeDefBuilder host_compute_builder(
-      absl::StrCat("outside_compilation_", original_oc_name, "_host_compute"),
-      "XlaHostCompute");
+  NodeDefBuilder host_compute_builder(host_compute_node_name(original_oc_name),
+                                      "XlaHostCompute");
 
   // Copy all attributes.
   for (auto attr : call_node->attrs()) {
@@ -309,9 +316,25 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
     host_compute_builder.Attr("tpu_core", core);
   }
 
-  // Set input tokens.
-  host_compute_builder.Attr(kXlaTokenInputNodesAttrName,
-                            std::vector<string>{kXlaTokenArgNodeName});
+  // Set input tokens and other outside compilation clusters that current
+  // cluster depends in `kXlaTokenArgNodeName`. This is needed because when
+  // outside compilation subgraphs are encapsulated and moved to host graph,
+  // control/data edges between them will only be reflected in host graph.
+  // From XLA's perspective, two originally dependent clusters are no longer
+  // connected, which makes them look like they can be scheduled for execution
+  // in arbitrary order even though in fact they must be executed in order
+  // according to their host-side graph dependency. This can cause deadlock.
+  // Therefore, we hint XLA what the correct ordering of these clusters should
+  // be to avoid deadlocks.
+  std::vector<string> xla_token_input_nodes;
+  xla_token_input_nodes.emplace_back(kXlaTokenArgNodeName);
+  auto cluster_deps_it = cluster_deps.find(original_oc_name);
+  if (cluster_deps_it != cluster_deps.end()) {
+    for (auto dep : cluster_deps_it->second) {
+      xla_token_input_nodes.emplace_back(host_compute_node_name(dep));
+    }
+  }
+  host_compute_builder.Attr(kXlaTokenInputNodesAttrName, xla_token_input_nodes);
 
   // Populate inputs.
   std::vector<DataType> input_dtypes;
@@ -371,7 +394,8 @@ Status ValidateOutsideCompilationCallNode(Node* call_node) {
 // If the function call node has no input/output edges, we will just remove it
 // and not create a XlaHostCompute node.
 Status ReplaceOrRemoveOutsideCompilationCallNode(
-    Graph* g, Node* call_node, const std::map<string, int>& host_compute_core) {
+    Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
+    const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
   // If the function call node has no input/output edges, just remove it.
   bool has_edge = false;
   for (auto e : call_node->in_edges()) {
@@ -393,8 +417,9 @@ Status ReplaceOrRemoveOutsideCompilationCallNode(
   }
 
   // Build XlaHostCompute NodeDef.
-  TF_ASSIGN_OR_RETURN(NodeDef node_def,
-                      BuildXlaHostComputeNodeDef(call_node, host_compute_core));
+  TF_ASSIGN_OR_RETURN(
+      NodeDef node_def,
+      BuildXlaHostComputeNodeDef(call_node, host_compute_core, cluster_deps));
   TF_ASSIGN_OR_RETURN(Node * host_compute_node,
                       ReplaceNode(g, call_node, node_def));
   VLOG(4) << "Added HostCompute node: " << host_compute_node->DebugString();
@@ -1589,6 +1614,11 @@ Status ExtractOutsideCompilationForFunction(
   // We cannot early return here, because we might have outside compilation in
   // If/While function body.
 
+  // Find dependencies between outside compilation clusters.
+  TF_ASSIGN_OR_RETURN(auto cluster_deps,
+                      OutsideCompilationClusterDependencies(
+                          fbody->graph, outside_compilation_attr_name));
+
   // Preprocess edges between different outside compilations. They will be
   // restored in `ConstructHostGraph()`.
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
@@ -1643,7 +1673,7 @@ Status ExtractOutsideCompilationForFunction(
   for (Node* n : outside_compilation_nodes) {
     TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
     TF_RETURN_IF_ERROR(ReplaceOrRemoveOutsideCompilationCallNode(
-        graph_out.get(), n, host_compute_core));
+        graph_out.get(), n, host_compute_core, *cluster_deps));
   }
 
   // Handle nodes with associated functions.
