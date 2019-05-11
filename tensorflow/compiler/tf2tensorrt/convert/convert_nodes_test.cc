@@ -2383,7 +2383,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
   TestConvertSquare<DT_HALF>(this);
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
 TEST_F(OpConverterTest, ConvertCombinedNMS) {
   {
     // Input list is empty, should fail.
