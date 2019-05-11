@@ -1,8 +1,8 @@
 Training a model
 ----------------
 
-Tensorflow XLA and Poplar provide the opportunity to fuse an entire training
-graph into a single operation in the Tensorflow graph.  This accelerates
+TensorFlow XLA and Poplar provide the opportunity to fuse an entire training
+graph into a single operation in the TensorFlow graph.  This accelerates
 training by preventing the need to make calls to the compute hardware for each
 operation.
 
@@ -10,7 +10,7 @@ However, if the python code with the training pass on it is called multiple
 times, once for each batch in the training data set, then there is still
 the overhead of calling the hardware for each batch.
 
-The Graphcore IPU support for Tensorflow provides three mechanisms for improving
+The GraphCore IPU support for TensorFlow provides three mechanisms for improving
 the training performance:  training loops, data set feeds, and replicated
 graphs.
 
