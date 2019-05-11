@@ -1240,8 +1240,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       TfLiteSubParams* tf_options = nullptr;
       RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
       RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    }
-    if (!IsOneArgumentOperation()) {
+    } else if (!IsOneArgumentOperation()) {
       return InvalidArgumentError("Incorrect operation type passed");
     }
 
