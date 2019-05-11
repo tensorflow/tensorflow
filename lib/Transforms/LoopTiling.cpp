@@ -31,9 +31,6 @@
 #include "mlir/Transforms/Utils.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include <iomanip>
-#include <sstream>
-
 using namespace mlir;
 
 #define DEBUG_TYPE "affine-loop-tile"

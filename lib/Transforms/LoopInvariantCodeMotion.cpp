@@ -19,9 +19,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iomanip>
-#include <sstream>
-
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
@@ -57,7 +54,6 @@ namespace {
 struct LoopInvariantCodeMotion : public FunctionPass<LoopInvariantCodeMotion> {
   void runOnFunction() override;
   void runOnAffineForOp(AffineForOp forOp);
-  std::vector<AffineForOp> forOps;
 };
 } // end anonymous namespace
 
@@ -81,7 +77,7 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
 
   LLVM_DEBUG(for (auto i
                   : loopDefinedOps) {
-    (i->print(llvm::dbgs() << "\nLoop-dependent op\n"));
+    i->print(llvm::dbgs() << "\nLoop-dependent op\n");
   });
 
   for (auto &op : *loopBody) {
@@ -109,20 +105,14 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
 }
 
 void LoopInvariantCodeMotion::runOnFunction() {
-  forOps.clear();
 
-  // Gather all loops in a function, and order them in innermost-loop-first
-  // order. This way, we first LICM from the inner loop, and place the ops in
-  // the outer loop, which in turn can be further LICM'ed. This saves iterating
-  // on the inner loop operations while LICMing through the outer loop.
-  getFunction().walk<AffineForOp>(
-      [&](AffineForOp forOp) { forOps.push_back(forOp); });
-  // We gather loops first, and then go over them later because we don't want to
-  // mess the iterators up.
-  for (auto op : forOps) {
+  // Walk through all loops in a function in innermost-loop-first order.  This
+  // way, we first LICM from the inner loop, and place the ops in
+  // the outer loop, which in turn can be further LICM'ed.
+  getFunction().walk<AffineForOp>([&](AffineForOp op) {
     LLVM_DEBUG(op.getOperation()->print(llvm::dbgs() << "\nOriginal loop\n"));
     runOnAffineForOp(op);
-  }
+  });
 }
 
 static PassRegistration<LoopInvariantCodeMotion>

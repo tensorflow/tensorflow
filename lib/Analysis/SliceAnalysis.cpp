@@ -25,9 +25,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
-
 #include "llvm/ADT/SetVector.h"
-#include <type_traits>
 
 ///
 /// Implements Analysis functions specific to slicing in Function.
