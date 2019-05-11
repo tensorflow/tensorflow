@@ -220,6 +220,7 @@ cc_library(
     name = "shape_inference_helpers",
     srcs = ["shape_inference_helpers.cc"],
     hdrs = ["shape_inference_helpers.h"],
+    visibility = [":friends"],
     deps = ["//tensorflow/core:graph"],
 )
 
