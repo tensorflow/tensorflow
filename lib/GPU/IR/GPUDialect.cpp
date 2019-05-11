@@ -98,20 +98,6 @@ KernelDim3 LaunchOp::getBlockSize() {
   return KernelDim3{args[9], args[10], args[11]};
 }
 
-void LaunchOp::getKernelOperandValues(SmallVectorImpl<Value *> *out) {
-  out->reserve(getNumOperands() - kNumConfigOperands + out->size());
-  for (int i = kNumConfigOperands; i < getNumOperands(); ++i) {
-    out->push_back(getOperand(i));
-  }
-}
-
-void LaunchOp::getKernelOperandTypes(SmallVectorImpl<Type> *out) {
-  out->reserve(getNumOperands() - kNumConfigOperands + out->size());
-  for (int i = kNumConfigOperands; i < getNumOperands(); ++i) {
-    out->push_back(getOperand(i)->getType());
-  }
-}
-
 KernelDim3 LaunchOp::getGridSizeOperandValues() {
   return KernelDim3{getOperand(0), getOperand(1), getOperand(2)};
 }

@@ -141,8 +141,10 @@ Example:
 func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
     attributes { nvvm.kernel: true } {
 
-  // Operations that produce block/thread IDs and dimensions are injected when
-  // outlining the `gpu.launch` body to a function called by `gpu.launch_func`.
+  // Operations that produce block/thread IDs and dimensions will be injected
+  // when outlining the `gpu.launch` body to a function called by
+  // `gpu.launch_func`.
+  // TODO(tjoerg): Implement gpu.launch body outlining.
   %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
   %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
   %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)
