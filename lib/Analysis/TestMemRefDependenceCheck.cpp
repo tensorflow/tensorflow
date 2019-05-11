@@ -1,4 +1,4 @@
-//===- MemRefDependenceCheck.cpp - MemRef DependenceCheck Class -*- C++ -*-===//
+//===- TestMemRefDependenceCheck.cpp - Test dep analysis ------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -28,7 +28,7 @@
 #include "mlir/StandardOps/Ops.h"
 #include "llvm/Support/Debug.h"
 
-#define DEBUG_TYPE "memref-dependence-check"
+#define DEBUG_TYPE "test-memref-dependence-check"
 
 using namespace mlir;
 
@@ -36,15 +36,16 @@ namespace {
 
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
 /// Checks dependences between all pairs of memref accesses in a Function.
-struct MemRefDependenceCheck : public FunctionPass<MemRefDependenceCheck> {
+struct TestMemRefDependenceCheck
+    : public FunctionPass<TestMemRefDependenceCheck> {
   SmallVector<Operation *, 4> loadsAndStores;
   void runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createMemRefDependenceCheckPass() {
-  return new MemRefDependenceCheck();
+FunctionPassBase *mlir::createTestMemRefDependenceCheckPass() {
+  return new TestMemRefDependenceCheck();
 }
 
 // Returns a result string which represents the direction vector (if there was
@@ -98,11 +99,10 @@ static void checkDependences(ArrayRef<Operation *> loadsAndStores) {
         // TODO(andydavis) Print dependence type (i.e. RAW, etc) and print
         // distance vectors as: ([2, 3], [0, 10]). Also, shorten distance
         // vectors from ([1, 1], [3, 3]) to (1, 3).
-        srcOpInst->emitRemark(
-            "dependence from " + Twine(i) + " to " + Twine(j) + " at depth " +
-            Twine(d) + " = " +
-            getDirectionVectorStr(ret, numCommonLoops, d, dependenceComponents)
-                .c_str());
+        srcOpInst->emitRemark("dependence from ")
+            << i << " to " << j << " at depth " << d << " = "
+            << getDirectionVectorStr(ret, numCommonLoops, d,
+                                     dependenceComponents);
       }
     }
   }
@@ -110,7 +110,7 @@ static void checkDependences(ArrayRef<Operation *> loadsAndStores) {
 
 // Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
-void MemRefDependenceCheck::runOnFunction() {
+void TestMemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
   getFunction().walk([&](Operation *op) {
@@ -121,6 +121,6 @@ void MemRefDependenceCheck::runOnFunction() {
   checkDependences(loadsAndStores);
 }
 
-static PassRegistration<MemRefDependenceCheck>
-    pass("memref-dependence-check",
+static PassRegistration<TestMemRefDependenceCheck>
+    pass("test-memref-dependence-check",
          "Checks dependences between all pairs of memref accesses.");

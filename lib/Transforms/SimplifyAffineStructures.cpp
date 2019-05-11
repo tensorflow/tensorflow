@@ -1,4 +1,4 @@
-//===- SimplifyAffineStructures.cpp - ---------------------------*- C++ -*-===//
+//===- SimplifyAffineStructures.cpp ---------------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
