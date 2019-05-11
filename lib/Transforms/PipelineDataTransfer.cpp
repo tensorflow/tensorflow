@@ -181,7 +181,7 @@ static void findMatchingStartFinishInsts(
   // Collect outgoing DMA operations - needed to check for dependences below.
   SmallVector<DmaStartOp, 4> outgoingDmaOps;
   for (auto &op : *forOp.getBody()) {
-    auto dmaStartOp = dyn_cast<DmaStartOp>(op);
+    auto dmaStartOp = op.dyn_cast<DmaStartOp>();
     if (dmaStartOp && dmaStartOp.isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
@@ -193,7 +193,7 @@ static void findMatchingStartFinishInsts(
       dmaFinishInsts.push_back(&op);
       continue;
     }
-    auto dmaStartOp = dyn_cast<DmaStartOp>(op);
+    auto dmaStartOp = op.dyn_cast<DmaStartOp>();
     if (!dmaStartOp)
       continue;
 

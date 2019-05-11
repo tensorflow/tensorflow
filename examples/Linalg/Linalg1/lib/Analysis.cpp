@@ -31,7 +31,7 @@ ViewOp linalg::getViewBaseViewOp(Value *view) {
   auto viewType = view->getType().dyn_cast<ViewType>();
   (void)viewType;
   assert(viewType.isa<ViewType>() && "expected a ViewType");
-  while (auto slice = dyn_cast<SliceOp>(view->getDefiningOp())) {
+  while (auto slice = view->getDefiningOp()->dyn_cast<SliceOp>()) {
     view = slice.getParentView();
     assert(viewType.isa<ViewType>() && "expected a ViewType");
   }
@@ -48,7 +48,7 @@ std::pair<mlir::Value *, unsigned> linalg::getViewRootIndexing(Value *view,
   (void)viewType;
   assert(viewType.isa<ViewType>() && "expected a ViewType");
   assert(dim < viewType.getRank() && "dim exceeds rank");
-  if (auto viewOp = dyn_cast<ViewOp>(view->getDefiningOp()))
+  if (auto viewOp = view->getDefiningOp()->dyn_cast<ViewOp>())
     return std::make_pair(viewOp.getIndexing(dim), dim);
 
   auto sliceOp = view->getDefiningOp()->cast<SliceOp>();

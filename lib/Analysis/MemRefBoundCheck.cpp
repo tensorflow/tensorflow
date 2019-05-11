@@ -48,9 +48,9 @@ FunctionPassBase *mlir::createMemRefBoundCheckPass() {
 
 void MemRefBoundCheck::runOnFunction() {
   getFunction().walk([](Operation *opInst) {
-    if (auto loadOp = dyn_cast<LoadOp>(opInst)) {
+    if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       boundCheckLoadOrStoreOp(loadOp);
-    } else if (auto storeOp = dyn_cast<StoreOp>(opInst)) {
+    } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
       boundCheckLoadOrStoreOp(storeOp);
     }
     // TODO(bondhugula): do this for DMA ops as well.

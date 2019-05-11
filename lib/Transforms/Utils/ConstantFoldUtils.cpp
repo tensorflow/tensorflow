@@ -40,7 +40,7 @@ bool ConstantFoldHelper::tryToConstantFold(
   // into the value it contains. We need to consider constants before the
   // constant folding logic to avoid re-creating the same constant later.
   // TODO: Extend to support dialect-specific constant ops.
-  if (auto constant = dyn_cast<ConstantOp>(op)) {
+  if (auto constant = op->dyn_cast<ConstantOp>()) {
     // If this constant is dead, update bookkeeping and signal the caller.
     if (constant.use_empty()) {
       notifyRemoval(op);

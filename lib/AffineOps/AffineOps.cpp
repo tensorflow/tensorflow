@@ -61,11 +61,11 @@ bool mlir::isValidDim(Value *value) {
     if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto applyOp = dyn_cast<AffineApplyOp>(op))
+    if (auto applyOp = op->dyn_cast<AffineApplyOp>())
       return applyOp.isValidDim();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
-    if (auto dimOp = dyn_cast<DimOp>(op))
+    if (auto dimOp = op->dyn_cast<DimOp>())
       return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }
@@ -86,11 +86,11 @@ bool mlir::isValidSymbol(Value *value) {
     if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto applyOp = dyn_cast<AffineApplyOp>(op))
+    if (auto applyOp = op->dyn_cast<AffineApplyOp>())
       return applyOp.isValidSymbol();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
-    if (auto dimOp = dyn_cast<DimOp>(op))
+    if (auto dimOp = op->dyn_cast<DimOp>())
       return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }

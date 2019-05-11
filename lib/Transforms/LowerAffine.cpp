@@ -620,10 +620,10 @@ void LowerAffinePass::runOnFunction() {
   // Rewrite all of the ifs and fors.  We walked the operations in postorders,
   // so we know that we will rewrite them in the reverse order.
   for (auto *op : llvm::reverse(instsToRewrite)) {
-    if (auto ifOp = dyn_cast<AffineIfOp>(op)) {
+    if (auto ifOp = op->dyn_cast<AffineIfOp>()) {
       if (lowerAffineIf(ifOp))
         return signalPassFailure();
-    } else if (auto forOp = dyn_cast<AffineForOp>(op)) {
+    } else if (auto forOp = op->dyn_cast<AffineForOp>()) {
       if (lowerAffineFor(forOp))
         return signalPassFailure();
     } else if (lowerAffineApply(op->cast<AffineApplyOp>())) {

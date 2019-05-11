@@ -116,7 +116,7 @@ public:
   /// Specialization of walk to only visit operations of 'OpTy'.
   template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
     walk([&](Operation *opInst) {
-      if (auto op = dyn_cast<OpTy>(opInst))
+      if (auto op = opInst->dyn_cast<OpTy>())
         callback(op);
     });
   }

@@ -134,7 +134,7 @@ struct MemRefCastFolder : public RewritePattern {
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
       if (auto *memref = op->getOperand(i)->getDefiningOp())
-        if (auto cast = dyn_cast<MemRefCastOp>(memref))
+        if (auto cast = memref->dyn_cast<MemRefCastOp>())
           op->setOperand(i, cast.getOperand());
     rewriter.updatedRootInPlace(op);
   }

@@ -103,7 +103,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   SmallVector<Operation *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
   for (auto &use : loadOp.getMemRef()->getUses()) {
-    auto storeOp = dyn_cast<StoreOp>(use.getOwner());
+    auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
     if (!storeOp)
       continue;
     auto *storeOpInst = storeOp.getOperation();

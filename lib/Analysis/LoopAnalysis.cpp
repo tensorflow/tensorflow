@@ -320,8 +320,8 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
   loadAndStores.match(forOp, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
     auto *op = ls.getMatchedOperation();
-    auto load = dyn_cast<LoadOp>(op);
-    auto store = dyn_cast<StoreOp>(op);
+    auto load = op->dyn_cast<LoadOp>();
+    auto store = op->dyn_cast<StoreOp>();
     // Only scalar types are considered vectorizable, all load/store must be
     // vectorizable for a loop to qualify as vectorizable.
     // TODO(ntv): ponder whether we want to be more general here.
@@ -338,8 +338,8 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
 
 bool mlir::isVectorizableLoopBody(AffineForOp loop, int *memRefDim) {
   VectorizableOpFun fun([memRefDim](AffineForOp loop, Operation &op) {
-    auto load = dyn_cast<LoadOp>(op);
-    auto store = dyn_cast<StoreOp>(op);
+    auto load = op.dyn_cast<LoadOp>();
+    auto store = op.dyn_cast<StoreOp>();
     return load ? isContiguousAccess(loop.getInductionVar(), load, memRefDim)
                 : isContiguousAccess(loop.getInductionVar(), store, memRefDim);
   });

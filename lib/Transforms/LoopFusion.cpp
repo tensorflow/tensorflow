@@ -644,7 +644,7 @@ bool MemRefDependenceGraph::init(Function &f) {
 
   DenseMap<Operation *, unsigned> forToNodeMap;
   for (auto &op : f.front()) {
-    if (auto forOp = dyn_cast<AffineForOp>(op)) {
+    if (auto forOp = op.dyn_cast<AffineForOp>()) {
       // Create graph node 'id' to represent top-level 'forOp' and record
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
@@ -666,14 +666,14 @@ bool MemRefDependenceGraph::init(Function &f) {
       }
       forToNodeMap[&op] = node.id;
       nodes.insert({node.id, node});
-    } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
+    } else if (auto loadOp = op.dyn_cast<LoadOp>()) {
       // Create graph node for top-level load op.
       Node node(nextNodeId++, &op);
       node.loads.push_back(&op);
       auto *memref = op.cast<LoadOp>().getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
-    } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
+    } else if (auto storeOp = op.dyn_cast<StoreOp>()) {
       // Create graph node for top-level store op.
       Node node(nextNodeId++, &op);
       node.stores.push_back(&op);
@@ -2125,7 +2125,7 @@ public:
     auto *fn = dstNode->op->getFunction();
     for (unsigned i = 0, e = fn->getNumArguments(); i != e; ++i) {
       for (auto &use : fn->getArgument(i)->getUses()) {
-        if (auto loadOp = dyn_cast<LoadOp>(use.getOwner())) {
+        if (auto loadOp = use.getOwner()->dyn_cast<LoadOp>()) {
           // Gather loops surrounding 'use'.
           SmallVector<AffineForOp, 4> loops;
           getLoopIVs(*use.getOwner(), &loops);

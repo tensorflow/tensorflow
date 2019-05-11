@@ -44,7 +44,7 @@ void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   AffineForOp currAffineForOp;
   // Traverse up the hierarchy collecing all 'affine.for' operation while
   // skipping over 'affine.if' operations.
-  while (currOp && ((currAffineForOp = dyn_cast<AffineForOp>(currOp)) ||
+  while (currOp && ((currAffineForOp = currOp->dyn_cast<AffineForOp>()) ||
                     currOp->isa<AffineIfOp>())) {
     if (currAffineForOp)
       loops->push_back(currAffineForOp);
@@ -239,7 +239,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
       assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
       if (auto *op = symbol->getDefiningOp()) {
-        if (auto constOp = dyn_cast<ConstantIndexOp>(op)) {
+        if (auto constOp = op->dyn_cast<ConstantIndexOp>()) {
           cst.setIdToConstant(*symbol, constOp.getValue());
         }
       }
@@ -467,7 +467,7 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
     }
     if (level == positions.size() - 1)
       return &op;
-    if (auto childAffineForOp = dyn_cast<AffineForOp>(op))
+    if (auto childAffineForOp = op.dyn_cast<AffineForOp>())
       return getInstAtPosition(positions, level + 1,
                                childAffineForOp.getBody());
 
@@ -633,7 +633,7 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
 // Constructs  MemRefAccess populating it with the memref, its indices and
 // opinst from 'loadOrStoreOpInst'.
 MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
-  if (auto loadOp = dyn_cast<LoadOp>(loadOrStoreOpInst)) {
+  if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
     memref = loadOp.getMemRef();
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
@@ -643,7 +643,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     }
   } else {
     assert(loadOrStoreOpInst->isa<StoreOp>() && "load/store op expected");
-    auto storeOp = dyn_cast<StoreOp>(loadOrStoreOpInst);
+    auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
     opInst = loadOrStoreOpInst;
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
@@ -750,7 +750,7 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
 void mlir::getSequentialLoops(
     AffineForOp forOp, llvm::SmallDenseSet<Value *, 8> *sequentialLoops) {
   forOp.getOperation()->walk([&](Operation *op) {
-    if (auto innerFor = dyn_cast<AffineForOp>(op))
+    if (auto innerFor = op->dyn_cast<AffineForOp>())
       if (!isLoopParallel(innerFor))
         sequentialLoops->insert(innerFor.getInductionVar());
   });

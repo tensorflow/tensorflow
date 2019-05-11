@@ -43,7 +43,7 @@ using namespace linalg::intrinsics;
 // analyses. This builds the chain.
 static SmallVector<Value *, 8> getViewChain(mlir::Value *v) {
   assert(v->getType().isa<ViewType>() && "ViewType expected");
-  if (v->getDefiningOp()->isa<ViewOp>()) {
+  if (v->getDefiningOp()->dyn_cast<ViewOp>()) {
     return SmallVector<mlir::Value *, 8>{v};
   }
 
@@ -53,7 +53,7 @@ static SmallVector<Value *, 8> getViewChain(mlir::Value *v) {
     tmp.push_back(v);
     v = sliceOp.getParentView();
   } while (!v->getType().isa<ViewType>());
-  assert(v->getDefiningOp()->isa<ViewOp>() && "must be a ViewOp");
+  assert(v->getDefiningOp()->cast<ViewOp>() && "must be a ViewOp");
   tmp.push_back(v);
   return SmallVector<mlir::Value *, 8>(tmp.rbegin(), tmp.rend());
 }

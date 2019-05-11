@@ -363,7 +363,7 @@ void mlir::getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
   nestedLoops.push_back(curr);
   auto *currBody = curr.getBody();
   while (currBody->begin() == std::prev(currBody->end(), 2) &&
-         (curr = dyn_cast<AffineForOp>(curr.getBody()->front()))) {
+         (curr = curr.getBody()->front().dyn_cast<AffineForOp>())) {
     nestedLoops.push_back(curr);
     currBody = curr.getBody();
   }

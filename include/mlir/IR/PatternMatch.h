@@ -215,7 +215,7 @@ public:
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
-    auto result = dyn_cast<OpTy>(op);
+    auto result = op->dyn_cast<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
   }
@@ -231,7 +231,7 @@ public:
 
     // If the Operation we produce is valid, return it.
     if (!OpTy::verifyInvariants(op)) {
-      auto result = dyn_cast<OpTy>(op);
+      auto result = op->dyn_cast<OpTy>();
       assert(result && "Builder didn't return the right type");
       return result;
     }

@@ -792,7 +792,7 @@ public:
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
   static void printAssembly(Operation *op, OpAsmPrinter *p) {
-    auto opPointer = dyn_cast<ConcreteType>(op);
+    auto opPointer = op->dyn_cast<ConcreteType>();
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
     opPointer.print(p);
@@ -825,13 +825,11 @@ public:
 
   /// This is a public constructor.  Any op can be initialized to null.
   explicit Op() : OpState(nullptr) {}
-  Op(std::nullptr_t) : OpState(nullptr) {}
 
-  /// This is a public constructor to enable access via the llvm::cast family of
-  /// methods. This should not be used directly.
-  explicit Op(Operation *state) : OpState(state) {
-    assert(!state || isa<ConcreteOpType>(state));
-  }
+protected:
+  /// This is a private constructor only accessible through the
+  /// Operation::cast family of methods.
+  explicit Op(Operation *state) : OpState(state) {}
   friend class Operation;
 
 private:

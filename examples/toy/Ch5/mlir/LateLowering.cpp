@@ -366,7 +366,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     // First patch calls type to return memref instead of ToyArray
     for (auto &function : getModule()) {
       function.walk([&](Operation *op) {
-        auto callOp = dyn_cast<CallOp>(op);
+        auto callOp = op->dyn_cast<CallOp>();
         if (!callOp)
           return;
         if (!callOp.getNumResults())
@@ -382,14 +382,14 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     for (auto &function : getModule()) {
       function.walk([&](Operation *op) {
         // Turns toy.alloc into sequence of alloc/dealloc (later malloc/free).
-        if (auto allocOp = dyn_cast<toy::AllocOp>(op)) {
+        if (auto allocOp = op->dyn_cast<toy::AllocOp>()) {
           auto result = allocTensor(allocOp);
           allocOp.replaceAllUsesWith(result);
           allocOp.erase();
           return;
         }
         // Eliminate all type.cast before lowering to LLVM.
-        if (auto typeCastOp = dyn_cast<toy::TypeCastOp>(op)) {
+        if (auto typeCastOp = op->dyn_cast<toy::TypeCastOp>()) {
           typeCastOp.replaceAllUsesWith(typeCastOp.getOperand());
           typeCastOp.erase();
           return;
@@ -429,7 +429,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     // Insert a `dealloc` operation right before the `return` operations, unless
     // it is returned itself in which case the caller is responsible for it.
     builder.getFunction()->walk([&](Operation *op) {
-      auto returnOp = dyn_cast<ReturnOp>(op);
+      auto returnOp = op->dyn_cast<ReturnOp>();
       if (!returnOp)
         return;
       if (returnOp.getNumOperands() && returnOp.getOperand(0) == alloc)
