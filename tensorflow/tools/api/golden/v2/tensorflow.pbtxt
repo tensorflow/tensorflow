@@ -605,6 +605,10 @@ tf_module {
     argspec: "args=[\'dims\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'farmhash64\', \'None\'], "
+  }
+  member_method {
     name: "floor"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1055,6 +1059,10 @@ tf_module {
   member_method {
     name: "variable_creator_scope"
     argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "vectorized_map"
+    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "where"

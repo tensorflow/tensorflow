@@ -2753,8 +2753,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), K.floatx())
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
@@ -2766,7 +2766,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
 
-  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
 # Aliases
 

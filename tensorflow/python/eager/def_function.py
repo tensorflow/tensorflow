@@ -58,6 +58,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
                lifted_initializer_graph=None,
                synchronization=None,
                aggregation=None,
+               shape=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -101,6 +102,10 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -135,12 +140,17 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             name="initial_value", dtype=dtype)
       assert initial_value is not None
 
+      # Don't use `shape or initial_value.shape` since TensorShape has
+      # overridden `__bool__`.
+      if shape is None:
+        shape = initial_value.shape
+
       # Use the constructor for UninitializedVariable to start.
       super(UnliftedInitializerVariable, self).__init__(
           trainable=trainable,
           caching_device=caching_device,
           name=name,
-          shape=initial_value.shape,
+          shape=shape,
           dtype=initial_value.dtype,
           constraint=constraint,
           synchronization=synchronization,

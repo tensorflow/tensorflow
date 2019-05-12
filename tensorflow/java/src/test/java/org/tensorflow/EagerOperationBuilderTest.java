@@ -21,9 +21,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Unit tests for {@link EagerOperationBuilder} class.
- */
+/** Unit tests for {@link EagerOperationBuilder} class. */
 @RunWith(JUnit4.class)
 public class EagerOperationBuilderTest {
 
@@ -56,10 +54,11 @@ public class EagerOperationBuilderTest {
   @Test
   public void addInputs() {
     try (EagerSession session = EagerSession.create()) {
-      Operation asrt = opBuilder(session, "Assert", "assert")
-          .addInput(TestUtil.constant(session, "Cond", true))
-          .addInputList(new Output<?>[] {TestUtil.constant(session, "Error", -1)})
-          .build();
+      Operation asrt =
+          opBuilder(session, "Assert", "assert")
+              .addInput(TestUtil.constant(session, "Cond", true))
+              .addInputList(new Output<?>[] {TestUtil.constant(session, "Error", -1)})
+              .build();
       try {
         opBuilder(session, "Const", "var").addControlInput(asrt);
         fail();
@@ -68,7 +67,7 @@ public class EagerOperationBuilderTest {
       }
     }
   }
-  
+
   @Test
   public void setDevice() {
     try (EagerSession session = EagerSession.create()) {
@@ -134,12 +133,12 @@ public class EagerOperationBuilderTest {
       opBuilder(session, "ApproximateEqual", "Float")
           .addInput(TestUtil.constant(session, "Const1", 10.00001f))
           .addInput(TestUtil.constant(session, "Const2", 10.00000f))
-          .setAttr("tolerance", 0.1f)    
+          .setAttr("tolerance", 0.1f)
           .build();
       // Missing tests: list(string), list(byte), list(bool), list(type)
     }
   }
-  
+
   private static EagerOperationBuilder opBuilder(EagerSession session, String type, String name) {
     return new EagerOperationBuilder(session, type, name);
   }

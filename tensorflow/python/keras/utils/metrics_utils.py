@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
@@ -68,7 +69,8 @@ def update_state_wrapper(update_state_fn):
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
 
-    update_op = update_state_fn(*args, **kwargs)
+    with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
+      update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
       metric_obj.add_update(update_op, inputs=True)
     return update_op

@@ -101,9 +101,9 @@ TEST(UtilTest, CopyShapeAndType) {
 
   EXPECT_EQ(
       CopyShapeAndType(&context, Tensor(tensorflow::DT_HALF, {1, 2}), &dst),
-      kTfLiteError);
-  EXPECT_EQ(context.error,
-            "TF Lite does not support TensorFlow data type: half");
+      kTfLiteOk);
+  EXPECT_THAT(context.new_size, ElementsAre(1, 2));
+  EXPECT_EQ(dst.type, kTfLiteFloat16);
 }
 
 TEST(UtilTest, TypeConversionsFromTFLite) {

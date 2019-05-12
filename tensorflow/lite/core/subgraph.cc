@@ -469,6 +469,9 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteInt8:
       *bytes = sizeof(int8_t) * count;
       break;
+    case kTfLiteFloat16:
+      *bytes = sizeof(TfLiteFloat16) * count;
+      break;
     default:
       ReportError(
           "Only float32, int8, int16, int32, int64, uint8, bool, complex64 "
@@ -700,7 +703,7 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
+    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not

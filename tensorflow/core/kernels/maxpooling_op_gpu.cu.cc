@@ -486,7 +486,7 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
     const Eigen::GpuDevice& d) {
   const int num_kernels = batch * channels * pooled_height * pooled_width;
   if (num_kernels == 0) return true;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
     TF_CHECK_OK(
@@ -513,7 +513,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
-  CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(output_size, d);
   TF_CHECK_OK(CudaLaunchKernel(
       MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
       d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,

@@ -154,11 +154,11 @@ cc_library(
         ":delegate_data",
         ":util",
         "@flatbuffers",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/profiling:profiler",
     ] + select({
         # TODO(b/111881878): The android_tensorflow_lib target pulls in the full
         # set of core TensorFlow kernels. We may want to revisit this dependency

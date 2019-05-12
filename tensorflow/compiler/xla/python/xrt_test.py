@@ -48,7 +48,7 @@ class XrtBackendTest(test.TestCase):
     b = np.arange(10)
 
     c = BuildAddAndScaleComputation(
-        xla_client.Shape.from_pyval(a), xla_client.Shape.from_pyval(b))
+        xla_client.shape_from_pyval(a), xla_client.shape_from_pyval(b))
 
     executable = c.Compile(backend=backend)
     output = executable.ExecuteWithPythonValues((a, b))

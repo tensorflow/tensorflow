@@ -6,7 +6,7 @@ corresponding to tuples of types for LHS, RHS, accumulator
 and destination.
 """
 
-def ruy_test(name, srcs, lhs_rhs_accum_dst):
+def ruy_test(name, srcs, lhs_rhs_accum_dst, tags = []):
     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
         native.cc_test(
             name = "%s_%s_%s_%s_%s" % (name, lhs, rhs, accum, dst),
@@ -21,6 +21,7 @@ def ruy_test(name, srcs, lhs_rhs_accum_dst):
                 "//tensorflow/lite/experimental/ruy:test_lib",
                 "@com_google_googletest//:gtest_main",
             ],
+            tags = tags,
         )
 
 def ruy_benchmark(name, srcs, lhs_rhs_accum_dst):

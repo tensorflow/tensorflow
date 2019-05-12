@@ -145,6 +145,19 @@ class ResourceMgr {
                     std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
                         resources) const TF_MUST_USE_RESULT;
 
+  // Retrieves all the resources within a container. If the container does not
+  // exist, it will not be created and the result vector will be empty. The
+  // resource member of the returned ResourceEntry data structures will own
+  // a reference to the ResourceBase object(s).
+  struct ResourceEntry {
+    ResourceEntry(string name, ResourceBase* resource)
+        : name(std::move(name)), resource(resource) {}
+    string name;
+    std::unique_ptr<ResourceBase, core::RefCountDeleter> resource;
+  };
+  void GetContainerResources(const string& container,
+                             std::vector<ResourceEntry>* resources) const;
+
   // If "container" has a resource "name", returns it in
   // "*resource". Otherwise, invokes creator() to create the resource.
   // The caller takes the ownership of one ref on "*resource".

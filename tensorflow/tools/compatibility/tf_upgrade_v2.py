@@ -27,6 +27,7 @@ import pasta
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
+from tensorflow.tools.compatibility import module_deprecations_v2
 from tensorflow.tools.compatibility import reorders_v2
 
 # These pylint warnings are a mistake.
@@ -622,34 +623,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_reorders = dict(reorders_v2.reorders)
     self.function_reorders.update(self.manual_function_reorders)
 
-    contrib_warning = (
-        ast_edits.ERROR,
-        "<function name> cannot be converted automatically. tf.contrib will not"
-        " be distributed with TensorFlow 2.0, please consider an alternative in"
-        " non-contrib TensorFlow, a community-maintained repository, or fork "
-        "the required code."
-    )
-
-    flags_warning = (
-        ast_edits.ERROR,
-        "tf.flags has been removed, please use the argparse or absl"
-        " modules if you need command line parsing.")
-
-    contrib_cudnn_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.cudnn_rnn.* has been deprecated, "
-        "and the CuDNN kernel has been integrated with "
-        "tf.keras.layers.LSTM/GRU in TensorFlow 2.0. Please check the new API "
-        "and use that instead."
-    )
-
-    contrib_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.rnn.* has been deprecated, and "
-        "widely used cells/functions will be moved to tensorflow/addons "
-        "repository. Please check it there and file Github issues if necessary."
-    )
-
     decay_function_comment = (
         ast_edits.INFO,
         "To use learning rate decay schedules with TensorFlow 2.0, switch to "
@@ -683,10 +656,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     )
 
     initializers_no_dtype_comment = (
-        ast_edits.INFO,
-        "Initializers no longer have the "
+        ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
-        "__call__ method.\nThe calls have been converted to compat.v1 for"
+        "__call__ method.\nThe calls have been converted to compat.v1 for "
         "safety (even though they may already have been correct).")
 
     metrics_comment = (
@@ -790,11 +762,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "Keras model.save now saves to the Tensorflow SavedModel format by "
         "default, instead of HDF5. To continue saving to HDF5, add the "
         "argument save_format='h5' to the save() function.")
-
-    contrib_dist_strat_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.distribute.* have been migrated to"
-        "tf.distribute.*. Please check out the new module for updates APIs.")
 
     distribute_strategy_api_changes = (
         "If you're using the strategy with a "
@@ -1505,13 +1472,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             arg_value_ast=ast.Str("h5")),
     }
 
-    self.module_deprecations = {
-        "tf.contrib": contrib_warning,
-        "tf.contrib.cudnn_rnn": contrib_cudnn_rnn_warning,
-        "tf.contrib.rnn": contrib_rnn_warning,
-        "tf.flags": flags_warning,
-        "tf.contrib.distribute": contrib_dist_strat_warning
-    }
+    self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
 
 
 def _is_ast_str(node):

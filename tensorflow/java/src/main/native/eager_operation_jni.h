@@ -27,16 +27,16 @@ extern "C" {
  * Method:    delete
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_delete(
-    JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_delete(JNIEnv *,
+                                                                 jclass, jlong);
 
 /*
  * Class:     org_tensorflow_EagerOperation
  * Method:    deleteTensorHandle
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_deleteTensorHandle(
-    JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL
+Java_org_tensorflow_EagerOperation_deleteTensorHandle(JNIEnv *, jclass, jlong);
 
 /**
  * Class:     org_tensorflow_EagerOperation
@@ -67,24 +67,26 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_inputListLength(
  * Method:    dataType
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_dataType(
-    JNIEnv *, jclass, jlong);
+JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_dataType(JNIEnv *,
+                                                                   jclass,
+                                                                   jlong);
 
 /**
  * Class:     org_tensorflow_EagerOperation
  * Method:    numDims
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_numDims(
-    JNIEnv *, jclass, jlong);
+JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_numDims(JNIEnv *,
+                                                                  jclass,
+                                                                  jlong);
 
 /**
  * Class:     org_tensorflow_EagerOperation
  * Method:    dim
  * Signature: (JI)J
  */
-JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerOperation_dim(
-    JNIEnv *, jclass, jlong, jint);
+JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerOperation_dim(JNIEnv *, jclass,
+                                                               jlong, jint);
 
 #ifdef __cplusplus
 }  // extern "C"

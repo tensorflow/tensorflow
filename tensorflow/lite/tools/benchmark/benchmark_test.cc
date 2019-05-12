@@ -48,6 +48,7 @@ BenchmarkParams CreateParams() {
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
+  params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   return params;
 }
 

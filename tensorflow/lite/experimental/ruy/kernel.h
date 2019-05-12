@@ -197,6 +197,7 @@ RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
 #define RUY_ASM_TYPE_ID_INT16 3
+#define RUY_ASM_TYPE_ID_INT32 4
 
 template <typename DstScalar>
 struct DstTypeId {};
@@ -216,9 +217,14 @@ struct DstTypeId<std::int16_t> {
   static constexpr int kValue = RUY_ASM_TYPE_ID_INT16;
 };
 
+template <>
+struct DstTypeId<std::int32_t> {
+  static constexpr int kValue = RUY_ASM_TYPE_ID_INT32;
+};
+
 template <int LhsCols, int RhsCols>
 struct KernelParams8bit {
-  static constexpr int kMaxDstTypeSize = 2;
+  static constexpr int kMaxDstTypeSize = 4;
 
   const std::int32_t* bias;
   const std::int32_t* lhs_sums;
@@ -242,8 +248,8 @@ struct KernelParams8bit {
   std::int32_t rhs_stride;
   std::int32_t dst_stride;
   std::int32_t depth;
-  std::int16_t clamp_min;
-  std::int16_t clamp_max;
+  std::int32_t clamp_min;
+  std::int32_t clamp_max;
   std::uint8_t flags;
   std::uint8_t dst_type_id;
   const std::int32_t zero_data[LhsCols] = {0};
@@ -365,7 +371,9 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
+    // TODO(renjieliu): Add support for in order case.
+    if (__builtin_expect(tuning == Tuning::kInOrder, true) &&
+        !std::is_same<DstScalar, std::int32_t>::value) {
       Kernel8bitNeonDotprodInOrder(params);
     } else {
       Kernel8bitNeonDotprodOutOfOrder(params);

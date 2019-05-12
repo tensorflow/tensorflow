@@ -5123,6 +5123,21 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
 
+  def testExpandAnimations(self):
+    with self.cached_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(
+          gif0, dtype=dtypes.float32, expand_animations=False)
+      # image_ops.decode_png() handles GIFs and returns 3D tensors
+      animation = image_ops.decode_gif(gif0)
+      first_frame = array_ops.gather(animation, 0)
+      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+      image0, image1 = self.evaluate([image0, image1])
+      self.assertEqual(len(image0.shape), 3)
+      self.assertAllEqual(list(image0.shape), [40, 20, 3])
+      self.assertAllEqual(image0, image1)
+
 
 if __name__ == "__main__":
   googletest.main()

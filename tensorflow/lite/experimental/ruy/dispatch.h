@@ -37,6 +37,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 
+#include <limits>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
@@ -95,6 +97,21 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
              rhs_zero_point != std::numeric_limits<RhsScalar>::lowest());
 }
 
+template <typename Spec, typename DstScalar>
+void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
+
+  // If user is looking for the raw accumulator, zero_point and all the other
+  // dequantize fields don't make sense and should not be set.
+  RUY_DCHECK(dst_zero_point == 0);
+  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
+  RUY_DCHECK(spec.multiplier_exponent == 0);
+  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
+  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
+}
+
 inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
                             const DMatrix& dst) {
   return IsColMajor(lhs.layout) && IsColMajor(rhs.layout) &&
@@ -141,14 +158,21 @@ template <Path ThePath, typename LhsScalar, typename RhsScalar,
 void PopulateTrMulParams(TrMulParams* params) {
   static_assert((ThePath & Path::kReference) == Path::kNone,
                 "Path::kReference should not do TrMul");
-  // The optimized code paths only handle a very specific set of layouts.
-  // Fall back to Path::kStandardCpp if needed.
+  // The optimized code paths don't handle the full generality of Ruy's API.
+  // Fall back to Path::kStandardCpp if necessary.
+  bool fallback_to_standard_cpp = false;
   if (ThePath != Path::kStandardCpp) {
+    // The optimized code paths currently only handle the case of all matrices
+    // being column major.
     if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
-      PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
-                          Spec>(params);
-      return;
+      fallback_to_standard_cpp = true;
     }
+  }
+
+  if (fallback_to_standard_cpp) {
+    PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
+                        Spec>(params);
+    return;
   }
 
   using PackedLhsScalar = PackedType<ThePath, LhsScalar>;
@@ -354,6 +378,7 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
                                 dst->zero_point);
+  EnforceDstSpecSupport<Spec>(spec, dst->zero_point);
 
   // This should be a constant, for a given machine and CompiledPaths.
   // There is a back door to override it for testing, but in production it will

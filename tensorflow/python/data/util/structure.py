@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import sparse_ops
@@ -55,6 +56,27 @@ class Structure(object):
   and `tf.data.Dataset.output_classes`, and similar properties and arguments in
   the `tf.compat.v1.data.Iterator` and `Optional` classes.
   """
+
+  @abc.abstractmethod
+  def __eq__(self, other):
+    """Returns the this structure and the input structure are equal.
+
+    Args:
+      other: the structure to use for equality check
+
+    Returns:
+      `True` if this and the input structure are equal and `False` otherwise.
+    """
+    raise NotImplementedError("Structure.__eq__()")
+
+  @abc.abstractmethod
+  def __hash__(self):
+    """Returns the hash of this structure.
+
+    Returns:
+      The hash of this structure.
+    """
+    raise NotImplementedError("Structure.__hash__()")
 
   @abc.abstractproperty
   def _flat_shapes(self):
@@ -361,6 +383,22 @@ class NestedStructure(Structure):
       self._flat_shapes_list.extend(s._flat_shapes)
       self._flat_types_list.extend(s._flat_types)
 
+  def __eq__(self, other):
+    if not isinstance(other, NestedStructure):
+      return False
+    try:
+      # pylint: disable=protected-access
+      nest.assert_same_structure(self._nested_structure,
+                                 other._nested_structure)
+    except (ValueError, TypeError):
+      return False
+
+    return nest.flatten(self._nested_structure) == nest.flatten(
+        other._nested_structure)
+
+  def __hash__(self):
+    return hash(tuple(nest.flatten(self._nested_structure)))
+
   @property
   def _flat_shapes(self):
     return self._flat_shapes_list
@@ -479,6 +517,14 @@ class TensorStructure(Structure):
     self._dtype = dtypes.as_dtype(dtype)
     self._shape = tensor_shape.as_shape(shape)
 
+  def __eq__(self, other):
+    return (isinstance(other, TensorStructure) and tensor_spec.TensorSpec(
+        self._shape, self._dtype) == tensor_spec.TensorSpec(
+            other._shape, other._dtype))
+
+  def __hash__(self):
+    return hash(tensor_spec.TensorSpec(self._shape, self._dtype))
+
   @property
   def _flat_shapes(self):
     return [self._shape]
@@ -552,6 +598,14 @@ class SparseTensorStructure(Structure):
   def __init__(self, dtype, dense_shape):
     self._dtype = dtypes.as_dtype(dtype)
     self._dense_shape = tensor_shape.as_shape(dense_shape)
+
+  def __eq__(self, other):
+    return (isinstance(other, SparseTensorStructure) and tensor_spec.TensorSpec(
+        self._dense_shape, self._dtype) == tensor_spec.TensorSpec(
+            other._dense_shape, other._dtype))
+
+  def __hash__(self):
+    return hash(tensor_spec.TensorSpec(self._dense_shape, self._dtype))
 
   @property
   def _flat_shapes(self):
@@ -630,6 +684,17 @@ class TensorArrayStructure(Structure):
     self._element_shape = tensor_shape.as_shape(element_shape)
     self._dynamic_size = dynamic_size
     self._infer_shape = infer_shape
+
+  def __eq__(self, other):
+    return (isinstance(other, TensorArrayStructure) and tensor_spec.TensorSpec(
+        self._element_shape, self._dtype) == tensor_spec.TensorSpec(
+            other._element_shape, other._dtype) and
+            self._dynamic_size == other._dynamic_size and
+            self._infer_shape == other._infer_shape)
+
+  def __hash__(self):
+    return hash((tensor_spec.TensorSpec(self._element_shape, self._dtype),
+                 self._dynamic_size, self._infer_shape))
 
   @property
   def _flat_shapes(self):
@@ -720,6 +785,14 @@ class RaggedTensorStructure(Structure):
     self._dtype = dtypes.as_dtype(dtype)
     self._shape = tensor_shape.as_shape(shape)
     self._ragged_rank = ragged_rank
+
+  def __eq__(self, other):
+    return (isinstance(other, RaggedTensorStructure) and tensor_spec.TensorSpec(
+        self._shape, self._dtype) == tensor_spec.TensorSpec(
+            other._shape, other._dtype))
+
+  def __hash__(self):
+    return hash(tensor_spec.TensorSpec(self._shape, self._dtype))
 
   @property
   def _flat_shapes(self):

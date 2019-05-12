@@ -977,6 +977,9 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_test.py"],
     main = "saved_model_test.py",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
     deps = [
         ":combinations",
         ":model_combinations",

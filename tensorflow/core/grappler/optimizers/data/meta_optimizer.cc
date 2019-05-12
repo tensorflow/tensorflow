@@ -35,6 +35,31 @@ namespace {
 using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
+// tf.data optimizations, in the order we want to perform them.
+constexpr std::array<const char*, 14> kTFDataOptimizations = {
+    "noop_elimination",
+    "shuffle_and_repeat_fusion",
+    "map_fusion",
+    "filter_fusion",
+    "filter_with_random_uniform_fusion",
+    "map_and_filter_fusion",
+    "hoist_random_uniform",
+    "map_parallelization",
+    "map_and_batch_fusion",
+    "map_vectorization",
+    "latency_all_edges",
+    "make_sloppy",
+    "parallel_batch",
+    "slack"};
+
+// Standard grappler optimizations, in the order we want to perform them.
+constexpr std::array<const char*, 5> kGrapplerOptimizations = {
+    "pruning",
+    "function",
+    "shape",
+    "arithmetic",
+    "dependency"};
+
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
 Status ToConfigMap(
@@ -80,13 +105,12 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem optimized_item = item;
 
   // Perform optimizations in a meaningful order.
-  for (const auto& optimization :
-       {"noop_elimination", "shuffle_and_repeat_fusion", "map_fusion",
-        "filter_fusion", "filter_with_random_uniform_fusion",
-        "map_and_filter_fusion", "hoist_random_uniform", "map_parallelization",
-        "map_and_batch_fusion", "map_vectorization", "latency_all_edges",
-        "make_sloppy", "parallel_batch", "pruning", "function", "shape",
-        "arithmetic", "dependency"}) {
+  for (const auto& optimization : kTFDataOptimizations) {
+    TF_RETURN_IF_ERROR(
+        ApplyOptimization(optimization, cluster, &optimized_item));
+  }
+
+  for (const auto& optimization : kGrapplerOptimizations) {
     TF_RETURN_IF_ERROR(
         ApplyOptimization(optimization, cluster, &optimized_item));
   }
@@ -108,10 +132,18 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
   GraphDef result;
   (*optimizer)->set_deadline_usec(this->deadline_usec());
-  TF_RETURN_IF_ERROR((*optimizer)->Optimize(cluster, *item, &result));
-  item->graph.Swap(&result);
+  Status status = (*optimizer)->Optimize(cluster, *item, &result);
+  if (status.ok()) {
+    // The optimizer succeeded and wrote the optimized graph to result.
+    item->graph.Swap(&result);
+  } else if (errors::IsAborted(status)) {
+    // A status of errors::Aborted just means that the optimizer was a no-op and
+    // did not populate result. Swallow the error status and leave the original
+    // graph in item.
+    status = Status::OK();
+  }
 
-  return Status::OK();
+  return status;
 }
 
 Status TFDataMetaOptimizer::Init(

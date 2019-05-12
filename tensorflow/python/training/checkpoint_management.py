@@ -481,6 +481,7 @@ class CheckpointManager(object):
   """Deletes old checkpoints.
 
   Example usage:
+
   ```python
   import tensorflow as tf
   checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
@@ -497,8 +498,12 @@ class CheckpointManager(object):
   particular directory at a time.
   """
 
-  def __init__(self, checkpoint, directory,
-               max_to_keep, keep_checkpoint_every_n_hours=None):
+  def __init__(self,
+               checkpoint,
+               directory,
+               max_to_keep,
+               keep_checkpoint_every_n_hours=None,
+               checkpoint_name="ckpt"):
     """Configure a `CheckpointManager` for use in `directory`.
 
     If a `CheckpointManager` was previously used in `directory`, its
@@ -537,6 +542,7 @@ class CheckpointManager(object):
         checkpoint will be preserved if it has been at least
         `keep_checkpoint_every_n_hours` since the last preserved checkpoint. The
         default setting of `None` does not preserve any checkpoints in this way.
+      checkpoint_name: Custom name for the checkpoint file.
 
     Raises:
       ValueError: If `max_to_keep` is not a positive integer.
@@ -551,7 +557,7 @@ class CheckpointManager(object):
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
     self._directory = directory
-    self._checkpoint_prefix = os.path.join(directory, "ckpt")
+    self._checkpoint_prefix = os.path.join(directory, checkpoint_name)
     recovered_state = get_checkpoint_state(directory)
     current_clock = time.time()
     self._maybe_delete = collections.OrderedDict()

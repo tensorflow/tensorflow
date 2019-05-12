@@ -169,12 +169,13 @@ class PyLocalClient {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.
-  static StatusOr<std::unique_ptr<PyLocalClient>> Get(
-      const std::string& platform_name, const std::string& xla_platform_id,
+  static StatusOr<std::shared_ptr<PyLocalClient>> Get(
+      const std::string& platform_name, const std::string& xla_platform_name,
       bool asynchronous);
 
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
                          bool asynchronous);
+  virtual ~PyLocalClient() = default;
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
   StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
@@ -192,7 +193,7 @@ class PyLocalClient {
 
   PythonRefManager& py_ref_manager() { return py_ref_manager_; }
 
- private:
+ protected:
   std::string platform_name_;
   LocalClient* client_;
   std::vector<std::unique_ptr<Device>> devices_;
@@ -205,29 +206,30 @@ class PyLocalClient {
 // Holds a reference from Python to one or more device buffers.
 class PyLocalBuffer {
  public:
-  static StatusOr<PyLocalBuffer> FromPython(const pybind11::object& argument,
-                                            PyLocalClient* client,
-                                            int device_ordinal);
+  static StatusOr<PyLocalBuffer> FromPython(
+      const pybind11::object& argument, std::shared_ptr<PyLocalClient> client,
+      int device_ordinal);
 
   // Converts multiple (python object, device ordinal) pairs into
   // PyLocalBuffers in parallel.
   static StatusOr<std::vector<PyLocalBuffer>> FromPythonValues(
       const std::vector<std::pair<pybind11::object, int>>& argument,
-      PyLocalClient* client);
+      std::shared_ptr<PyLocalClient> client);
 
   static StatusOr<PyLocalBuffer> MakeTuple(
-      const std::vector<PyLocalBuffer> buffers, PyLocalClient* client,
-      int device_ordinal);
+      const std::vector<PyLocalBuffer> buffers,
+      std::shared_ptr<PyLocalClient> client, int device_ordinal);
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
                 std::shared_ptr<PySharedDeviceBuffer> device_buffer,
-                PyLocalClient* client);
+                std::shared_ptr<PyLocalClient> client);
   StatusOr<pybind11::object> ToPython() const;
   const Shape& on_host_shape() const { return on_host_shape_; }
   const std::shared_ptr<PySharedDeviceBuffer>& device_buffer() const {
     return device_buffer_;
   }
+  int device_ordinal() const { return device_buffer_->device_ordinal(); }
 
   void Delete() {
     device_buffer_ = nullptr;
@@ -242,9 +244,9 @@ class PyLocalBuffer {
   StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
 
  private:
+  std::shared_ptr<PyLocalClient> client_ = nullptr;
   Shape on_host_shape_;
   std::shared_ptr<PySharedDeviceBuffer> device_buffer_;
-  PyLocalClient* client_ = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -254,10 +256,12 @@ class PyLocalExecutable {
   // Compiles a computation to an executable.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
       const XlaComputation& computation, std::vector<Shape> argument_layouts,
-      const ExecutableBuildOptions* build_options, PyLocalClient* client);
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyLocalClient> client);
 
   PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
-                    DeviceAssignment device_assignment, PyLocalClient* client);
+                    DeviceAssignment device_assignment,
+                    std::shared_ptr<PyLocalClient> client);
 
   int num_replicas() const {
     return executable_->build_options().num_replicas();
@@ -285,9 +289,9 @@ class PyLocalExecutable {
   StatusOr<PyLocalBuffer> ExecuteHelper(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica);
 
+  std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
-  PyLocalClient* const client_;
 };
 
 }  // namespace xla

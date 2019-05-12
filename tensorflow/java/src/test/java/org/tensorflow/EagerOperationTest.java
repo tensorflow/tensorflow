@@ -22,12 +22,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Unit tests for {@link EagerOperation} class.
- */
+/** Unit tests for {@link EagerOperation} class. */
 @RunWith(JUnit4.class)
 public class EagerOperationTest {
-  
+
   @Test
   public void failToCreateIfSessionIsClosed() {
     EagerSession session = EagerSession.create();
@@ -39,21 +37,22 @@ public class EagerOperationTest {
       // expected
     }
   }
-  
+
   @Test
   public void outputDataTypeAndShape() {
     try (EagerSession session = EagerSession.create();
         Tensor<Integer> t = Tensors.create(new int[2][3])) {
-      EagerOperation op = opBuilder(session, "Const", "OutputAttrs")
-          .setAttr("dtype", DataType.INT32)
-          .setAttr("value", t)
-          .build();
+      EagerOperation op =
+          opBuilder(session, "Const", "OutputAttrs")
+              .setAttr("dtype", DataType.INT32)
+              .setAttr("value", t)
+              .build();
       assertEquals(DataType.INT32, op.dtype(0));
       assertEquals(2, op.shape(0)[0]);
       assertEquals(3, op.shape(0)[1]);
     }
   }
-  
+
   @Test
   public void outputTensor() {
     try (EagerSession session = EagerSession.create()) {
@@ -76,17 +75,19 @@ public class EagerOperationTest {
       Output<Float> c1 = TestUtil.constant(session, "Const1", new float[] {1f, 2f});
       Output<Float> c2 = TestUtil.constant(session, "Const2", new float[] {3f, 4f});
 
-      EagerOperation acc = opBuilder(session, "AddN", "InputListLength")
-          .addInputList(new Output<?>[] {c1, c2})
-          .build();
+      EagerOperation acc =
+          opBuilder(session, "AddN", "InputListLength")
+              .addInputList(new Output<?>[] {c1, c2})
+              .build();
       assertEquals(2, acc.inputListLength("inputs"));
       assertEquals(1, acc.outputListLength("sum"));
 
-      EagerOperation split = opBuilder(session, "Split", "OutputListLength")
-          .addInput(TestUtil.constant(session, "Axis", 0))
-          .addInput(c1)
-          .setAttr("num_split", 2)
-          .build();
+      EagerOperation split =
+          opBuilder(session, "Split", "OutputListLength")
+              .addInput(TestUtil.constant(session, "Axis", 0))
+              .addInput(c1)
+              .setAttr("num_split", 2)
+              .build();
       assertEquals(1, split.inputListLength("split_dim"));
       assertEquals(2, split.outputListLength("output"));
 
@@ -105,19 +106,20 @@ public class EagerOperationTest {
       }
     }
   }
-  
+
   @Test
   public void numOutputs() {
     try (EagerSession session = EagerSession.create()) {
-      EagerOperation op = opBuilder(session, "UniqueWithCountsV2", "unq")
-          .addInput(TestUtil.constant(session, "Const1", new int[] {1, 2, 1}))
-          .addInput(TestUtil.constant(session, "Axis", new int[] {0}))
-          .setAttr("out_idx", DataType.INT32)
-          .build();
+      EagerOperation op =
+          opBuilder(session, "UniqueWithCountsV2", "unq")
+              .addInput(TestUtil.constant(session, "Const1", new int[] {1, 2, 1}))
+              .addInput(TestUtil.constant(session, "Axis", new int[] {0}))
+              .setAttr("out_idx", DataType.INT32)
+              .build();
       assertEquals(3, op.numOutputs());
-    }    
+    }
   }
-  
+
   @Test
   public void opNotAccessibleIfSessionIsClosed() {
     EagerSession session = EagerSession.create();

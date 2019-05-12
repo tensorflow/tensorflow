@@ -1173,5 +1173,47 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ArCrsCombinerTest, SameValueTestConditional) {
+  const char* module_str = R"(
+HloModule foobar
+
+branch_true {
+  pt = (f32[2,4], f32[2,4]) parameter(0)
+  gte.0 = f32[2,4] get-tuple-element(pt), index=0
+  gte.1 = f32[2,4] get-tuple-element(pt), index=1
+  ROOT tuple.t = (f32[2,4], f32[2,4]) tuple(gte.1, gte.0)
+}
+
+branch_false {
+  pf = (f32[2,4], f32[2,4]) parameter(0)
+  gte.0 = f32[2,4] get-tuple-element(pf), index=0
+  gte.1 = f32[2,4] get-tuple-element(pf), index=1
+  add = f32[2,4] add(gte.1, gte.1)
+  ROOT tuple.f = (f32[2,4], f32[2,4]) tuple(gte.0, add)
+}
+
+ENTRY Parameters1.v4 {
+  constant = pred[] constant(true)
+  p = f32[2,4] parameter(0)
+  tuple = (f32[2,4], f32[2,4]) tuple(p, p)
+  ROOT conditional = (f32[2,4], f32[2,4]) conditional(constant, tuple, tuple), true_computation=branch_true, false_computation=branch_false
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto cond = module->entry_computation()->root_instruction();
+
+  auto branch_true = cond->branch_computation(0)->root_instruction();
+  auto t0 = branch_true->mutable_operand(0);
+  auto t1 = branch_true->mutable_operand(1);
+  EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(t0, t1));
+
+  auto branch_false = cond->branch_computation(1)->root_instruction();
+  auto f0 = branch_false->mutable_operand(0);
+  auto f1 = branch_false->mutable_operand(1);
+  EXPECT_FALSE(ArCrsCombiner::TestInstructionsComputeSameValue(f0, f1));
+}
+
 }  // namespace
 }  // namespace xla

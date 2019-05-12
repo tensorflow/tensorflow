@@ -33,8 +33,9 @@ final class EagerOperationBuilder implements OperationBuilder {
   @Override
   public EagerOperation build() {
     long[] tensorHandles = execute(nativeRef.opHandle);
-    EagerOperation operation = new EagerOperation(session, nativeRef.opHandle, tensorHandles, type, name);
-    // Release our reference to the native op handle now that we transferred its 
+    EagerOperation operation =
+        new EagerOperation(session, nativeRef.opHandle, tensorHandles, type, name);
+    // Release our reference to the native op handle now that we transferred its
     // ownership to the EagerOperation
     nativeRef.clear();
     return operation;

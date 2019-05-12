@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -41,7 +41,8 @@ namespace gpu {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public se::ScratchAllocator {
  public:
-  RedzoneAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator,
+  RedzoneAllocator(int device_ordinal,
+                   se::DeviceMemoryAllocator* memory_allocator,
                    const HloModuleConfig& hlo_module_config,
                    int64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
                    uint8 redzone_pattern = -1)
@@ -76,14 +77,14 @@ class RedzoneAllocator : public se::ScratchAllocator {
   const int64 redzone_size_;
 
   const uint8 redzone_pattern_;
-  DeviceMemoryAllocator* memory_allocator_;
+  se::DeviceMemoryAllocator* memory_allocator_;
   const HloModuleConfig& hlo_module_config_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
   // user allocation size is not a multiple of 4 bytes, we round up the size of
   // the RHS redzone.
-  std::vector<std::pair<OwningDeviceMemory, int64>> allocated_buffers_;
+  std::vector<std::pair<se::OwningDeviceMemory, int64>> allocated_buffers_;
 
   int64 allocated_bytes_excluding_redzones_ = 0;
 };

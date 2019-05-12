@@ -93,6 +93,7 @@ class _StateStack(object):
   Attributes:
     type: Any, the type of objects that this stack holds
     level: int, the current stack depth
+    stack: List[Any], the actual stack
     value: Any, the instance of the object at the top of the stack
   """
 
@@ -109,6 +110,10 @@ class _StateStack(object):
 
   def exit(self):
     return self._stack.pop()
+
+  @property
+  def stack(self):
+    return self._stack
 
   @property
   def level(self):

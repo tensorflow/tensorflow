@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/java/src/main/native/eager_operation_jni.h"
+
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <algorithm>
 #include <memory>
 
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/java/src/main/native/eager_operation_jni.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 namespace {
@@ -36,8 +38,7 @@ TFE_Op* requireOp(JNIEnv* env, jlong handle) {
 
 TFE_TensorHandle* requireTensorHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "EagerSession has been closed");
+    throwException(env, kIllegalStateException, "EagerSession has been closed");
     return nullptr;
   }
   return reinterpret_cast<TFE_TensorHandle*>(handle);
@@ -45,8 +46,9 @@ TFE_TensorHandle* requireTensorHandle(JNIEnv* env, jlong handle) {
 
 }  // namespace
 
-JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_delete(
-    JNIEnv* env, jclass clazz, jlong handle) {
+JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_delete(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle) {
   if (handle == 0) return;
   TFE_DeleteOp(reinterpret_cast<TFE_Op*>(handle));
 }
@@ -127,8 +129,10 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_numDims(
   return static_cast<jint>(num_dims);
 }
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerOperation_dim(
-    JNIEnv* env, jclass clazz, jlong handle, jint dim_index) {
+JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerOperation_dim(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlong handle,
+                                                               jint dim_index) {
   TFE_TensorHandle* tensor_handle = requireTensorHandle(env, handle);
   if (tensor_handle == nullptr) return 0;
   TF_Status* status = TF_NewStatus();

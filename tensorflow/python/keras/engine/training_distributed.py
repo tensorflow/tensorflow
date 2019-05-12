@@ -393,6 +393,9 @@ def experimental_tpu_fit_loop(model,
   target_steps = len(steps_to_run)
 
   callbacks._call_begin_hook(mode)
+
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     distributed_training_utils._reset_metrics(model)
     callbacks.on_epoch_begin(epoch)

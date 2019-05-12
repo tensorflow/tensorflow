@@ -59,6 +59,8 @@ struct TrMulParams {
   DMatrix dst;
   PMatrix packed_lhs;
   PMatrix packed_rhs;
+  bool lhs_is_prepacked = false;
+  bool rhs_is_prepacked = false;
 
   // Type-erased Spec.
   void* spec = nullptr;
@@ -239,14 +241,23 @@ inline void TrMul(TrMulParams* params, Context* context) {
   const auto loop_structure = GetLoopStructure(thread_count, rows, cols, depth);
   const Tuning tuning = GetTuning(context);
   Allocator* allocator = context->GetMainAllocator();
-  AllocatePMatrix(allocator, &packed_lhs);
-  AllocatePMatrix(allocator, &packed_rhs);
+
+  if (!params->lhs_is_prepacked) {
+    AllocatePMatrix(allocator, &packed_lhs);
+  }
+  if (!params->rhs_is_prepacked) {
+    AllocatePMatrix(allocator, &packed_rhs);
+  }
 
   if (loop_structure == LoopStructure::kSimple) {
     gemmlowp::ScopedProfilingLabel label_simple("TrMulImpl, simple loop");
 
-    params->LhsRunPack(tuning, 0, rows_rounded_up);
-    params->RhsRunPack(tuning, 0, cols_rounded_up);
+    if (!params->lhs_is_prepacked) {
+      params->LhsRunPack(tuning, 0, rows_rounded_up);
+    }
+    if (!params->rhs_is_prepacked) {
+      params->RhsRunPack(tuning, 0, cols_rounded_up);
+    }
     params->RunKernel(tuning, 0, 0, rows_rounded_up, cols_rounded_up);
 
     allocator->FreeAll();
@@ -277,21 +288,29 @@ inline void TrMul(TrMulParams* params, Context* context) {
   }
 
   // Allocate memory.
-  std::atomic<bool>* lhs_packed;
-  allocator->Allocate(num_blocks_of_rows, &lhs_packed);
-  std::atomic<bool>* rhs_packed;
-  allocator->Allocate(num_blocks_of_cols, &rhs_packed);
+  std::atomic<bool>* lhs_packed = nullptr;
+  if (!params->lhs_is_prepacked) {
+    allocator->Allocate(num_blocks_of_rows, &lhs_packed);
+  }
+  std::atomic<bool>* rhs_packed = nullptr;
+  if (!params->rhs_is_prepacked) {
+    allocator->Allocate(num_blocks_of_cols, &rhs_packed);
+  }
   std::atomic<std::uint32_t>* atomic_n;
   allocator->Allocate(1, &atomic_n);
   TrMulTask* tasks;
   allocator->Allocate(thread_count, &tasks);
 
   // Initialize allocated data.
-  for (int i = 0; i < num_blocks_of_rows; i++) {
-    lhs_packed[i].store(false, std::memory_order_release);
+  if (lhs_packed != nullptr) {
+    for (int i = 0; i < num_blocks_of_rows; i++) {
+      lhs_packed[i].store(false, std::memory_order_release);
+    }
   }
-  for (int i = 0; i < num_blocks_of_cols; i++) {
-    rhs_packed[i].store(false, std::memory_order_release);
+  if (rhs_packed != nullptr) {
+    for (int i = 0; i < num_blocks_of_cols; i++) {
+      rhs_packed[i].store(false, std::memory_order_release);
+    }
   }
   atomic_n->store(thread_count);
 

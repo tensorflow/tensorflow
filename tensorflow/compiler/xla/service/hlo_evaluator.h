@@ -204,6 +204,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleTuple(HloInstruction* tuple) override;
 
+  Status HandleFft(HloInstruction* fft) override;
+
   Status HandleGather(HloInstruction* gather) override;
 
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;

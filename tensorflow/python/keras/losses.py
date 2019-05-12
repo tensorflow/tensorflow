@@ -27,9 +27,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
-from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -117,7 +117,9 @@ class Loss(object):
     # If we are wrapping a lambda function strip '<>' from the name as it is not
     # accepted in scope name.
     scope_name = 'lambda' if self.name == '<lambda>' else self.name
-    with K.name_scope(scope_name or self.__class__.__name__):
+    graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
+        y_true, y_pred, sample_weight)
+    with K.name_scope(scope_name or self.__class__.__name__), graph_ctx:
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
@@ -215,7 +217,7 @@ class LossFunctionWrapper(Loss):
   def get_config(self):
     config = {}
     for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
+      config[k] = K.eval(v) if tf_utils.is_tensor_or_variable(v) else v
     base_config = super(LossFunctionWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 

@@ -42,12 +42,21 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 
 
 def _disallow_undefs_into_loop(*values):
+  """Ensures that all values in the state are defined when entering a loop."""
   undefined = tuple(filter(special_values.is_undefined, values))
   if undefined:
     raise ValueError(
         'TensorFlow requires that the following symbols must be defined'
         ' before the loop: {}'.format(
             tuple(s.symbol_name for s in undefined)))
+
+  for value in values:
+    if special_values.is_undefined_return(value):
+      # Assumption: the loop will only capture the variable which tracks the
+      # return value if the loop contained a return statement.
+      # TODO(mdan): This should be checked at the place where return occurs.
+      raise ValueError(
+          'Return statements are not supported within a TensorFlow loop.')
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -435,8 +444,8 @@ def if_stmt(cond, body, orelse, get_state, set_state):
 
 def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  body = _wrap_disallow_undefs_in_cond(body, branch_name='if')
-  orelse = _wrap_disallow_undefs_in_cond(orelse, branch_name='else')
+  body = _wrap_disallow_undefs_from_cond(body, branch_name='if')
+  orelse = _wrap_disallow_undefs_from_cond(orelse, branch_name='else')
   body = _isolate_state(body, get_state, set_state)
   orelse = _isolate_state(orelse, get_state, set_state)
 
@@ -484,7 +493,7 @@ def _isolate_state(func, get_state, set_state):
   return wrapper
 
 
-def _wrap_disallow_undefs_in_cond(func, branch_name):
+def _wrap_disallow_undefs_from_cond(func, branch_name):
   """Wraps conditional branch to disallow returning undefined symbols."""
 
   def wrapper():
@@ -502,6 +511,13 @@ def _wrap_disallow_undefs_in_cond(func, branch_name):
           ' Alternatively, you may initialize them before the if'
           ' statement.'.format(branch_name,
                                tuple(s.symbol_name for s in undefined)))
+
+    for result in results_tuple:
+      if special_values.is_undefined_return(result):
+        raise ValueError(
+            'A value must also be returned from the {} branch. If a value is '
+            'returned from one branch of a conditional a value must be '
+            'returned from all branches.'.format(branch_name))
 
     return results
 

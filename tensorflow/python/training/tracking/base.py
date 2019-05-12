@@ -19,9 +19,6 @@ from __future__ import print_function
 
 import abc
 import collections
-import functools
-import json
-import weakref
 
 import six
 
@@ -35,7 +32,6 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 
 # Key where the object graph proto is saved in a TensorBundle
@@ -883,34 +879,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    if not hasattr(self, "get_config"):
-      return {}
-    try:
-      self.get_config()
-    except NotImplementedError:
-      return {}
-    weak_self = weakref.ref(self)
-
-    def _state_callback():
-      """Serializes `self.get_config()` for saving."""
-      dereferenced_self = weak_self()
-      if dereferenced_self:
-        try:
-          return json.dumps(
-              dereferenced_self,
-              default=serialization.get_json_type,
-              sort_keys=True).encode("utf8")
-        except TypeError:
-          # Even if get_config worked objects may have produced garbage.
-          return ""
-      else:
-        return ""
-
-    return {
-        OBJECT_CONFIG_JSON_KEY:
-            functools.partial(
-                PythonStringStateSaveable, state_callback=_state_callback)
-    }
+    return {}
 
   def _list_functions_for_serialization(self):
     """Lists the functions of this trackable to serialize.

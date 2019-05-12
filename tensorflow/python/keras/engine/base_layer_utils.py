@@ -353,15 +353,21 @@ def is_in_keras_graph():
   """Returns if currently executing inside of a Keras graph."""
   # Returns True even if in a subgraph of the Keras graph, such as those
   # created by control flow ops.
+  if context.executing_eagerly():
+    return False
   return (getattr(backend.get_graph(), 'name', None) == 'keras_graph' or
           getattr(_call_context, 'in_keras_graph', False))
 
 
 def is_in_eager_or_tf_function():
   """Returns if in eager mode or inside of a tf.function."""
-  return (context.executing_eagerly() or
-          (ops.executing_eagerly_outside_functions() and
-           not is_in_keras_graph()))
+  return context.executing_eagerly() or is_in_tf_function()
+
+
+def is_in_tf_function():
+  """Returns if inside of a tf.function."""
+  return (ops.executing_eagerly_outside_functions() and
+          not context.executing_eagerly() and not is_in_keras_graph())
 
 
 def uses_keras_history(tensors):
@@ -446,7 +452,7 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
-  return 'training' in full_args
+  return 'training' in full_args and full_args['training'] is not None
 
 
 def _get_var_read_dtype(input_list, should_cast):
@@ -490,7 +496,8 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   We need to raise clear error messages in such cases.
 
   Arguments:
-    tensor: Tensor to check.
+    tensor: Tensor to check, or `False` if it is known that an error
+      should be raised.
     method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
     force_raise: If an error should be raised regardless of `tensor`.
 
@@ -586,6 +593,12 @@ def mark_as_return(outputs, acd):
       return_tensor._keras_mask = acd.mark_as_return(tensor._keras_mask)
     else:
       return_tensor._keras_mask = None
+
+    # Handle TensorFlow Probability attached metadata.
+    # TODO(b/132076537): Remove this once TFP uses `CompositeTensor`.
+    if getattr(tensor, '_tfp_distribution', None) is not None:
+      return_tensor._tfp_distribution = tensor._tfp_distribution
+
     return return_tensor
     # pylint: enable=protected-access
 

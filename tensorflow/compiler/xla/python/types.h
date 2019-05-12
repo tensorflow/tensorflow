@@ -32,28 +32,47 @@ limitations under the License.
 
 namespace xla {
 
-// Converts a pybind11-style NumPy dtype to a PrimitiveType.
-StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
-    const pybind11::dtype& np_type);
+// Helper that converts a failing StatusOr to an exception.
+// For use only inside pybind11 code.
+template <typename T>
+T ValueOrThrow(StatusOr<T> v) {
+  if (!v.ok()) {
+    throw std::runtime_error(v.status().ToString());
+  }
+  return v.ConsumeValueOrDie();
+}
+
+// Converts a NumPy dtype to a PrimitiveType.
+StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
+
+// Converts a PrimitiveType to a Numpy dtype.
+StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-StatusOr<pybind11::object> LiteralToPython(
-    std::unique_ptr<xla::Literal> literal);
+StatusOr<pybind11::object> LiteralToPython(std::unique_ptr<Literal> literal);
 
 // Converts a Python object into an XLA shape and a vector of leaf buffers.
 // The leaf buffers correspond to a depth-first, left-to-right traversal of
 // the Python value.
 // Requires the GIL.
 struct PythonBufferTree {
-  absl::InlinedVector<xla::BorrowingLiteral, 1> leaves;
-  xla::Shape shape;
+  absl::InlinedVector<BorrowingLiteral, 1> leaves;
+  Shape shape;
 };
 StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
+
+// Converts a sequence of int64s to a Python tuple of ints.
+// Pybind11 by default converts a std::vector<int64> to a Python list; for
+// shapes we frequently want a tuple instead.
+pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
+
+// Converts a Python sequence of integers to a std::vector<int64>
+std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 
 }  // namespace xla
 
@@ -161,7 +180,7 @@ struct type_caster<xla::BorrowingLiteral> {
     for (int i = 0; i < array.ndim(); ++i) {
       dims[i] = array.shape(i);
     }
-    auto type = xla::NumpyTypeToPrimitiveType(array.dtype());
+    auto type = xla::DtypeToPrimitiveType(array.dtype());
     if (!type.ok()) {
       throw std::runtime_error(type.status().ToString());
     }

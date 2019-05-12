@@ -78,6 +78,7 @@ TEST(Types, TestTypeNames) {
   };
   EXPECT_EQ(type_name(kTfLiteNoType), "NOTYPE");
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
+  EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
   EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");

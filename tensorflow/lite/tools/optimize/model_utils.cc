@@ -130,7 +130,7 @@ void SetOperatorCodeVersion(ModelT* model) {
     operator_property::OperatorProperty property =
         operator_property::GetOperatorProperty(op_buildin_code);
     if (property.quantizable) {
-      // Only update the versions of non-quantizable operations.
+      // Only update the versions of quantizable operations.
       op_code->version = property.version;
     }
   }
