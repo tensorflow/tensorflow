@@ -387,11 +387,14 @@ def _find_tensorrt_config(base_paths, required_version):
     return ".".join(version)
 
   trt_version_file = "NvInfer.h"
-  if (_at_least_version(required_version, "6")):
+  if _at_least_version(required_version, "6"):
     # From TRT 6.0 onwards, version information has been moved to NvInferVersion.h.
     trt_version_file = "NvInferVersion.h"
 
-  header_path, header_version = _find_header(base_paths, trt_version_file, required_version, get_header_version)
+  header_path, header_version = _find_header(base_paths,
+                                             trt_version_file,
+                                             required_version,
+                                             get_header_version)
 
   tensorrt_version = header_version.split(".")[0]
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
