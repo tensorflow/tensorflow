@@ -5372,10 +5372,8 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDims) {
   EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
 }
 
-// This test exposes a real bug: It tries to read an out-of-bounds array index
-// from within ComposePermutations().  TODO(b/132330723): Fix this.
 TEST_F(AlgebraicSimplifierTest,
-       DISABLED_DotContractingReorder_NoChangeInContractingDimsOrder) {
+       DotContractingReorder_NoChangeInContractingDimsOrder) {
   // No optimization opportunity here because the transpose does not reorder the
   // contracting dims.
   const char* kModuleStr = R"(
