@@ -426,7 +426,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
   Operation *op = forOp.getOperation();
   if (getLargestDivisorOfTripCount(forOp) % unrollFactor != 0) {
     FuncBuilder builder(op->getBlock(), ++Block::iterator(op));
-    auto cleanupForInst = builder.clone(*op)->cast<AffineForOp>();
+    auto cleanupForInst = cast<AffineForOp>(builder.clone(*op));
     AffineMap cleanupMap;
     SmallVector<Value *, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollFactor, &cleanupMap, &cleanupOperands,
@@ -512,7 +512,7 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
 void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
   for (unsigned i = 0; i < loopDepth; ++i) {
     assert(forOp.getBody()->front().isa<AffineForOp>());
-    AffineForOp nextForOp = forOp.getBody()->front().cast<AffineForOp>();
+    AffineForOp nextForOp = cast<AffineForOp>(forOp.getBody()->front());
     interchangeLoops(forOp, nextForOp);
   }
 }

@@ -123,7 +123,7 @@ static AffineMap makePermutationMap(
   for (auto kvp : enclosingLoopToVectorDim) {
     assert(kvp.second < perm.size());
     auto invariants = getInvariantAccesses(
-        kvp.first->cast<AffineForOp>().getInductionVar(), indices);
+        cast<AffineForOp>(kvp.first).getInductionVar(), indices);
     unsigned numIndices = indices.size();
     unsigned countInvariantIndices = 0;
     for (unsigned dim = 0; dim < numIndices; ++dim) {
@@ -181,7 +181,7 @@ AffineMap mlir::makePermutationMap(
     return ::makePermutationMap(load.getIndices(), enclosingLoopToVectorDim);
   }
 
-  auto store = op->cast<StoreOp>();
+  auto store = cast<StoreOp>(op);
   return ::makePermutationMap(store.getIndices(), enclosingLoopToVectorDim);
 }
 

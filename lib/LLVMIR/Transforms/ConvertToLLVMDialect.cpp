@@ -414,14 +414,14 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
   PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<AllocOp>::match(op))
       return matchFailure();
-    auto allocOp = op->cast<AllocOp>();
+    auto allocOp = cast<AllocOp>(op);
     MemRefType type = allocOp.getType();
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto allocOp = op->cast<AllocOp>();
+    auto allocOp = cast<AllocOp>(op);
     MemRefType type = allocOp.getType();
 
     // Get actual sizes of the memref as values: static sizes are constant
@@ -557,7 +557,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<MemRefCastOp>::match(op))
       return matchFailure();
-    auto memRefCastOp = op->cast<MemRefCastOp>();
+    auto memRefCastOp = cast<MemRefCastOp>(op);
     MemRefType sourceType =
         memRefCastOp.getOperand()->getType().cast<MemRefType>();
     MemRefType targetType = memRefCastOp.getType();
@@ -569,7 +569,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto memRefCastOp = op->cast<MemRefCastOp>();
+    auto memRefCastOp = cast<MemRefCastOp>(op);
     auto targetType = memRefCastOp.getType();
     auto sourceType = memRefCastOp.getOperand()->getType().cast<MemRefType>();
 
@@ -636,7 +636,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<DimOp>::match(op))
       return this->matchFailure();
-    auto dimOp = op->cast<DimOp>();
+    auto dimOp = cast<DimOp>(op);
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
@@ -644,7 +644,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     assert(operands.size() == 1 && "expected exactly one operand");
-    auto dimOp = op->cast<DimOp>();
+    auto dimOp = cast<DimOp>(op);
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
 
     SmallVector<Value *, 4> results;
@@ -683,7 +683,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<Derived>::match(op))
       return this->matchFailure();
-    auto loadOp = op->cast<Derived>();
+    auto loadOp = cast<Derived>(op);
     MemRefType type = loadOp.getMemRefType();
     return isSupportedMemRefType(type) ? this->matchSuccess()
                                        : this->matchFailure();
@@ -794,7 +794,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto loadOp = op->cast<LoadOp>();
+    auto loadOp = cast<LoadOp>(op);
     auto type = loadOp.getMemRefType();
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, operands.front(),
@@ -815,7 +815,7 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto storeOp = op->cast<StoreOp>();
+    auto storeOp = cast<StoreOp>(op);
     auto type = storeOp.getMemRefType();
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, operands[1],

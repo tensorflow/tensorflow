@@ -603,7 +603,7 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
   auto dstAffineForOp = dstLoopIVs[dstLoopDepth - 1];
   FuncBuilder b(dstAffineForOp.getBody(), dstAffineForOp.getBody()->begin());
   auto sliceLoopNest =
-      b.clone(*srcLoopIVs[0].getOperation())->cast<AffineForOp>();
+      cast<AffineForOp>(b.clone(*srcLoopIVs[0].getOperation()));
 
   Operation *sliceInst =
       getInstAtPosition(positions, /*level=*/0, sliceLoopNest.getBody());

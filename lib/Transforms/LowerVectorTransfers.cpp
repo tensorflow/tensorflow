@@ -264,7 +264,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   using namespace mlir::edsc::op;
   using namespace mlir::edsc::intrinsics;
 
-  VectorTransferReadOp transfer = op->cast<VectorTransferReadOp>();
+  VectorTransferReadOp transfer = cast<VectorTransferReadOp>(op);
 
   // 1. Setup all the captures.
   ScopedContext scope(FuncBuilder(op), transfer.getLoc());
@@ -323,7 +323,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   using namespace mlir::edsc::op;
   using namespace mlir::edsc::intrinsics;
 
-  VectorTransferWriteOp transfer = op->cast<VectorTransferWriteOp>();
+  VectorTransferWriteOp transfer = cast<VectorTransferWriteOp>(op);
 
   // 1. Setup all the captures.
   ScopedContext scope(FuncBuilder(op), transfer.getLoc());

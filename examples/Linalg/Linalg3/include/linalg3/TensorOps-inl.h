@@ -94,7 +94,7 @@ extractRangesFromViewOrSliceOp(mlir::Value *view) {
   if (auto viewOp = llvm::dyn_cast<linalg::ViewOp>(view->getDefiningOp()))
     return viewOp.getRanges();
 
-  auto sliceOp = view->getDefiningOp()->cast<linalg::SliceOp>();
+  auto sliceOp = llvm::cast<linalg::SliceOp>(view->getDefiningOp());
   unsigned slicingDim = sliceOp.getSlicingDim();
   auto *indexing = *(sliceOp.getIndexings().begin());
   bool isRankReducing = indexing->getType().isa<mlir::IndexType>();

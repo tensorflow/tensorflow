@@ -42,12 +42,12 @@ mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
     assert(ranges[i].getType() && "expected !linalg.range type");
     assert(ranges[i].getValue()->getDefiningOp() &&
            "need operations to extract range parts");
-    auto rangeOp = ranges[i].getValue()->getDefiningOp()->cast<RangeOp>();
+    auto rangeOp = cast<RangeOp>(ranges[i].getValue()->getDefiningOp());
     auto lb = rangeOp.min();
     auto ub = rangeOp.max();
     // This must be a constexpr index until we relax the affine.for constraint
     auto step =
-        rangeOp.step()->getDefiningOp()->cast<ConstantIndexOp>().getValue();
+        cast<ConstantIndexOp>(rangeOp.step()->getDefiningOp()).getValue();
     loops.emplace_back(ivs[i], ValueHandle(lb), ValueHandle(ub), step);
   }
   assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
@@ -106,7 +106,7 @@ Value *mlir::createOrReturnView(FuncBuilder *b, Location loc,
       return view.getResult();
     return b->create<SliceOp>(loc, view.getResult(), ranges);
   }
-  auto slice = viewDefiningOp->cast<SliceOp>();
+  auto slice = cast<SliceOp>(viewDefiningOp);
   unsigned idxRange = 0;
   SmallVector<Value *, 4> newIndexings;
   bool elide = true;

@@ -283,7 +283,7 @@ struct SimplifyAllocConst : public RewritePattern {
       : RewritePattern(AllocOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
-    auto alloc = op->cast<AllocOp>();
+    auto alloc = cast<AllocOp>(op);
 
     // Check to see if any dimensions operands are constants.  If so, we can
     // substitute and drop them.
@@ -294,7 +294,7 @@ struct SimplifyAllocConst : public RewritePattern {
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    auto allocOp = op->cast<AllocOp>();
+    auto allocOp = cast<AllocOp>(op);
     auto memrefType = allocOp.getType();
 
     // Ok, we have one or more constant operands.  Collect the non-constant ones
@@ -352,7 +352,7 @@ struct SimplifyDeadAlloc : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     // Check if the alloc'ed value has any uses.
-    auto alloc = op->cast<AllocOp>();
+    auto alloc = cast<AllocOp>(op);
     if (!alloc.use_empty())
       return matchFailure();
 
@@ -468,7 +468,7 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto indirectCall = op->cast<CallIndirectOp>();
+    auto indirectCall = cast<CallIndirectOp>(op);
 
     // Check that the callee is a constant operation.
     Attribute callee;
@@ -978,7 +978,7 @@ struct SimplifyConstCondBranchPred : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto condbr = op->cast<CondBranchOp>();
+    auto condbr = cast<CondBranchOp>(op);
 
     // Check that the condition is a constant.
     if (!matchPattern(condbr.getCondition(), m_Op<ConstantOp>()))
@@ -1222,7 +1222,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto dealloc = op->cast<DeallocOp>();
+    auto dealloc = cast<DeallocOp>(op);
 
     // Check that the memref operand's defining operation is an AllocOp.
     Value *memref = dealloc.memref();
@@ -2107,7 +2107,7 @@ struct SimplifyXMinusX : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto subi = op->cast<SubIOp>();
+    auto subi = cast<SubIOp>(op);
     if (subi.getOperand(0) != subi.getOperand(1))
       return matchFailure();
 
@@ -2192,7 +2192,7 @@ struct SimplifyXXOrX : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto xorOp = op->cast<XOrOp>();
+    auto xorOp = cast<XOrOp>(op);
     if (xorOp.lhs() != xorOp.rhs())
       return matchFailure();
 

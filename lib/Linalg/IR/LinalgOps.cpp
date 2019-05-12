@@ -320,7 +320,7 @@ void mlir::linalg::SliceOp::print(OpAsmPrinter *p) {
 }
 
 ViewOp mlir::linalg::SliceOp::getBaseViewOp() {
-  return getOperand(0)->getDefiningOp()->cast<ViewOp>();
+  return cast<ViewOp>(getOperand(0)->getDefiningOp());
 }
 
 ViewType mlir::linalg::SliceOp::getBaseViewType() {
@@ -505,8 +505,7 @@ ParseResult parseBufferSizeOp(OpAsmParser *parser, OperationState *result);
 /// ```
 void mlir::linalg::impl::printBufferSizeOp(OpAsmPrinter *p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
-  *p << op->cast<BufferSizeOp>().getOperationName() << " "
-     << *op->getOperand(0);
+  *p << cast<BufferSizeOp>(op).getOperationName() << " " << *op->getOperand(0);
   p->printOptionalAttrDict(op->getAttrs());
   *p << " : " << op->getOperand(0)->getType();
 }

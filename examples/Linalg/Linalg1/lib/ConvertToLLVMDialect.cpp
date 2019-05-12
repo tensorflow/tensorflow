@@ -155,7 +155,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto rangeOp = op->cast<linalg::RangeOp>();
+    auto rangeOp = cast<linalg::RangeOp>(op);
     auto rangeDescriptorType =
         linalg::convertLinalgType(rangeOp.getResult()->getType());
 
@@ -187,7 +187,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto viewOp = op->cast<linalg::ViewOp>();
+    auto viewOp = cast<linalg::ViewOp>(op);
     auto viewDescriptorType = linalg::convertLinalgType(viewOp.getViewType());
     auto memrefType =
         viewOp.getSupportingMemRef()->getType().cast<MemRefType>();
@@ -319,7 +319,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto sliceOp = op->cast<linalg::SliceOp>();
+    auto sliceOp = cast<linalg::SliceOp>(op);
     auto newViewDescriptorType =
         linalg::convertLinalgType(sliceOp.getViewType());
     auto elementType = rewriter.getType<LLVM::LLVMType>(

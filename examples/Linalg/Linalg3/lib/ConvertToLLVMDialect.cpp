@@ -71,7 +71,7 @@ public:
   // a getelementptr.
   Value *obtainDataPtr(Operation *op, Value *viewDescriptor,
                        ArrayRef<Value *> indices, FuncBuilder &rewriter) const {
-    auto loadOp = op->cast<Op>();
+    auto loadOp = cast<Op>(op);
     auto elementType =
         loadOp.getViewType().template cast<linalg::ViewType>().getElementType();
     auto *llvmPtrType = linalg::convertLinalgType(elementType)

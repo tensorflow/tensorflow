@@ -201,7 +201,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
     return;
 
   // Perform the actual store to load forwarding.
-  Value *storeVal = lastWriteStoreOp->cast<StoreOp>().getValueToStore();
+  Value *storeVal = cast<StoreOp>(lastWriteStoreOp).getValueToStore();
   loadOp.getResult()->replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp.getMemRef());

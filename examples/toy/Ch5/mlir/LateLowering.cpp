@@ -93,7 +93,7 @@ public:
   /// number must match the number of result of `op`.
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto add = op->cast<toy::AddOp>();
+    auto add = cast<toy::AddOp>(op);
     auto loc = add.getLoc();
     // Create a `toy.alloc` operation to allocate the output buffer for this op.
     Value *result = memRefTypeCast(
@@ -135,7 +135,7 @@ public:
     // Get or create the declaration of the printf function in the module.
     Function *printfFunc = getPrintf(*op->getFunction()->getModule());
 
-    auto print = op->cast<toy::PrintOp>();
+    auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();
     // We will operate on a MemRef abstraction, we use a type.cast to get one
     // if our operand is still a Toy array.
@@ -234,7 +234,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    toy::ConstantOp cstOp = op->cast<toy::ConstantOp>();
+    toy::ConstantOp cstOp = cast<toy::ConstantOp>(op);
     auto loc = cstOp.getLoc();
     auto retTy = cstOp.getResult()->getType().cast<toy::ToyArrayType>();
     auto shape = retTy.getShape();
@@ -277,7 +277,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto transpose = op->cast<toy::TransposeOp>();
+    auto transpose = cast<toy::TransposeOp>(op);
     auto loc = transpose.getLoc();
     Value *result = memRefTypeCast(
         rewriter,
@@ -309,7 +309,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto retOp = op->cast<toy::ReturnOp>();
+    auto retOp = cast<toy::ReturnOp>(op);
     using namespace edsc;
     auto loc = retOp.getLoc();
     // Argument is optional, handle both cases.

@@ -661,7 +661,7 @@ struct SimplifyAffineApply : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto apply = op->cast<AffineApplyOp>();
+    auto apply = cast<AffineApplyOp>(op);
     auto map = apply.getAffineMap();
 
     AffineMap oldMap = map;
@@ -1010,7 +1010,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
-    auto forOp = op->cast<AffineForOp>();
+    auto forOp = cast<AffineForOp>(op);
     auto foldLowerOrUpperBound = [&forOp](bool lower) {
       // Check to see if each of the operands is the result of a constant.  If
       // so, get the value.  If not, ignore it.

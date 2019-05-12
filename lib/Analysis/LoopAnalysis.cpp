@@ -192,7 +192,7 @@ bool mlir::isAccessInvariant(Value *iv, Value *index) {
     return false;
   }
 
-  auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
+  auto composeOp = cast<AffineApplyOp>(affineApplyOps[0]);
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
   return !(AffineValueMap(composeOp).isFunctionOf(0, iv));

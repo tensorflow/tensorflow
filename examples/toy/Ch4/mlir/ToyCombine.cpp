@@ -49,7 +49,7 @@ struct SimplifyRedundantTranspose : public mlir::RewritePattern {
                   mlir::PatternRewriter &rewriter) const override {
     // We can directly cast the current operation as this will only get invoked
     // on TransposeOp.
-    TransposeOp transpose = op->cast<TransposeOp>();
+    TransposeOp transpose = llvm::cast<TransposeOp>(op);
     // Look through the input of the current transpose.
     mlir::Value *transposeInput = transpose.getOperand();
     TransposeOp transposeInputOp =
@@ -73,7 +73,7 @@ struct SimplifyReshapeConstant : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     // Look through the input of the current reshape.
     ConstantOp constantOp = llvm::dyn_cast_or_null<ConstantOp>(
         reshape.getOperand()->getDefiningOp());
@@ -120,7 +120,7 @@ struct SimplifyReshapeReshape : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     // Look through the input of the current reshape.
     mlir::Value *reshapeInput = reshape.getOperand();
     // If the input is defined by another reshape, bingo!
@@ -142,7 +142,7 @@ struct SimplifyNullReshape : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     if (reshape.getOperand()->getType() != reshape.getResult()->getType())
       return matchFailure();
     rewriter.replaceOp(reshape, {reshape.getOperand()});

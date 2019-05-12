@@ -95,7 +95,7 @@ extractFromRanges(ArrayRef<Value *> ranges,
   SmallVector<Value *, 4> res;
   res.reserve(ranges.size());
   for (auto *v : ranges) {
-    auto r = v->getDefiningOp()->cast<RangeOp>();
+    auto r = cast<RangeOp>(v->getDefiningOp());
     res.push_back(extract(r));
   }
   return res;
@@ -149,9 +149,9 @@ linalg::makeGenericLoopRanges(AffineMap operandRangesToLoopMaps,
   for (auto z : llvm::zip(res.steps, tileSizes)) {
     auto *step = std::get<0>(z);
     auto tileSize = std::get<1>(z);
-    auto stepValue = step->getDefiningOp()->cast<ConstantIndexOp>().getValue();
+    auto stepValue = cast<ConstantIndexOp>(step->getDefiningOp()).getValue();
     auto tileSizeValue =
-        tileSize->getDefiningOp()->cast<ConstantIndexOp>().getValue();
+        cast<ConstantIndexOp>(tileSize->getDefiningOp()).getValue();
     assert(stepValue > 0);
     tiledSteps.push_back(constant_index(stepValue * tileSizeValue));
   }
@@ -236,7 +236,7 @@ emitAndReturnLoadStoreOperands(LoadOrStoreOp loadOrStoreOp, ViewOp viewOp) {
       operands.push_back(indexing);
       continue;
     }
-    RangeOp range = indexing->getDefiningOp()->cast<RangeOp>();
+    RangeOp range = cast<RangeOp>(indexing->getDefiningOp());
     ValueHandle min(range.getMin());
     Value *storeIndex = *(loadOrStoreOp.getIndices().begin() + storeDim++);
     using edsc::op::operator+;
@@ -275,10 +275,10 @@ template <>
 PatternMatchResult
 Rewriter<linalg::LoadOp>::matchAndRewrite(Operation *op,
                                           PatternRewriter &rewriter) const {
-  auto load = op->cast<linalg::LoadOp>();
+  auto load = cast<linalg::LoadOp>(op);
   SliceOp slice = dyn_cast<SliceOp>(load.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
-                      : load.getView()->getDefiningOp()->cast<ViewOp>();
+                      : cast<ViewOp>(load.getView()->getDefiningOp());
   ScopedContext scope(FuncBuilder(load), load.getLoc());
   auto *memRef = view.getSupportingMemRef();
   auto operands = emitAndReturnLoadStoreOperands(load, view);
@@ -290,10 +290,10 @@ template <>
 PatternMatchResult
 Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
                                            PatternRewriter &rewriter) const {
-  auto store = op->cast<linalg::StoreOp>();
+  auto store = cast<linalg::StoreOp>(op);
   SliceOp slice = dyn_cast<SliceOp>(store.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
-                      : store.getView()->getDefiningOp()->cast<ViewOp>();
+                      : cast<ViewOp>(store.getView()->getDefiningOp());
   ScopedContext scope(FuncBuilder(store), store.getLoc());
   auto *valueToStore = store.getValueToStore();
   auto *memRef = view.getSupportingMemRef();

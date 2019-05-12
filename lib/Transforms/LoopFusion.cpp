@@ -128,7 +128,7 @@ struct LoopNestStateCollector {
   void collect(Operation *opToWalk) {
     opToWalk->walk([&](Operation *op) {
       if (op->isa<AffineForOp>())
-        forOps.push_back(op->cast<AffineForOp>());
+        forOps.push_back(cast<AffineForOp>(op));
       else if (op->getNumRegions() != 0)
         hasNonForRegion = true;
       else if (op->isa<LoadOp>())
@@ -172,7 +172,7 @@ public:
     unsigned getLoadOpCount(Value *memref) {
       unsigned loadOpCount = 0;
       for (auto *loadOpInst : loads) {
-        if (memref == loadOpInst->cast<LoadOp>().getMemRef())
+        if (memref == cast<LoadOp>(loadOpInst).getMemRef())
           ++loadOpCount;
       }
       return loadOpCount;
@@ -182,7 +182,7 @@ public:
     unsigned getStoreOpCount(Value *memref) {
       unsigned storeOpCount = 0;
       for (auto *storeOpInst : stores) {
-        if (memref == storeOpInst->cast<StoreOp>().getMemRef())
+        if (memref == cast<StoreOp>(storeOpInst).getMemRef())
           ++storeOpCount;
       }
       return storeOpCount;
@@ -192,7 +192,7 @@ public:
     void getStoreOpsForMemref(Value *memref,
                               SmallVectorImpl<Operation *> *storeOps) {
       for (auto *storeOpInst : stores) {
-        if (memref == storeOpInst->cast<StoreOp>().getMemRef())
+        if (memref == cast<StoreOp>(storeOpInst).getMemRef())
           storeOps->push_back(storeOpInst);
       }
     }
@@ -201,7 +201,7 @@ public:
     void getLoadOpsForMemref(Value *memref,
                              SmallVectorImpl<Operation *> *loadOps) {
       for (auto *loadOpInst : loads) {
-        if (memref == loadOpInst->cast<LoadOp>().getMemRef())
+        if (memref == cast<LoadOp>(loadOpInst).getMemRef())
           loadOps->push_back(loadOpInst);
       }
     }
@@ -211,10 +211,10 @@ public:
     void getLoadAndStoreMemrefSet(DenseSet<Value *> *loadAndStoreMemrefSet) {
       llvm::SmallDenseSet<Value *, 2> loadMemrefs;
       for (auto *loadOpInst : loads) {
-        loadMemrefs.insert(loadOpInst->cast<LoadOp>().getMemRef());
+        loadMemrefs.insert(cast<LoadOp>(loadOpInst).getMemRef());
       }
       for (auto *storeOpInst : stores) {
-        auto *memref = storeOpInst->cast<StoreOp>().getMemRef();
+        auto *memref = cast<StoreOp>(storeOpInst).getMemRef();
         if (loadMemrefs.count(memref) > 0)
           loadAndStoreMemrefSet->insert(memref);
       }
@@ -306,7 +306,7 @@ public:
   bool writesToLiveInOrEscapingMemrefs(unsigned id) {
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
-      auto *memref = storeOpInst->cast<StoreOp>().getMemRef();
+      auto *memref = cast<StoreOp>(storeOpInst).getMemRef();
       auto *op = memref->getDefiningOp();
       // Return true if 'memref' is a block argument.
       if (!op)
@@ -331,7 +331,7 @@ public:
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
       // Return false if there exist out edges from 'id' on 'memref'.
-      if (getOutEdgeCount(id, storeOpInst->cast<StoreOp>().getMemRef()) > 0)
+      if (getOutEdgeCount(id, cast<StoreOp>(storeOpInst).getMemRef()) > 0)
         return false;
     }
     return true;
@@ -656,12 +656,12 @@ bool MemRefDependenceGraph::init(Function &f) {
       Node node(nextNodeId++, &op);
       for (auto *opInst : collector.loadOpInsts) {
         node.loads.push_back(opInst);
-        auto *memref = opInst->cast<LoadOp>().getMemRef();
+        auto *memref = cast<LoadOp>(opInst).getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       for (auto *opInst : collector.storeOpInsts) {
         node.stores.push_back(opInst);
-        auto *memref = opInst->cast<StoreOp>().getMemRef();
+        auto *memref = cast<StoreOp>(opInst).getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       forToNodeMap[&op] = node.id;
@@ -670,14 +670,14 @@ bool MemRefDependenceGraph::init(Function &f) {
       // Create graph node for top-level load op.
       Node node(nextNodeId++, &op);
       node.loads.push_back(&op);
-      auto *memref = op.cast<LoadOp>().getMemRef();
+      auto *memref = cast<LoadOp>(op).getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
     } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
       // Create graph node for top-level store op.
       Node node(nextNodeId++, &op);
       node.stores.push_back(&op);
-      auto *memref = op.cast<StoreOp>().getMemRef();
+      auto *memref = cast<StoreOp>(op).getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
     } else if (op.getNumRegions() != 0) {
@@ -887,7 +887,7 @@ static void moveLoadsAccessingMemrefTo(Value *memref,
   dstLoads->clear();
   SmallVector<Operation *, 4> srcLoadsToKeep;
   for (auto *load : *srcLoads) {
-    if (load->cast<LoadOp>().getMemRef() == memref)
+    if (cast<LoadOp>(load).getMemRef() == memref)
       dstLoads->push_back(load);
     else
       srcLoadsToKeep.push_back(load);
@@ -1051,7 +1051,7 @@ computeLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
 static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   assert(node->op->isa<AffineForOp>());
   SmallVector<AffineForOp, 4> loops;
-  AffineForOp curr = node->op->cast<AffineForOp>();
+  AffineForOp curr = cast<AffineForOp>(node->op);
   getPerfectlyNestedLoops(loops, curr);
   if (loops.size() < 2)
     return;
@@ -1107,7 +1107,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   // Builder to create constants at the top level.
   FuncBuilder top(forInst->getFunction());
   // Create new memref type based on slice bounds.
-  auto *oldMemRef = srcStoreOpInst->cast<StoreOp>().getMemRef();
+  auto *oldMemRef = cast<StoreOp>(srcStoreOpInst).getMemRef();
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
   unsigned rank = oldMemRefType.getRank();
 
@@ -1233,7 +1233,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   // Gather all memrefs from 'srcNode' store ops.
   DenseSet<Value *> storeMemrefs;
   for (auto *storeOpInst : srcNode->stores) {
-    storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
+    storeMemrefs.insert(cast<StoreOp>(storeOpInst).getMemRef());
   }
   // Return false if any of the following are true:
   // *) 'srcNode' writes to a live in/out memref other than 'memref'.
@@ -1842,7 +1842,7 @@ public:
       DenseSet<Value *> visitedMemrefs;
       while (!loads.empty()) {
         // Get memref of load on top of the stack.
-        auto *memref = loads.back()->cast<LoadOp>().getMemRef();
+        auto *memref = cast<LoadOp>(loads.back()).getMemRef();
         if (visitedMemrefs.count(memref) > 0)
           continue;
         visitedMemrefs.insert(memref);
@@ -1898,7 +1898,7 @@ public:
           // Gather 'dstNode' store ops to 'memref'.
           SmallVector<Operation *, 2> dstStoreOpInsts;
           for (auto *storeOpInst : dstNode->stores)
-            if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
+            if (cast<StoreOp>(storeOpInst).getMemRef() == memref)
               dstStoreOpInsts.push_back(storeOpInst);
 
           unsigned bestDstLoopDepth;
@@ -1916,7 +1916,7 @@ public:
             LLVM_DEBUG(llvm::dbgs() << "\tslice loop nest:\n"
                                     << *sliceLoopNest.getOperation() << "\n");
             // Move 'dstAffineForOp' before 'insertPointInst' if needed.
-            auto dstAffineForOp = dstNode->op->cast<AffineForOp>();
+            auto dstAffineForOp = cast<AffineForOp>(dstNode->op);
             if (insertPointInst != dstAffineForOp.getOperation()) {
               dstAffineForOp.getOperation()->moveBefore(insertPointInst);
             }
@@ -1934,7 +1934,7 @@ public:
               // Create private memref for 'memref' in 'dstAffineForOp'.
               SmallVector<Operation *, 4> storesForMemref;
               for (auto *storeOpInst : sliceCollector.storeOpInsts) {
-                if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
+                if (cast<StoreOp>(storeOpInst).getMemRef() == memref)
                   storesForMemref.push_back(storeOpInst);
               }
               assert(storesForMemref.size() == 1);
@@ -1956,7 +1956,7 @@ public:
             // Add new load ops to current Node load op list 'loads' to
             // continue fusing based on new operands.
             for (auto *loadOpInst : dstLoopCollector.loadOpInsts) {
-              auto *loadMemRef = loadOpInst->cast<LoadOp>().getMemRef();
+              auto *loadMemRef = cast<LoadOp>(loadOpInst).getMemRef();
               if (visitedMemrefs.count(loadMemRef) == 0)
                 loads.push_back(loadOpInst);
             }
@@ -2072,7 +2072,7 @@ public:
       auto sliceLoopNest = mlir::insertBackwardComputationSlice(
           sibLoadOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
       if (sliceLoopNest != nullptr) {
-        auto dstForInst = dstNode->op->cast<AffineForOp>();
+        auto dstForInst = cast<AffineForOp>(dstNode->op);
         // Update operation position of fused loop nest (if needed).
         if (insertPointInst != dstForInst.getOperation()) {
           dstForInst.getOperation()->moveBefore(insertPointInst);
@@ -2114,7 +2114,7 @@ public:
       // Check that all stores are to the same memref.
       DenseSet<Value *> storeMemrefs;
       for (auto *storeOpInst : sibNode->stores) {
-        storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
+        storeMemrefs.insert(cast<StoreOp>(storeOpInst).getMemRef());
       }
       if (storeMemrefs.size() != 1)
         return false;
@@ -2214,7 +2214,7 @@ public:
     }
 
     // Collect dst loop stats after memref privatizaton transformation.
-    auto dstForInst = dstNode->op->cast<AffineForOp>();
+    auto dstForInst = cast<AffineForOp>(dstNode->op);
     LoopNestStateCollector dstLoopCollector;
     dstLoopCollector.collect(dstForInst.getOperation());
     // Clear and add back loads and stores
@@ -2226,7 +2226,7 @@ public:
     // function.
     if (mdg->getOutEdgeCount(sibNode->id) == 0) {
       mdg->removeNode(sibNode->id);
-      sibNode->op->cast<AffineForOp>().erase();
+      sibNode->op->erase();
     }
   }
 

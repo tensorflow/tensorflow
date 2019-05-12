@@ -183,8 +183,8 @@ public:
   static LogicalResult constantFoldHook(Operation *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
-    return op->cast<ConcreteType>().constantFold(operands, results,
-                                                 op->getContext());
+    return cast<ConcreteType>(op).constantFold(operands, results,
+                                               op->getContext());
   }
 
   /// Op implementations can implement this hook.  It should attempt to constant
@@ -205,7 +205,7 @@ public:
   /// This is an implementation detail of the folder hook for AbstractOperation.
   static LogicalResult foldHook(Operation *op,
                                 SmallVectorImpl<Value *> &results) {
-    return op->cast<ConcreteType>().fold(results);
+    return cast<ConcreteType>(op).fold(results);
   }
 
   /// This hook implements a generalized folder for this operation.  Operations
@@ -253,7 +253,7 @@ public:
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
     auto result =
-        op->cast<ConcreteType>().constantFold(operands, op->getContext());
+        cast<ConcreteType>(op).constantFold(operands, op->getContext());
     if (!result)
       return failure();
 
@@ -277,7 +277,7 @@ public:
   /// This is an implementation detail of the folder hook for AbstractOperation.
   static LogicalResult foldHook(Operation *op,
                                 SmallVectorImpl<Value *> &results) {
-    auto *result = op->cast<ConcreteType>().fold();
+    auto *result = cast<ConcreteType>(op).fold();
     if (!result)
       return failure();
     if (result != op->getResult(0))
@@ -808,7 +808,7 @@ public:
   static LogicalResult verifyInvariants(Operation *op) {
     return failure(
         failed(BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op)) ||
-        failed(op->cast<ConcreteType>().verify()));
+        failed(cast<ConcreteType>(op).verify()));
   }
 
   // Returns the properties of an operation by combining the properties of the

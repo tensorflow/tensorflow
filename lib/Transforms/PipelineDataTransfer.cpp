@@ -234,8 +234,8 @@ static void findMatchingStartFinishInsts(
   // For each start operation, we look for a matching finish operation.
   for (auto *dmaStartInst : dmaStartInsts) {
     for (auto *dmaFinishInst : dmaFinishInsts) {
-      if (checkTagMatch(dmaStartInst->cast<DmaStartOp>(),
-                        dmaFinishInst->cast<DmaWaitOp>())) {
+      if (checkTagMatch(cast<DmaStartOp>(dmaStartInst),
+                        cast<DmaWaitOp>(dmaFinishInst))) {
         startWaitPairs.push_back({dmaStartInst, dmaFinishInst});
         break;
       }
@@ -273,7 +273,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
     Value *oldMemRef = dmaStartInst->getOperand(
-        dmaStartInst->cast<DmaStartOp>().getFasterMemPos());
+        cast<DmaStartOp>(dmaStartInst).getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.

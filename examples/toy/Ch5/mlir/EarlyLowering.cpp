@@ -92,7 +92,7 @@ public:
     using intrinsics::constant_index;
     using linalg::intrinsics::range;
     using linalg::intrinsics::view;
-    toy::MulOp mul = op->cast<toy::MulOp>();
+    toy::MulOp mul = cast<toy::MulOp>(op);
     auto loc = mul.getLoc();
     Value *result = memRefTypeCast(
         rewriter, rewriter.create<toy::AllocOp>(loc, mul.getResult()->getType())

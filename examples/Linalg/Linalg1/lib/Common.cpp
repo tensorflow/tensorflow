@@ -47,8 +47,8 @@ linalg::common::LoopNestRangeBuilder::LoopNestRangeBuilder(
     auto lb = rangeOp.getMin();
     auto ub = rangeOp.getMax();
     // This must be a constexpr index until we relax the affine.for constraint
-    auto step =
-        rangeOp.getStep()->getDefiningOp()->cast<ConstantIndexOp>().getValue();
+    auto step = llvm::cast<ConstantIndexOp>(rangeOp.getStep()->getDefiningOp())
+                    .getValue();
     loops.emplace_back(ivs[i], ValueHandle(lb), ValueHandle(ub), step);
   }
 }

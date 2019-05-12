@@ -115,8 +115,8 @@ static SmallVector<Value *, 4> applyMapToRangePart(FuncBuilder *b, Location loc,
 }
 
 static bool isZero(Value *v) {
-  return v->getDefiningOp() && v->getDefiningOp()->isa<ConstantIndexOp>() &&
-         v->getDefiningOp()->cast<ConstantIndexOp>().getValue() == 0;
+  return isa_and_nonnull<ConstantIndexOp>(v->getDefiningOp()) &&
+         cast<ConstantIndexOp>(v->getDefiningOp()).getValue() == 0;
 }
 
 /// Returns a map that can be used to filter the zero values out of tileSizes.
@@ -176,8 +176,8 @@ makeTiledLoopRanges(FuncBuilder *b, Location loc, AffineMap map,
     // Steps must be constant for now to abide by affine.for semantics.
     auto *newStep =
         state.getOrCreate(
-            step->getDefiningOp()->cast<ConstantIndexOp>().getValue() *
-            tileSize->getDefiningOp()->cast<ConstantIndexOp>().getValue());
+            cast<ConstantIndexOp>(step->getDefiningOp()).getValue() *
+            cast<ConstantIndexOp>(tileSize->getDefiningOp()).getValue());
     res.push_back(b->create<RangeOp>(loc, mins[idx], maxes[idx], newStep));
     // clang-format on
   }

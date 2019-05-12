@@ -35,7 +35,7 @@ ViewOp linalg::getViewBaseViewOp(Value *view) {
     view = slice.getParentView();
     assert(viewType.isa<ViewType>() && "expected a ViewType");
   }
-  return view->getDefiningOp()->cast<ViewOp>();
+  return cast<ViewOp>(view->getDefiningOp());
 }
 
 Value *linalg::getViewSupportingMemRef(Value *view) {
@@ -51,12 +51,12 @@ std::pair<mlir::Value *, unsigned> linalg::getViewRootIndexing(Value *view,
   if (auto viewOp = dyn_cast<ViewOp>(view->getDefiningOp()))
     return std::make_pair(viewOp.getIndexing(dim), dim);
 
-  auto sliceOp = view->getDefiningOp()->cast<SliceOp>();
+  auto sliceOp = cast<SliceOp>(view->getDefiningOp());
   auto *parentView = sliceOp.getParentView();
   unsigned sliceDim = sliceOp.getSlicingDim();
   auto *indexing = sliceOp.getIndexing();
   if (indexing->getDefiningOp()) {
-    if (auto rangeOp = indexing->getDefiningOp()->cast<RangeOp>()) {
+    if (auto rangeOp = cast<RangeOp>(indexing->getDefiningOp())) {
       // If I sliced with a range and I sliced at this dim, then I'm it.
       if (dim == sliceDim) {
         return std::make_pair(rangeOp.getResult(), dim);

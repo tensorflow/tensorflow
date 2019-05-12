@@ -59,7 +59,7 @@ PatternMatchResult QuantizedConstRewrite::match(Operation *op) const {
   State state;
 
   // Is the operand a constant?
-  auto qbarrier = op->cast<QuantizeCastOp>();
+  auto qbarrier = cast<QuantizeCastOp>(op);
   if (!matchPattern(qbarrier.arg(), m_Constant(&state.value))) {
     return matchFailure();
   }

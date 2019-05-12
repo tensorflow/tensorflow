@@ -187,7 +187,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     // Insert the cleanup loop right after 'forOp'.
     FuncBuilder builder(forInst->getBlock(),
                         std::next(Block::iterator(forInst)));
-    auto cleanupAffineForOp = builder.clone(*forInst)->cast<AffineForOp>();
+    auto cleanupAffineForOp = cast<AffineForOp>(builder.clone(*forInst));
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
     AffineMap cleanupMap;

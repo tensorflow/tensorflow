@@ -49,7 +49,7 @@ struct SimplifyRedundantTranspose : public mlir::RewritePattern {
                   mlir::PatternRewriter &rewriter) const override {
     // We can directly cast the current operation as this will only get invoked
     // on TransposeOp.
-    TransposeOp transpose = op->cast<TransposeOp>();
+    TransposeOp transpose = llvm::cast<TransposeOp>(op);
     // look through the input to the current transpose
     mlir::Value *transposeInput = transpose.getOperand();
     mlir::Operation *transposeInputInst = transposeInput->getDefiningOp();
@@ -74,7 +74,7 @@ struct SimplifyReshapeConstant : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     // look through the input to the current reshape
     mlir::Value *reshapeInput = reshape.getOperand();
     mlir::Operation *reshapeInputInst = reshapeInput->getDefiningOp();
@@ -125,7 +125,7 @@ struct SimplifyReshapeReshape : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     // look through the input to the current reshape
     mlir::Value *reshapeInput = reshape.getOperand();
     mlir::Operation *reshapeInputInst = reshapeInput->getDefiningOp();
@@ -150,7 +150,7 @@ struct SimplifyNullReshape : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    ReshapeOp reshape = op->cast<ReshapeOp>();
+    ReshapeOp reshape = llvm::cast<ReshapeOp>(op);
     if (reshape.getOperand()->getType() != reshape.getResult()->getType())
       return matchFailure();
     rewriter.replaceOp(reshape, {reshape.getOperand()});
@@ -185,7 +185,7 @@ struct SimplifyIdentityTypeCast : public mlir::RewritePattern {
   mlir::PatternMatchResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const override {
-    TypeCastOp typeCast = op->cast<TypeCastOp>();
+    TypeCastOp typeCast = llvm::cast<TypeCastOp>(op);
     auto resTy = typeCast.getResult()->getType();
     auto *candidateOp = op;
     while (candidateOp && candidateOp->isa<TypeCastOp>()) {

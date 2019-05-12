@@ -357,7 +357,7 @@ public:
     // Finally, update the return type of the function based on the argument to
     // the return operation.
     for (auto &block : f->getBlocks()) {
-      auto ret = block.getTerminator()->cast<ReturnOp>();
+      auto ret = llvm::cast<ReturnOp>(block.getTerminator());
       if (!ret)
         continue;
       if (ret.getNumOperands() &&

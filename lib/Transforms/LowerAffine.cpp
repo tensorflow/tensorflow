@@ -626,7 +626,7 @@ void LowerAffinePass::runOnFunction() {
     } else if (auto forOp = dyn_cast<AffineForOp>(op)) {
       if (lowerAffineFor(forOp))
         return signalPassFailure();
-    } else if (lowerAffineApply(op->cast<AffineApplyOp>())) {
+    } else if (lowerAffineApply(cast<AffineApplyOp>(op))) {
       return signalPassFailure();
     }
   }

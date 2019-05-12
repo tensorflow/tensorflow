@@ -389,14 +389,6 @@ public:
   // Conversions to declared operations like DimOp
   //===--------------------------------------------------------------------===//
 
-  /// The cast methods perform a cast from an Operation to a typed Op like
-  /// DimOp.  This aborts if the parameter to the template isn't an instance of
-  /// the template type argument.
-  template <typename OpClass> OpClass cast() {
-    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
-    return OpClass(this);
-  }
-
   /// The is methods return true if the operation is a typed op (like DimOp) of
   /// of the given class.
   template <typename OpClass> bool isa() { return OpClass::classof(this); }

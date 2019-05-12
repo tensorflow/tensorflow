@@ -181,7 +181,7 @@ public:
     }
 
     // Get MLIR types for injecting element pointer.
-    auto allocOp = op->cast<BufferAllocOp>();
+    auto allocOp = cast<BufferAllocOp>(op);
     auto elementType = allocOp.getElementType();
     uint64_t elementSize = 0;
     if (auto vectorType = elementType.dyn_cast<VectorType>())
@@ -239,7 +239,7 @@ public:
     }
 
     // Get MLIR types for extracting element pointer.
-    auto deallocOp = op->cast<BufferDeallocOp>();
+    auto deallocOp = cast<BufferDeallocOp>(op);
     auto elementPtrTy = rewriter.getType<LLVMType>(getPtrToElementType(
         deallocOp.getOperand()->getType().cast<BufferType>(), lowering));
 
@@ -283,7 +283,7 @@ public:
   // a getelementptr. This must be called under an edsc::ScopedContext.
   Value *obtainDataPtr(Operation *op, Value *viewDescriptor,
                        ArrayRef<Value *> indices, FuncBuilder &rewriter) const {
-    auto loadOp = op->cast<Op>();
+    auto loadOp = cast<Op>(op);
     auto elementTy = rewriter.getType<LLVMType>(
         getPtrToElementType(loadOp.getViewType(), lowering));
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
@@ -329,7 +329,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto rangeOp = op->cast<RangeOp>();
+    auto rangeOp = cast<RangeOp>(op);
     auto rangeDescriptorTy =
         convertLinalgType(rangeOp.getResult()->getType(), lowering);
 
@@ -355,7 +355,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto sliceOp = op->cast<SliceOp>();
+    auto sliceOp = cast<SliceOp>(op);
     auto viewDescriptorTy = convertLinalgType(sliceOp.getViewType(), lowering);
     auto viewType = sliceOp.getBaseViewType();
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
@@ -453,7 +453,7 @@ public:
 
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto viewOp = op->cast<ViewOp>();
+    auto viewOp = cast<ViewOp>(op);
     auto viewDescriptorTy = convertLinalgType(viewOp.getViewType(), lowering);
     auto elementTy = rewriter.getType<LLVMType>(
         getPtrToElementType(viewOp.getViewType(), lowering));

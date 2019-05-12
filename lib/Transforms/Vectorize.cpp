@@ -859,7 +859,7 @@ static FilterFunctionType
 isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
                              int fastestVaryingMemRefDimension) {
   return [&parallelLoops, fastestVaryingMemRefDimension](Operation &forOp) {
-    auto loop = forOp.cast<AffineForOp>();
+    auto loop = cast<AffineForOp>(forOp);
     auto parallelIt = parallelLoops.find(loop);
     if (parallelIt == parallelLoops.end())
       return false;
@@ -879,7 +879,7 @@ static LogicalResult
 vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
                                   VectorizationState *state) {
   auto *loopInst = oneMatch.getMatchedOperation();
-  auto loop = loopInst->cast<AffineForOp>();
+  auto loop = cast<AffineForOp>(loopInst);
   auto childrenMatches = oneMatch.getMatchedChildren();
 
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
@@ -1118,7 +1118,7 @@ static LogicalResult vectorizeNonTerminals(VectorizationState *state) {
 /// anything below it fails.
 static LogicalResult vectorizeRootMatch(NestedMatch m,
                                         VectorizationStrategy *strategy) {
-  auto loop = m.getMatchedOperation()->cast<AffineForOp>();
+  auto loop = cast<AffineForOp>(m.getMatchedOperation());
   VectorizationState state;
   state.strategy = strategy;
 
@@ -1139,7 +1139,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   /// RAII.
   auto *loopInst = loop.getOperation();
   FuncBuilder builder(loopInst);
-  auto clonedLoop = builder.clone(*loopInst)->cast<AffineForOp>();
+  auto clonedLoop = cast<AffineForOp>(builder.clone(*loopInst));
   struct Guard {
     LogicalResult failure() {
       loop.getInductionVar()->replaceAllUsesWith(clonedLoop.getInductionVar());

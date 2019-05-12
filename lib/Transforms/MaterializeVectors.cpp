@@ -679,7 +679,7 @@ static bool materialize(Function *f, const SetVector<Operation *> &terminators,
       continue;
     }
 
-    auto terminator = term->cast<VectorTransferWriteOp>();
+    auto terminator = cast<VectorTransferWriteOp>(term);
     LLVM_DEBUG(dbgs() << "\nFrom terminator:" << *term);
 
     // Get the transitive use-defs starting from terminator, limited to the

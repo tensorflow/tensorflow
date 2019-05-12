@@ -43,9 +43,9 @@ public:
       : RewritePattern(StorageCastOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
-    auto scastOp = op->cast<StorageCastOp>();
+    auto scastOp = cast<StorageCastOp>(op);
     if (matchPattern(scastOp.arg(), m_Op<StorageCastOp>())) {
-      auto srcScastOp = scastOp.arg()->getDefiningOp()->cast<StorageCastOp>();
+      auto srcScastOp = cast<StorageCastOp>(scastOp.arg()->getDefiningOp());
       if (srcScastOp.arg()->getType() == scastOp.getResult()->getType()) {
         return matchSuccess();
       }
@@ -54,8 +54,8 @@ public:
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    auto scastOp = op->cast<StorageCastOp>();
-    auto srcScastOp = scastOp.arg()->getDefiningOp()->cast<StorageCastOp>();
+    auto scastOp = cast<StorageCastOp>(op);
+    auto srcScastOp = cast<StorageCastOp>(scastOp.arg()->getDefiningOp());
     rewriter.replaceOp(op, srcScastOp.arg());
   }
 };

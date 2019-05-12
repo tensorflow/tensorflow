@@ -59,7 +59,7 @@ public:
   }
 
   bool failableRewrite(Operation *op, PatternRewriter &rewriter) const {
-    auto fqOp = op->cast<ConstFakeQuant>();
+    auto fqOp = cast<ConstFakeQuant>(op);
 
     auto converter =
         ExpressedToUniformQuantizedConverter::forInputType(fqOp.getType());

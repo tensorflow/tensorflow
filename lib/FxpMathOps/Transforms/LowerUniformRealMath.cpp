@@ -124,7 +124,7 @@ struct UniformDequantizePattern : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const {
-    auto dcastOp = op->cast<DequantizeCastOp>();
+    auto dcastOp = cast<DequantizeCastOp>(op);
     Type inputType = dcastOp.arg()->getType();
     Type outputType = dcastOp.getResult()->getType();
 
@@ -328,7 +328,7 @@ struct UniformRealAddEwPattern : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const {
-    auto addOp = op->cast<RealAddEwOp>();
+    auto addOp = cast<RealAddEwOp>(op);
     const UniformBinaryOpInfo info(op, addOp.lhs(), addOp.rhs(),
                                    addOp.clamp_min(), addOp.clamp_max());
     if (!info.isValid()) {
@@ -350,7 +350,7 @@ struct UniformRealMulEwPattern : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const {
-    auto mulOp = op->cast<RealMulEwOp>();
+    auto mulOp = cast<RealMulEwOp>(op);
     const UniformBinaryOpInfo info(op, mulOp.lhs(), mulOp.rhs(),
                                    mulOp.clamp_min(), mulOp.clamp_max());
     if (!info.isValid()) {

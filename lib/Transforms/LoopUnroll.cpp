@@ -113,7 +113,7 @@ void LoopUnroll::runOnFunction() {
           hasInnerLoops |= walkPostOrder(block.begin(), block.end());
       if (opInst->isa<AffineForOp>()) {
         if (!hasInnerLoops)
-          loops.push_back(opInst->cast<AffineForOp>());
+          loops.push_back(cast<AffineForOp>(opInst));
         return true;
       }
       return hasInnerLoops;
