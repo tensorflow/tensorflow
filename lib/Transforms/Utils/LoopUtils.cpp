@@ -209,7 +209,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
       operandMap.map(srcIV, loopChunkIV);
     }
     for (auto *op : insts) {
-      if (!op->isa<AffineTerminatorOp>())
+      if (!isa<AffineTerminatorOp>(op))
         bodyBuilder.clone(*op, operandMap);
     }
   };
@@ -511,7 +511,6 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
 /// deeper in the loop nest.
 void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
   for (unsigned i = 0; i < loopDepth; ++i) {
-    assert(forOp.getBody()->front().isa<AffineForOp>());
     AffineForOp nextForOp = cast<AffineForOp>(forOp.getBody()->front());
     interchangeLoops(forOp, nextForOp);
   }
@@ -551,7 +550,7 @@ static void cloneLoopBodyInto(AffineForOp forOp, Value *oldIv,
     if (&op == newForOp.getOperation()) {
       continue;
     }
-    if (op.isa<AffineTerminatorOp>()) {
+    if (isa<AffineTerminatorOp>(op)) {
       continue;
     }
     auto *instClone = b.clone(op, map);

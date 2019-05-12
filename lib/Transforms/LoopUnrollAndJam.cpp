@@ -139,12 +139,12 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     void walk(Block &block) {
       for (auto it = block.begin(), e = std::prev(block.end()); it != e;) {
         auto subBlockStart = it;
-        while (it != e && !it->isa<AffineForOp>())
+        while (it != e && !isa<AffineForOp>(&*it))
           ++it;
         if (it != subBlockStart)
           subBlocks.push_back({subBlockStart, std::prev(it)});
         // Process all for insts that appear next.
-        while (it != e && it->isa<AffineForOp>())
+        while (it != e && isa<AffineForOp>(&*it))
           walk(&*it++);
       }
     }

@@ -741,14 +741,14 @@ void VectorizationState::registerReplacement(Operation *key, Operation *value) {
   vectorizedSet.insert(value);
   vectorizationMap.insert(std::make_pair(key, value));
   registerReplacement(key->getResult(0), value->getResult(0));
-  if (key->isa<LoadOp>()) {
+  if (isa<LoadOp>(key)) {
     assert(roots.count(key) == 0 && "root was already inserted previously");
     roots.insert(key);
   }
 }
 
 void VectorizationState::registerTerminal(Operation *op) {
-  assert(op->isa<StoreOp>() && "terminal must be a StoreOp");
+  assert(isa<StoreOp>(op) && "terminal must be a StoreOp");
   assert(terminals.count(op) == 0 &&
          "terminal was already inserted previously");
   terminals.insert(op);
@@ -800,7 +800,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector.transfer operations
   // as needed by various targets.
-  if (opInst->template isa<LoadOp>()) {
+  if (isa<LoadOp>(opInst)) {
     auto permutationMap =
         makePermutationMap(opInst, state->strategy->loopToVectorDim);
     if (!permutationMap)
@@ -1005,11 +1005,11 @@ static Value *vectorizeOperand(Value *operand, Operation *op,
 static Operation *vectorizeOneOperation(Operation *opInst,
                                         VectorizationState *state) {
   // Sanity checks.
-  assert(!opInst->isa<LoadOp>() &&
+  assert(!isa<LoadOp>(opInst) &&
          "all loads must have already been fully vectorized independently");
-  assert(!opInst->isa<VectorTransferReadOp>() &&
+  assert(!isa<VectorTransferReadOp>(opInst) &&
          "vector.transfer_read cannot be further vectorized");
-  assert(!opInst->isa<VectorTransferWriteOp>() &&
+  assert(!isa<VectorTransferWriteOp>(opInst) &&
          "vector.transfer_write cannot be further vectorized");
 
   if (auto store = dyn_cast<StoreOp>(opInst)) {

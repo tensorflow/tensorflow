@@ -60,7 +60,7 @@ public:
 
   // Match the Op specified as template argument.
   PatternMatchResult match(Operation *op) const override {
-    if (op->isa<Op>())
+    if (isa<Op>(op))
       return matchSuccess();
     return matchFailure();
   }

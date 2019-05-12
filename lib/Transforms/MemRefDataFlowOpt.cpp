@@ -237,15 +237,15 @@ void MemRefDataFlowOpt::runOnFunction() {
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
     Operation *defInst = memref->getDefiningOp();
-    if (!defInst || !defInst->isa<AllocOp>())
+    if (!defInst || !isa<AllocOp>(defInst))
       // TODO(mlir-team): if the memref was returned by a 'call' operation, we
       // could still erase it if the call had no side-effects.
       continue;
     if (std::any_of(memref->use_begin(), memref->use_end(),
                     [&](OpOperand &use) {
                       auto *ownerInst = use.getOwner();
-                      return (!ownerInst->isa<StoreOp>() &&
-                              !ownerInst->isa<DeallocOp>());
+                      return (!isa<StoreOp>(ownerInst) &&
+                              !isa<DeallocOp>(ownerInst));
                     }))
       continue;
 

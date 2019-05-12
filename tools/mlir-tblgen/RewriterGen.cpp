@@ -251,7 +251,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
     // Skip if there is no defining operation (e.g., arguments to function).
     os.indent(indent) << formatv("if (!op{0}) return matchFailure();\n", depth);
     os.indent(indent) << formatv(
-        "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
+        "if (!isa<{1}>(op{0})) return matchFailure();\n", depth,
         op.getQualCppClassName());
   }
   if (tree.getNumArgs() != op.getNumArgs()) {

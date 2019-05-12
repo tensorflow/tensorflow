@@ -231,7 +231,7 @@ void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
   simplifyAffineMap(res).print(outs << "\nComposed map: ");
 }
 
-static bool affineApplyOp(Operation &op) { return op.isa<AffineApplyOp>(); }
+static bool affineApplyOp(Operation &op) { return isa<AffineApplyOp>(op); }
 
 static bool singleResultAffineApplyOpWithoutUses(Operation &op) {
   auto app = dyn_cast<AffineApplyOp>(op);

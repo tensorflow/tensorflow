@@ -479,7 +479,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
   // Get to the first load, store, or for op.
   auto curBegin =
       std::find_if(block->begin(), block->end(), [&](Operation &op) {
-        return op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<AffineForOp>();
+        return isa<LoadOp>(op) || isa<StoreOp>(op) || isa<AffineForOp>(op);
       });
 
   for (auto it = curBegin; it != block->end(); ++it) {
@@ -522,7 +522,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
         runOnBlock(/*begin=*/it, /*end=*/std::next(it));
         curBegin = std::next(it);
       }
-    } else if (!it->isa<LoadOp>() && !it->isa<StoreOp>()) {
+    } else if (!isa<LoadOp>(&*it) && !isa<StoreOp>(&*it)) {
       runOnBlock(/*begin=*/curBegin, /*end=*/it);
       curBegin = std::next(it);
     }

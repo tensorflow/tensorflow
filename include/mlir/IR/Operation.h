@@ -386,14 +386,6 @@ public:
   LogicalResult fold(SmallVectorImpl<Value *> &results);
 
   //===--------------------------------------------------------------------===//
-  // Conversions to declared operations like DimOp
-  //===--------------------------------------------------------------------===//
-
-  /// The is methods return true if the operation is a typed op (like DimOp) of
-  /// of the given class.
-  template <typename OpClass> bool isa() { return OpClass::classof(this); }
-
-  //===--------------------------------------------------------------------===//
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 

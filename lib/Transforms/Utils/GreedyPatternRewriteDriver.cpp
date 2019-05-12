@@ -173,7 +173,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       if (op->hasNoSideEffect() && op->use_empty()) {
         // Be careful to update bookkeeping in ConstantHelper to keep
         // consistency if this is a constant op.
-        if (op->isa<ConstantOp>())
+        if (isa<ConstantOp>(op))
           helper.notifyRemoval(op);
         op->erase();
         continue;

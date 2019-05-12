@@ -256,7 +256,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
     auto *opInst = v->getDefiningOp();
-    if (opInst->isa<ConstantOp>()) {
+    if (isa<ConstantOp>(opInst)) {
       FuncBuilder b(opInst);
       auto *op = instantiate(&b, opInst, hwVectorType, substitutionsMap);
       auto res = substitutionsMap->insert(std::make_pair(v, op->getResult(0)));
@@ -407,9 +407,9 @@ materializeAttributes(Operation *opInst, VectorType hwVectorType) {
 static Operation *instantiate(FuncBuilder *b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap) {
-  assert(!opInst->isa<VectorTransferReadOp>() &&
+  assert(!isa<VectorTransferReadOp>(opInst) &&
          "Should call the function specialized for VectorTransferReadOp");
-  assert(!opInst->isa<VectorTransferWriteOp>() &&
+  assert(!isa<VectorTransferWriteOp>(opInst) &&
          "Should call the function specialized for VectorTransferWriteOp");
   if (opInst->getNumRegions() != 0)
     return nullptr;
@@ -550,7 +550,7 @@ static bool instantiateMaterialization(Operation *op,
   FuncBuilder b(op);
   // AffineApplyOp are ignored: instantiating the proper vector op will take
   // care of AffineApplyOps by composing them properly.
-  if (op->isa<AffineApplyOp>()) {
+  if (isa<AffineApplyOp>(op)) {
     return false;
   }
   if (op->getNumRegions() != 0)
@@ -749,7 +749,7 @@ void MaterializeVectorsPass::runOnFunction() {
   // Capture terminators; i.e. vector.transfer_write ops involving a strict
   // super-vector of subVectorType.
   auto filter = [subVectorType](Operation &op) {
-    if (!op.isa<VectorTransferWriteOp>()) {
+    if (!isa<VectorTransferWriteOp>(op)) {
       return false;
     }
     return matcher::operatesOnSuperVectorsOf(op, subVectorType);

@@ -114,7 +114,7 @@ void TestMemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
   getFunction().walk([&](Operation *op) {
-    if (op->isa<LoadOp>() || op->isa<StoreOp>())
+    if (isa<LoadOp>(op) || isa<StoreOp>(op))
       loadsAndStores.push_back(op);
   });
 

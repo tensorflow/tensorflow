@@ -1232,7 +1232,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
 
     // Check that all of the uses of the AllocOp are other DeallocOps.
     for (auto &use : memref->getUses())
-      if (!use.getOwner()->isa<DeallocOp>())
+      if (!isa<DeallocOp>(use.getOwner()))
         return matchFailure();
 
     // Erase the dealloc operation.

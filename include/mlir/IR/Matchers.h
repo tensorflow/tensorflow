@@ -121,7 +121,7 @@ template <int64_t TargetValue> struct constant_int_value_matcher {
 
 /// The matcher that matches a certain kind of op.
 template <typename OpClass> struct op_matcher {
-  bool match(Operation *op) { return op->isa<OpClass>(); }
+  bool match(Operation *op) { return isa<OpClass>(op); }
 };
 
 } // end namespace detail

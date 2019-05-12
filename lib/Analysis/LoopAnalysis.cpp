@@ -279,7 +279,7 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 }
 
 static bool isVectorTransferReadOrWrite(Operation &op) {
-  return op.isa<VectorTransferReadOp>() || op.isa<VectorTransferWriteOp>();
+  return isa<VectorTransferReadOp>(op) || isa<VectorTransferWriteOp>(op);
 }
 
 using VectorizableOpFun = std::function<bool(AffineForOp, Operation &)>;
@@ -300,7 +300,7 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
   // No vectorization across unknown regions.
   auto regions = matcher::Op([](Operation &op) -> bool {
     return op.getNumRegions() != 0 &&
-           !(op.isa<AffineIfOp>() || op.isa<AffineForOp>());
+           !(isa<AffineIfOp>(op) || isa<AffineForOp>(op));
   });
   SmallVector<NestedMatch, 8> regionsMatched;
   regions.match(forOp, &regionsMatched);

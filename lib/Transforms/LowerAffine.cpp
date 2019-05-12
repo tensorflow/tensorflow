@@ -612,8 +612,7 @@ void LowerAffinePass::runOnFunction() {
   // Collect all the For operations as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
   getFunction().walk([&](Operation *op) {
-    if (op->isa<AffineApplyOp>() || op->isa<AffineForOp>() ||
-        op->isa<AffineIfOp>())
+    if (isa<AffineApplyOp>(op) || isa<AffineForOp>(op) || isa<AffineIfOp>(op))
       instsToRewrite.push_back(op);
   });
 

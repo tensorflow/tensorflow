@@ -111,7 +111,7 @@ void LoopUnroll::runOnFunction() {
       for (auto &region : opInst->getRegions())
         for (auto &block : region)
           hasInnerLoops |= walkPostOrder(block.begin(), block.end());
-      if (opInst->isa<AffineForOp>()) {
+      if (isa<AffineForOp>(opInst)) {
         if (!hasInnerLoops)
           loops.push_back(cast<AffineForOp>(opInst));
         return true;

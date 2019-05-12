@@ -103,8 +103,8 @@ void linalg::MatvecOp::writeAsFinerGrainTensorContraction() {
   auto *op = getOperation();
   auto *vA(getInputView(0)), *vB(getInputView(1)), *vC(getOutputView(0));
   auto indexingPosPair = getViewRootIndexing(vA, 0);
-  assert(indexingPosPair.first->getDefiningOp() &&
-         indexingPosPair.first->getDefiningOp()->isa<RangeOp>());
+  assert(
+      llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   // clang-format off
   ScopedContext scope(FuncBuilder(op), op->getLoc());
   IndexHandle i;
@@ -177,8 +177,8 @@ void linalg::MatmulOp::writeAsFinerGrainTensorContraction() {
   auto *op = getOperation();
   auto *vA(getInputView(0)), *vB(getInputView(1)), *vC(getOutputView(0));
   auto indexingPosPair = getViewRootIndexing(vB, 1);
-  assert(indexingPosPair.first->getDefiningOp() &&
-         indexingPosPair.first->getDefiningOp()->isa<RangeOp>());
+  assert(
+      llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   using linalg::common::LoopNestRangeBuilder;
   // clang-format off
   ScopedContext scope(FuncBuilder(op), op->getLoc());

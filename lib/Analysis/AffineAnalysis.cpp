@@ -775,8 +775,8 @@ bool mlir::checkMemrefAccessDependence(
   if (srcAccess.memref != dstAccess.memref)
     return false;
   // Return 'false' if one of these accesses is not a StoreOp.
-  if (!allowRAR && !srcAccess.opInst->isa<StoreOp>() &&
-      !dstAccess.opInst->isa<StoreOp>())
+  if (!allowRAR && !isa<StoreOp>(srcAccess.opInst) &&
+      !isa<StoreOp>(dstAccess.opInst))
     return false;
 
   // Get composed access function for 'srcAccess'.
@@ -860,7 +860,7 @@ void mlir::getDependenceComponents(
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   forOp.getOperation()->walk([&](Operation *opInst) {
-    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
+    if (isa<LoadOp>(opInst) || isa<StoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
   });
 

@@ -188,7 +188,7 @@ struct SimplifyIdentityTypeCast : public mlir::RewritePattern {
     TypeCastOp typeCast = llvm::cast<TypeCastOp>(op);
     auto resTy = typeCast.getResult()->getType();
     auto *candidateOp = op;
-    while (candidateOp && candidateOp->isa<TypeCastOp>()) {
+    while (llvm::isa_and_nonnull<TypeCastOp>(candidateOp)) {
       if (resTy == candidateOp->getOperand(0)->getType()) {
         rewriter.replaceOp(typeCast, {candidateOp->getOperand(0)});
         return matchSuccess();

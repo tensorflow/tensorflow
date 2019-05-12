@@ -57,8 +57,8 @@ FunctionPassBase *mlir::createPipelineDataTransferPass() {
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
 static unsigned getTagMemRefPos(Operation &dmaInst) {
-  assert(dmaInst.isa<DmaStartOp>() || dmaInst.isa<DmaWaitOp>());
-  if (dmaInst.isa<DmaStartOp>()) {
+  assert(isa<DmaStartOp>(dmaInst) || isa<DmaWaitOp>(dmaInst));
+  if (isa<DmaStartOp>(dmaInst)) {
     // Second to last operand.
     return dmaInst.getNumOperands() - 2;
   }
@@ -189,7 +189,7 @@ static void findMatchingStartFinishInsts(
   SmallVector<Operation *, 4> dmaStartInsts, dmaFinishInsts;
   for (auto &op : *forOp.getBody()) {
     // Collect DMA finish operations.
-    if (op.isa<DmaWaitOp>()) {
+    if (isa<DmaWaitOp>(op)) {
       dmaFinishInsts.push_back(&op);
       continue;
     }
@@ -218,7 +218,7 @@ static void findMatchingStartFinishInsts(
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
       // We can double buffer regardless of dealloc's outside the loop.
-      if (use.getOwner()->isa<DeallocOp>())
+      if (isa<DeallocOp>(use.getOwner()))
         continue;
       if (!forOp.getBody()->findAncestorInstInBlock(*use.getOwner())) {
         LLVM_DEBUG(llvm::dbgs()
@@ -293,7 +293,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
         allocInst->erase();
       } else if (oldMemRef->hasOneUse()) {
         auto *singleUse = oldMemRef->use_begin()->getOwner();
-        if (singleUse->isa<DeallocOp>()) {
+        if (isa<DeallocOp>(singleUse)) {
           singleUse->erase();
           oldMemRef->getDefiningOp()->erase();
         }
@@ -325,7 +325,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   DenseMap<Operation *, unsigned> instShiftMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
-    assert(dmaStartInst->isa<DmaStartOp>());
+    assert(isa<DmaStartOp>(dmaStartInst));
     instShiftMap[dmaStartInst] = 0;
     // Set shifts for DMA start op's affine operand computation slices to 0.
     SmallVector<AffineApplyOp, 4> sliceOps;

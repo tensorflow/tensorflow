@@ -82,7 +82,7 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
 
   for (auto &op : *loopBody) {
     // If the operation is loop invariant, insert it into opsToMove.
-    if (!op.isa<AffineForOp>() && !op.isa<AffineTerminatorOp>() &&
+    if (!isa<AffineForOp>(op) && !isa<AffineTerminatorOp>(op) &&
         loopDefinedOps.count(&op) != 1) {
       LLVM_DEBUG(op.print(llvm::dbgs() << "\nLICM'ing op\n"));
       opsToMove.push_back(&op);
@@ -99,7 +99,7 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
 
   // If the for loop body has a single operation (the terminator), erase it.
   if (forOp.getBody()->getOperations().size() == 1) {
-    assert(forOp.getBody()->getOperations().front().isa<AffineTerminatorOp>());
+    assert(isa<AffineTerminatorOp>(forOp.getBody()->front()));
     forOp.erase();
   }
 }

@@ -187,7 +187,7 @@ bool ModuleTranslation::convertOperation(Operation &opInst,
 
   // Emit calls.  If the called function has a result, remap the corresponding
   // value.  Note that LLVM IR dialect CallOp has either 0 or 1 result.
-  if (opInst.isa<LLVM::CallOp>()) {
+  if (isa<LLVM::CallOp>(opInst)) {
     llvm::Value *result = convertCall(opInst);
     if (opInst.getNumResults() != 0) {
       valueMapping[opInst.getResult(0)] = result;
@@ -258,7 +258,7 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 static Value *getPHISourceValue(Block *current, Block *pred,
                                 unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
-  if (terminator.isa<LLVM::BrOp>()) {
+  if (isa<LLVM::BrOp>(terminator)) {
     return terminator.getOperand(index);
   }
 

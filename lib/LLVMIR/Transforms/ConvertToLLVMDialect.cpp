@@ -209,7 +209,7 @@ public:
 
   // Match by type.
   PatternMatchResult match(Operation *op) const override {
-    if (op->isa<SourceOp>())
+    if (isa<SourceOp>(op))
       return this->matchSuccess();
     return this->matchFailure();
   }

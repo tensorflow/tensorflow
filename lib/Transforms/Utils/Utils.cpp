@@ -38,8 +38,8 @@ using namespace mlir;
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
 static bool isMemRefDereferencingOp(Operation &op) {
-  if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
-      op.isa<DmaWaitOp>())
+  if (isa<LoadOp>(op) || isa<StoreOp>(op) || isa<DmaStartOp>(op) ||
+      isa<DmaWaitOp>(op))
     return true;
   return false;
 }
@@ -93,7 +93,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
     // Skip dealloc's - no replacement is necessary, and a replacement doesn't
     // hurt dealloc's.
-    if (opInst->isa<DeallocOp>())
+    if (isa<DeallocOp>(opInst))
       continue;
 
     // Check if the memref was used in a non-deferencing context. It is fine for
@@ -225,12 +225,9 @@ void mlir::createAffineComputationSlice(
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
-  for (auto *operand : opInst->getOperands()) {
-    auto *defInst = operand->getDefiningOp();
-    if (defInst && defInst->isa<AffineApplyOp>()) {
+  for (auto *operand : opInst->getOperands())
+    if (isa_and_nonnull<AffineApplyOp>(operand->getDefiningOp()))
       subOperands.push_back(operand);
-    }
-  }
 
   // Gather sequence of AffineApplyOps reachable from 'subOperands'.
   SmallVector<Operation *, 4> affineApplyOps;

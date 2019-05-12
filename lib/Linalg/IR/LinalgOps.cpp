@@ -572,17 +572,17 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
   auto i = getAffineDimExpr(0, context);
   auto j = getAffineDimExpr(1, context);
   auto k = getAffineDimExpr(2, context);
-  if (op->isa<DotOp>())
+  if (isa<DotOp>(op))
     // A(r_i) * B(r_i) -> C()
     return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}, {}),
                                      AffineMap::get(1, 0, {i}, {}),
                                      AffineMap()};
-  if (op->isa<MatvecOp>())
+  if (isa<MatvecOp>(op))
     //   A(i, r_j) * B(r_j) -> C(i)
     return SmallVector<AffineMap, 4>{AffineMap::get(2, 0, {i, j}, {}),
                                      AffineMap::get(2, 0, {j}, {}),
                                      AffineMap::get(2, 0, {i}, {})};
-  if (op->isa<MatmulOp>())
+  if (isa<MatmulOp>(op))
     //   A(i, r_j) * B(r_j) -> C(i)
     return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}, {}),
                                      AffineMap::get(3, 0, {k, j}, {}),

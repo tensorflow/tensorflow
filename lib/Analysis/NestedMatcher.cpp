@@ -110,9 +110,9 @@ void NestedPattern::matchOne(Operation *op,
   }
 }
 
-static bool isAffineForOp(Operation &op) { return op.isa<AffineForOp>(); }
+static bool isAffineForOp(Operation &op) { return isa<AffineForOp>(op); }
 
-static bool isAffineIfOp(Operation &op) { return op.isa<AffineIfOp>(); }
+static bool isAffineIfOp(Operation &op) { return isa<AffineIfOp>(op); }
 
 namespace mlir {
 namespace matcher {
@@ -154,7 +154,7 @@ NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
 }
 
 bool isLoadOrStore(Operation &op) {
-  return op.isa<LoadOp>() || op.isa<StoreOp>();
+  return isa<LoadOp>(op) || isa<StoreOp>(op);
 }
 
 } // end namespace matcher

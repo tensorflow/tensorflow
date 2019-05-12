@@ -29,6 +29,7 @@
 
 using llvm::ArrayRef;
 using llvm::cast;
+using llvm::isa;
 using llvm::SmallVector;
 using mlir::FuncBuilder;
 using mlir::MemRefType;
@@ -44,7 +45,7 @@ using namespace linalg::intrinsics;
 // analyses. This builds the chain.
 static SmallVector<Value *, 8> getViewChain(mlir::Value *v) {
   assert(v->getType().isa<ViewType>() && "ViewType expected");
-  if (v->getDefiningOp()->isa<ViewOp>()) {
+  if (isa<ViewOp>(v->getDefiningOp())) {
     return SmallVector<mlir::Value *, 8>{v};
   }
 
@@ -54,7 +55,7 @@ static SmallVector<Value *, 8> getViewChain(mlir::Value *v) {
     tmp.push_back(v);
     v = sliceOp.getParentView();
   } while (!v->getType().isa<ViewType>());
-  assert(v->getDefiningOp()->isa<ViewOp>() && "must be a ViewOp");
+  assert(isa<ViewOp>(v->getDefiningOp()) && "must be a ViewOp");
   tmp.push_back(v);
   return SmallVector<mlir::Value *, 8>(tmp.rbegin(), tmp.rend());
 }

@@ -127,13 +127,13 @@ struct LoopNestStateCollector {
 
   void collect(Operation *opToWalk) {
     opToWalk->walk([&](Operation *op) {
-      if (op->isa<AffineForOp>())
+      if (isa<AffineForOp>(op))
         forOps.push_back(cast<AffineForOp>(op));
       else if (op->getNumRegions() != 0)
         hasNonForRegion = true;
-      else if (op->isa<LoadOp>())
+      else if (isa<LoadOp>(op))
         loadOpInsts.push_back(op);
-      else if (op->isa<StoreOp>())
+      else if (isa<StoreOp>(op))
         storeOpInsts.push_back(op);
     });
   }
@@ -141,8 +141,8 @@ struct LoopNestStateCollector {
 
 // TODO(b/117228571) Replace when this is modeled through side-effects/op traits
 static bool isMemRefDereferencingOp(Operation &op) {
-  if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
-      op.isa<DmaWaitOp>())
+  if (isa<LoadOp>(op) || isa<StoreOp>(op) || isa<DmaStartOp>(op) ||
+      isa<DmaWaitOp>(op))
     return true;
   return false;
 }
@@ -604,7 +604,7 @@ public:
         continue;
       assert(nodes.count(edge.id) > 0);
       // Skip if 'edge.id' is not a loop nest.
-      if (!getNode(edge.id)->op->isa<AffineForOp>())
+      if (!isa<AffineForOp>(getNode(edge.id)->op))
         continue;
       // Visit current input edge 'edge'.
       callback(edge);
@@ -756,7 +756,7 @@ struct LoopNestStatsCollector {
       auto *forInst = forOp.getOperation();
       auto *parentInst = forOp.getOperation()->getParentOp();
       if (parentInst != nullptr) {
-        assert(parentInst->isa<AffineForOp>() && "Expected parent AffineForOp");
+        assert(isa<AffineForOp>(parentInst) && "Expected parent AffineForOp");
         // Add mapping to 'forOp' from its parent AffineForOp.
         stats->loopMap[parentInst].push_back(forOp);
       }
@@ -765,7 +765,7 @@ struct LoopNestStatsCollector {
       unsigned count = 0;
       stats->opCountMap[forInst] = 0;
       for (auto &op : *forOp.getBody()) {
-        if (!op.isa<AffineForOp>() && !op.isa<AffineIfOp>())
+        if (!isa<AffineForOp>(op) && !isa<AffineIfOp>(op))
           ++count;
       }
       stats->opCountMap[forInst] = count;
@@ -1049,7 +1049,7 @@ computeLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
 // This can increase the loop depth at which we can fuse a slice, since we are
 // pushing loop carried dependence to a greater depth in the loop nest.
 static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
-  assert(node->op->isa<AffineForOp>());
+  assert(isa<AffineForOp>(node->op));
   SmallVector<AffineForOp, 4> loops;
   AffineForOp curr = cast<AffineForOp>(node->op);
   getPerfectlyNestedLoops(loops, curr);
@@ -1829,7 +1829,7 @@ public:
       // Get 'dstNode' into which to attempt fusion.
       auto *dstNode = mdg->getNode(dstId);
       // Skip if 'dstNode' is not a loop nest.
-      if (!dstNode->op->isa<AffineForOp>())
+      if (!isa<AffineForOp>(dstNode->op))
         continue;
       // Sink sequential loops in 'dstNode' (and thus raise parallel loops)
       // while preserving relative order. This can increase the maximum loop
@@ -1867,7 +1867,7 @@ public:
           // Get 'srcNode' from which to attempt fusion into 'dstNode'.
           auto *srcNode = mdg->getNode(srcId);
           // Skip if 'srcNode' is not a loop nest.
-          if (!srcNode->op->isa<AffineForOp>())
+          if (!isa<AffineForOp>(srcNode->op))
             continue;
           // Skip if 'srcNode' has more than one store to any memref.
           // TODO(andydavis) Support fusing multi-output src loop nests.
@@ -2012,7 +2012,7 @@ public:
       // Get 'dstNode' into which to attempt fusion.
       auto *dstNode = mdg->getNode(dstId);
       // Skip if 'dstNode' is not a loop nest.
-      if (!dstNode->op->isa<AffineForOp>())
+      if (!isa<AffineForOp>(dstNode->op))
         continue;
       // Attempt to fuse 'dstNode' with its sibling nodes in the graph.
       fuseWithSiblingNodes(dstNode);
@@ -2180,7 +2180,7 @@ public:
             if (outEdge.id == dstNode->id || outEdge.value != inEdge.value)
               return;
             auto *sibNode = mdg->getNode(sibNodeId);
-            if (!sibNode->op->isa<AffineForOp>())
+            if (!isa<AffineForOp>(sibNode->op))
               return;
             // Check if 'sibNode/dstNode' can be input-reuse fused on 'memref'.
             if (canFuseWithSibNode(sibNode, outEdge.value)) {

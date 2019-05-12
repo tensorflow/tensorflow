@@ -148,7 +148,7 @@ public:
       : DialectOpConversion(linalg::RangeOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
-    if (op->isa<linalg::RangeOp>())
+    if (isa<linalg::RangeOp>(op))
       return matchSuccess();
     return matchFailure();
   }
@@ -180,7 +180,7 @@ public:
       : DialectOpConversion(linalg::ViewOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
-    if (op->isa<linalg::ViewOp>())
+    if (isa<linalg::ViewOp>(op))
       return matchSuccess();
     return matchFailure();
   }
@@ -312,7 +312,7 @@ public:
       : DialectOpConversion(linalg::SliceOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override {
-    if (op->isa<linalg::SliceOp>())
+    if (isa<linalg::SliceOp>(op))
       return matchSuccess();
     return matchFailure();
   }

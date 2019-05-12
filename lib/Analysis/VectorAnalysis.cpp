@@ -205,7 +205,7 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
     superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (op.getNumResults() == 0) {
-    if (!op.isa<ReturnOp>()) {
+    if (!isa<ReturnOp>(op)) {
       op.emitError("NYI: assuming only return operations can have 0 "
                    " results at this point");
     }

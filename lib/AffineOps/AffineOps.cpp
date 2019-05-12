@@ -58,7 +58,7 @@ bool mlir::isValidDim(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
+    if (op->getParentOp() == nullptr || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -83,7 +83,7 @@ bool mlir::isValidSymbol(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
+    if (op->getParentOp() == nullptr || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -688,7 +688,7 @@ void AffineApplyOp::getCanonicalizationPatterns(
 
 // Check that if a "block" has a terminator, it is an `AffineTerminatorOp`.
 static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
-  if (block.empty() || block.back().isa<AffineTerminatorOp>())
+  if (block.empty() || isa<AffineTerminatorOp>(block.back()))
     return success();
 
   op.emitOpError("expects regions to end with '" +

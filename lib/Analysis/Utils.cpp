@@ -45,7 +45,7 @@ void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   // Traverse up the hierarchy collecing all 'affine.for' operation while
   // skipping over 'affine.if' operations.
   while (currOp && ((currAffineForOp = dyn_cast<AffineForOp>(currOp)) ||
-                    currOp->isa<AffineIfOp>())) {
+                    isa<AffineIfOp>(currOp))) {
     if (currAffineForOp)
       loops->push_back(currAffineForOp);
     currOp = currOp->getParentOp();
@@ -172,7 +172,7 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
                                     ComputationSliceState *sliceState,
                                     bool addMemRefDimBounds) {
-  assert((op->isa<LoadOp>() || op->isa<StoreOp>()) && "load/store op expected");
+  assert((isa<LoadOp>(op) || isa<StoreOp>(op)) && "load/store op expected");
 
   MemRefAccess access(op);
   memref = access.memref;
@@ -490,7 +490,7 @@ LogicalResult mlir::getBackwardComputationSliceState(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned dstLoopDepth, ComputationSliceState *sliceState) {
   bool readReadAccesses =
-      srcAccess.opInst->isa<LoadOp>() && dstAccess.opInst->isa<LoadOp>();
+      isa<LoadOp>(srcAccess.opInst) && isa<LoadOp>(dstAccess.opInst);
   FlatAffineConstraints dependenceConstraints;
   if (!checkMemrefAccessDependence(
           srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
@@ -642,7 +642,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
       indices.push_back(index);
     }
   } else {
-    assert(loadOrStoreOpInst->isa<StoreOp>() && "load/store op expected");
+    assert(isa<StoreOp>(loadOrStoreOpInst) && "load/store op expected");
     auto storeOp = dyn_cast<StoreOp>(loadOrStoreOpInst);
     opInst = loadOrStoreOpInst;
     memref = storeOp.getMemRef();
@@ -658,7 +658,7 @@ unsigned MemRefAccess::getRank() const {
   return memref->getType().cast<MemRefType>().getRank();
 }
 
-bool MemRefAccess::isStore() const { return opInst->isa<StoreOp>(); }
+bool MemRefAccess::isStore() const { return isa<StoreOp>(opInst); }
 
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
@@ -666,7 +666,7 @@ unsigned mlir::getNestingDepth(Operation &op) {
   Operation *currOp = &op;
   unsigned depth = 0;
   while ((currOp = currOp->getParentOp())) {
-    if (currOp->isa<AffineForOp>())
+    if (isa<AffineForOp>(currOp))
       depth++;
   }
   return depth;
@@ -698,7 +698,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
   // Walk this 'affine.for' operation to gather all memory regions.
   bool error = false;
   block.walk(start, end, [&](Operation *opInst) {
-    if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
+    if (!isa<LoadOp>(opInst) && !isa<StoreOp>(opInst)) {
       // Neither load nor a store op.
       return;
     }
@@ -761,7 +761,7 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   forOp.getOperation()->walk([&](Operation *opInst) {
-    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
+    if (isa<LoadOp>(opInst) || isa<StoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
   });
 
