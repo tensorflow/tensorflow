@@ -832,7 +832,6 @@ public:
   explicit Op(Operation *state) : OpState(state) {
     assert(!state || isa<ConcreteOpType>(state));
   }
-  friend class Operation;
 
 private:
   template <typename... Types> struct BaseVerifier;

@@ -37,7 +37,6 @@ namespace linalg {
 class BufferAllocOp
     : public Op<BufferAllocOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -61,7 +60,6 @@ public:
 class BufferDeallocOp
     : public Op<BufferDeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -87,7 +85,6 @@ public:
 class LoadOp
     : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -116,7 +113,6 @@ public:
 class RangeOp : public Op<RangeOp, OpTrait::NOperands<3>::Impl,
                           OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -177,7 +173,6 @@ class SliceOp : public Op<SliceOp, OpTrait::VariadicOperands,
   enum { FirstIndexingOperand = 1 };
 
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -215,7 +210,6 @@ public:
 class StoreOp
     : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.
@@ -254,7 +248,6 @@ class ViewOp : public Op<ViewOp, OpTrait::VariadicOperands, OpTrait::OneResult,
   enum { FirstIndexingOperand = 1 };
 
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize the behavior of this op.

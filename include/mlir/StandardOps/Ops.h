@@ -91,7 +91,6 @@ class CmpIOp
                 OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
                 OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
 public:
-  friend Operation;
   using Op::Op;
 
   CmpIPredicate getPredicate() {
@@ -208,7 +207,6 @@ class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
   /// follows:
   /// { condition, [true_operands], [false_operands] }
 public:
-  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "std.cond_br"; }
@@ -300,7 +298,6 @@ private:
 ///
 class ConstantFloatOp : public ConstantOp {
 public:
-  friend Operation;
   using ConstantOp::ConstantOp;
 
   /// Builds a constant float op producing a float of the specified type.
@@ -319,7 +316,6 @@ public:
 ///
 class ConstantIntOp : public ConstantOp {
 public:
-  friend Operation;
   using ConstantOp::ConstantOp;
   /// Build a constant int op producing an integer of the specified width.
   static void build(Builder *builder, OperationState *result, int64_t value,
@@ -342,7 +338,6 @@ public:
 ///
 class ConstantIndexOp : public ConstantOp {
 public:
-  friend Operation;
   using ConstantOp::ConstantOp;
 
   /// Build a constant int op producing an index.
@@ -393,7 +388,6 @@ public:
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   static void build(Builder *builder, OperationState *result, Value *srcMemRef,
@@ -519,7 +513,6 @@ public:
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   static void build(Builder *builder, OperationState *result, Value *tagMemRef,
@@ -561,7 +554,6 @@ public:
 class LoadOp
     : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize behavior of this op.
@@ -604,7 +596,6 @@ public:
 ///
 class MemRefCastOp : public CastOp<MemRefCastOp> {
 public:
-  friend Operation;
   using CastOp::CastOp;
   static StringRef getOperationName() { return "std.memref_cast"; }
 
@@ -632,7 +623,6 @@ public:
 class ReturnOp : public Op<ReturnOp, OpTrait::VariadicOperands,
                            OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
-  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "std.return"; }
@@ -660,7 +650,6 @@ public:
 class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
                            OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
-  friend Operation;
   using Op::Op;
 
   static StringRef getOperationName() { return "std.select"; }
@@ -690,7 +679,6 @@ public:
 class StoreOp
     : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize behavior of this op.
@@ -731,7 +719,6 @@ public:
 ///
 class TensorCastOp : public CastOp<TensorCastOp> {
 public:
-  friend Operation;
   using CastOp::CastOp;
 
   static StringRef getOperationName() { return "std.tensor_cast"; }

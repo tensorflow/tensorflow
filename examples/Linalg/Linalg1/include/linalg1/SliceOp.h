@@ -30,7 +30,6 @@ class SliceOp : public mlir::Op<SliceOp, mlir::OpTrait::NOperands<2>::Impl,
                                 mlir::OpTrait::OneResult,
                                 mlir::OpTrait::HasNoSideEffect> {
 public:
-  friend mlir::Operation;
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////

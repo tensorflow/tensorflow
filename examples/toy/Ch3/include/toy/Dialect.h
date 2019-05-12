@@ -145,7 +145,6 @@ public:
                     mlir::FloatAttr value);
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -182,7 +181,6 @@ public:
   llvm::StringRef getCalleeName();
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -212,7 +210,6 @@ public:
   mlir::Value *getOperand() { return getOperation()->getOperand(0); }
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -233,7 +230,6 @@ public:
                     mlir::Value *value);
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -253,7 +249,6 @@ public:
                     mlir::Value *value);
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -278,7 +273,6 @@ public:
                     mlir::Value *value, ToyArrayType reshapedType);
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -307,7 +301,6 @@ public:
   mlir::Value *getRHS() { return getOperand(1); }
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 
@@ -334,7 +327,6 @@ public:
   mlir::Value *getRHS() { return getOperand(1); }
 
   /// Inherit constructor.
-  friend mlir::Operation;
   using Op::Op;
 };
 

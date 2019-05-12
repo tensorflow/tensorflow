@@ -60,7 +60,6 @@ public:
 class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
                                 OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
-  friend Operation;
   using Op::Op;
 
   /// Builds an affine apply op with the specified map and operands.
@@ -120,7 +119,6 @@ public:
 class AffineForOp
     : public Op<AffineForOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize behavior of this op.
@@ -307,7 +305,6 @@ private:
 class AffineIfOp
     : public Op<AffineIfOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  friend Operation;
   using Op::Op;
 
   // Hooks to customize behavior of this op.
@@ -341,15 +338,11 @@ class AffineTerminatorOp
     : public Op<AffineTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
                 OpTrait::IsTerminator> {
 public:
-  friend Operation;
   using Op::Op;
 
   static void build(Builder *, OperationState *) {}
 
   static StringRef getOperationName() { return "affine.terminator"; }
-
-private:
-  friend Operation;
 };
 
 /// Returns true if the given Value can be used as a dimension id.

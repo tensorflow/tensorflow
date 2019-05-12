@@ -30,7 +30,6 @@ class ViewType;
 class LoadOp : public mlir::Op<LoadOp, mlir::OpTrait::VariadicOperands,
                                mlir::OpTrait::OneResult> {
 public:
-  friend mlir::Operation;
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////
@@ -61,7 +60,6 @@ public:
 class StoreOp : public mlir::Op<StoreOp, mlir::OpTrait::VariadicOperands,
                                 mlir::OpTrait::ZeroResult> {
 public:
-  friend mlir::Operation;
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////

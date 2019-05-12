@@ -32,7 +32,6 @@ class ViewOp : public mlir::Op<ViewOp, mlir::OpTrait::VariadicOperands,
                                mlir::OpTrait::OneResult,
                                mlir::OpTrait::HasNoSideEffect> {
 public:
-  friend mlir::Operation;
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////

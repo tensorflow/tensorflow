@@ -214,7 +214,6 @@ class GenericCallOp
   llvm::StringRef getCalleeName();
 
  private:
-  friend class mlir::Operation;
   using Op::Op;
 };
 ```

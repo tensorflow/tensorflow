@@ -59,7 +59,6 @@ class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
                            OpTrait::ZeroResult,
                            OpTrait::NthRegionIsIsolatedAbove<0>::Impl> {
 public:
-  friend Operation;
   using Op::Op;
 
   static void build(Builder *builder, OperationState *result, Value *gridSizeX,
