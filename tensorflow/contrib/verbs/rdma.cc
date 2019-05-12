@@ -1634,7 +1634,7 @@ void RdmaTensorRequest::RecvTensorContent() {
                                 [this](const Status& s) {
                                   CHECK(s.ok()) << "copy tensor to gpu sync";
                                   Done(s);
-                                });
+                                }, true /*sync_dst_compute*/);
     return;
   }
 #endif
