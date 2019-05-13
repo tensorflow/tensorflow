@@ -28,10 +28,12 @@
 namespace mlir {
 class ModulePassBase;
 
-mlir::ModulePassBase *
-createLinalgTilingPass(llvm::ArrayRef<int64_t> tileSizes = {});
+namespace linalg {
+ModulePassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
 
-mlir::ModulePassBase *createLowerLinalgToLLVMPass();
+ModulePassBase *createLowerLinalgToLLVMPass();
+
+} // namespace linalg
 } // namespace mlir
 
 #endif // MLIR_LINALG_PASSES_H_

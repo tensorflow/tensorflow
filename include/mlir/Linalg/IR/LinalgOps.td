@@ -82,10 +82,8 @@ LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 class LinalgOp<string mnemonic, list<OpTrait> props> :
 Op<Linalg_Dialect, mnemonic, props> {
   let arguments = (ins Variadic<View>); // default variadic builder
-
-  let parser = [{ return impl::parseLinalgLibraryOp(parser, result); }];
-
-  let printer = [{ impl::printLinalgLibraryOp(p, *this); }];
+  let parser = [{ return parseLinalgLibraryOp(parser, result); }];
+  let printer = [{ printLinalgLibraryOp(p, *this); }];
 }
 
 def BufferSizeOp :
@@ -93,12 +91,39 @@ def BufferSizeOp :
     Arguments<(ins Buffer)>,
     Results<(outs Index)>
 {
-  let parser = [{
-    return impl::parseBufferSizeOp(parser, result);
+  let parser = [{ return parseBufferSizeOp(parser, result); }];
+  let printer = [{ return printBufferSizeOp(p, *this); }];
+}
+
+def DimOp : Op<Linalg_Dialect, "dim", [NoSideEffect]>,
+    Arguments<(ins View:$view, APIntAttr:$index)>,
+    Results<(outs Index)> {
+  let summary = "dimension index operation";
+  let description = [{
+    The "linalg.dim" operation takes a linalg.view and returns an
+    "index". It requires a single integer attribute named "index". It
+     returns the size of the specified dimension. For example:
+
+      %1 = linalg.dim %0, 2 : view<?x?x?xf32>
   }];
 
-  let printer = [{
-    return impl::printBufferSizeOp(p, this->getOperation());
+  let parser = [{ return parseDimOp(parser, result); }];
+  let printer = [{ return printDimOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *view," "unsigned index",
+    [{
+      result->addOperands(view);
+      result->addAttribute(
+        "index", builder->getIntegerAttr(builder->getIndexType(), index));
+      result->types.push_back(builder->getIndexType());
+    }]>];
+
+  let extraClassDeclaration = [{
+    unsigned getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    }
   }];
 }
 

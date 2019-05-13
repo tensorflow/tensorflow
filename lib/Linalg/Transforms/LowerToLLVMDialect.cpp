@@ -154,7 +154,7 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
   return builder.getArrayAttr(attrs);
 }
 
-// BufferAllocOp creates a new `index` value.
+// BufferAllocOp creates a new `!linalg.buffer` value.
 class BufferAllocOpConversion : public LLVMOpLowering {
 public:
   explicit BufferAllocOpConversion(MLIRContext *context,
@@ -213,7 +213,7 @@ public:
   }
 };
 
-// BufferDeallocOp creates a new `index` value.
+// BufferDeallocOp creates no value.
 class BufferDeallocOpConversion : public LLVMOpLowering {
 public:
   explicit BufferDeallocOpConversion(MLIRContext *context,
@@ -265,6 +265,23 @@ public:
     auto int64Ty = lowering.convertType(operands[0]->getType());
     edsc::ScopedContext context(rewriter, op->getLoc());
     return {extractvalue(int64Ty, operands[0], makePositionAttr(rewriter, 1))};
+  }
+};
+
+// DimOp creates a new `index` value.
+class DimOpConversion : public LLVMOpLowering {
+public:
+  explicit DimOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+      : LLVMOpLowering(linalg::DimOp::getOperationName(), context, lowering_) {}
+
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
+                                  FuncBuilder &rewriter) const override {
+    auto dimOp = cast<linalg::DimOp>(op);
+    auto indexTy = lowering.convertType(rewriter.getIndexType());
+    edsc::ScopedContext context(rewriter, op->getLoc());
+    return {extractvalue(
+        indexTy, operands[0],
+        makePositionAttr(rewriter, {2, static_cast<int>(dimOp.getIndex())}))};
   }
 };
 
@@ -533,10 +550,11 @@ protected:
   llvm::DenseSet<DialectOpConversion *> initAdditionalConverters() override {
     return ConversionListBuilder<
         BufferAllocOpConversion, BufferDeallocOpConversion,
-        BufferSizeOpConversion, DotOpConversion, LoadOpConversion,
-        RangeOpConversion, SliceOpConversion, StoreOpConversion,
-        ViewOpConversion>::build(&converterStorage, llvmDialect->getContext(),
-                                 *this);
+        BufferSizeOpConversion, DimOpConversion, DotOpConversion,
+        LoadOpConversion, RangeOpConversion, SliceOpConversion,
+        StoreOpConversion, ViewOpConversion>::build(&converterStorage,
+                                                    llvmDialect->getContext(),
+                                                    *this);
   }
 
   Type convertAdditionalType(Type t) override {
@@ -564,7 +582,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
     signalPassFailure();
 }
 
-ModulePassBase *mlir::createLowerLinalgToLLVMPass() {
+ModulePassBase *mlir::linalg::createLowerLinalgToLLVMPass() {
   return new LowerLinalgToLLVMPass();
 }
 

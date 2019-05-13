@@ -488,30 +488,19 @@ void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
   *p << "] : " << getType();
 }
 
-namespace mlir {
-namespace linalg {
-namespace impl {
-void printLinalgLibraryOp(OpAsmPrinter *p, Operation *op);
-ParseResult parseLinalgLibraryOp(OpAsmParser *parser, OperationState *result);
-void printBufferSizeOp(OpAsmPrinter *p, Operation *op);
-ParseResult parseBufferSizeOp(OpAsmParser *parser, OperationState *result);
-} // namespace impl
-} // namespace linalg
-
 /// Buffer size prints as:
 ///
 /// ``` {.mlir}
 ///    %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
 /// ```
-void mlir::linalg::impl::printBufferSizeOp(OpAsmPrinter *p, Operation *op) {
-  assert(op->getAbstractOperation() && "unregistered operation");
-  *p << cast<BufferSizeOp>(op).getOperationName() << " " << *op->getOperand(0);
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : " << op->getOperand(0)->getType();
+static void printBufferSizeOp(OpAsmPrinter *p, BufferSizeOp op) {
+  *p << op.getOperationName() << " " << *op.getOperand();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getOperand()->getType();
 }
 
-ParseResult mlir::linalg::impl::parseBufferSizeOp(OpAsmParser *parser,
-                                                  OperationState *result) {
+static ParseResult parseBufferSizeOp(OpAsmParser *parser,
+                                     OperationState *result) {
   OpAsmParser::OperandType op;
   Type type;
   return failure(parser->parseOperand(op) ||
@@ -522,10 +511,44 @@ ParseResult mlir::linalg::impl::parseBufferSizeOp(OpAsmParser *parser,
                                        result->types));
 }
 
-#define GET_OP_CLASSES
-#include "mlir/Linalg/IR/LinalgOps.cpp.inc"
+static void printDimOp(OpAsmPrinter *p, DimOp op) {
+  *p << op.getOperationName() << " " << *op.getOperand() << ", "
+     << op.getIndex();
+  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
+  *p << " : " << op.getOperand()->getType();
+}
 
-} // namespace mlir
+static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType operandInfo;
+  IntegerAttr indexAttr;
+  Type type;
+  Type indexType = parser->getBuilder().getIndexType();
+  return failure(parser->parseOperand(operandInfo) || parser->parseComma() ||
+                 parser->parseAttribute(indexAttr, indexType, "index",
+                                        result->attributes) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(operandInfo, type, result->operands) ||
+                 parser->addTypeToList(indexType, result->types));
+}
+
+static LogicalResult verify(linalg::DimOp op) {
+  // Check that we have an integer index operand.
+  auto indexAttr = op.getAttrOfType<IntegerAttr>("index");
+  if (!indexAttr)
+    return op.emitOpError("requires an integer attribute named 'index'");
+
+  uint64_t index = indexAttr.getValue().getZExtValue();
+  auto type = op.getOperand()->getType();
+  if (auto viewType = type.dyn_cast<ViewType>()) {
+    if (index >= viewType.getRank())
+      return op.emitOpError("index is out of range");
+  } else {
+    return op.emitOpError("requires an operand with view type");
+  }
+
+  return success();
+}
 
 // A LinalgLibraryOp prints as:
 //
@@ -541,7 +564,7 @@ ParseResult mlir::linalg::impl::parseBufferSizeOp(OpAsmParser *parser,
 // ```
 //
 // Where %0, %1 and %2 are ssa-values of type ViewType.
-void mlir::linalg::impl::printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
+static void printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
   *p << op->getName().getStringRef() << "(";
   interleave(
@@ -553,8 +576,8 @@ void mlir::linalg::impl::printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
       [&](Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
 }
 
-ParseResult mlir::linalg::impl::parseLinalgLibraryOp(OpAsmParser *parser,
-                                                     OperationState *result) {
+static ParseResult parseLinalgLibraryOp(OpAsmParser *parser,
+                                        OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
   return failure(
@@ -564,6 +587,13 @@ ParseResult mlir::linalg::impl::parseLinalgLibraryOp(OpAsmParser *parser,
       parser->resolveOperands(ops, types, parser->getNameLoc(),
                               result->operands));
 }
+
+namespace mlir {
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgOps.cpp.inc"
+
+} // namespace mlir
 
 // Ideally this should all be Tablegen'd but there is no good story for
 // AffineMap for now.

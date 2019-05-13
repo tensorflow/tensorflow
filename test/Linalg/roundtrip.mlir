@@ -52,3 +52,14 @@ func @ops(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !lina
 //  CHECK-NEXT:  linalg.matvec(%arg0, %arg1, %arg2) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 //  CHECK-NEXT:  linalg.dot(%arg1, %arg2, %arg3) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
 
+func @dim(%arg0: !linalg.view<?x?xf32>) {
+  %0 = linalg.dim %arg0, 1 : !linalg.view<?x?xf32>
+  %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+  linalg.buffer_dealloc %1 : !linalg.buffer<f32>
+  return
+}
+// CHECK-LABEL: func @dim(%arg0: !linalg.view<?x?xf32>) {
+//  CHECK-NEXT:   %0 = linalg.dim %arg0, 1 : !linalg.view<?x?xf32>
+//  CHECK-NEXT:   %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+//  CHECK-NEXT:   linalg.buffer_dealloc %1 : !linalg.buffer<f32>
+

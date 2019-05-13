@@ -360,7 +360,8 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes)
     this->tileSizes.assign(sizes.begin(), sizes.end());
 }
 
-ModulePassBase *mlir::createLinalgTilingPass(ArrayRef<int64_t> tileSizes) {
+ModulePassBase *
+mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes) {
   return new LinalgTilingPass(tileSizes);
 }
 
