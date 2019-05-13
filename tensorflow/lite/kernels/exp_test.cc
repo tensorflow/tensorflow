@@ -33,6 +33,13 @@ class ExpOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  ExpOpModel(const TensorData& input, const TensorData& output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_EXP, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)});
+  }
+
   template <class T>
   void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
@@ -49,6 +56,28 @@ class ExpOpModel : public SingleOpModel {
   int output_;
 };
 
+const float kQuantizedTolerance = 2 * (2. / 256);
+class QuantizedExpOpModel : public ExpOpModel {
+ public:
+  using ExpOpModel::ExpOpModel;
+
+  template <typename T>
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+  template <typename T>
+
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+};
+
 TEST(ExpOpTest, FloatTest) {
   std::initializer_list<float> data = {1.0, 0.0, -1.0, 1.0, 1.0, -1.0};
   ExpOpModel m({TensorType_FLOAT32, {3, 1, 2}}, TensorType_FLOAT32);
@@ -58,6 +87,42 @@ TEST(ExpOpTest, FloatTest) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {2.71828, 1, 0.367879, 2.71828, 2.71828, 0.367879})));
+}
+
+TEST(QuantizedExpOpModel, Expint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedExpOpModel m(
+      /*input=*/{TensorType_INT8, {1, 5, 1, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 5, 1, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int8_t>({
+      -3, -2, -1, 0, 2,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.049787, 0.135335, 0.367879, 1, 7.389056,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedExpOpModel, ExpUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedExpOpModel m(
+      /*input=*/{TensorType_UINT8, {1, 5, 1, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_UINT8, {1, 5, 1, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<uint8_t>({
+      -3, -2, -1, 0, 2,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.049787, 0.135335, 0.367879, 1, 7.389056,  //
+                  },
+                  kQuantizedTolerance)));
 }
 
 }  // namespace

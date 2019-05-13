@@ -52,6 +52,9 @@ extern const char* kMultiInputAddWithReshape;
 // Test gather operation with quantized input.
 extern const char* kQuantizedWithGather;
 
+// Test exp operation with quantized input.
+extern const char* kExpModel;
+
 // Test model with a tf.constant input to tf.add. Model has 2 inputs one
 // constant and other placeholder.
 extern const char* kConstInputAddModel;

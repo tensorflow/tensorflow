@@ -36,6 +36,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_EXP:
+      property.input_indexes = {0};
+      property.output_indexes = {0};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SPACE_TO_DEPTH:

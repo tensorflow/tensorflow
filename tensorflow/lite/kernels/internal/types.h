@@ -881,6 +881,15 @@ struct LogisticParams {
   int input_left_shift;
 };
 
+struct ExpParams {
+  // Params for quantized exp op.
+  int32 input_zero_point;
+  int32 input_range_radius;
+  int32 input_multiplier;
+  int input_left_shift;
+  int32 output_zero_point;
+};
+
 struct LstmCellParams {
   int32 weights_zero_point;
   int32 accum_multiplier;

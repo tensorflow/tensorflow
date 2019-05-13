@@ -177,6 +177,7 @@ tf_cc_test(
     ],
     data = [
         "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
+        "//tensorflow/lite/tools/optimize:testdata/exp.bin",
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",

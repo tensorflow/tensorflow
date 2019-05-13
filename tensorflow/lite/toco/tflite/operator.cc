@@ -1330,6 +1330,21 @@ class ReduceAny
   }
 };
 
+class Exp : public SimpleOperator<ExpOperator> {
+ public:
+  explicit Exp() : SimpleOperator("EXP", OperatorType::kExp) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class Relu6 : public SimpleOperator<Relu6Operator> {
  public:
   explicit Relu6() : SimpleOperator("RELU6", OperatorType::kRelu6) {}
@@ -2536,10 +2551,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<Logistic>());
   ops.push_back(MakeUnique<Tanh>());
   ops.push_back(
-      MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
-  ops.push_back(
       MakeUnique<SimpleOperator<CosOperator>>("COS", OperatorType::kCos));
   ops.push_back(MakeUnique<LogSoftmax>());
+  ops.push_back(MakeUnique<Exp>());
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
   ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
   ops.push_back(MakeUnique<Greater>());
