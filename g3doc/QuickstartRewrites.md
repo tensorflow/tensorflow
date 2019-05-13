@@ -7,7 +7,9 @@ patterns and the rewrite engine is preferred, showing the walker is for
 demonstration purposes).
 
 See [MLIR specification](LangRef.md) for more information about MLIR, the
-structure of the IR, operations, etc.
+structure of the IR, operations, etc. See [Table-driven Operation Definition
+Manual](OpDefinitions.md) for the detailed explanation of all available
+mechansims for defining operations in a table-driven manner.
 
 ## Adding operation
 
