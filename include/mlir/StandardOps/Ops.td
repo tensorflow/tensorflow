@@ -414,6 +414,30 @@ def RemIUOp : IntArithmeticOp<"remiu"> {
   let hasConstantFolder = 0b1;
 }
 
+def ReturnOp : Op<Standard_Dialect, "return", [Terminator]> {
+  let summary = "return operation";
+  let description = [{
+    The "return" operation represents a return operation within a function.
+    The operation takes variable number of operands and produces no results.
+    The operand number and types must match the signature of the function
+    that contains the operation. For example:
+
+      func @foo() : (i32, f8) {
+      ...
+      return %0, %1 : i32, f8
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let parser = [{ return parseReturnOp(parser, result); }];
+  let printer = [{ return printReturnOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result", [{ build(b, result, llvm::None); }]
+  >];
+}
+
 def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
 }

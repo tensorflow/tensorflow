@@ -611,31 +611,6 @@ public:
   LogicalResult verify();
 };
 
-/// The "return" operation represents a return operation within a function.
-/// The operation takes variable number of operands and produces no results.
-/// The operand number and types must match the signature of the function
-/// that contains the operation. For example:
-///
-///   func @foo() : (i32, f8) {
-///   ...
-///   return %0, %1 : i32, f8
-///
-class ReturnOp : public Op<ReturnOp, OpTrait::VariadicOperands,
-                           OpTrait::ZeroResult, OpTrait::IsTerminator> {
-public:
-  using Op::Op;
-
-  static StringRef getOperationName() { return "std.return"; }
-
-  static void build(Builder *builder, OperationState *result,
-                    ArrayRef<Value *> results = {});
-
-  // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  LogicalResult verify();
-};
-
 /// The "select" operation chooses one value based on a binary condition
 /// supplied as its first operand. If the value of the first operand is 1, the
 /// second operand is chosen, otherwise the third operand is chosen. The second

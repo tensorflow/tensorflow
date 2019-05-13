@@ -62,7 +62,7 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
   addOperations<CmpFOp, CmpIOp, CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp,
-                MemRefCastOp, ReturnOp, SelectOp, StoreOp, TensorCastOp,
+                MemRefCastOp, SelectOp, StoreOp, TensorCastOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -1892,12 +1892,7 @@ Attribute RemIUOp::constantFold(ArrayRef<Attribute> operands,
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-void ReturnOp::build(Builder *builder, OperationState *result,
-                     ArrayRef<Value *> results) {
-  result->addOperands(results);
-}
-
-ParseResult ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type, 2> types;
   llvm::SMLoc loc;
@@ -1907,32 +1902,32 @@ ParseResult ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
                  parser->resolveOperands(opInfo, types, loc, result->operands));
 }
 
-void ReturnOp::print(OpAsmPrinter *p) {
+static void printReturnOp(OpAsmPrinter *p, ReturnOp op) {
   *p << "return";
-  if (getNumOperands() > 0) {
+  if (op.getNumOperands() > 0) {
     *p << ' ';
-    p->printOperands(operand_begin(), operand_end());
+    p->printOperands(op.operand_begin(), op.operand_end());
     *p << " : ";
     interleave(
-        operand_begin(), operand_end(),
+        op.operand_begin(), op.operand_end(),
         [&](Value *e) { p->printType(e->getType()); }, [&]() { *p << ", "; });
   }
 }
 
-LogicalResult ReturnOp::verify() {
-  auto *function = getOperation()->getFunction();
+static LogicalResult verify(ReturnOp op) {
+  auto *function = op.getOperation()->getFunction();
 
   // The operand number and types must match the function signature.
   const auto &results = function->getType().getResults();
-  if (getNumOperands() != results.size())
-    return emitOpError("has " + Twine(getNumOperands()) +
-                       " operands, but enclosing function returns " +
-                       Twine(results.size()));
+  if (op.getNumOperands() != results.size())
+    return op.emitOpError("has ")
+           << op.getNumOperands()
+           << " operands, but enclosing function returns " << results.size();
 
   for (unsigned i = 0, e = results.size(); i != e; ++i)
-    if (getOperand(i)->getType() != results[i])
-      return emitError("type of return operand " + Twine(i) +
-                       " doesn't match function result type");
+    if (op.getOperand(i)->getType() != results[i])
+      return op.emitError("type of return operand ")
+             << i << " doesn't match function result type";
 
   return success();
 }
