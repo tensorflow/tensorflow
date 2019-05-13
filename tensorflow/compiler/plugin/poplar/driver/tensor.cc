@@ -1550,43 +1550,23 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
 
     for (auto pair : tm.second) {
       const auto& pop_tensor = pair.second;
-      auto flattened = pop_tensor.flatten();
-
+      const auto& mapping = graph.getTileMapping(pop_tensor);
       Json::Value tiles = Json::Value(Json::arrayValue);
-      const auto& region_list = graph.getSortedContiguousRegions(
-          flattened, {{0, flattened.numElements()}}, true);
+
       size_t total_elements = 0;
-      std::vector<uint64> region_count;
-      std::vector<uint64> element_count;
-
-      for (const auto& region : region_list) {
-        for (const auto& interval : region) {
-          const auto& mapping = graph.getTileMapping(
-              flattened.slice(interval.begin(), interval.end()));
-
-          if (mapping.size() > region_count.size()) {
-            region_count.resize(mapping.size());
-            element_count.resize(mapping.size());
+      for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
+        const auto& tile = mapping[tile_idx];
+        if (tile.size() > 0) {
+          size_t element_count = 0;
+          for (const auto& interval : tile) {
+            element_count += interval.size();
           }
-
-          for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
-            for (const auto& interval : mapping[tile_idx]) {
-              region_count[tile_idx] += 1;
-              element_count[tile_idx] += interval.size();
-            }
-          }
-        }
-      }
-
-      for (size_t tile_idx = 0; tile_idx < region_count.size(); tile_idx++) {
-        if (region_count[tile_idx] > 0) {
           Json::Value tile_info(Json::arrayValue);
           tile_info.append(Json::Value::UInt64(tile_idx));
-          tile_info.append(Json::Value::UInt64(region_count[tile_idx]));
-          tile_info.append(Json::Value::UInt64(element_count[tile_idx]));
+          tile_info.append(Json::Value::UInt64(element_count));
           tiles.append(tile_info);
 
-          total_elements += element_count[tile_idx];
+          total_elements += element_count;
         }
       }
 

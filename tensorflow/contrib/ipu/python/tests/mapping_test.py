@@ -116,21 +116,20 @@ class MappingTest(test_util.TensorFlowTestCase):
                 elif tensor[0].startswith('slice'):
                   slice_layout = tensor
 
-            # The broadcast contains only 1 element and 1 region on one tile 0
             self.assertEqual(len(bcast_layout[7]), 1)
-            self.assertEqual(bcast_layout[7][0], [0, 1, 1])
+            self.assertEqual(bcast_layout[7][0], [0, 1024])
 
-            # The pad contains 3 regions totalling 512+32 elements on tile 0,
+            # The pad contains 512+32 elements on tile 0,
             # and one region with 32 elements on each other tile
             self.assertEqual(len(pad_layout[7]), 16)
-            self.assertEqual(pad_layout[7][0], [0, 3, 544])
+            self.assertEqual(pad_layout[7][0], [0, 544])
             for tile in range(1, 16):
-              self.assertEqual(pad_layout[7][tile], [tile, 1, 32])
+              self.assertEqual(pad_layout[7][tile], [tile, 32])
 
-            # The slice contains 4 elements in 4 regions on 256 tiles
+            # The slice contains 4 elements on 256 tiles
             self.assertEqual(len(slice_layout[7]), 256)
             for tile in range(256):
-              self.assertEqual(slice_layout[7][tile], [tile, 4, 4])
+              self.assertEqual(slice_layout[7][tile], [tile, 4])
 
 
 if __name__ == "__main__":

@@ -229,13 +229,8 @@ items.
 ::
 
   - the tile index number.
-  - the number of independent regions of elements on the tile.
-  - the total number of elements in all of those regions.
+  - the total number of elements on that tile.
 
-The mapping is for contiguous regions of elements, not logical intervals of
-elements.  So, if a single scalar element is broadcast to a large shape,
-then it will be listed as one region and one element, despite being broadcast
-to many elements.
 
 EXECUTE
 _______
