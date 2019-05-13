@@ -56,10 +56,11 @@ struct FileLineColLocationStorage : public LocationStorage {
 };
 
 struct NameLocationStorage : public LocationStorage {
-  NameLocationStorage(Identifier name)
-      : LocationStorage(Location::Kind::Name), name(name) {}
+  NameLocationStorage(Identifier name, Location child)
+      : LocationStorage(Location::Kind::Name), name(name), child(child) {}
 
   Identifier name;
+  Location child;
 };
 
 struct CallSiteLocationStorage : public LocationStorage {

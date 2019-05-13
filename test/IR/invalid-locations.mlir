@@ -23,6 +23,20 @@ func @location_invalid_instance() {
 
 // -----
 
+func @location_name_missing_r_paren() {
+^bb:
+  return loc("foo"(unknown]) // expected-error {{expected ')' after child location of NameLoc}}
+}
+
+// -----
+
+func @location_name_child_is_name() {
+^bb:
+  return loc("foo"("foo")) // expected-error {{child of NameLoc cannot be another NameLoc}}
+}
+
+// -----
+
 func @location_callsite_missing_l_paren() {
 ^bb:
   return loc(callsite unknown  // expected-error {{expected '(' in callsite location}}

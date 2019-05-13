@@ -638,13 +638,15 @@ FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
   });
 }
 
-NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
+NameLoc NameLoc::get(Identifier name, Location child, MLIRContext *context) {
   auto &impl = context->getImpl();
+  assert(!child.isa<NameLoc>() &&
+         "a NameLoc cannot be used as a child of another NameLoc");
 
   // Safely get or create a location instance.
   return safeGetOrCreate(impl.nameLocs, name.data(), impl.locationMutex, [&] {
     return new (impl.locationAllocator.Allocate<NameLocationStorage>())
-        NameLocationStorage(name);
+        NameLocationStorage(name, child);
   });
 }
 

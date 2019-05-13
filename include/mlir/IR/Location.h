@@ -53,10 +53,10 @@ public:
     /// This represents a file/line/column location.
     FileLineCol,
 
-    /// This represents an identity name, such as variable and function name.
+    /// This represents an identity name attached to a child location.
     Name,
 
-    /// This represents a location as call site or variable usage site. .
+    /// This represents a location as a call site.
     CallSite,
 
     // Represents a location as a 'void*' pointer to a front-end's opaque
@@ -170,16 +170,24 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::FileLineCol; }
 };
 
-/// Represents an identity name. It is usually the callee of a CallLocation.
+/// Represents an identity name attached to a child location.
 class NameLoc : public Location {
 public:
   using ImplType = detail::NameLocationStorage;
   using Location::Location;
 
-  /// Return a uniqued name location object.
+  /// Return a uniqued name location object. The child location must not be
+  /// another NameLoc.
+  static NameLoc get(Identifier name, Location child, MLIRContext *context);
+
+  /// Return a uniqued name location object with an unknown child.
   static NameLoc get(Identifier name, MLIRContext *context);
 
+  /// Return the name identifier.
   Identifier getName() const;
+
+  /// Return the child location.
+  Location getChildLoc() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Name; }

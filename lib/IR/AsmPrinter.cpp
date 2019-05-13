@@ -397,7 +397,16 @@ void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
     break;
   }
   case Location::Kind::Name: {
-    os << '\"' << loc.cast<NameLoc>().getName() << '\"';
+    auto nameLoc = loc.cast<NameLoc>();
+    os << '\"' << nameLoc.getName() << '\"';
+
+    // Print the child if it isn't unknown.
+    auto childLoc = nameLoc.getChildLoc();
+    if (!childLoc.isa<UnknownLoc>()) {
+      os << '(';
+      printLocationInternal(childLoc, pretty);
+      os << ')';
+    }
     break;
   }
   case Location::Kind::CallSite: {

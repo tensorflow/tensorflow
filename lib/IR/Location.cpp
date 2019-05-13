@@ -45,8 +45,18 @@ unsigned FileLineColLoc::getColumn() const {
 // NameLoc
 //===----------------------------------------------------------------------===//
 
+NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
+  return get(name, UnknownLoc::get(context), context);
+}
+
+/// Return the name identifier.
 Identifier NameLoc::getName() const {
   return static_cast<ImplType *>(loc)->name;
+}
+
+/// Return the child location.
+Location NameLoc::getChildLoc() const {
+  return static_cast<ImplType *>(loc)->child;
 }
 
 //===----------------------------------------------------------------------===//

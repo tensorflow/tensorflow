@@ -1502,7 +1502,30 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
     }
 
     // Otherwise, this is a NameLoc.
-    *loc = NameLoc::get(Identifier::get(str, ctx), ctx);
+
+    // Check for a child location.
+    if (consumeIf(Token::l_paren)) {
+      auto childSourceLoc = getToken().getLoc();
+
+      // Parse the child location.
+      llvm::Optional<Location> childLoc;
+      if (parseLocationInstance(&childLoc))
+        return failure();
+
+      // The child must not be another NameLoc.
+      if (childLoc->isa<NameLoc>())
+        return emitError(childSourceLoc,
+                         "child of NameLoc cannot be another NameLoc");
+      *loc = NameLoc::get(Identifier::get(str, ctx), *childLoc, ctx);
+
+      // Parse the closing ')'.
+      if (parseToken(Token::r_paren,
+                     "expected ')' after child location of NameLoc"))
+        return failure();
+    } else {
+      *loc = NameLoc::get(Identifier::get(str, ctx), ctx);
+    }
+
     return success();
   }
 
