@@ -78,18 +78,6 @@ class Backend(object):
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
-  @abc.abstractmethod
-  def delete_executable(self, executable):
-    """Deletes an executable."""
-
-  @abc.abstractmethod
-  def execute(self, executable, args):
-    """Runs an executable without replication."""
-
-  @abc.abstractmethod
-  def execute_replicated(self, executable, per_replica_args):
-    """Runs an executable in a replicated manner."""
-
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
@@ -130,15 +118,6 @@ class LocalBackend(Backend):
     options.debug_options.xla_cpu_fast_math_honor_nans = True
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
                                         options, self.client)
-
-  def delete_executable(self, executable):
-    executable.Delete()
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    return executable.ExecutePerReplica(per_replica_args)
 
 
 def _cpu_backend_factory():
@@ -525,8 +504,7 @@ class Computation(object):
     compile_options = compile_options or CompileOptions()
     if argument_shapes:
       compile_options.argument_layouts = argument_shapes
-    c = backend.compile(self.computation, compile_options)
-    return Executable(c, backend=backend)
+    return backend.compile(self.computation, compile_options)
 
   def GetProgramShape(self):
     return self._c_computation.GetProgramShape()
@@ -535,88 +513,66 @@ class Computation(object):
     return self._c_computation.GetProgramShape().result_shape()
 
 
-class Executable(object):
-  """Python wrapper for an XLA Executable."""
+# An Executable is a C++ class that duck types with the following API:
+# class Executable(object):
+#   def DeviceOrdinals(self) -> [int]:
+#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#     """Execute on many replicas with Buffer arguments and return value.
+#
+#     Args:
+#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
+#         comprises the arguments for execution on the i'th replica.
+#
+#     Returns:
+#       A list of the computation's outputs for each replica, as a Buffer. If
+#       a shallow sequence of arguments was passed in for `arguments`, then the
+#       sole, zero'th replica's output is returned instead, as a Buffer.
+#     """
+#
+# There are different implementations of Executable for the Local and XRT
+# backends.
 
-  def __init__(self, c_executable, backend=None):
-    self._c_executable = c_executable
-    self._device_ordinals = c_executable.DeviceOrdinals()
-    self._backend = backend
 
-  def DeviceOrdinals(self):
-    """Returns a list containing the device ordinals for each replica."""
-    return self._device_ordinals
+def execute_with_python_values(executable, arguments=(), backend=None):
+  """Execute on one replica with Python values as arguments and output."""
 
-  def Execute(self, arguments=None, check_for_deleted_args=True):
-    """Execute on one replica with Buffer arguments and return value."""
-    arguments = arguments or []
-    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
-      raise ValueError('Executing with deleted local buffer argument')
-    return self._backend.execute(self._c_executable, arguments)
+  backend = backend or get_local_backend()
 
-  def ExecutePerReplica(self, arguments=None):
-    """Execute on many replicas with Buffer arguments and return value.
+  def put(arg):
+    return Buffer.from_pyval(
+        arg, device=executable.DeviceOrdinals()[0], backend=backend)
 
-    Args:
-      arguments: A sequence of sequences of Buffers. The i'th inner sequence
-        comprises the arguments for execution on the i'th replica.
+  arguments = [put(arg) for arg in arguments]
+  return executable.Execute(arguments).to_py()
 
-    Returns:
-      A list of the computation's outputs for each replica, as a Buffer. If
-      a shallow sequence of arguments was passed in for `arguments`, then the
-      sole, zero'th replica's output is returned instead, as a Buffer.
-    """
-    if arguments is None:
-      arguments = ((),) * len(self._device_ordinals)
-    else:
-      arguments = [list(replica_args) for replica_args in arguments]
 
-    # Check arguments
-    for replica, replica_args in enumerate(arguments):
-      for arg in replica_args:
-        if arg.is_deleted():
-          raise ValueError('Executing with deleted local buffer argument')
-        if arg.device() != self._device_ordinals[replica]:
-          raise ValueError(
-              'Executing on device {} with argument from device {}'.format(
-                  self._device_ordinals[replica], arg.device()))
+def execute_with_python_values_replicated(executable, arguments, backend=None):
+  """Execute on many replicas with Python values as arguments and output.
 
-    # Execute
-    return self._backend.execute_replicated(self._c_executable, arguments)
+  Arguments:
+    executable: the program to run.
+    arguments: a list of lists of Python values indexed by
+      `[replica][arg_num]` to pass as inputs.
+    backend: the backend we are targeting.
 
-  def ExecuteWithPythonValues(self, arguments=()):
-    """Execute on one replica with Python values as arguments and output."""
-
-    def put(arg):
-      return Buffer.from_pyval(
-          arg, device=self._device_ordinals[0], backend=self._backend)
-
-    arguments = [put(arg) for arg in arguments]
-    return self.Execute(arguments).to_py()
-
-  def ExecuteWithPythonValuesPerReplica(self, arguments):
-    """Execute on many replicas with Python values as arguments and output.
-
-    Arguments:
-      arguments: a list of lists of Python values indexed by
-        `[replica][arg_num]` to pass as inputs.
-
-    Returns:
-      A list of python values, one per replica.
-    """
-    # pylint: disable=g-complex-comprehension
-    flat_args = [(arg, self._device_ordinals[replica])
-                 for replica, replica_args in enumerate(arguments)
-                 for arg in replica_args]
-    flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=self._backend)
-    arg_buffers = []
-    for replica_args in arguments:
-      arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-      flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-    return [out.to_py() for out in self.ExecutePerReplica(arg_buffers)]
-
-  def __del__(self):
-    self._backend.delete_executable(self._c_executable)
+  Returns:
+    A list of python values, one per replica.
+  """
+  backend = backend or get_local_backend()
+  device_ordinals = executable.DeviceOrdinals()
+  # pylint: disable=g-complex-comprehension
+  flat_args = [(arg, device_ordinals[replica])
+               for replica, replica_args in enumerate(arguments)
+               for arg in replica_args]
+  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  arg_buffers = []
+  for replica_args in arguments:
+    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
+    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
+  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
 
 
 class PaddingType(enum.Enum):

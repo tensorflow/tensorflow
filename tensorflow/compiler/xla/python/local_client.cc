@@ -507,6 +507,19 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
   argument_buffers.reserve(argument_handles.size());
   argument_buffer_ptrs.reserve(argument_handles.size());
   for (auto& handle : argument_handles) {
+    if (handle->device_buffer() == nullptr) {
+      return InvalidArgument(
+          "Deleted buffer passed to Execute() as argument "
+          "%d to replica %d",
+          argument_buffers.size(), replica);
+    }
+    if (handle->device_buffer()->device_ordinal() != device_ordinal) {
+      return InvalidArgument(
+          "Buffer passed to Execute() as argument %d to replica %d is on "
+          "device %d, but replica is assigned to device %d.",
+          argument_buffers.size(), replica,
+          handle->device_buffer()->device_ordinal(), device_ordinal);
+    }
     argument_buffers.push_back(handle->AsShapedBuffer());
     argument_buffer_ptrs.push_back(&argument_buffers.back());
     GetDeviceBufferDefinitionEvents(*handle->device_buffer(), &events);

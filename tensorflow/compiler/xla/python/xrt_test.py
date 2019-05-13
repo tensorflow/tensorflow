@@ -51,7 +51,8 @@ class XrtBackendTest(test.TestCase):
         xla_client.shape_from_pyval(a), xla_client.shape_from_pyval(b))
 
     executable = c.Compile(backend=backend)
-    output = executable.ExecuteWithPythonValues((a, b))
+    output = xla_client.execute_with_python_values(
+        executable, (a, b), backend=backend)
     self.assertAllEqual(output, (a + b) * 3)
 
   def testTuples(self):
