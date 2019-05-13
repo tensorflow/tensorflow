@@ -43,5 +43,4 @@ limitations under the License.
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
 
-// ARPIT extern "C" void DebugLog(const char* s) { fprintf(stderr, "%s", s); }
 extern "C" void DebugLog(const char* s) { am_util_stdio_printf("%s", s); }

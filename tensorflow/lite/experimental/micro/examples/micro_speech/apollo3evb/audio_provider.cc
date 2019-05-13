@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Apollo3 EVB specific features compile options: 
+// USE AM_BSP_NUM_LEDS : LED initialization and management per EVB target (# of LEDs defined in EVB BSP)
+// USE_TIME_STAMP : Enable timers and time stamping for debug and performance profiling (customize per application)
+// USE_DEBUG_GPIO : Enable GPIO flag polling for debug and performance profiling (customize per application)
+// USE_MAYA : Enable specific pin configuration and features for AP3B "quarter" sized board
+
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 
 #include <limits>
