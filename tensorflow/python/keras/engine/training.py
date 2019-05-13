@@ -1645,7 +1645,7 @@ class Model(network.Network):
       sample_weights: List of sample weights of the same length as model outputs
         or None.
     """
-    if not getattr(self, '_sample_weight_modes', []):
+    if not self._is_compiled:
       return
     for i in range(len(self._sample_weight_modes)):
       sample_weight = sample_weights[i] if sample_weights else None
@@ -1663,6 +1663,8 @@ class Model(network.Network):
         self._sample_weight_modes[i] = None
 
   def _recompile_weights_loss_and_weighted_metrics(self):
+    if not self._is_compiled:
+      return False
     recompile = False
     for i, mode in enumerate(self._sample_weight_modes):
       if ((mode is not None and self.sample_weights[i] is None) or
