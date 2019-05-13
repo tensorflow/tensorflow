@@ -75,7 +75,7 @@ TfLiteStatus TfliteInferenceStage::Init() {
     }
   } else if (params.delegate() == TfliteInferenceParams::GPU) {
     Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate(model_.get());
-    if (!delegate) {
+    if (delegate) {
       delegates_.push_back(std::move(delegate));
     } else {
       LOG(WARNING) << "GPU not supported";

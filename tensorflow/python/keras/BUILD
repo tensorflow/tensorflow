@@ -1,5 +1,6 @@
 # Description:
 #   Contains the Keras API (internal TensorFlow version).
+
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
@@ -117,7 +118,7 @@ py_library(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -197,6 +198,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking:data_structures",
@@ -1270,6 +1272,7 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
+        "noasan",  # TODO(b/132183295): Re-enable this.
         "notsan",
     ],
 )
@@ -1329,9 +1332,23 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "topology_test",
+    name = "custom_training_loop_test",
     size = "medium",
-    srcs = ["engine/topology_test.py"],
+    srcs = ["custom_training_loop_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "network_test",
+    size = "medium",
+    srcs = ["engine/network_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

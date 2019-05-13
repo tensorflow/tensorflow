@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -214,7 +215,6 @@ class Layer(base_layer.Layer):
     else:
       self._keras_style = False
 
-    self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
     if scope:
       with vs.variable_scope(scope) as captured_scope:
@@ -223,11 +223,17 @@ class Layer(base_layer.Layer):
       self._scope = None
     self._current_scope = None
 
+  # We no longer track graph in tf.layers layers. This property is only kept to
+  # maintain API backward compatibility.
   @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='Stop using this property because tf.layers layers no '
+      'longer track their graph.')
   def graph(self):
     if context.executing_eagerly():
       raise RuntimeError('Layer.graph not supported when executing eagerly.')
-    return self._graph
+    return None
 
   def _init_set_name(self, name):
     # Determine layer name (non-unique).
@@ -497,14 +503,6 @@ class Layer(base_layer.Layer):
       return super(Layer, self).__call__(inputs, *args, **kwargs)
 
     self._set_scope(scope)
-
-    if not context.executing_eagerly():
-      try:
-        # Set layer's "graph" at build time
-        self._graph = ops._get_graph_from_inputs(nest.flatten(inputs),  # pylint: disable=protected-access
-                                                 graph=self._graph)
-      except ValueError as e:
-        raise ValueError('Input graph and Layer graph are not the same: %s' % e)
 
     if self.built:
       try:

@@ -74,6 +74,8 @@ class Mutex : public ResourceBase {
   struct SharedLockReleaser {
     std::shared_ptr<LockReleaser> shared_lock;
 
+    SharedLockReleaser() : shared_lock() {}
+
     explicit SharedLockReleaser(std::shared_ptr<LockReleaser>&& lock)
         : shared_lock(std::forward<decltype(lock)>(lock)) {
       VLOG(3) << "Creating shared_ptr of " << shared_lock.get()
@@ -84,6 +86,16 @@ class Mutex : public ResourceBase {
         : shared_lock(std::move(rhs.shared_lock)) {
       VLOG(3) << "Moving SharedLockReleaser of " << shared_lock.get()
               << " count is: " << shared_lock.use_count();
+    }
+
+    SharedLockReleaser& operator=(const SharedLockReleaser& rhs) = delete;
+
+    SharedLockReleaser& operator=(SharedLockReleaser&& rhs) {
+      if (&rhs == this) return *this;
+      std::swap(shared_lock, rhs.shared_lock);
+      VLOG(3) << "Move-assign of SharedLockReleaser of " << shared_lock.get()
+              << " count is: " << shared_lock.use_count();
+      return *this;
     }
 
     SharedLockReleaser(const SharedLockReleaser& rhs)

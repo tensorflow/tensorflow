@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.data.util import structure
@@ -327,7 +328,7 @@ class DistributedDataset(object):
     # pipeline and only receive its own shard of the dataset.
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+      dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     self._cloned_datasets = []
     if input_context:

@@ -440,7 +440,6 @@ cmd_status(){
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/examples/android/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"

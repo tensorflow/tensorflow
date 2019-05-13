@@ -1112,6 +1112,45 @@ TEST(XlaCompilationTest, DontClusterMergingNodes) {
   EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
 }
 
+TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
+  // This is similar to the 'DontClusterMergingNodes' above, except
+  // MatMulCombined is placed on the CPU.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  absl::string_view xla_gpu_dev0 = "/job:worker/replica:0/task:0/device:GPU:0";
+  absl::string_view xla_gpu_dev1 = "/job:worker/replica:0/task:0/device:GPU:1";
+  absl::string_view xla_cpu_dev0 = "/job:worker/replica:0/task:0/device:CPU:0";
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  Output a = ops::Tanh(root.WithOpName("tanh_A_dev0"),
+                       ops::Const(root.WithOpName("A_dev0"), 1.0f, {2, 2}));
+  Output b = ops::Tanh(root.WithOpName("tanh_B_dev1"),
+                       ops::Const(root.WithOpName("B_dev1"), 1.0f, {2, 2}));
+  Output matmul0 = ops::MatMul(root.WithOpName("MatMul0_dev0"), a, a);
+  Output matmul1 = ops::MatMul(root.WithOpName("MatMul1_dev1"), b, b);
+
+  Output combined =
+      ops::MatMul(root.WithOpName("MatMulCombined_cpu"), matmul0, matmul1);
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  for (Node* n : graph->nodes()) {
+    if (absl::EndsWith(n->name(), /*suffix=*/"cpu")) {
+      n->set_assigned_device_name(string(xla_cpu_dev0));
+    } else if (absl::EndsWith(n->name(), /*suffix=*/"dev0")) {
+      n->set_assigned_device_name(string(xla_gpu_dev0));
+    } else if (absl::EndsWith(n->name(), /*suffix=*/"dev1")) {
+      n->set_assigned_device_name(string(xla_gpu_dev1));
+    }
+  }
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  // Each of the MatMuls should be in a separate cluster.
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
+  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul0_dev0"]);
+  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul1_dev1"]);
+  EXPECT_EQ(clusters["A_dev0"], clusters["MatMul0_dev0"]);
+  EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
+}
+
 // TODO(b/117085735): This form of clustering should be prevented.
 TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
   // MatMulSource below creates data for nodes on GPU0 and GPU1 and is placed

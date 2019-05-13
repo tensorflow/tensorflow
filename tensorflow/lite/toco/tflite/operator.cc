@@ -1806,6 +1806,13 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8/uint8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -2517,6 +2524,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
       MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
+  ops.push_back(
+      MakeUnique<SimpleOperator<RoundOperator>>("ROUND", OperatorType::kRound));
   ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(

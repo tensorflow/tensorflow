@@ -159,6 +159,8 @@ manual_symbol_renames = {
         "tf.CriticalSection",
     "tf.contrib.framework.is_tensor":
         "tf.is_tensor",
+    "tf.contrib.framework.load_variable":
+        "tf.train.load_variable",
     "tf.contrib.framework.nest.assert_same_structure":
         "tf.nest.assert_same_structure",
     "tf.contrib.framework.nest.flatten":

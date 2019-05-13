@@ -568,8 +568,8 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            math_ops.range(grad.shape[0]),
-            constant_op.constant(grad.shape.as_list()))
+            math_ops.range(array_ops.shape(grad)[0]),
+            array_ops.shape(grad))
         indexed_slices_list.append(indexed_slices)
       else:
         indexed_slices_list.append(grad)

@@ -443,6 +443,7 @@ cc_library(
         ":numpy_lib",
         ":safe_ptr",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1419,9 +1420,7 @@ tf_py_test(
     ],
     main = "platform/benchmark_test.py",
     tags = [
-        "manual",
         "no_pip",
-        "notap",
     ],
 )
 
@@ -2863,6 +2862,7 @@ py_library(
         ":platform",
         ":string_ops",
         ":util",
+        "//tensorflow/python/compat",
     ],
 )
 
@@ -4028,7 +4028,7 @@ cuda_py_test(
 )
 
 py_library(
-    name = "training",
+    name = "training_lib",
     srcs = glob(
         ["training/**/*.py"],
         exclude = [
@@ -4098,11 +4098,19 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "training",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_lib",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:python_state",
         "//tensorflow/python/training/tracking:util",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

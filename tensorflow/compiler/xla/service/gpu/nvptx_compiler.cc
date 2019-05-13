@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -163,7 +164,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
 // It takes a compiler pointer, as passes may compile and execute HLOs on the
 // fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         DeviceMemoryAllocator* device_allocator,
+                         se::DeviceMemoryAllocator* device_allocator,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
@@ -225,6 +226,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
+      pass.AddPass<SliceSinker>();
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
@@ -461,7 +463,7 @@ NVPTXCompiler::NVPTXCompiler()
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tensorflow::profiler::TraceMe activity(
@@ -477,7 +479,7 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
@@ -519,9 +521,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
-  IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
-                                      &stream_exec->GetDeviceDescription(),
-                                      &llvm_module);
+  IrEmitterContext ir_emitter_context(
+      module.get(), buffer_assignment.get(), stream_exec->platform(),
+      &stream_exec->GetDeviceDescription(), &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,

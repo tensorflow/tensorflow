@@ -27,10 +27,12 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import autograph
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -151,14 +153,12 @@ class Layer(module.Module):
         'activity_regularizer',
     }
     # Validate optional keyword arguments.
-    for kwarg in kwargs:
-      if kwarg not in allowed_kwargs:
-        raise TypeError('Keyword argument not understood:', kwarg)
+    generic_utils.validate_kwargs(kwargs, allowed_kwargs)
 
     # Mutable properties
     # Indicates whether the layer's weights are updated during training
-    # and whether the layer's updates are run during training
-    self.trainable = trainable
+    # and whether the layer's updates are run during training.
+    self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
     self.stateful = False
@@ -196,10 +196,6 @@ class Layer(module.Module):
     self._metrics_tensors = {}
 
     self._set_dtype_and_policy(dtype)
-
-    self._call_fn_args = function_utils.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in self._call_fn_args or
-                                   hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Dependencies tracked via attribute assignment.
@@ -565,11 +561,8 @@ class Layer(module.Module):
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if (not hasattr(self, '_compute_previous_mask') or
-        self._compute_previous_mask):
+    if self._should_compute_mask:
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
-      if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly
@@ -579,7 +572,7 @@ class Layer(module.Module):
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
     # every layer/mode call because layer/model may be reused.
-    if (context.executing_eagerly() and
+    if (base_layer_utils.is_in_eager_or_tf_function() and
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
@@ -591,7 +584,7 @@ class Layer(module.Module):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
-        with graph.as_default(), ops.name_scope(self._name_scope()):
+        with graph.as_default(), backend.name_scope(self._name_scope()):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
@@ -619,18 +612,25 @@ class Layer(module.Module):
           if (self._expects_training_arg and
               not base_layer_utils.training_arg_passed_to_call(
                   tf_inspect.getfullargspec(self.call), args, kwargs) and
-              getattr(graph, 'name', None) == 'keras_graph'):
+              base_layer_utils.is_in_keras_graph()):
             learning_phase_passed_by_framework = True
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
                   input_list,
-                  self._mixed_precision_policy.should_cast_variables), (
-                      base_layer_utils.AutoAddUpdates(self,
-                                                      inputs)) as auto_updater:
-                outputs = call_fn(inputs, *args, **kwargs)
-                auto_updater.set_outputs(outputs)
+                  self._mixed_precision_policy.should_cast_variables):
+                # Add auto_control_deps in V2 when they are not already added by
+                # a `tf.function`.
+                if (ops.executing_eagerly_outside_functions() and
+                    not base_layer_utils.is_in_eager_or_tf_function()):
+                  with auto_control_deps.AutomaticControlDependencies() as acd:
+                    outputs = call_fn(inputs, *args, **kwargs)
+                    # Wrap Tensors in `outputs` in `tf.identity` to avoid
+                    # circular dependencies.
+                    outputs = base_layer_utils.mark_as_return(outputs, acd)
+                else:
+                  outputs = call_fn(inputs, *args, **kwargs)
 
             except TypeError as e:
               exception_str = str(e)
@@ -671,7 +671,7 @@ class Layer(module.Module):
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
-        with ops.name_scope(self._name_scope()):
+        with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           with base_layer_utils.autocast_context_manager(
               input_list, self._mixed_precision_policy.should_cast_variables):
@@ -700,6 +700,16 @@ class Layer(module.Module):
   @property
   def dynamic(self):
     return self._dynamic
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    for layer in getattr(self, '_layers', []):
+      layer.trainable = value
 
   @property
   def activity_regularizer(self):
@@ -741,7 +751,25 @@ class Layer(module.Module):
   def updates(self):
     if not self.trainable and not self.stateful:
       return []
-    return self._updates + self._gather_children_attribute('updates')
+    with backend.get_graph().as_default():
+      updates = []
+      for u in self._updates:
+        # Filter out updates created in a cross-replica context when in a
+        # replica context and vice versa.
+        if (getattr(u, '_in_cross_replica_context', False) !=
+            ds_context.in_cross_replica_context()):
+          continue
+        if callable(u):
+          try:
+            u = u()
+          except ValueError as e:
+            if 'Trying to capture a tensor from an inner function' in str(e):
+              base_layer_utils.check_graph_consistency(
+                  method='add_update', force_raise=True)
+            raise
+        base_layer_utils.check_graph_consistency(u, method='add_update')
+        updates.append(u)
+    return updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -806,7 +834,7 @@ class Layer(module.Module):
     model = tf.keras.Model(inputs, outputs)
     # Actvity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
-    ````
+    ```
 
     If this is not the case for your loss (if, for example, your loss references
     a `Variable` of one of the model's layers), you can wrap your loss in a
@@ -862,7 +890,9 @@ class Layer(module.Module):
         continue
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
-      if tf_utils.is_symbolic_tensor(loss):
+      # TF Functions should take the eager path.
+      if (tf_utils.is_symbolic_tensor(loss) and
+          not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
@@ -930,10 +960,11 @@ class Layer(module.Module):
           'We currently support only `mean` sample-wise metric aggregation. '
           'You provided aggregation=`%s`' % aggregation)
 
+    from_metric_obj = hasattr(value, '_metric_obj')
     is_symbolic = tf_utils.is_symbolic_tensor(value)
     call_context = base_layer_utils.is_in_call_context()
 
-    if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
+    if name is None and not from_metric_obj:
       # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
       # In eager mode, we use metric name to lookup a metric. Without a name,
       # a new Mean metric wrapper will be created on every model/layer call.
@@ -950,9 +981,9 @@ class Layer(module.Module):
                        'name=\'mean_activation\', aggregation=\'mean\')`')
 
     if call_context:
-      if is_symbolic:
-        with backend.get_graph().as_default():
-          self._symbolic_add_metric(value, aggregation, name)
+      # TF Function path should take the eager path.
+      if is_symbolic and not base_layer_utils.is_in_tf_function():
+        self._symbolic_add_metric(value, aggregation, name)
       else:
         self._eager_add_metric(value, aggregation, name)
     else:
@@ -966,7 +997,7 @@ class Layer(module.Module):
           self._symbolic_add_metric(value, aggregation, name)
         return
 
-      if getattr(value, '_metric_obj', None):
+      if from_metric_obj:
         raise ValueError('Using the result of calling a `Metric` object '
                          'when calling `add_metric` on a Functional '
                          'Model is not supported. Please pass the '
@@ -1013,14 +1044,13 @@ class Layer(module.Module):
     """
     updates = generic_utils.to_list(updates)
 
-    if context.executing_eagerly():
-      # Don't run callable updates if currently executing inside the `call`
-      # of a Layer/Model with `trainable=False`.
+    # All updates can be run immediately in Eager or in a tf.function.
+    if base_layer_utils.is_in_eager_or_tf_function():
       if not base_layer_utils.is_in_frozen_context():
         for update in updates:
           if callable(update):
             update()
-      return  # Updates already applied when in eager mode.
+      return
 
     def process_update(x):
       """Standardize update ops.
@@ -1032,24 +1062,29 @@ class Layer(module.Module):
         An update op.
       """
       if callable(x):
-        x = x()
-      if isinstance(x, ops.Operation):
+        update = lambda: process_update(x())
+        if not ops.executing_eagerly_outside_functions():
+          # In V1 mode, call the callable right away and process. This is needed
+          # for TPU strategy.
+          return update()
+      elif isinstance(x, ops.Operation):
         update = x
       elif hasattr(x, 'op'):
         update = x.op
       else:
         update = ops.convert_to_tensor(x)
-      base_layer_utils.check_graph_consistency(update, method='add_update')
+      update._unconditional_update = (inputs is None)
+      update._in_cross_replica_context = (
+          ds_context.has_strategy() and ds_context.in_cross_replica_context())
       return update
 
     updates = [process_update(x) for x in updates]
+    # Non-callable Updates are run automatically inside `call` in V2, so
+    # they do not need to be tracked later.
+    if (ops.executing_eagerly_outside_functions() and
+        base_layer_utils.is_in_call_context()):
+      updates = [u for u in updates if callable(u)]
     self._updates += updates
-    if inputs is None:
-      for u in updates:
-        u._unconditional_update = True  # pylint: disable=protected-access
-    else:
-      for u in updates:
-        u._unconditional_update = False  # pylint: disable=protected-access
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1572,7 +1607,7 @@ class Layer(module.Module):
 
     def _loss_for_variable(v):
       """Creates a regularization loss `Tensor` for variable `v`."""
-      with ops.name_scope(name + '/Regularizer'):
+      with backend.name_scope(name + '/Regularizer'):
         regularization = regularizer(v)
       return regularization
 
@@ -1588,7 +1623,7 @@ class Layer(module.Module):
     # output, since it is output-specific.
     if self._activity_regularizer:
       output_list = nest.flatten(outputs)
-      with ops.name_scope('ActivityRegularizer'):
+      with backend.name_scope('ActivityRegularizer'):
         for output in output_list:
           activity_loss = self._activity_regularizer(output)
           batch_size = math_ops.cast(
@@ -1658,7 +1693,7 @@ class Layer(module.Module):
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:
-        with ops.name_scope(self.name):
+        with backend.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
     outputs = nest.pack_sequence_as(outputs, output_ls_copy)
@@ -2007,6 +2042,17 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _call_fn_args(self):
+    if getattr(self, '__call_fn_args', None) is None:
+      self.__call_fn_args = function_utils.fn_args(self.call)
+    return self.__call_fn_args
+
+  @property
+  def _should_compute_mask(self):
+    return ('mask' in self._call_fn_args or
+            getattr(self, 'compute_mask', None) is not None)
 
 
 class Node(object):

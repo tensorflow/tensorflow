@@ -1,270 +1,286 @@
 # Get started with TensorFlow Lite
 
-Using a TensorFlow Lite model in your mobile app requires multiple
-considerations: you must choose a pre-trained or custom model, convert the model
-to a TensorFLow Lite format, and finally, integrate the model in your app.
+TensorFlow Lite provides all the tools you need to convert and run TensorFlow
+models on mobile, embedded, and IoT devices. The following guide walks through
+each step of the developer workflow and provides links to further instructions.
 
 ## 1. Choose a model
 
-Depending on the use case, you can choose one of the popular open-sourced models,
-such as *InceptionV3* or *MobileNets*, and re-train these models with a custom
-data set or even build your own custom model.
+<a id="1_choose_a_model"></a>
+
+TensorFlow Lite allows you to run TensorFlow models on a wide range of devices.
+A TensorFlow model is a data structure that contains the logic and knowledge of
+a machine learning network trained to solve a particular problem.
+
+There are many ways to obtain a TensorFlow model, from using pre-trained models
+to training your own. To use a model with TensorFlow Lite it must be converted
+into a special format. This is explained in section 2,
+[Convert the model](#2_convert_the_model_format).
+
+Note: Not all TensorFlow models will work with TensorFlow Lite, since the
+interpreter supports a limited subset of TensorFlow operations. See section 2,
+[Convert the model](#2_convert_the_model_format) to learn about compatibility.
 
 ### Use a pre-trained model
 
-[MobileNets](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html)
-is a family of mobile-first computer vision models for TensorFlow designed to
-effectively maximize accuracy, while taking into consideration the restricted
-resources for on-device or embedded applications. MobileNets are small,
-low-latency, low-power models parameterized to meet the resource constraints for
-a variety of uses. They can be used for classification, detection, embeddings, and
-segmentation—similar to other popular large scale models, such as
-[Inception](https://arxiv.org/pdf/1602.07261.pdf). Google provides 16 pre-trained
-[ImageNet](http://www.image-net.org/challenges/LSVRC/) classification checkpoints
-for MobileNets that can be used in mobile projects of all sizes.
+The TensorFlow Lite team provides a set of pre-trained models that solve a
+variety of machine learning problems. These models have been converted to work
+with TensorFlow Lite and are ready to use in your applications.
 
-[Inception-v3](https://arxiv.org/abs/1512.00567) is an image recognition model
-that achieves fairly high accuracy recognizing general objects with 1000 classes,
-for example, "Zebra", "Dalmatian", and "Dishwasher". The model extracts general
-features from input images using a convolutional neural network and classifies
-them based on those features with fully-connected and softmax layers.
+The pre-trained models include:
 
-[On Device Smart Reply](https://research.googleblog.com/2017/02/on-device-machine-intelligence.html)
-is an on-device model that provides one-touch replies for incoming text messages
-by suggesting contextually relevant messages. The model is built specifically for
-memory constrained devices, such as watches and phones, and has been successfully
-used in Smart Replies on Android Wear. Currently, this model is Android-specific.
+*   [Image classification](../models/image_classification/overview.md)
+*   [Object detection](../models/object_detection/overview.md)
+*   [Smart reply](../models/smart_reply/overview.md)
+*   [Pose estimation](../models/pose_estimation/overview.md)
+*   [Segmentation](../models/segmentation/overview.md)
 
-These pre-trained models are [available for download](hosted_models.md).
+See our full list of pre-trained models in [Models](../models).
 
-### Re-train Inception-V3 or MobileNet for a custom data set
+#### Models from other sources
 
-These pre-trained models were trained on the *ImageNet* data set which contains
-1000 predefined classes. If these classes are not sufficient for your use case,
-the model will need to be re-trained. This technique is called
-*transfer learning* and starts with a model that has been already trained on a
-problem, then retrains the model on a similar problem. Deep learning from
-scratch can take days, but transfer learning is fairly quick. In order to do
-this, you need to generate a custom data set labeled with the relevant classes.
+There are many other places you can obtain pre-trained TensorFlow models,
+including [TensorFlow Hub](https://www.tensorflow.org/hub). In most cases, these
+models will not be provided in the TensorFlow Lite format, and you'll have to
+[convert](#2_convert_the_model_format) them before use.
 
-The [TensorFlow for Poets](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/)
-codelab walks through the re-training process step-by-step. The code supports
-both floating point and quantized inference.
+### Re-train a model (transfer learning)
+
+Transfer learning allows you to take a trained model and re-train it to perform
+another task. For example, an
+[image classification](../models/image_classification/overview.md) model could
+be retrained to recognize new categories of image. Re-training takes less time
+and requires less data than training a model from scratch.
+
+You can use transfer learning to customize pre-trained models to your
+application. Learn how to perform transfer learning in the
+<a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android">Recognize
+flowers with TensorFlow</a> codelab.
 
 ### Train a custom model
 
-A developer may choose to train a custom model using Tensorflow (see the
-[TensorFlow tutorials](https://www.tensorflow.org/tutorials/) for examples of building and training
-models). If you have already written a model, the first step is to export this
-to a `tf.GraphDef` file. This is required because some formats do not store the
-model structure outside the code, and we must communicate with other parts of
-the framework. See
-[Exporting the Inference Graph](https://www.tensorflow.org/tutorials/keras/save_and_restore_models#save_the_entire_model)
-to create file for the custom model.
+If you have designed and trained your own TensorFlow model, or you have trained
+a model obtained from another source, you should convert it to the TensorFlow
+Lite format before use.
 
-TensorFlow Lite currently supports a subset of TensorFlow operators. Refer to
-the [TensorFlow Lite & TensorFlow Compatibility Guide](ops_compatibility.md)
-for supported operators and their usage. This set of operators will continue to
-grow in future Tensorflow Lite releases.
+## 2. Convert the model
 
-## 2. Convert the model format
+<a id="2_convert_the_model_format"></a>
 
-The [TensorFlow Lite Converter](../convert/index.md) accepts the following file
-formats:
+TensorFlow Lite is designed to execute models efficiently on devices. Some of
+this efficiency comes from the use of a special format for storing models.
+TensorFlow models must be converted into this format before they can be used by
+TensorFlow Lite.
 
-*   `SavedModel` — A `GraphDef` and checkpoint with a signature that labels
-    input and output arguments to a model. See the documentation for converting
-    SavedModels using [Python](../convert/python_api.md#basic_savedmodel) or using
-    the [command line](../convert/cmdline_examples.md#savedmodel).
-*   `tf.keras` - A HDF5 file containing a model with weights and input and
-    output arguments generated by `tf.Keras`. See the documentation for
-    converting HDF5 models using
-    [Python](../convert/python_api.md#basic_keras_file) or using the
-    [command line](../convert/cmdline_examples.md#keras).
-*   `frozen tf.GraphDef` — A subclass of `tf.GraphDef` that does not contain
-    variables. A `GraphDef` can be converted to a `frozen GraphDef` by taking a
-    checkpoint and a `GraphDef`, and converting each variable into a constant
-    using the value retrieved from the checkpoint. Instructions on converting a
-    `tf.GraphDef` to a TensorFlow Lite model are described in the next
-    subsection.
+Converting models reduces their file size and introduces optimizations that do
+not affect accuracy. Developers can opt to further reduce file size and increase
+speed of execution in exchange for some trade-offs. You can use the TensorFlow
+Lite converter to choose which optimizations to apply.
 
-### Converting a tf.GraphDef
+TensorFlow Lite supports a limited subset of TensorFlow operations, so not all
+models can be converted. See [Ops compatibility](#ops-compatibility) for more
+information.
 
-TensorFlow models may be saved as a .pb or .pbtxt `tf.GraphDef` file. In order
-to convert the `tf.GraphDef` file to TensorFlow Lite, the model must first be
-frozen. This process involves several file formats including the `frozen
-GraphDef`:
+### TensorFlow Lite converter
 
-*   `tf.GraphDef` (.pb or .pbtxt) — A protobuf that represents the TensorFlow
-    training or computation graph. It contains operators, tensors, and variables
-    definitions.
-*   *checkpoint* (.ckpt) — Serialized variables from a TensorFlow graph. Since
-    this does not contain a graph structure, it cannot be interpreted by itself.
-*   *TensorFlow Lite model* (.tflite) — A serialized
-    [FlatBuffer](https://google.github.io/flatbuffers/) that contains TensorFlow
-    Lite operators and tensors for the TensorFlow Lite interpreter.
+The [TensorFlow Lite converter](../convert) is a tool that converts trained
+TensorFlow models into the TensorFlow Lite format. It can also introduce
+optimizations, which are covered in section 4,
+[Optimize your model](#4_optimize_your_model_optional).
 
-You must have checkpoints that contain trained weights. The `tf.GraphDef` file
-only contains the structure of the graph. The process of merging the checkpoint
-values with the graph structure is called *freezing the graph*.
+The converter is available as a Python API. The following example shows a
+TensorFlow `SavedModel` being converted into the TensorFlow Lite format:
 
-`tf.GraphDef` and checkpoint files for MobileNet models are available
-[here](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md).
+```python
+import tensorflow as tf
 
-To freeze the graph, use the following command (changing the arguments):
-
-```
-freeze_graph --input_graph=/tmp/mobilenet_v1_224.pb \
-  --input_checkpoint=/tmp/checkpoints/mobilenet-10202.ckpt \
-  --input_binary=true \
-  --output_graph=/tmp/frozen_mobilenet_v1_224.pb \
-  --output_node_names=MobileNetV1/Predictions/Reshape_1
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+tflite_model = converter.convert()
+open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-Set the `input_binary` flag to `True` when reading a binary protobuf, a `.pb`
-file. Set to `False` for a `.pbtxt` file.
+You can [convert TensorFlow 2.0 models](../r2/convert) in a similar way.
 
-Set `input_graph` and `input_checkpoint` to the respective filenames. The
-`output_node_names` may not be obvious outside of the code that built the model.
-The easiest way to find them is to visualize the graph, either with
-[TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) or
-`graphviz`.
+The converter can also be used from the
+[command line](../convert/cmdline_examples), but the Python API is recommended.
 
-The frozen `GraphDef` is now ready for conversion to the `FlatBuffer` format
-(.tflite) for use on Android or iOS devices. For Android, the TensorFlow Lite
-Converter tool supports both float and quantized models. To convert the frozen
-`GraphDef` to the .tflite format use a command similar to the following:
+### Options
 
-```
-tflite_convert \
-  --output_file=/tmp/mobilenet_v1_1.0_224.tflite \
-  --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --input_arrays=input \
-  --output_arrays=MobilenetV1/Predictions/Reshape_1
-```
+The converter can convert from a variety of input types.
 
-The
-[frozen_graph.pb](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz)
-file used here is available for download. Setting the `input_array` and
-`output_array` arguments is not straightforward. The easiest way to find these
-values is to explore the graph using
-[TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard). Reuse
-the arguments for specifying the output nodes for inference in the
-`freeze_graph` step.
+When [converting TensorFlow 1.x models](../convert/python_api), these are:
 
-### Full converter reference
+*   [SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model)
+*   Frozen GraphDef (models generated by
+    [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py))
+*   [Keras](https://keras.io) HDF5 models
+*   Models taken from a `tf.Session`
 
-The [TensorFlow Lite Converter](../convert/index.md) can be
-[Python](../convert/python_api.md) or from the
-[command line](../convert/cmdline_examples.md). This allows you to integrate the
-conversion step into the model design workflow, ensuring the model is easy to
-convert to a mobile inference graph.
+When [converting TensorFlow 2.x models](../r2/convert/python_api), these are:
+
+*   [SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model)
+*   [`tf.keras` models](https://www.tensorflow.org/alpha/guide/keras/overview)
+*   [Concrete functions](../r2/convert/concrete_function.md)
+
+The converter can be configured to apply various optimizations that can improve
+performance or reduce file size. This is covered in section 4,
+[Optimize your model](#4_optimize_your_model_optional).
 
 ### Ops compatibility
 
-Refer to the [ops compatibility guide](ops_compatibility.md) for
-troubleshooting help, and if that doesn't help, please
-[file an issue](https://github.com/tensorflow/tensorflow/issues).
+TensorFlow Lite currently supports a [limited subset](ops_compatibility.md) of
+TensorFlow operations. The long term goal is for all TensorFlow operations to be
+supported.
 
-### Graph Visualization tool
+If the model you wish to convert contains unsupported operations, you can use
+[TensorFlow Select](ops_select.md) to include operations from TensorFlow. This
+will result in a larger binary being deployed to devices.
 
-The [development repo](https://github.com/tensorflow/tensorflow) contains a tool
-to visualize TensorFlow Lite models after conversion. To build the
-[visualize.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
-tool:
+## 3. Run inference with the model
 
-```sh
-bazel run tensorflow/lite/tools:visualize -- model.tflite model_viz.html
+<a id="3_use_the_tensorflow_lite_model_for_inference_in_a_mobile_app"></a>
+
+*Inference* is the process of running data through a model to obtain
+predictions. It requires a model, an interpreter, and input data.
+
+### TensorFlow Lite interpreter
+
+The [TensorFlow Lite interpreter](inference.md) is a library that takes a model
+file, executes the operations it defines on input data, and provides access to
+the output.
+
+The interpreter works across multiple platforms and provides a simple API for
+running TensorFlow Lite models from Java, Swift, Objective-C, C++, and Python.
+
+The following code shows the interpreter being invoked from Java:
+
+```java
+try (Interpreter interpreter = new Interpreter(tensorflow_lite_model_file)) {
+  interpreter.run(input, output);
+}
 ```
 
-This generates an interactive HTML page listing subgraphs, operations, and a
-graph visualization.
+### GPU acceleration and Delegates
 
-## 3. Use the TensorFlow Lite model for inference in a mobile app
+Some devices provide hardware acceleration for machine learning operations. For
+example, most mobile phones have GPUs, which can perform floating point matrix
+operations faster than a CPU.
 
-After completing the prior steps, you should now have a `.tflite` model file.
+The speed-up can be substantial. For example, a MobileNet v1 image
+classification model runs 5.5x faster on a Pixel 3 phone when GPU acceleration
+is used.
 
-### Android
+The TensorFlow Lite interpreter can be configured with
+[Delegates](../performance/delegates.md) to make use of hardware acceleration on
+different devices. The [GPU Delegate](../performance/gpu.md) allows the
+interpreter to run appropriate operations on the device's GPU.
 
-Since Android apps are written in Java and the core TensorFlow library is in C++,
-a JNI library is provided as an interface. This is only meant for inference—it
-provides the ability to load a graph, set up inputs, and run the model to
-calculate outputs.
+The following code shows the GPU Delegate being used from Java:
 
-The open source Android demo app uses the JNI interface and is available
-[on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/java/demo/app).
-You can also download a
-[prebuilt APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
-See the <a href="./android.md">Android demo</a> guide for details.
+```java
+GpuDelegate delegate = new GpuDelegate();
+Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
+Interpreter interpreter = new Interpreter(tensorflow_lite_model_file, options);
+try {
+  interpreter.run(input, output);
+}
+```
 
-The <a href="./android.md">Android mobile</a> guide has instructions for
-installing TensorFlow on Android and setting up `bazel` and Android Studio.
+To add support for new hardware accelerators you can
+[define your own delegate](../performance/delegates.md#how_to_add_a_delegate).
 
-### iOS
+### Android and iOS
 
-To integrate a TensorFlow model in an iOS app, see the
-[TensorFlow Lite for iOS](ios.md) guide and <a href="./ios.md">iOS demo</a>
-guide.
+The TensorFlow Lite interpreter is easy to use from both major mobile platforms.
+To get started, explore the [Android quickstart](android.md) and
+[iOS quickstart](ios.md) guides.
+[Example applications](https://www.tensorflow.org/lite/examples) are available
+for both platforms.
 
-#### Core ML support
+To obtain the required libraries, Android developers should use the
+[TensorFlow Lite AAR](android.md#use_the_tensorflow_lite_aar_from_jcenter). iOS
+developers should use the
+[CocoaPods for Swift or Objective-C](ios.md#add_tensorflow_lite_to_your_swift_or_objective-c_project).
 
-Core ML is a machine learning framework used in Apple products. In addition to
-using Tensorflow Lite models directly in your applications, you can convert
-trained Tensorflow models to the
-[CoreML](https://developer.apple.com/machine-learning/) format for use on Apple
-devices. To use the converter, refer to the
-[Tensorflow-CoreML converter documentation](https://github.com/tf-coreml/tf-coreml).
+### Linux
 
-### ARM32 and ARM64 Linux
+Embedded Linux is an important platform for deploying machine learning. We
+provide build instructions for both [Raspberry Pi](build_rpi.md) and
+[Arm64-based boards](build_arm64.md) such as Odroid C2, Pine64, and NanoPi.
 
-Compile Tensorflow Lite for a Raspberry Pi by following the
-[RPi build instructions](build_rpi.md) Compile Tensorflow Lite for a generic aarch64
-board such as Odroid C2, Pine64, NanoPi, and others by following the
-[ARM64 Linux build instructions](build_arm64.md) This compiles a static
-library file (`.a`) used to build your app. There are plans for Python bindings
-and a demo app.
+### Microcontrollers
 
-## 4. Optimize your model (optional)
+[TensorFlow Lite for Microcontrollers](../microcontrollers/overview.md) is an
+experimental port of TensorFlow Lite aimed at microcontrollers and other devices
+with only kilobytes of memory.
 
-There are two options. If you plan to run on CPU, we recommend that you quantize
-your weights and activation tensors. If the hardware is available, another
-option is to run on GPU for massively parallelizable workloads.
+### Operations
+
+If your model requires TensorFlow operations that are not yet implemented in
+TensorFlow Lite, you can use [TensorFlow Select](ops_select.md) to use them in
+your model. You'll need to build a custom version of the interpreter that
+includes the TensorFlow operations.
+
+You can use [Custom operators](ops_custom.md) to write your own operations, or
+port new operations into TensorFlow Lite.
+
+[Operator versions](ops_version.md) allows you to add new functionalities and
+parameters into existing operations.
+
+## 4. Optimize your model
+
+<a id="4_optimize_your_model_optional"></a>
+
+TensorFlow Lite provides tools to optimize the size and performance of your
+models, often with minimal impact on accuracy. Optimized models may require
+slightly more complex training, conversion, or integration.
+
+Machine learning optimization is an evolving field, and TensorFlow Lite's
+[Model Optimization Toolkit](#model-optimization-toolkit) is continually growing
+as new techniques are developed.
+
+### Performance
+
+The goal of model optimization is to reach the ideal balance of performance,
+model size, and accuracy on a given device.
+[Performance best practices](../performance/best_practices.md) can help guide
+you through this process.
 
 ### Quantization
-Compress your model size by lowering the precision of the parameters (i.e.
-neural network weights) from their training-time 32-bit floating-point
-representations into much smaller and efficient 8-bit integer ones.
 
-This will execute the heaviest computations fast in lower precision, but the
-most sensitive ones with higher precision, thus typically resulting in little to
-no final accuracy losses for the task, yet a significant speed-up over pure
-floating-point execution.
+By reducing the precision of values and operations within a model, quantization
+can reduce both the size of model and the time required for inference. For many
+models, there is only a minimal loss of accuracy.
 
-The post-training quantization technique is integrated into the TensorFlow Lite
-conversion tool. Getting started is easy: after building your TensorFlow model,
-simply enable the ‘post_training_quantize’ flag in the TensorFlow Lite
-conversion tool. Assuming that the saved model is stored in saved_model_dir, the
-quantized tflite flatbuffer can be generated in command line:
+The TensorFlow Lite converter makes it easy to quantize TensorFlow models. The
+following Python code quantizes a `SavedModel` and saves it to disk:
 
-```
+```python
+import tensorflow as tf
+
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
 tflite_quant_model = converter.convert()
+open("converted_model.tflite", "wb").write(tflite_quantized_model)
 ```
 
-Read the full documentation [here](../performance/post_training_quantization.md)
-and see a tutorial
-[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
+To learn more about quantization, see
+[Post-training quantization](../performance/post_training_quantization.md).
 
-### GPU
-Run on GPU GPUs are designed to have high throughput for massively
-parallelizable workloads. Thus, they are well-suited for deep neural nets, which
-consist of a huge number of operators, each working on some input tensor(s) that
-can be easily divided into smaller workloads and carried out in parallel,
-typically resulting in lower latency.
+### Model Optimization Toolkit
 
-Another benefit with GPU inference is its power efficiency. GPUs carry out the
-computations in a very efficient and optimized manner, so that they consume less
-power and generate less heat than when the same task is run on CPUs.
+The [Model Optimization Toolkit](../performance/model_optimization.md) is a set
+of tools and techniques designed to make it easy for developers to optimize
+their models. Many of the techniques can be applied to all TensorFlow models and
+are not specific to TensorFlow Lite, but they are especially valuable when
+running inference on devices with limited resources.
 
-Read the tutorial [here](../performance/gpu.md) and full documentation [here](../performance/gpu_advanced.md).
+## Next steps
+
+Now that you're familiar with TensorFlow Lite, explore some of the following
+resources:
+
+*   If you're a mobile developer, visit [Android quickstart](android.md) or
+    [iOS quickstart](ios.md).
+*   Explore our [pre-trained models](../models).
+*   Try our [example apps](https://www.tensorflow.org/lite/examples).

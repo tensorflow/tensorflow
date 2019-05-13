@@ -84,15 +84,6 @@ bool AlwaysForwardsRefInput(const Node& node) { return node.IsIdentity(); }
 
 }  // namespace
 
-Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-    return errors::Internal("Malformed assigned device '", device, "'");
-  }
-  *device_type = DeviceType(parsed.type);
-  return Status::OK();
-}
-
 bool HasForwardedRefInput(const Node& node) {
   if (AlwaysForwardsRefInput(node)) {
     for (const Edge* incoming_edge : node.in_edges()) {
@@ -225,108 +216,6 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 }
 
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
-
-Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
-                            bool allow_mixing_unknown_and_cpu,
-                            bool* out_can_pick_device,
-                            string* out_device_picked) {
-  if (out_can_pick_device) {
-    *out_can_pick_device = true;
-  }
-
-#define FAILED_TO_PICK_DEVICE(failing_status) \
-  do {                                        \
-    if (out_can_pick_device) {                \
-      *out_can_pick_device = false;           \
-      return Status::OK();                    \
-    } else {                                  \
-      return failing_status;                  \
-    }                                         \
-  } while (false)
-
-  TF_RET_CHECK(!device_names.empty()) << "No devices to choose from";
-  DCHECK_NE(out_can_pick_device == nullptr, out_device_picked == nullptr);
-
-  absl::flat_hash_set<absl::string_view> device_names_set;
-  for (absl::string_view device_name : device_names) {
-    if (!device_name.empty()) {
-      device_names_set.insert(device_name);
-    }
-  }
-
-  absl::optional<absl::string_view> maybe_gpu_device;
-  absl::optional<absl::string_view> maybe_cpu_device;
-  absl::optional<absl::string_view> maybe_unknown_device;
-
-  for (absl::string_view device_name : device_names_set) {
-    DeviceNameUtils::ParsedName parsed_name;
-    TF_RET_CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_name))
-        << device_name;
-    if (parsed_name.type == "GPU") {
-      if (maybe_gpu_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple GPU devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_gpu_device = device_name;
-    } else if (parsed_name.type == "CPU") {
-      if (maybe_cpu_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple CPU devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_cpu_device = device_name;
-    } else {
-      if (maybe_unknown_device) {
-        FAILED_TO_PICK_DEVICE(errors::Internal(
-            "Multiple unknown devices ", absl::StrJoin(device_names, ", ")));
-      }
-      maybe_unknown_device = device_name;
-    }
-  }
-
-  if (maybe_unknown_device && maybe_gpu_device) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Found both unknown and GPU devices: ", *maybe_unknown_device, ", ",
-        *maybe_gpu_device));
-  }
-
-  if (!allow_mixing_unknown_and_cpu) {
-    if (maybe_unknown_device && maybe_cpu_device) {
-      FAILED_TO_PICK_DEVICE(errors::Internal(
-          "Found both unknown and CPU devices: ", *maybe_unknown_device, ", ",
-          *maybe_cpu_device));
-    }
-  }
-
-  if (out_device_picked) {
-    if (maybe_gpu_device) {
-      *out_device_picked = string(*maybe_gpu_device);
-    } else if (maybe_unknown_device) {
-      *out_device_picked = string(*maybe_unknown_device);
-    } else {
-      *out_device_picked = string(*maybe_cpu_device);
-    }
-  }
-
-  return Status::OK();
-
-#undef FAILED_TO_PICK_DEVICE
-}
-
-Status PickDeviceForXla(absl::Span<const string> device_names,
-                        bool allow_mixing_unknown_and_cpu,
-                        string* out_device_picked) {
-  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
-                              /*out_can_pick_device=*/nullptr,
-                              out_device_picked);
-}
-
-Status CanPickDeviceForXla(absl::Span<const string> device_names,
-                           bool allow_mixing_unknown_and_cpu,
-                           bool* out_can_pick_device) {
-  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
-                              out_can_pick_device,
-                              /*out_device_picked=*/nullptr);
-}
 
 namespace {
 struct XlaGlobalJitLevel {

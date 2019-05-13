@@ -388,6 +388,25 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     self._test_mv_properties(v1, "foo:0", distribution)
     self._test_mv_properties(v2, "bar:0", distribution)
 
+  def testVariableWithTensorInitialValueInFunction(self, distribution):
+    if not context.executing_eagerly():
+      self.skipTest("`tf.function` is an eager-only feature")
+
+    v = [None]
+    def model_fn():
+      if v[0] is None:
+        init_val = array_ops.zeros([])
+        v[0] = variables.Variable(init_val)
+      ds_context.get_replica_context().merge_call(lambda _: _)
+      return v[0]
+
+    @def_function.function(autograph=False)
+    def make_v1():
+      return distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn))
+
+    self.assertAllEqual([0, 0], make_v1())
+
   def testSingleVariable(self, distribution):
     def model_fn():
       # This variable should be created only once across the threads because of

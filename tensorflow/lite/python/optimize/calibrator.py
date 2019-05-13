@@ -54,7 +54,8 @@ class Calibrator(object):
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
 
-  def calibrate_and_quantize(self, dataset_gen, input_type, output_type):
+  def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
+                             allow_float):
     """Calibrates the model with specified generator and then quantizes it.
 
     Returns:
@@ -64,10 +65,14 @@ class Calibrator(object):
       dataset_gen: A generator that generates calibration samples.
       input_type: A tf.dtype representing the desired real-value input type.
       output_type: A tf.dtype representing the desired real-value output type.
+      allow_float: A boolean. False if the resulting model cannot perform float
+                   computation, useful when targeting an integer-only backend.
+                   If False, an error will be thrown if an operation cannot be
+                   quantized, otherwise the model will fallback to float ops.
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
       self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float)

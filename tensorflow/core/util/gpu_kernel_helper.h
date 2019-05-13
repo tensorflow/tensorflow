@@ -19,7 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda_fp16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
 #endif
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
@@ -28,18 +28,6 @@ limitations under the License.
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
 #define TF_RED_WARPSIZE 64
-#endif
-
-#if GOOGLE_CUDA
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
-                          stream, ...)                                        \
-  TF_CHECK_OK(CudaLaunchKernel(kernel, block_count, threads_per_block,        \
-                               shared_mem, stream, __VA_ARGS__));
-#elif TENSORFLOW_USE_ROCM
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
-                          stream, ...)                                        \
-  hipLaunchKernelGGL(kernel, block_count, threads_per_block, shared_mem,      \
-                     stream, __VA_ARGS__);
 #endif
 
 // Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
@@ -53,16 +41,36 @@ limitations under the License.
 #define gpuSuccess cudaSuccess
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
-
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-
 namespace tensorflow {
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
+  return cudaGetErrorString(error);
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* GpuGetErrorString(hipError_t error) {
+  return hipGetErrorString(error);
+#endif
+}
+
+inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
+  // Returns a raw reference to the current cuda stream. Required by a
+  // number of kernel calls (for which StreamInterface* does not work),
+  // i.e. CUB and certain cublas primitives.
+  const gpuStream_t* ptr = CHECK_NOTNULL(
+      reinterpret_cast<const gpuStream_t*>(context->op_device_context()
+                                               ->stream()
+                                               ->implementation()
+                                               ->GpuStreamMemberHack()));
+  return *ptr;
+}
+
 __host__ __device__ inline tensorflow::bfloat16 CudaLdg(
     const tensorflow::bfloat16* address) {
   tensorflow::bfloat16 return_value;

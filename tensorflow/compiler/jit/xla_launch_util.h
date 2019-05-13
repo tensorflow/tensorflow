@@ -23,14 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace tensorflow {
 class XlaAllocator;
@@ -108,11 +108,11 @@ Status LockVariables(absl::Span<VariableInfo> variables)
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
 // see comment on `AllowsAsynchronousDeallocation()`.
-class XlaAllocator : public xla::DeviceMemoryAllocator {
+class XlaAllocator : public se::DeviceMemoryAllocator {
  public:
   XlaAllocator(const se::Platform* platform, Allocator* wrapped);
   ~XlaAllocator() override;
-  xla::StatusOr<xla::OwningDeviceMemory> Allocate(
+  xla::StatusOr<se::OwningDeviceMemory> Allocate(
       int device_ordinal, uint64 size, bool retry_on_failure) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
@@ -142,7 +142,7 @@ class XlaComputationLaunchContext {
   // because we track inter-stream dependencies through events inside XlaTensor
   // objects.
   XlaComputationLaunchContext(xla::LocalClient* client,
-                              xla::DeviceMemoryAllocator* xla_allocator,
+                              se::DeviceMemoryAllocator* xla_allocator,
                               bool allocate_xla_tensors,
                               bool use_multiple_streams);
 
@@ -186,7 +186,7 @@ class XlaComputationLaunchContext {
 
  private:
   xla::LocalClient* client_;
-  xla::DeviceMemoryAllocator* xla_allocator_;
+  se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
   std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;

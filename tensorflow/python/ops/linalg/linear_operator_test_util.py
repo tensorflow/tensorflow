@@ -251,8 +251,7 @@ def _test_matmul_base(
           adjoint_arg=adjoint_arg)
     else:
       op_matmul = operator.matmul(x, adjoint=adjoint)
-    mat_matmul = linear_operator_util.matmul_with_broadcast(
-        mat, x, adjoint_a=adjoint)
+    mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
     if not use_placeholder:
       self.assertAllEqual(op_matmul.get_shape(),
                           mat_matmul.get_shape())

@@ -200,33 +200,28 @@ Status BuildLoopBody(const Graph& graph, Frame* frame,
     arg_types->push_back(dtype);
 
     TF_ASSIGN_OR_RETURN(Node * arg_node, BuildArgNode(output, dtype, i));
-
-    if (dtype == DT_RESOURCE) {
-      // The convention of the XLA bridge is that resource variable arguments
-      // are only inputs to the loop body and have no corresponding output.
-      // TODO(b/37741920): change the convention so that DT_RESOURCE variables
-      // are both inputs and outputs, and then remove this case.
-      TF_RET_CHECK(arg.is_loop_invariant);
+    TF_ASSIGN_OR_RETURN(Node * retval_node, BuildRetvalNode(output, dtype, i));
+    if (arg.is_loop_invariant) {
+      // Argument is loop-invariant. Forward it from the Arg to the Retval.
       node_map[arg.enter->id()] = arg_node;
+      output->AddEdge(arg_node, 0, retval_node, 0);
     } else {
-      TF_ASSIGN_OR_RETURN(Node * retval_node,
-                          BuildRetvalNode(output, dtype, i));
-
-      if (arg.is_loop_invariant) {
-        // Argument is loop-invariant. Forward it from the Arg to the Retval.
-        node_map[arg.enter->id()] = arg_node;
-        output->AddEdge(arg_node, 0, retval_node, 0);
-      } else {
-        // Argument is loop-varying.
-        node_map[arg.switch_node->id()] = arg_node;
-        // The Switch node has two outputs, but _Arg only has one. This tells
-        // the CopySubgraph function to rewrite the output number of edges from
-        // the _Arg node to be 0 rather than copying the output number from the
-        // Switch node.
-        squash_src_outputs[arg.switch_node->id()] = true;
-        node_map[arg.next_iteration->id()] = retval_node;
-        next_iterations.push_back(arg.next_iteration);
+      // Argument is loop-varying.
+      if (dtype == DT_RESOURCE) {
+        // DT_RESOURCE arguments should always be loop-invariant in the graphs
+        // generated from TF.
+        return errors::Unimplemented("Loop-varying DT_RESOURCE Enter node ",
+                                     arg.enter->name(), " is currently not",
+                                     " supported.");
       }
+      node_map[arg.switch_node->id()] = arg_node;
+      // The Switch node has two outputs, but _Arg only has one. This tells
+      // the CopySubgraph function to rewrite the output number of edges from
+      // the _Arg node to be 0 rather than copying the output number from the
+      // Switch node.
+      squash_src_outputs[arg.switch_node->id()] = true;
+      node_map[arg.next_iteration->id()] = retval_node;
+      next_iterations.push_back(arg.next_iteration);
     }
   }
 

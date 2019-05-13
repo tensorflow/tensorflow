@@ -891,6 +891,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
       break;
     }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -1459,6 +1468,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands)) {
         return false;
       }
+      if (!ShapeUtil::IsScalar(operands[0]->shape())) {
+        return Error(lexer_.GetLoc(), "The first operand must be a scalar");
+      }
       const bool branch_index_is_bool =
           operands[0]->shape().element_type() == PRED;
       if (branch_index_is_bool) {
@@ -1467,6 +1479,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         attrs["false_computation"] = {
             /*required=*/true, AttrTy::kHloComputation, &false_computation};
       } else {
+        if (operands[0]->shape().element_type() != S32) {
+          return Error(lexer_.GetLoc(),
+                       "The first operand must be a scalar of PRED or S32");
+        }
         attrs["branch_computations"] = {/*required=*/true,
                                         AttrTy::kBracedHloComputationList,
                                         &branch_computations};
@@ -1489,7 +1505,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
-      optional<string> opaque;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
@@ -1497,7 +1512,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<Shape>> operand_layout_constraints;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
-      attrs["opaque"] = {/*required=*/false, AttrTy::kString, &opaque};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -1545,11 +1559,11 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         }
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target, *operand_layout_constraints,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       } else {
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       }
       if (window.has_value()) {
         instruction->set_window(*window);
@@ -4135,6 +4149,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
+  }
+
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
   }
 
   module->AddEntryComputation(builder.Build());

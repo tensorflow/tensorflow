@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -96,6 +96,10 @@ class RecursiveCompilabilityChecker {
     // don't auto-cluster these ops because we don't yet support live-in or
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
+
+    // Whether ops known to be slow or to have correctness issues should be
+    // auto-clustered.
+    bool allow_slow_and_inaccurate_ops;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,
@@ -113,6 +117,11 @@ class RecursiveCompilabilityChecker {
                         FunctionLibraryRuntime* lib_runtime) {
     return IsCompilableCall(call_def, /*depth=*/0, lib_runtime);
   }
+
+  // Returns true if XLA supports this Op, but we don't want to cluster it (ie:
+  // due to performance or correctness concerns).
+  bool OpIsInaccurate(const Node& node);
+  bool OpIsSlow(const Node& node);
 
  private:
   bool IsCompilableNode(const Node& node, int depth,

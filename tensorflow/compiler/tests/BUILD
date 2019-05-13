@@ -458,10 +458,6 @@ tf_xla_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
-    tags = [
-        "manual",
-        "notap",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

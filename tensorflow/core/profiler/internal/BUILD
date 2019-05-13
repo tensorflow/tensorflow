@@ -381,7 +381,6 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

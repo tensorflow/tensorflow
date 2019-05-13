@@ -11,16 +11,13 @@ licenses(["notice"])  # Apache 2.0
 cc_library(
     name = "native_framework_only",
     srcs = [
-        "exception_jni.cc",
+        "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
     ],
     hdrs = [
-        "exception_jni.h",
-        "nativeinterpreterwrapper_jni.h",
-        "tensor_jni.h",
-        "tensorflow_lite_jni.h",
+        "jni_utils.h",
     ],
     copts = tflite_copts(),
     linkopts = [
@@ -41,9 +38,6 @@ cc_library(
     name = "init_tensorflow",
     srcs = [
         "init_tensorflow_jni.cc",
-    ],
-    hdrs = [
-        "init_tensorflow_jni.h",
     ],
     copts = tflite_copts(),
     deps = [

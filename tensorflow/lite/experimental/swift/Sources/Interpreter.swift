@@ -87,7 +87,6 @@ public final class Interpreter {
   /// - Throws: An error if the model was not ready because tensors were not allocated.
   public func invoke() throws {
     guard TFL_InterpreterInvoke(cInterpreter) == kTfLiteOk else {
-      // TODO(b/117510052): Determine which error to throw.
       throw InterpreterError.allocateTensorsRequired
     }
   }
@@ -104,8 +103,8 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard let cTensor = TFL_InterpreterGetInputTensor(cInterpreter, Int32(index)),
-          let bytes = TFL_TensorData(cTensor),
-          let nameCString = TFL_TensorName(cTensor)
+      let bytes = TFL_TensorData(cTensor),
+      let nameCString = TFL_TensorName(cTensor)
     else {
       throw InterpreterError.allocateTensorsRequired
     }
@@ -124,7 +123,6 @@ public final class Interpreter {
     let zeroPoint = Int(cQuantizationParams.zero_point)
     var quantizationParameters: QuantizationParameters? = nil
     if scale != 0.0 {
-      // TODO(b/117510052): Update this check once the TfLiteQuantizationParams struct has a mode.
       quantizationParameters = QuantizationParameters(scale: scale, zeroPoint: zeroPoint)
     }
     let tensor = Tensor(
@@ -151,10 +149,9 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard let cTensor = TFL_InterpreterGetOutputTensor(cInterpreter, Int32(index)),
-          let bytes = TFL_TensorData(cTensor),
-          let nameCString = TFL_TensorName(cTensor)
+      let bytes = TFL_TensorData(cTensor),
+      let nameCString = TFL_TensorName(cTensor)
     else {
-      // TODO(b/117510052): Determine which error to throw.
       throw InterpreterError.invokeInterpreterRequired
     }
     guard let dataType = TensorDataType(type: TFL_TensorType(cTensor)) else {
@@ -172,7 +169,6 @@ public final class Interpreter {
     let zeroPoint = Int(cQuantizationParams.zero_point)
     var quantizationParameters: QuantizationParameters? = nil
     if scale != 0.0 {
-      // TODO(b/117510052): Update this check once the TfLiteQuantizationParams struct has a mode.
       quantizationParameters = QuantizationParameters(scale: scale, zeroPoint: zeroPoint)
     }
     let tensor = Tensor(
@@ -200,11 +196,11 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard TFL_InterpreterResizeInputTensor(
-            cInterpreter,
-            Int32(index),
-            shape.int32Dimensions,
-            Int32(shape.rank)
-          ) == kTfLiteOk
+      cInterpreter,
+      Int32(index),
+      shape.int32Dimensions,
+      Int32(shape.rank)
+    ) == kTfLiteOk
     else {
       throw InterpreterError.failedToResizeInputTensor(index: index)
     }
@@ -233,7 +229,13 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorDataCount(provided: data.count, required: byteCount)
     }
 
+    #if swift(>=5.0)
+    let status = data.withUnsafeBytes {
+      TFL_TensorCopyFromBuffer(cTensor, $0.baseAddress, data.count)
+    }
+    #else
     let status = data.withUnsafeBytes { TFL_TensorCopyFromBuffer(cTensor, $0, data.count) }
+    #endif  // swift(>=5.0)
     guard status == kTfLiteOk else { throw InterpreterError.failedToCopyDataToInputTensor }
     return try input(at: index)
   }

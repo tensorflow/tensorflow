@@ -20,6 +20,7 @@ py_library(
     deps = [
         ":keras_multi_worker_test_base",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:model_combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:single_loss_example",
         "//tensorflow/python/distribute:strategy_combinations",

@@ -109,11 +109,11 @@ class HloBuffer {
 
  private:
   // Unique identifier for this HloBuffer.
-  const Id id_;
+  Id id_;
 
   // The set of values contained in this buffer. Vector contains no duplicates
   // and is sorted stably by HloValue::Id.
-  const std::vector<const HloValue*> values_;
+  std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer);

@@ -91,7 +91,12 @@ def _nccl_configure_impl(repository_ctx):
     else:
         # Create target for locally installed NCCL.
         config = find_cuda_config(repository_ctx, ["nccl"])
-        repository_ctx.template("BUILD", _label("system.BUILD.tpl"), config)
+        config_wrap = {
+            "%{nccl_version}": config["nccl_version"],
+            "%{nccl_header_dir}": config["nccl_include_dir"],
+            "%{nccl_library_dir}": config["nccl_library_dir"],
+        }
+        repository_ctx.template("BUILD", _label("system.BUILD.tpl"), config_wrap)
 
 nccl_configure = repository_rule(
     implementation = _nccl_configure_impl,

@@ -179,8 +179,21 @@ def _tpu_run(strategy, fn, args, kwargs):
          values.select_replica(i, args),
          values.select_replica(i, kwargs)])
 
+  # Construct and pass `maximum_shapes` so that we could support dynamic
+  # shapes using dynamic padder.
+  if replicate_inputs:
+    maximum_shapes = []
+    flattened_list = nest.flatten(replicate_inputs[0])
+    for input_tensor in flattened_list:
+      maximum_shapes.append(input_tensor.get_shape())
+    maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
+                                           maximum_shapes)
+  else:
+    maximum_shapes = None
+
   with strategy.scope():
-    replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs)
+    replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
+                                      maximum_shapes=maximum_shapes)
 
   # Remove all no ops that may have been added during 'tpu.replicate()'
   if isinstance(result[0], list):
@@ -304,7 +317,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
     return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync)
+                                     self._num_replicas_in_sync,
+                                     _enable_get_next_as_optional=True)
 
   def _make_input_fn_iterator(
       self,
@@ -318,7 +332,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts)
+        input_fn, self._input_workers, input_contexts,
+        _enable_get_next_as_optional=True)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -334,14 +349,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
   def _experimental_run_steps_on_iterator(
       self, fn, multi_worker_iterator, iterations, initial_loop_values=None):
-    output_shapes = multi_worker_iterator.output_shapes
-    shapes = nest.flatten(output_shapes)
-    if any(not s.is_fully_defined() for s in shapes):
-      raise ValueError(
-          "TPU currently requires fully defined shapes. Either use "
-          "set_shape() on the input tensors or use "
-          "dataset.batch(..., drop_remainder=True).")
-
     # Wrap `fn` for repeat.
     if initial_loop_values is None:
       initial_loop_values = {}

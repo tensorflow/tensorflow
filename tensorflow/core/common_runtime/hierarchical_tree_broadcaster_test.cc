@@ -455,8 +455,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_EQ(instances_[di]->status_.error_message(),
-                  "Deliberate failure");
+        ASSERT_NE(
+            instances_[di]->status_.error_message().find("Deliberate failure"),
+            string::npos);
         mutex_lock l(mu_);
         ++failure_count_;
         continue;

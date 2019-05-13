@@ -58,6 +58,7 @@ py_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [

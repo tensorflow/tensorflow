@@ -106,7 +106,6 @@ ComputeArgAndRetvalCores(const Graph& graph) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
-      TF_ASSIGN_OR_RETURN(retval_cores[index], get_sharding_for_node(n));
       retval_cores[index] = core;
     }
   }
@@ -234,6 +233,11 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
+        // Resources are pushed into elems later when processing resource
+        // arguments. This is correct as long as the input and output resources
+        // are in the same order. In the case of functionalized while body,
+        // this property is guaranteed since a corresponding output is always
+        // created for a DT_RESOURCE input in a corresponding location.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();

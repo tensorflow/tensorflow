@@ -42,14 +42,6 @@ constexpr char kGroundTruthLabelsFlag[] = "ground_truth_labels";
 constexpr char kBlacklistFilePathFlag[] = "blacklist_file_path";
 constexpr char kModelFileFlag[] = "model_file";
 
-std::string StripTrailingSlashes(const std::string& path) {
-  int end = path.size();
-  while (end > 0 && path[end - 1] == '/') {
-    end--;
-  }
-  return path.substr(0, end);
-}
-
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
   if (n >= v.size()) return v;
@@ -232,35 +224,13 @@ TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
   return kTfLiteOk;
 }
 
-// TODO(b/130823599): Move to tools/evaluation/utils.
-TfLiteStatus GetSortedFileNames(const std::string dir_path,
-                                std::vector<std::string>* result) {
-  DIR* dir;
-  struct dirent* ent;
-  if (result == nullptr) {
-    LOG(ERROR) << "result cannot be nullptr";
-    return kTfLiteError;
-  }
-  if ((dir = opendir(dir_path.c_str())) != nullptr) {
-    while ((ent = readdir(dir)) != nullptr) {
-      std::string filename(std::string(ent->d_name));
-      if (filename.size() <= 2) continue;
-      result->emplace_back(dir_path + "/" + filename);
-    }
-    closedir(dir);
-  } else {
-    LOG(ERROR) << "Could not open dir: " << dir_path;
-    return kTfLiteError;
-  }
-  std::sort(result->begin(), result->end());
-  return kTfLiteOk;
-}
-
 TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
-  const std::string data_path =
-      StripTrailingSlashes(params_.ground_truth_images_path) + "/";
+  const std::string data_path = tflite::evaluation::StripTrailingSlashes(
+                                    params_.ground_truth_images_path) +
+                                "/";
   std::vector<std::string> image_files;
-  TF_LITE_ENSURE_STATUS(GetSortedFileNames(data_path, &image_files));
+  TF_LITE_ENSURE_STATUS(
+      tflite::evaluation::GetSortedFileNames(data_path, &image_files));
   std::vector<string> ground_truth_image_labels;
   if (!tflite::evaluation::ReadFileLines(params_.ground_truth_labels_path,
                                          &ground_truth_image_labels))
