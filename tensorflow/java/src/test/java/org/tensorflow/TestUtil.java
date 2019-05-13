@@ -67,8 +67,8 @@ public class TestUtil {
         .<T>output(0);
   }
 
-  public static <T> Output<T> addN(Graph g, Output<?>... inputs) {
-    return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
+  public static <T> Output<T> addN(ExecutionEnvironment env, Output<?>... inputs) {
+    return env.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }
 
   public static <T> Output<T> matmul(
