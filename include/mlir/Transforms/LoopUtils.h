@@ -100,6 +100,24 @@ LogicalResult tileCodeGen(MutableArrayRef<AffineForOp> band,
 /// and 'forOpB' are part of a perfectly nested sequence of loops.
 void interchangeLoops(AffineForOp forOpA, AffineForOp forOpB);
 
+/// Checks if the loop interchange permutation 'loopPermMap', of the perfectly
+/// nested sequence of loops in 'loops', would violate dependences (loop 'i' in
+/// 'loops' is mapped to location 'j = 'loopPermMap[i]' in the interchange).
+bool isValidLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
+                                       ArrayRef<unsigned> loopPermMap);
+
+/// Performs a sequence of loop interchanges on perfectly nested 'loops', as
+/// specified by permutation 'loopPermMap' (loop 'i' in 'loops' is mapped to
+/// location 'j = 'loopPermMap[i]' after the loop interchange).
+unsigned interchangeLoops(ArrayRef<AffineForOp> loops,
+                          ArrayRef<unsigned> loopPermMap);
+
+// Sinks all sequential loops to the innermost levels (while preserving
+// relative order among them) and moves all parallel loops to the
+// outermost (while again preserving relative order among them).
+// Returns AffineForOp of the root of the new loop nest after loop interchanges.
+AffineForOp sinkSequentialLoops(AffineForOp forOp);
+
 /// Sinks 'forOp' by 'loopDepth' levels by performing a series of loop
 /// interchanges. Requires that 'forOp' is part of a perfect nest with
 /// 'loopDepth' AffineForOps consecutively nested under it.

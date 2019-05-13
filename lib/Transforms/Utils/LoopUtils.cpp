@@ -507,6 +507,129 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
                     Block::iterator(forOpAInst));
 }
 
+// Checks each dependence component against the permutation to see if the
+// desired loop interchange would violate dependences by making the
+// dependence componenent lexicographically negative.
+static bool checkLoopInterchangeDependences(
+    const std::vector<llvm::SmallVector<DependenceComponent, 2>> &depCompsVec,
+    ArrayRef<AffineForOp> loops, ArrayRef<unsigned> loopPermMap) {
+  // Invert permutation map.
+  unsigned maxLoopDepth = loops.size();
+  llvm::SmallVector<unsigned, 4> loopPermMapInv;
+  loopPermMapInv.resize(maxLoopDepth);
+  for (unsigned i = 0; i < maxLoopDepth; ++i)
+    loopPermMapInv[loopPermMap[i]] = i;
+
+  // Check each dependence component against the permutation to see if the
+  // desired loop interchange permutation would make the dependence vectors
+  // lexicographically negative.
+  // Example 1: [-1, 1][0, 0]
+  // Example 2: [0, 0][-1, 1]
+  for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
+    const llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    assert(depComps.size() >= maxLoopDepth);
+    // Check if the first non-zero dependence component is positive.
+    // This iterates through loops in the desired order.
+    for (unsigned j = 0; j < maxLoopDepth; ++j) {
+      unsigned permIndex = loopPermMapInv[j];
+      assert(depComps[permIndex].lb.hasValue());
+      int64_t depCompLb = depComps[permIndex].lb.getValue();
+      if (depCompLb > 0)
+        break;
+      if (depCompLb < 0)
+        return false;
+    }
+  }
+  return true;
+}
+
+/// Checks if the loop interchange permutation 'loopPermMap' of the perfectly
+/// nested sequence of loops in 'loops' would violate dependences.
+bool mlir::isValidLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
+                                             ArrayRef<unsigned> loopPermMap) {
+  // Gather dependence components for dependences between all ops in loop nest
+  // rooted at 'loops[0]', at loop depths in range [1, maxLoopDepth].
+  assert(loopPermMap.size() == loops.size());
+  unsigned maxLoopDepth = loops.size();
+  std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  getDependenceComponents(loops[0], maxLoopDepth, &depCompsVec);
+  return checkLoopInterchangeDependences(depCompsVec, loops, loopPermMap);
+}
+
+/// Performs a sequence of loop interchanges of loops in perfectly nested
+/// sequence of loops in 'loops', as specified by permutation in 'loopPermMap'.
+unsigned mlir::interchangeLoops(ArrayRef<AffineForOp> loops,
+                                ArrayRef<unsigned> loopPermMap) {
+  Optional<unsigned> loopNestRootIndex;
+  for (int i = loops.size() - 1; i >= 0; --i) {
+    int permIndex = static_cast<int>(loopPermMap[i]);
+    // Store the index of the for loop which will be the new loop nest root.
+    if (permIndex == 0)
+      loopNestRootIndex = i;
+    if (permIndex > i) {
+      // Sink loop 'i' by 'permIndex - i' levels deeper into the loop nest.
+      sinkLoop(loops[i], permIndex - i);
+    }
+  }
+  assert(loopNestRootIndex.hasValue());
+  return loopNestRootIndex.getValue();
+}
+
+// Sinks all sequential loops to the innermost levels (while preserving
+// relative order among them) and moves all parallel loops to the
+// outermost (while again preserving relative order among them).
+AffineForOp mlir::sinkSequentialLoops(AffineForOp forOp) {
+  SmallVector<AffineForOp, 4> loops;
+  getPerfectlyNestedLoops(loops, forOp);
+  if (loops.size() < 2)
+    return forOp;
+
+  // Gather dependence components for dependences between all ops in loop nest
+  // rooted at 'loops[0]', at loop depths in range [1, maxLoopDepth].
+  unsigned maxLoopDepth = loops.size();
+  std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  getDependenceComponents(loops[0], maxLoopDepth, &depCompsVec);
+
+  // Mark loops as either parallel or sequential.
+  llvm::SmallVector<bool, 8> isParallelLoop(maxLoopDepth, true);
+  for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
+    llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    assert(depComps.size() >= maxLoopDepth);
+    for (unsigned j = 0; j < maxLoopDepth; ++j) {
+      DependenceComponent &depComp = depComps[j];
+      assert(depComp.lb.hasValue() && depComp.ub.hasValue());
+      if (depComp.lb.getValue() != 0 || depComp.ub.getValue() != 0)
+        isParallelLoop[j] = false;
+    }
+  }
+
+  // Count the number of parallel loops.
+  unsigned numParallelLoops = 0;
+  for (unsigned i = 0, e = isParallelLoop.size(); i < e; ++i)
+    if (isParallelLoop[i])
+      ++numParallelLoops;
+
+  // Compute permutation of loops that sinks sequential loops (and thus raises
+  // parallel loops) while preserving relative order.
+  llvm::SmallVector<unsigned, 4> loopPermMap(maxLoopDepth);
+  unsigned nextSequentialLoop = numParallelLoops;
+  unsigned nextParallelLoop = 0;
+  for (unsigned i = 0; i < maxLoopDepth; ++i) {
+    if (isParallelLoop[i]) {
+      loopPermMap[i] = nextParallelLoop++;
+    } else {
+      loopPermMap[i] = nextSequentialLoop++;
+    }
+  }
+
+  // Check if permutation 'loopPermMap' would violate dependences.
+  if (!checkLoopInterchangeDependences(depCompsVec, loops, loopPermMap))
+    return forOp;
+  // Perform loop interchange according to permutation 'loopPermMap'.
+  unsigned loopNestRootIndex = interchangeLoops(loops, loopPermMap);
+  return loops[loopNestRootIndex];
+}
+
 /// Performs a series of loop interchanges to sink 'forOp' 'loopDepth' levels
 /// deeper in the loop nest.
 void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
