@@ -140,5 +140,49 @@ TEST(CastOpModel, CastComplex64ToComplex64) {
            std::complex<float>(6.0f, 16.0f)}));
 }
 
+TEST(CastOpModel, CastComplex64ToUInt8) {
+  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_UINT8, {2, 3}});
+  m.PopulateTensor<std::complex<float>>(
+      m.input(),
+      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
+       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
+       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(CastOpModel, CastFloatToUInt8) {
+  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_UINT8, {3, 2}});
+  m.PopulateTensor<float>(m.input(), {100.f, 20.f, 3.f, 0.4f, 0.999f, 1.1f});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({100, 20, 3, 0, 0, 1}));
+}
+
+TEST(CastOpModel, CastUInt8ToBool) {
+  CastOpModel m({TensorType_UINT8, {3, 2}}, {TensorType_BOOL, {3, 2}});
+  m.PopulateTensor<uint8_t>(m.input(), {100, 1, 0, 4, 9, 1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
+              ElementsAreArray({true, true, false, true, true, true}));
+}
+
+TEST(CastOpModel, CastIntToUInt8) {
+  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_UINT8, {2, 3}});
+  m.PopulateTensor<int32_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({100, 200, 44, 144, 244, 88}));
+}
+
+TEST(CastOpModel, CastUInt8ToFloat) {
+  CastOpModel m({TensorType_UINT8, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
+  m.PopulateTensor<uint8_t>(m.input(), {100, 200, 44, 144, 244, 88});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({100.f, 200.f, 44.f, 144.f, 244.f, 88.f}));
+}
+
 }  // namespace
 }  // namespace tflite
