@@ -250,10 +250,8 @@ void ModuleState::initializeSymbolAliases() {
   SmallVector<std::pair<Type, StringRef>, 16> typeAliases;
 
   // AffineMap/Integer set have specific kind aliases.
-  attributeKindAliases.emplace_back(
-      static_cast<unsigned>(Attribute::Kind::AffineMap), "map");
-  attributeKindAliases.emplace_back(
-      static_cast<unsigned>(Attribute::Kind::IntegerSet), "set");
+  attributeKindAliases.emplace_back(StandardAttributes::AffineMap, "map");
+  attributeKindAliases.emplace_back(StandardAttributes::IntegerSet, "set");
 
   for (auto *dialect : dialects) {
     dialect->getAttributeKindAliases(attributeKindAliases);
@@ -515,13 +513,17 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   }
 
   switch (attr.getKind()) {
-  case Attribute::Kind::Unit:
+  default:
+    // TODO(riverriddle) Support parsing/printing dialect attributes.
+    llvm_unreachable("unhandled attribute kind");
+
+  case StandardAttributes::Unit:
     os << "unit";
     break;
-  case Attribute::Kind::Bool:
+  case StandardAttributes::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
     break;
-  case Attribute::Kind::Integer: {
+  case StandardAttributes::Integer: {
     auto intAttr = attr.cast<IntegerAttr>();
     // Print all integer attributes as signed unless i1.
     bool isSigned = intAttr.getType().isIndex() ||
@@ -534,7 +536,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     }
     break;
   }
-  case Attribute::Kind::Float: {
+  case StandardAttributes::Float: {
     auto floatAttr = attr.cast<FloatAttr>();
     printFloatValue(floatAttr.getValue(), os);
     // Print the type.
@@ -544,27 +546,27 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     }
     break;
   }
-  case Attribute::Kind::String:
+  case StandardAttributes::String:
     os << '"';
     printEscapedString(attr.cast<StringAttr>().getValue(), os);
     os << '"';
     break;
-  case Attribute::Kind::Array:
+  case StandardAttributes::Array:
     os << '[';
     interleaveComma(attr.cast<ArrayAttr>().getValue(),
                     [&](Attribute attr) { printAttribute(attr); });
     os << ']';
     break;
-  case Attribute::Kind::AffineMap:
+  case StandardAttributes::AffineMap:
     attr.cast<AffineMapAttr>().getValue().print(os);
     break;
-  case Attribute::Kind::IntegerSet:
+  case StandardAttributes::IntegerSet:
     attr.cast<IntegerSetAttr>().getValue().print(os);
     break;
-  case Attribute::Kind::Type:
+  case StandardAttributes::Type:
     printType(attr.cast<TypeAttr>().getValue());
     break;
-  case Attribute::Kind::Function: {
+  case StandardAttributes::Function: {
     auto *function = attr.cast<FunctionAttr>().getValue();
     if (!function) {
       os << "<<FUNCTION ATTR FOR DELETED FUNCTION>>";
@@ -575,7 +577,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     }
     break;
   }
-  case Attribute::Kind::OpaqueElements: {
+  case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<";
     os << '"' << eltsAttr.getDialect()->getNamespace() << "\", ";
@@ -583,8 +585,8 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << ", " << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << '"' << '>';
     break;
   }
-  case Attribute::Kind::DenseIntElements:
-  case Attribute::Kind::DenseFPElements: {
+  case StandardAttributes::DenseIntElements:
+  case StandardAttributes::DenseFPElements: {
     auto eltsAttr = attr.cast<DenseElementsAttr>();
     os << "dense<";
     printType(eltsAttr.getType());
@@ -593,7 +595,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << '>';
     break;
   }
-  case Attribute::Kind::SplatElements: {
+  case StandardAttributes::SplatElements: {
     auto elementsAttr = attr.cast<SplatElementsAttr>();
     os << "splat<";
     printType(elementsAttr.getType());
@@ -602,7 +604,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << '>';
     break;
   }
-  case Attribute::Kind::SparseElements: {
+  case StandardAttributes::SparseElements: {
     auto elementsAttr = attr.cast<SparseElementsAttr>();
     os << "sparse<";
     printType(elementsAttr.getType());

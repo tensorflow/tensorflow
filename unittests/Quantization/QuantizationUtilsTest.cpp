@@ -116,7 +116,7 @@ TEST(QuantizationUtilsTest, convertRankedDenseAttrUniform) {
   auto expectedTensorType = realValue.getType().cast<TensorType>();
   EXPECT_EQ(tensorType.getShape(), expectedTensorType.getShape());
   EXPECT_EQ(tensorType.getElementType(), convertedType);
-  EXPECT_EQ(returnedValue.getKind(), Attribute::Kind::DenseIntElements);
+  EXPECT_EQ(returnedValue.getKind(), StandardAttributes::DenseIntElements);
 
   // Check Elements attribute element value is expected.
   auto firstValue = returnedValue.cast<ElementsAttr>().getValue({0, 0});
@@ -140,7 +140,7 @@ TEST(QuantizationUtilsTest, convertRankedSplatAttrUniform) {
   auto expectedTensorType = realValue.getType().cast<TensorType>();
   EXPECT_EQ(tensorType.getShape(), expectedTensorType.getShape());
   EXPECT_EQ(tensorType.getElementType(), convertedType);
-  EXPECT_EQ(returnedValue.getKind(), Attribute::Kind::SplatElements);
+  EXPECT_EQ(returnedValue.getKind(), StandardAttributes::SplatElements);
 
   // Check Elements attribute element value is expected.
   auto firstValue = returnedValue.cast<ElementsAttr>().getValue({0, 0});
@@ -163,7 +163,7 @@ TEST(QuantizationUtilsTest, convertRankedSparseAttrUniform) {
   auto expectedTensorType = realValue.getType().cast<TensorType>();
   EXPECT_EQ(tensorType.getShape(), expectedTensorType.getShape());
   EXPECT_EQ(tensorType.getElementType(), convertedType);
-  EXPECT_EQ(returnedValue.getKind(), Attribute::Kind::SparseElements);
+  EXPECT_EQ(returnedValue.getKind(), StandardAttributes::SparseElements);
 
   // Check Elements attribute element value is expected.
   auto firstValue = returnedValue.cast<ElementsAttr>().getValue({0, 0});

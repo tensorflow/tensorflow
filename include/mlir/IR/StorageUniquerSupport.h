@@ -49,8 +49,8 @@ protected:
   /// Get or create a new ConcreteT instance within the ctx. This
   /// function is guaranteed to return a non null object and will assert if
   /// the arguments provided are invalid.
-  template <typename Kind, typename... Args>
-  static ConcreteT get(MLIRContext *ctx, Kind kind, Args... args) {
+  template <typename... Args>
+  static ConcreteT get(MLIRContext *ctx, unsigned kind, Args... args) {
     // Ensure that the invariants are correct for construction.
     assert(succeeded(
         ConcreteT::verifyConstructionInvariants(llvm::None, ctx, args...)));
@@ -60,8 +60,8 @@ protected:
   /// Get or create a new ConcreteT instance within the ctx, defined at
   /// the given, potentially unknown, location. If the arguments provided are
   /// invalid then emit errors and return a null object.
-  template <typename Kind, typename... Args>
-  static ConcreteT getChecked(Location loc, MLIRContext *ctx, Kind kind,
+  template <typename... Args>
+  static ConcreteT getChecked(Location loc, MLIRContext *ctx, unsigned kind,
                               Args... args) {
     // If the construction invariants fail then we return a null attribute.
     if (failed(ConcreteT::verifyConstructionInvariants(loc, ctx, args...)))

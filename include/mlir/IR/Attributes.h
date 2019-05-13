@@ -64,28 +64,12 @@ class AttributeListStorage;
 /// by value.
 class Attribute {
 public:
-  enum class Kind {
-    Unit,
-    Bool,
-    Integer,
-    Float,
-    String,
-    Type,
-    Array,
-    AffineMap,
-    IntegerSet,
-    Function,
-
-    SplatElements,
-    DenseIntElements,
-    DenseFPElements,
-    OpaqueElements,
-    SparseElements,
-    FIRST_ELEMENTS_ATTR = SplatElements,
-    LAST_ELEMENTS_ATTR = SparseElements,
-
-    FIRST_KIND = Unit,
-    LAST_KIND = SparseElements,
+  /// Integer identifier for all the concrete attribute kinds.
+  enum Kind {
+  // Reserve attribute kinds for dialect specific extensions.
+#define DEFINE_SYM_KIND_RANGE(Dialect)                                         \
+  FIRST_##Dialect##_ATTR, LAST_##Dialect##_ATTR = FIRST_##Dialect##_ATTR + 0xff,
+#include "DialectSymbolRegistry.def"
   };
 
   /// Utility class for implementing attributes.
@@ -119,14 +103,10 @@ public:
   template <typename U> U cast() const;
 
   // Support dyn_cast'ing Attribute to itself.
-  static bool kindof(Kind kind) {
-    assert(kind >= Kind::FIRST_KIND && kind <= Kind::LAST_KIND &&
-           "incorrect Attribute kind");
-    return true;
-  }
+  static bool kindof(unsigned) { return true; }
 
   /// Return the classification for this attribute.
-  Kind getKind() const;
+  unsigned getKind() const { return impl->getKind(); }
 
   /// Return the type of this attribute.
   Type getType() const;
@@ -170,15 +150,40 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
   return os;
 }
 
+namespace StandardAttributes {
+enum Kind {
+  Unit = Attribute::FIRST_STANDARD_ATTR,
+  Bool,
+  Integer,
+  Float,
+  String,
+  Type,
+  Array,
+  AffineMap,
+  IntegerSet,
+  Function,
+
+  SplatElements,
+  DenseIntElements,
+  DenseFPElements,
+  OpaqueElements,
+  SparseElements,
+  FIRST_ELEMENTS_ATTR = SplatElements,
+  LAST_ELEMENTS_ATTR = SparseElements,
+};
+} // namespace StandardAttributes
+
 /// Unit attributes are attributes that hold no specific value and are given
 /// meaning by their existence.
 class UnitAttr : public Attribute::AttrBase<UnitAttr> {
 public:
   using Base::Base;
 
-  static UnitAttr get(MLIRContext *context);
+  static UnitAttr get(MLIRContext *context) {
+    return Base::get(context, StandardAttributes::Unit);
+  }
 
-  static bool kindof(Kind kind) { return kind == Attribute::Kind::Unit; }
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
 };
 
 class BoolAttr : public Attribute::AttrBase<BoolAttr, Attribute,
@@ -192,7 +197,7 @@ public:
   bool getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Bool; }
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Bool; }
 };
 
 class IntegerAttr
@@ -210,7 +215,9 @@ public:
   int64_t getInt() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Integer; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Integer;
+  }
 };
 
 class FloatAttr : public Attribute::AttrBase<FloatAttr, Attribute,
@@ -237,7 +244,9 @@ public:
   static double getValueAsDouble(APFloat val);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Float; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Float;
+  }
 
   /// Verify the construction invariants for a double value.
   static LogicalResult
@@ -259,7 +268,9 @@ public:
   StringRef getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::String; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::String;
+  }
 };
 
 /// Array attributes are lists of other attributes.  They are not necessarily
@@ -281,7 +292,9 @@ public:
   iterator end() const { return getValue().end(); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Array; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Array;
+  }
 };
 
 class AffineMapAttr
@@ -296,7 +309,9 @@ public:
   AffineMap getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::AffineMap; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::AffineMap;
+  }
 };
 
 class IntegerSetAttr
@@ -311,7 +326,9 @@ public:
   IntegerSet getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::IntegerSet; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::IntegerSet;
+  }
 };
 
 class TypeAttr : public Attribute::AttrBase<TypeAttr, Attribute,
@@ -325,7 +342,7 @@ public:
   Type getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Type; }
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Type; }
 };
 
 /// A function attribute represents a reference to a function object.
@@ -349,7 +366,9 @@ public:
   FunctionType getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Function; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Function;
+  }
 
   /// This function is used by the internals of the Function class to null out
   /// attributes referring to functions that are about to be deleted.
@@ -368,9 +387,9 @@ public:
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) {
-    return kind >= Kind::FIRST_ELEMENTS_ATTR &&
-           kind <= Kind::LAST_ELEMENTS_ATTR;
+  static bool kindof(unsigned kind) {
+    return kind >= StandardAttributes::FIRST_ELEMENTS_ATTR &&
+           kind <= StandardAttributes::LAST_ELEMENTS_ATTR;
   }
 };
 
@@ -387,7 +406,9 @@ public:
   Attribute getValue() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::SplatElements; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::SplatElements;
+  }
 };
 
 /// An attribute that represents a reference to a dense vector or tensor object.
@@ -426,8 +447,9 @@ public:
   static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) {
-    return kind == Kind::DenseIntElements || kind == Kind::DenseFPElements;
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::DenseIntElements ||
+           kind == StandardAttributes::DenseFPElements;
   }
 
 protected:
@@ -520,7 +542,9 @@ public:
   iterator end() const { return raw_end(); }
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::DenseIntElements;
+  }
 };
 
 /// An attribute that represents a reference to a dense float vector or tensor
@@ -559,7 +583,9 @@ public:
   iterator end() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::DenseFPElements; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::DenseFPElements;
+  }
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor
@@ -592,7 +618,9 @@ public:
   Dialect *getDialect() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::OpaqueElements; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::OpaqueElements;
+  }
 };
 
 /// An attribute that represents a reference to a sparse vector or tensor
@@ -631,7 +659,9 @@ public:
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::SparseElements; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::SparseElements;
+  }
 };
 
 template <typename U> bool Attribute::isa() const {

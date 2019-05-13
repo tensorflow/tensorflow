@@ -108,18 +108,17 @@ namespace detail {
 class AttributeUniquer {
 public:
   /// Get an uniqued instance of attribute T.
-  template <typename T, typename Kind, typename... Args>
-  static T get(MLIRContext *ctx, Kind kind, Args &&... args) {
+  template <typename T, typename... Args>
+  static T get(MLIRContext *ctx, unsigned kind, Args &&... args) {
     return ctx->getAttributeUniquer().get<typename T::ImplType>(
-        getInitFn(ctx, T::getClassID()), static_cast<unsigned>(kind),
-        std::forward<Args>(args)...);
+        getInitFn(ctx, T::getClassID()), kind, std::forward<Args>(args)...);
   }
 
   /// Erase a uniqued instance of attribute T.
-  template <typename T, typename Kind, typename... Args>
-  static void erase(MLIRContext *ctx, Kind kind, Args &&... args) {
+  template <typename T, typename... Args>
+  static void erase(MLIRContext *ctx, unsigned kind, Args &&... args) {
     return ctx->getAttributeUniquer().erase<typename T::ImplType>(
-        static_cast<unsigned>(kind), std::forward<Args>(args)...);
+        kind, std::forward<Args>(args)...);
   }
 
 private:
