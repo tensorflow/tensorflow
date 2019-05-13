@@ -68,7 +68,7 @@ bool TryTestOneDepthwiseConv() {
   // cases in optimized implementations, and secondarily because they allow
   // tests to run fast, which means we can run more tests and get more
   // coverage.
-  const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+  const int batch = UniformRandomInt(1, 2);
   const int input_depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
   const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
   const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
@@ -148,7 +148,7 @@ void TestOneDepthwiseConv() {
 }
 
 TEST(TestDepthwiseConv, TestDepthwiseConv) {
-  const int kTestsToRun = 100 * 1000;
+  const int kTestsToRun = 10 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv();
   }
