@@ -209,8 +209,8 @@ private:
     // Create a function declaration for printf, signature is `i32 (i8*, ...)`
     Builder builder(&module);
     MLIRContext *context = module.getContext();
-    LLVM::LLVMDialect *llvmDialect = static_cast<LLVM::LLVMDialect *>(
-        module.getContext()->getRegisteredDialect("llvm"));
+    auto *llvmDialect =
+        module.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
     auto &llvmModule = llvmDialect->getLLVMModule();
     llvm::IRBuilder<> llvmBuilder(llvmModule.getContext());
 

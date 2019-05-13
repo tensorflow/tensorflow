@@ -69,6 +69,8 @@ public:
 class LLVMDialect : public Dialect {
 public:
   explicit LLVMDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "llvm"; }
+
   llvm::LLVMContext &getLLVMContext() { return llvmContext; }
   llvm::Module &getLLVMModule() { return module; }
 

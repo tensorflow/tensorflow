@@ -159,8 +159,7 @@ static ParseResult parseICmpOp(OpAsmParser *parser, OperationState *result) {
 
   // The result type is either i1 or a vector type <? x i1> if the inputs are
   // vectors.
-  LLVMDialect *dialect = static_cast<LLVMDialect *>(
-      builder.getContext()->getRegisteredDialect("llvm"));
+  auto *dialect = builder.getContext()->getRegisteredDialect<LLVMDialect>();
   llvm::Type *llvmResultType = llvm::Type::getInt1Ty(dialect->getLLVMContext());
   auto argType = type.dyn_cast<LLVM::LLVMType>();
   if (!argType)
@@ -487,8 +486,8 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
                                "expected function with 0 or 1 result");
 
     Builder &builder = parser->getBuilder();
-    auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(
-        builder.getContext()->getRegisteredDialect("llvm"));
+    auto *llvmDialect =
+        builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
     llvm::Type *llvmResultType;
     Type wrappedResultType;
     if (funcType.getNumResults() == 0) {
@@ -750,8 +749,8 @@ static ParseResult parseCondBrOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType condition;
 
   Builder &builder = parser->getBuilder();
-  auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(
-      builder.getContext()->getRegisteredDialect("llvm"));
+  auto *llvmDialect =
+      builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   auto i1Type = builder.getType<LLVM::LLVMType>(
       llvm::Type::getInt1Ty(llvmDialect->getLLVMContext()));
 
@@ -867,7 +866,8 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
 //===----------------------------------------------------------------------===//
 
 LLVMDialect::LLVMDialect(MLIRContext *context)
-    : Dialect("llvm", context), module("LLVMDialectModule", llvmContext) {
+    : Dialect(getDialectNamespace(), context),
+      module("LLVMDialectModule", llvmContext) {
   addTypes<LLVMType>();
   addOperations<
 #define GET_OP_LIST

@@ -409,11 +409,10 @@ bool ModuleTranslation::convertFunctions() {
 }
 
 std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(Module &m) {
-  Dialect *dialect = m.getContext()->getRegisteredDialect("llvm");
+  auto *dialect = m.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
-  auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(dialect);
 
-  auto llvmModule = llvm::CloneModule(llvmDialect->getLLVMModule());
+  auto llvmModule = llvm::CloneModule(dialect->getLLVMModule());
   if (!llvmModule)
     return nullptr;
 

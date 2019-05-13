@@ -952,8 +952,7 @@ void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
 llvm::DenseSet<DialectOpConversion *>
 LLVMLowering::initConverters(MLIRContext *mlirContext) {
   converterStorage.Reset();
-  llvmDialect = static_cast<LLVM::LLVMDialect *>(
-      mlirContext->getRegisteredDialect("llvm"));
+  llvmDialect = mlirContext->getRegisteredDialect<LLVM::LLVMDialect>();
   if (!llvmDialect) {
     mlirContext->emitError(UnknownLoc::get(mlirContext),
                            "LLVM IR dialect is not registered");

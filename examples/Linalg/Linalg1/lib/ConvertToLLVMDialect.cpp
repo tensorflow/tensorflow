@@ -56,8 +56,7 @@ using namespace mlir;
 //     respective dynamic values.
 Type linalg::convertLinalgType(Type t) {
   auto *context = t.getContext();
-  auto *dialect =
-      static_cast<LLVM::LLVMDialect *>(context->getRegisteredDialect("llvm"));
+  auto *dialect = context->getRegisteredDialect<LLVM::LLVMDialect>();
 
   // Simple conversions.
   if (t.isa<IndexType>()) {

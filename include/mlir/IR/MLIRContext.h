@@ -52,6 +52,12 @@ public:
   /// not found, then return nullptr.
   Dialect *getRegisteredDialect(StringRef name);
 
+  /// Get a registered IR dialect for the given derived dialect type. The
+  /// derived type must provide a static 'getDialectNamespace' method.
+  template <typename T> T *getRegisteredDialect() {
+    return static_cast<T *>(getRegisteredDialect(T::getDialectNamespace()));
+  }
+
   /// Return information about all registered operations.  This isn't very
   /// efficient: typically you should ask the operations about their properties
   /// directly.
