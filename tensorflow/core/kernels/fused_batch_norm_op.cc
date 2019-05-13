@@ -38,12 +38,6 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
-#if GOOGLE_CUDA
-using se::Stream;
-using se::DeviceMemory;
-using se::ScratchAllocator;
-using se::port::StatusOr;
-
 // Functor used by FusedBatchNormOp to do the computations.
 template <typename Device, typename T, typename U>
 struct FusedBatchNorm;
@@ -51,6 +45,12 @@ struct FusedBatchNorm;
 // is_training=True.
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
+
+#if GOOGLE_CUDA
+using se::Stream;
+using se::DeviceMemory;
+using se::ScratchAllocator;
+using se::port::StatusOr;
 
 template <typename U, typename T>
 DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
