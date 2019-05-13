@@ -38,7 +38,7 @@ using namespace mlir;
 
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
+static void printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -59,10 +59,29 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
   *p << " : " << op->getResult(0)->getType();
 }
 
+/// A custom cast operation printer that omits the "std." prefix from the
+/// operation names.
+static void printStandardCastOp(Operation *op, OpAsmPrinter *p) {
+  *p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+     << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
+     << op->getResult(0)->getType();
+}
+
+/// A custom cast operation verifier.
+template <typename T> static LogicalResult verifyCastOp(T op) {
+  auto opType = op.getOperand()->getType();
+  auto resType = op.getType();
+  if (!T::areCastCompatible(opType, resType))
+    return op.emitError("operand type ") << opType << " and result type "
+                                         << resType << " are cast incompatible";
+
+  return success();
+}
+
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
   addOperations<CmpFOp, CmpIOp, CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp,
-                MemRefCastOp, SelectOp, StoreOp, TensorCastOp,
+                SelectOp, StoreOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -1783,21 +1802,7 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
   return true;
 }
 
-void MemRefCastOp::print(OpAsmPrinter *p) {
-  *p << "memref_cast " << *getOperand() << " : " << getOperand()->getType()
-     << " to " << getType();
-}
-
-LogicalResult MemRefCastOp::verify() {
-  auto opType = getOperand()->getType();
-  auto resType = getType();
-  if (!areCastCompatible(opType, resType))
-    return emitError(llvm::formatv(
-        "operand type {0} and result type {1} are cast incompatible", opType,
-        resType));
-
-  return success();
-}
+Value *MemRefCastOp::fold() { return impl::foldCastOp(*this); }
 
 //===----------------------------------------------------------------------===//
 // MulFOp
@@ -2235,21 +2240,7 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
   return true;
 }
 
-void TensorCastOp::print(OpAsmPrinter *p) {
-  *p << "tensor_cast " << *getOperand() << " : " << getOperand()->getType()
-     << " to " << getType();
-}
-
-LogicalResult TensorCastOp::verify() {
-  auto opType = getOperand()->getType();
-  auto resType = getType();
-  if (!areCastCompatible(opType, resType))
-    return emitError(llvm::formatv(
-        "operand type {0} and result type {1} are cast incompatible", opType,
-        resType));
-
-  return success();
-}
+Value *TensorCastOp::fold() { return impl::foldCastOp(*this); }
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

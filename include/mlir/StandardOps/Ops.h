@@ -32,12 +32,6 @@ namespace mlir {
 class AffineMap;
 class Builder;
 
-namespace detail {
-/// A custom binary operation printer that omits the "std." prefix from the
-/// operation names.
-void printStandardBinaryOp(Operation *op, OpAsmPrinter *p);
-} // namespace detail
-
 class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
@@ -579,38 +573,6 @@ public:
                                           MLIRContext *context);
 };
 
-/// The "memref_cast" operation converts a memref from one type to an equivalent
-/// type with a compatible shape.  The source and destination types are
-/// when both are memref types with the same element type, affine mappings,
-/// address space, and rank but where the individual dimensions may add or
-/// remove constant dimensions from the memref type.
-///
-/// If the cast converts any dimensions from an unknown to a known size, then it
-/// acts as an assertion that fails at runtime of the dynamic dimensions
-/// disagree with resultant destination size.
-///
-/// Assert that the input dynamic shape matches the destination static shape.
-///    %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
-/// Erase static shape information, replacing it with dynamic information.
-///    %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
-///
-class MemRefCastOp : public CastOp<MemRefCastOp> {
-public:
-  using CastOp::CastOp;
-  static StringRef getOperationName() { return "std.memref_cast"; }
-
-  /// Return true if `a` and `b` are valid operand and result pairs for
-  /// the operation.
-  static bool areCastCompatible(Type a, Type b);
-
-  /// The result of a memref_cast is always a memref.
-  MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
-
-  void print(OpAsmPrinter *p);
-
-  LogicalResult verify();
-};
-
 /// The "select" operation chooses one value based on a binary condition
 /// supplied as its first operand. If the value of the first operand is 1, the
 /// second operand is chosen, otherwise the third operand is chosen. The second
@@ -681,33 +643,6 @@ public:
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-};
-
-/// The "tensor_cast" operation converts a tensor from one type to an equivalent
-/// type without changing any data elements.  The source and destination types
-/// must both be tensor types with the same element type.  If both are ranked
-/// then the rank should be the same and static dimensions should match.  The
-/// operation is invalid if converting to a mismatching constant dimension.
-///
-/// Convert from unknown rank to rank 2 with unknown dimension sizes.
-///    %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
-///
-class TensorCastOp : public CastOp<TensorCastOp> {
-public:
-  using CastOp::CastOp;
-
-  static StringRef getOperationName() { return "std.tensor_cast"; }
-
-  /// Return true if `a` and `b` are valid operand and result pairs for
-  /// the operation.
-  static bool areCastCompatible(Type a, Type b);
-
-  /// The result of a tensor_cast is always a tensor.
-  TensorType getType() { return getResult()->getType().cast<TensorType>(); }
-
-  void print(OpAsmPrinter *p);
-
-  LogicalResult verify();
 };
 
 /// Prints dimension and symbol list.

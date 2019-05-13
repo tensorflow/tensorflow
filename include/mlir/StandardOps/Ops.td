@@ -32,6 +32,29 @@ def Standard_Dialect : Dialect {
   let name = "std";
 }
 
+// Base class for standard cast operations. Requires single operand and result,
+// but does not constrain them to specific types.
+class CastOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<Standard_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+
+  let results = (outs AnyType);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *source, Type destType", [{
+       impl::buildCastOp(builder, result, source, destType);
+  }]>];
+
+  let parser = [{
+    return impl::parseCastOp(parser, result);
+  }];
+  let printer = [{
+    return printStandardCastOp(this->getOperation(), p);
+  }];
+  let verifier = [{ return ::verifyCastOp(*this); }];
+
+  let hasFolder = 1;
+}
+
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
@@ -46,7 +69,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 
   let printer = [{
-    return detail::printStandardBinaryOp(this->getOperation(), p);
+    return printStandardBinaryOp(this->getOperation(), p);
   }];
 }
 
@@ -383,6 +406,38 @@ def ExtractElementOp : Op<Standard_Dialect, "extract_element", [NoSideEffect]> {
   let hasConstantFolder = 0b1;
 }
 
+def MemRefCastOp : CastOp<"memref_cast"> {
+  let summary = "memref cast operation";
+  let description = [{
+    The "memref_cast" operation converts a memref from one type to an equivalent
+    type with a compatible shape. The source and destination types are
+    when both are memref types with the same element type, affine mappings,
+    address space, and rank but where the individual dimensions may add or
+    remove constant dimensions from the memref type.
+
+    If the cast converts any dimensions from an unknown to a known size, then it
+    acts as an assertion that fails at runtime of the dynamic dimensions
+    disagree with resultant destination size.
+
+    Assert that the input dynamic shape matches the destination static shape.
+       %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
+    Erase static shape information, replacing it with dynamic information.
+       %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
+  }];
+
+  let arguments = (ins MemRef<AnyType>);
+  let results = (outs MemRef<AnyType>);
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+
+    /// The result of a memref_cast is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+  }];
+}
+
 def MulFOp : FloatArithmeticOp<"mulf"> {
   let summary = "foating point multiplication operation";
   let hasConstantFolder = 0b1;
@@ -451,6 +506,32 @@ def SubIOp : IntArithmeticOp<"subi"> {
   let summary = "integer subtraction operation";
   let hasConstantFolder = 0b1;
   let hasCanonicalizer = 0b1;
+}
+
+def TensorCastOp : CastOp<"tensor_cast"> {
+  let summary = "tensor cast operation";
+  let description = [{
+    The "tensor_cast" operation converts a tensor from one type to an equivalent
+    type without changing any data elements.  The source and destination types
+    must both be tensor types with the same element type.  If both are ranked
+    then the rank should be the same and static dimensions should match.  The
+    operation is invalid if converting to a mismatching constant dimension.
+
+    Convert from unknown rank to rank 2 with unknown dimension sizes.
+       %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
+  }];
+
+  let arguments = (ins Tensor);
+  let results = (outs Tensor);
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+
+    /// The result of a tensor_cast is always a tensor.
+    TensorType getType() { return getResult()->getType().cast<TensorType>(); }
+  }];
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
