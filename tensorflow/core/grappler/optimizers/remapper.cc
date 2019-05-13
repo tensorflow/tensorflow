@@ -186,7 +186,7 @@ struct ContractionWithBiasAndAddActivation {
   int port_id = 0;
   const NodeDef* activation = nullptr;
 };
-#endif
+#endif  // INTEL_MKL
 
 bool IsInPreserveSet(const RemapperContext& ctx, const NodeDef* node) {
   return ctx.nodes_to_preserve.count(node->name()) > 0;

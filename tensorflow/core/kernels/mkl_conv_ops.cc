@@ -1270,7 +1270,9 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
 
       // Check if need reorder
-      if (!(add_mkl_shape == output_mkl_shape)) {
+      if (add_mkl_shape == output_mkl_shape) {
+        CHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
+      } else {
         auto add_md =
             add_mkl_shape.IsMklTensor()
                 ? add_mkl_shape.GetMklLayout()
@@ -1288,8 +1290,6 @@ class MklConvOp : public OpKernel {
         std::vector<mkldnn::primitive> net;
         net.push_back(mkldnn::reorder(reorder_desc, *add, *dst));
         stream(stream::kind::eager).submit(net).wait();
-      } else {
-        CHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
       }
     }
   }

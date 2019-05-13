@@ -175,4 +175,4 @@ TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddNRelu) {
 
 }  // namespace grappler
 }  // namespace tensorflow
-#endif
+#endif  // INTEL_MKL
