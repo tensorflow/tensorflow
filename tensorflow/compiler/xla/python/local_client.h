@@ -54,11 +54,30 @@ class PythonRefManager {
  public:
   PythonRefManager() = default;
 
+  // Holds references to a set of pybind11::objects, adding the references to
+  // the PythonRefManager on destruction.
+  class ManagedPyObjects {
+   public:
+    ManagedPyObjects() = default;
+    ManagedPyObjects(PythonRefManager* manager,
+                     absl::Span<pybind11::object> objects);
+
+    ~ManagedPyObjects();
+
+    ManagedPyObjects(const ManagedPyObjects& other) = default;
+    ManagedPyObjects(ManagedPyObjects&& other) = default;
+    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
+    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
+
+   private:
+    PythonRefManager* manager_ = nullptr;
+    absl::InlinedVector<pybind11::object, 1> objects_;
+  };
+
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
   // destroyed, the reference to 'object' will be added to python_garbage_,
   // and collected next time CollectGarbage() is called.
-  std::shared_ptr<pybind11::object> ManageReference(
-      const pybind11::object& object);
+  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
 
   // Releases the contents of python_garbage_. Requires that the GIL is held.
   // The client calls this method during API entry points where the GIL is held
@@ -116,11 +135,12 @@ class Device {
   // objects, since the callback may be called from a device thread pool on
   // GPU.
   template <typename T>
-  void ThenRelease(se::Stream* stream, std::shared_ptr<T> object) const {
+  void ThenRelease(se::Stream* stream, T object) const {
     if (callback_stream_.get() != stream) {
       callback_stream_->ThenWaitFor(stream);
     }
-    callback_stream_->ThenDoHostCallback([object]() { /* releases object */ });
+    callback_stream_->ThenDoHostCallback(
+        std::bind([](T& object) { /* releases object */ }, std::move(object)));
   }
 
   // Helpers for releasing values on a worker thread at the tail of a stream on

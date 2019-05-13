@@ -188,7 +188,12 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);
   } else {
-    tree.leaves.push_back(py::cast<xla::BorrowingLiteral>(argument));
+    pybind11::detail::type_caster<BorrowingLiteral> caster;
+    if (!caster.load(argument, /*convert=*/true)) {
+      return InvalidArgument("Invalid array value.");
+    }
+    tree.arrays.push_back(std::move(caster.array));
+    tree.leaves.push_back(std::move(*caster));
     tree.shape = tree.leaves.front().shape();
   }
   return tree;

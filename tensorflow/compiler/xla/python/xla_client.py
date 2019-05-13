@@ -357,7 +357,6 @@ class Buffer(object):
   def from_pyval(pyval, device=0, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
-    pyval = require_numpy_array_layout(pyval)
     return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
@@ -374,8 +373,6 @@ class Buffer(object):
       A list of `Buffer` objects corresponding to `pyvals_and_devices`.
     """
     backend = backend or get_local_backend()
-    pyvals_and_devices = [(require_numpy_array_layout(pyval), device)
-                          for pyval, device in pyvals_and_devices]
     return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
@@ -409,17 +406,9 @@ def shape_from_pyval(pyval):
     if isinstance(pyval, tuple):
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      pyval = require_numpy_array_layout(pyval)
       return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
   return convert(pyval)
-
-
-def require_numpy_array_layout(value):
-  if isinstance(value, tuple):
-    return tuple(require_numpy_array_layout(x) for x in value)
-  else:
-    return np.require(value, requirements=['C', 'A'])
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -437,8 +426,7 @@ def transfer_to_infeed(value, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(
-      require_numpy_array_layout(value), device_ordinal)
+  backend.client.TransferToInfeed(value, device_ordinal)
 
 
 def transfer_from_outfeed(shape, device_ordinal=0):
@@ -742,7 +730,6 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    value = require_numpy_array_layout(value)
     return ops.ConstantLiteral(self._builder, value)
 
   def ConstantF32Scalar(self, value):

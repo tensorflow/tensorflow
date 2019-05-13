@@ -106,16 +106,27 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
-std::shared_ptr<py::object> PythonRefManager::ManageReference(
-    const py::object& object) {
-  auto deleter = [this](py::object* x) {
-    {
-      absl::MutexLock lock(&mu_);
-      python_garbage_.push_back(std::move(*x));
+PythonRefManager::ManagedPyObjects::ManagedPyObjects(
+    PythonRefManager* manager, absl::Span<pybind11::object> objects)
+    : manager_(manager) {
+  objects_.reserve(objects.size());
+  for (pybind11::object& object : objects) {
+    objects_.push_back(std::move(object));
+  }
+}
+
+PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
+  if (manager_) {
+    absl::MutexLock lock(&manager_->mu_);
+    for (pybind11::object& object : objects_) {
+      manager_->python_garbage_.push_back(std::move(object));
     }
-    delete x;
-  };
-  return std::shared_ptr<py::object>(new py::object(object), deleter);
+  }
+}
+
+PythonRefManager::ManagedPyObjects PythonRefManager::ManageReferences(
+    absl::Span<py::object> objects) {
+  return ManagedPyObjects(this, objects);
 }
 
 void PythonRefManager::CollectGarbage() {
@@ -274,7 +285,8 @@ StatusOr<PyLocalBuffer> PyLocalBuffer::FromPython(
 
   // Take a reference to the buffer to ensure that the inputs in host memory
   // remain live until the transfer is complete.
-  auto py_buffer_ref = client->py_ref_manager().ManageReference(argument);
+  auto py_buffer_ref =
+      client->py_ref_manager().ManageReferences(absl::MakeSpan(tree.arrays));
 
   // We are done manipulating Python objects; release the GIL.
   py::gil_scoped_release gil_release;
@@ -307,15 +319,15 @@ PyLocalBuffer::FromPythonValues(
   struct H2DTransfer {
     PythonBufferTree tree;
     StatusOr<PyLocalBuffer> buffer;
-    std::shared_ptr<py::object> py_buffer_ref;
+    PythonRefManager::ManagedPyObjects py_buffer_refs;
   };
 
   std::vector<H2DTransfer> transfers(num_arguments);
   for (int i = 0; i < num_arguments; ++i) {
     TF_ASSIGN_OR_RETURN(transfers[i].tree,
                         GetPythonBufferTree(arguments[i].first));
-    transfers[i].py_buffer_ref =
-        client->py_ref_manager().ManageReference(arguments[i].first);
+    transfers[i].py_buffer_refs = client->py_ref_manager().ManageReferences(
+        absl::MakeSpan(transfers[i].tree.arrays));
   }
   client->py_ref_manager().CollectGarbage();
   // We are done manipulating Python objects; release the GIL.
@@ -347,7 +359,7 @@ PyLocalBuffer::FromPythonValues(
     int device_ordinal = arguments[i].second;
     const Device& device = client->device(device_ordinal);
     device.ThenRelease(device.host_to_device_stream(),
-                       std::move(transfers[i].py_buffer_ref));
+                       std::move(transfers[i].py_buffer_refs));
     if (!device.asynchronous()) {
       TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
     }
