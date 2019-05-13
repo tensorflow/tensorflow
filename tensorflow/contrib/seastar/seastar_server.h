@@ -11,19 +11,18 @@ class channel;
 namespace tensorflow {
 class SeastarTagFactory;
 class SeastarServer {
-  seastar::lw_shared_ptr<seastar::server_socket> _listener;
-public:
+ public:
   // here should named start & stop, which used by seastar template class distributed<>
   void start(uint16_t port, SeastarTagFactory* tag_factory);
   seastar::future<> stop();
 
-private:
+ private:
   struct Connection {
-    seastar::connected_socket _fd;
-    seastar::input_stream<char> _read_buf;
-    seastar::channel* _channel;
-    SeastarTagFactory* _tag_factory;
-    seastar::socket_address _addr;
+    seastar::connected_socket fd_;
+    seastar::input_stream<char> read_buf_;
+    seastar::channel* channel_;
+    SeastarTagFactory* tag_factory_;
+    seastar::socket_address addr_;
 
     Connection(seastar::connected_socket&& fd,
                SeastarTagFactory* tag_factory,
@@ -31,6 +30,9 @@ private:
     seastar::future<> Read();
     ~Connection();
   };
+
+ private:
+  seastar::lw_shared_ptr<seastar::server_socket> listener_;
 };
 }
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_H_
