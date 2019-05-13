@@ -17,7 +17,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -164,7 +164,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
 // to make the non-GPU operations compatible with GPU ones.
 class ScratchAllocator {
  public:
-  virtual ~ScratchAllocator();
+  virtual ~ScratchAllocator() {};
 };
 
 template <typename T>
