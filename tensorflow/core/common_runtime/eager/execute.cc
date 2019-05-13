@@ -604,7 +604,7 @@ Status EagerLocalExecute(EagerOperation* op,
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name());
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
