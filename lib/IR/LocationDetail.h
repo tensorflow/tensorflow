@@ -51,15 +51,15 @@ struct FileLineColLocationStorage : public LocationStorage {
       : LocationStorage(Location::Kind::FileLineCol), filename(filename),
         line(line), column(column) {}
 
-  const UniquedFilename filename;
-  const unsigned line, column;
+  UniquedFilename filename;
+  unsigned line, column;
 };
 
 struct NameLocationStorage : public LocationStorage {
   NameLocationStorage(Identifier name)
       : LocationStorage(Location::Kind::Name), name(name) {}
 
-  const Identifier name;
+  Identifier name;
 };
 
 struct CallSiteLocationStorage : public LocationStorage {
@@ -67,7 +67,7 @@ struct CallSiteLocationStorage : public LocationStorage {
       : LocationStorage(Location::Kind::CallSite), callee(callee),
         caller(caller) {}
 
-  const Location callee, caller;
+  Location callee, caller;
 };
 
 struct FusedLocationStorage final

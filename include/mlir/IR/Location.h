@@ -124,7 +124,7 @@ inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
 class UnknownLoc : public Location {
 public:
   using ImplType = detail::UnknownLocationStorage;
-  /* implicit */ UnknownLoc(Location::ImplType *ptr);
+  using Location::Location;
 
   static UnknownLoc get(MLIRContext *context);
 
@@ -155,7 +155,7 @@ private:
 class FileLineColLoc : public Location {
 public:
   using ImplType = detail::FileLineColLocationStorage;
-  /* implicit */ FileLineColLoc(Location::ImplType *ptr);
+  using Location::Location;
 
   /// Return a uniqued FileLineCol location object.
   static FileLineColLoc get(UniquedFilename filename, unsigned line,
@@ -174,7 +174,7 @@ public:
 class NameLoc : public Location {
 public:
   using ImplType = detail::NameLocationStorage;
-  /* implicit */ NameLoc(Location::ImplType *ptr);
+  using Location::Location;
 
   /// Return a uniqued name location object.
   static NameLoc get(Identifier name, MLIRContext *context);
@@ -192,7 +192,7 @@ public:
 class CallSiteLoc : public Location {
 public:
   using ImplType = detail::CallSiteLocationStorage;
-  /* implicit */ CallSiteLoc(Location::ImplType *ptr);
+  using Location::Location;
 
   /// Return a uniqued call location object.
   static CallSiteLoc get(Location callee, Location caller,
@@ -219,7 +219,7 @@ public:
 class FusedLoc : public Location {
 public:
   using ImplType = detail::FusedLocationStorage;
-  /* implicit */ FusedLoc(Location::ImplType *ptr);
+  using Location::Location;
 
   /// Return a uniqued Fused Location object. The first location in the list
   /// will get precedence during diagnostic emission, with the rest being
