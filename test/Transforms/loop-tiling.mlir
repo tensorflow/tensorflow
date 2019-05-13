@@ -166,3 +166,19 @@ func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: i
 // CHECK-NEXT:      %1 = load %arg0[%i1] : memref<?xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// -----
+
+func @trip_count_1(%arg0: memref<196608x1xf32>, %arg1: memref<196608x1xf32>)
+    -> memref<196608x1xf32> {
+  affine.for %i1 = 0 to 196608 {
+    affine.for %i3 = 0 to 1 {
+      %4 = load %arg0[%i1, %i3] : memref<196608x1xf32>
+      store %4, %arg1[%i1, %i3] : memref<196608x1xf32>
+    }
+  }
+  return %arg1 : memref<196608x1xf32>
+}
+
+// CHECK: %0 = load %arg0[%i2, %i3] : memref<196608x1xf32>
+
