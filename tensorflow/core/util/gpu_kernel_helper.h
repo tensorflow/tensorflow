@@ -62,11 +62,11 @@ using gpuError_t = hipError_t;
 namespace tensorflow {
 #if GOOGLE_CUDA
 // cudaGetErrorString is available to both host and device
-__host__ __device__ inline const char* gpuGetErrorString(cudaError_t error){
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error){
   return cudaGetErrorString(error);
 #elif TENSORFLOW_USE_ROCM
 // hipGetErrorString is available on host side only
-inline const char* gpuGetErrorString(hipError_t error){
+inline const char* GpuGetErrorString(hipError_t error){
   return hipGetErrorString(error);
 #endif
 }
