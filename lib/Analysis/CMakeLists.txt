@@ -4,10 +4,10 @@ add_llvm_library(MLIRAnalysis STATIC
   Dominance.cpp
   LoopAnalysis.cpp
   MemRefBoundCheck.cpp
-  MemRefDependenceCheck.cpp
   NestedMatcher.cpp
   OpStats.cpp
   SliceAnalysis.cpp
+  TestMemRefDependenceCheck.cpp
   TestParallelismDetection.cpp
   Utils.cpp
   VectorAnalysis.cpp
