@@ -1666,6 +1666,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_query",
         ":pattern_matcher",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -4104,6 +4105,13 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "custom_call_target_registry",
+    srcs = ["custom_call_target_registry.cc"],
+    hdrs = ["custom_call_target_registry.h"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_test(

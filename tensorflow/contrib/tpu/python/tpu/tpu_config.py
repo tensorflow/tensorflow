@@ -19,5 +19,5 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.python.tpu.tpu_config import *
+from tensorflow_estimator.python.estimator.tpu.tpu_config import *
 # pylint: enable=wildcard-import,unused-import

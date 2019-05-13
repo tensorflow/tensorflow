@@ -73,7 +73,7 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
   // Launch kernel to q[...] = p[...].
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
   TF_CHECK_OK(
       CudaLaunchKernel(TileKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
                        d.stream(), cfg.virtual_thread_count, p,

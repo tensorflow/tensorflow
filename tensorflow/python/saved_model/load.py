@@ -26,7 +26,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -111,6 +110,13 @@ class _Loader(object):
       # itself.
       concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+      if bound_inputs:
+        for bound_input, internal_capture in zip(
+            bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
+          concrete_function.graph.captures[bound_input] = internal_capture
+          # Setting "captures" first means "capture" won't create a new
+          # placeholder for this input.
+          concrete_function.graph.capture(bound_input)
 
   def _get_tensor_from_node(self, node_id):
     """Resolves a node id into a tensor to be captured for a function."""
@@ -262,8 +268,6 @@ class _Loader(object):
         proto, self._concrete_functions), setattr
 
   def _recreate_variable(self, proto):
-    # TODO(andresp): Can we use the checkpointed value as initializer?
-    dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
     name = proto.name if proto.name else None
     if name is not None:
       dbg_name = name
@@ -273,8 +277,9 @@ class _Loader(object):
         variables.validate_synchronization_aggregation_trainable(
             proto.synchronization, proto.aggregation, proto.trainable,
             name=dbg_name))
-    return variables.Variable(
-        dummy_value,
+    return resource_variable_ops.UninitializedVariable(
+        shape=proto.shape,
+        dtype=proto.dtype,
         name=name,
         trainable=trainable,
         synchronization=synchronization,

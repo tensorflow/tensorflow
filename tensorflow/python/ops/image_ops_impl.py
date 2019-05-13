@@ -2139,7 +2139,11 @@ tf_export(
     'io.decode_image',
     'image.decode_image',
     v1=['io.decode_image', 'image.decode_image'])
-def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
+def decode_image(contents,
+                 channels=None,
+                 dtype=dtypes.uint8,
+                 name=None,
+                 expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
@@ -2150,7 +2154,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
   arrays `[height, width, num_channels]`. Make sure to take this into account
   when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files.
+  and/or PNG files. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional tensors
+  and will truncate animated GIF files to the first frame.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -2158,11 +2164,15 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
+    expand_animations: Controls the shape of the returned op's output.
+      If `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and
+      BMP files; and a 4-D tensor for all GIFs, whether animated or not.
+      If, `False`, the returned op will produce a 3-D tensor for all file 
+      types and will truncate animated GIFs to the first frame.
 
   Returns:
-    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
-      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
-      GIF images.
+    `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
+    the file type and the value of the `expand_animations` parameter.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -2173,7 +2183,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
     substr = string_ops.substr(contents, 0, 3)
 
     def _bmp():
-      """Decodes a GIF image."""
+      """Decodes a BMP image."""
       signature = string_ops.substr(contents, 0, 2)
       # Create assert op to check that bytes are BMP decodable
       is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
@@ -2187,9 +2197,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
         return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
+      """Decodes a GIF image."""
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
-
       gif_channels = 0 if channels is None else channels
       good_channels = math_ops.logical_and(
           math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
@@ -2197,7 +2207,12 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        if not expand_animations:
+          # For now we decode animated GIFs fully and toss out all but the
+          # first frame when expand_animations is False
+          result = array_ops.gather(result, 0)
+        return result
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable

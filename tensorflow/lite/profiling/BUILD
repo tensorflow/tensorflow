@@ -79,6 +79,7 @@ cc_test(
     copts = common_copts,
     deps = [
         ":profile_summarizer",
+        ":profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",

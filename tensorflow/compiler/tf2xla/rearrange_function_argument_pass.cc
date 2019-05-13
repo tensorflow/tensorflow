@@ -733,6 +733,7 @@ Status RearrangeFunctionArgumentPass::Run(
           {"XlaLaunch", "function"},
       };
   std::map<string, absl::optional<string>> canonicalized_name_to_new_name;
+  bool fld_modified = false;
   for (Node* n : graph->nodes()) {
     auto it = kNodeTypeToFunctionAttrMapping->find(n->type_string());
     if (it == kNodeTypeToFunctionAttrMapping->end()) {
@@ -753,7 +754,13 @@ Status RearrangeFunctionArgumentPass::Run(
       n->ClearAttr(func_attr);
       func.set_name(new_func_name);
       n->AddAttr(func_attr, func);
+
+      fld_modified = true;
     }
+  }
+  if (fld_modified) {
+    TF_RETURN_IF_ERROR(
+        PruneUnreachableFunctionsFromGraph(**options.graph, options.flib_def));
   }
 
   if (VLOG_IS_ON(4)) {

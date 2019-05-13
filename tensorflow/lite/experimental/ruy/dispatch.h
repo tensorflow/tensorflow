@@ -167,14 +167,6 @@ void PopulateTrMulParams(TrMulParams* params) {
     if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
       fallback_to_standard_cpp = true;
     }
-
-    // If DstScalar is std::int32_t, means user want to get from accumulator
-    // results directly, if it's not Neon path, will fallback to
-    // Path::kStandardCpp.
-    if (std::is_same<DstScalar, std::int32_t>::value &&
-        ThePath != Path::kNeon) {
-      fallback_to_standard_cpp = true;
-    }
   }
 
   if (fallback_to_standard_cpp) {

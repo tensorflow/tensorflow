@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

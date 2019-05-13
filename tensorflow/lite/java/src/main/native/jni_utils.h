@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_EXCEPTION_JNI_H_
-#define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_EXCEPTION_JNI_H_
+#ifndef TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_JNI_UTILS_H_
+#define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_JNI_UTILS_H_
 
 #include <jni.h>
-#include "tensorflow/lite/error_reporter.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "tensorflow/lite/error_reporter.h"
 
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];
@@ -29,9 +26,12 @@ extern const char kNullPointerException[];
 extern const char kIndexOutOfBoundsException[];
 extern const char kUnsupportedOperationException[];
 
-void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...);
+namespace tflite {
+namespace jni {
 
-class BufferErrorReporter : public tflite::ErrorReporter {
+void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...);
+
+class BufferErrorReporter : public ErrorReporter {
  public:
   BufferErrorReporter(JNIEnv* env, int limit);
   virtual ~BufferErrorReporter();
@@ -44,7 +44,7 @@ class BufferErrorReporter : public tflite::ErrorReporter {
   int end_idx_ = 0;
 };
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif  // __cplusplus
-#endif  // TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_EXCEPTION_JNI_H_
+}  // namespace jni
+}  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_JNI_UTILS_H_

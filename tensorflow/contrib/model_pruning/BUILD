@@ -156,6 +156,9 @@ py_test(
     srcs = ["python/strip_pruning_vars_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # b/132443370
+    ],
     deps = [
         ":layers",
         ":pruning",

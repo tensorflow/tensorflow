@@ -32,12 +32,6 @@ void OptimizationPassRegistry::Register(
 
 Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
-  LOG(INFO)
-      << "Running all optimization passes in grouping " << grouping
-      << ". If you see this a lot, you might be extending the graph too many "
-         "times (which means you modify the graph many times before "
-         "execution). Try reducing graph modifications or using SavedModel to "
-         "avoid any graph modification";
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
     for (auto& phase : group->second) {

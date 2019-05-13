@@ -28,13 +28,43 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// This optimizer first rewrites Prod(Shape(x)) into Size(x). It then uses
+// symbolic shapes to simplify Div(Size(x), Size(y)) in the case that x and y
+// share symbolic shapes that are unknown but known to be identical, e.g. we can
+// deduce that Div(Size([2,?,2]) Size([1,?,2])) is 2 if the two unknown
+// dimensions are known to be identical. This can be inferred if they share the
+// same symbolic representation (negative integer dimension size).
 Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                 GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
+  // Do a quick check to determine if we can skip this optimizer.
+  bool can_optimize = false;
+  bool has_div = false;
+  bool has_size = false;
+  bool has_shape = false;
+  bool has_prod = false;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsShape(node)) {
+      has_shape = true;
+    } else if (IsProd(node)) {
+      has_prod = true;
+    } else if (IsDiv(node)) {
+      has_div = true;
+    } else if (IsSize(node)) {
+      has_size = true;
+    }
+    if ((has_shape && has_prod) || (has_div && has_size)) {
+      can_optimize = true;
+      break;
+    }
+  }
+  if (!can_optimize) {
+    return errors::Aborted("Nothing to do.");
+  }
 
+  *optimized_graph = item.graph;
+  MutableGraphView graph(optimized_graph);
   GraphProperties properties(item);
   bool inferred_properties = false;
-  MutableGraphView graph(optimized_graph);
 
   // The product of all the dimensions in a tensor shape can be expressed more
   // simply as the size of the tensor.

@@ -21,16 +21,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":mnist_util",
-        ":util",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_library(
-    name = "util",
-    srcs = ["util.py"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -60,4 +50,16 @@ cuda_py_test(
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
     ],
+)
+
+# b/132234211: Target added to support internal test target that runs the test
+# in an environment that has the extra dependencies required to test integration
+# with non core tensorflow packages.
+py_library(
+    name = "saved_model_test_lib",
+    srcs = [
+        "saved_model_test.py",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [":integration_scripts"],
 )

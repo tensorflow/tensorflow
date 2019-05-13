@@ -452,7 +452,7 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
-  return 'training' in full_args
+  return 'training' in full_args and full_args['training'] is not None
 
 
 def _get_var_read_dtype(input_list, should_cast):

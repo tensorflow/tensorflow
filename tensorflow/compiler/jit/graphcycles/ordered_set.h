@@ -23,7 +23,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-// This is a set data structure that provides a stable iteration order.
+// This is a set data structure that provides a deterministic iteration order.
+// The iteration order of elements only depends on the sequence of
+// inserts/deletes, so as long as the inserts/deletes happen in the same
+// sequence, the set will have the same iteration order.
 //
 // Assumes that T can be cheaply copied for simplicity.
 template <typename T>

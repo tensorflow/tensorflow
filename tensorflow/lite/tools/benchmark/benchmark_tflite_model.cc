@@ -342,6 +342,12 @@ void BenchmarkTfLiteModel::PrepareInputData() {
       FillRandomValue<int32_t>(t_data.data.i32, num_elements, []() {
         return static_cast<int32_t>(rand()) % 100;
       });
+    } else if (t->type == kTfLiteInt16) {
+      t_data.bytes = sizeof(int16_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int16_t>(t_data.data.i16, num_elements, []() {
+        return static_cast<int16_t>(rand()) % 100;
+      });
     } else if (t->type == kTfLiteUInt8) {
       t_data.bytes = sizeof(uint8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
@@ -376,6 +382,9 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     } else if (t->type == kTfLiteInt32) {
       std::memcpy(interpreter->typed_tensor<int32_t>(i),
                   inputs_data_[j].data.i32, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt16) {
+      std::memcpy(interpreter->typed_tensor<int16_t>(i),
+                  inputs_data_[j].data.i16, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteUInt8) {
       std::memcpy(interpreter->typed_tensor<uint8_t>(i),
                   inputs_data_[j].data.uint8, inputs_data_[j].bytes);

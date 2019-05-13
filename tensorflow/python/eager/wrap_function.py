@@ -21,11 +21,14 @@ from __future__ import print_function
 
 import weakref
 
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.tracking import data_structures
@@ -82,6 +85,21 @@ class VariableHolder(object):
         return fn(*args, **kwargs)
 
     return wrapped
+
+
+def _get_tensor_from_tensor_info(tensor_info, graph):
+  """Simplified copy of the deprecated `get_tensor_from_tensor_info`."""
+  encoding = tensor_info.WhichOneof("encoding")
+  if encoding == "name":
+    return graph.get_tensor_by_name(tensor_info.name)
+  elif encoding == "coo_sparse":
+    return sparse_tensor.SparseTensor(
+        graph.get_tensor_by_name(tensor_info.coo_sparse.indices_tensor_name),
+        graph.get_tensor_by_name(tensor_info.coo_sparse.values_tensor_name),
+        graph.get_tensor_by_name(
+            tensor_info.coo_sparse.dense_shape_tensor_name))
+  else:
+    raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
 
 
 def _lift_single_variable(old_variable, graph, variable_holder):
@@ -184,11 +202,33 @@ class WrappedFunction(function.ConcreteFunction):
         fn_graph, attrs=attrs, signature=signature)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
+    """Extract a subgraph of this function's underlying graph.
+
+    Wraps the subgraph in a new `WrappedFunction` object.
+
+    Args:
+      feeds: Input tensors to the subgraph to extract, as `Tensor` objects.
+      fetches: Possibly-nested Python data structure containing information
+        about outputs of the target subgraph. Each entry can either be a
+        `Tensor` object (for data outputs), an `Operation` object (for control
+        outputs), or a `TensorInfo` proto. Any additional shape/dtype
+        information provided in a `TensorInfo` and not present in the original
+        graph will be added to the returned subgraph.
+      name: (optional) Name to give to the underlying `FuncGraph` of the
+        returned object. If no name is provided, the graph's name will be
+        `"pruned"`.
+      input_signature: (optional) possibly-nested Python data structure
+        containing `TensorSpec` objects, with which to populate the returned
+        functions's `FuncGraph`'s `structured_input_signature` field.
+
+    Returns:
+      A new `WrappedFunction` object containing a copy of the portion of this
+        object's graph that goes from `feeds` to `fetches`.
+    """
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
     feeds = nest.map_structure(self.graph.as_graph_element, feeds)
-    fetches = nest.map_structure(self.graph.as_graph_element, fetches)
-    flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
+    flat_feeds = nest.flatten(feeds)
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
         raise ValueError("Feeds must be tensors.")
@@ -199,28 +239,64 @@ class WrappedFunction(function.ConcreteFunction):
     flat_feeds = [f for f in flat_feeds if f not in internal_captures]
 
     operation_fetches = []
-    for f in flat_fetches:
+    tensor_fetches = []
+    tensor_infos = []
+
+    def _fetch_preprocesing_callback(f):
+      """Extract out lists of ops, tensors, and tensor type info.
+
+      Turns TensorInfos into Tensors in the original fetches structure.
+
+      Args:
+        f: The fetch to preprocess: Tensor, TensorInfo, or Operation, or string
+          identifying a Tensor or Operation.
+
+      Returns:
+        `f` converted to a Tensor.
+      """
       if isinstance(f, ops.Operation):
         operation_fetches.append(f)
-      elif not isinstance(f, ops.Tensor):
-        raise ValueError("Fetches must be tensors or operations.")
-    for f in flat_feeds + flat_fetches:
+        return f
+      elif isinstance(f, meta_graph_pb2.TensorInfo):
+        tensor_infos.append(f)
+        f_tensor = _get_tensor_from_tensor_info(f, self._func_graph)
+        tensor_fetches.append(f_tensor)
+        return f_tensor
+      elif isinstance(f, ops.Tensor):
+        tensor_fetches.append(f)
+        return f
+      else:
+        graph_element = self.graph.as_graph_element(f)
+        return _fetch_preprocesing_callback(graph_element)
+
+    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+
+    for f in flat_feeds + tensor_fetches + operation_fetches:
       if f.graph is not self._func_graph:
         raise ValueError("Can only prune function whose feeds and fetches "
-                         "are from this graph (%s). Tensor %s from graph %s" %
+                         "are from this graph (%s). Input %s is from graph %s" %
                          (self._func_graph, f, f.graph))
     with self._func_graph.as_default():
       pruned_graph = func_graph.FuncGraph(name)
     lift_map = lift_to_graph.lift_to_graph(
-        flat_fetches, pruned_graph, sources=flat_feeds + internal_captures)
-    pruned_graph.outputs.extend(
-        lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
+        operation_fetches + tensor_fetches,
+        pruned_graph,
+        sources=flat_feeds + internal_captures)
+    pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
     pruned_graph.inputs.extend(pruned_graph.captures.values())
+    for ti in tensor_infos:
+      if ti.WhichOneof("encoding") == "name":  # Dense tensors only
+        t = pruned_graph.get_tensor_by_name(ti.name)
+        t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
+    # pylint: disable=protected-access
+    for f in self.graph._functions.values():
+      pruned_graph._add_function(f)
+    # pylint: enable=protected-access
 
     pruned_graph.variables = self.graph.variables
 

@@ -70,8 +70,8 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
-                                             FillKernel<Distribution>, 0, 0);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
+                                            FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));

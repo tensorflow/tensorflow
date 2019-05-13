@@ -5484,6 +5484,8 @@ if not os.path.exists(_config_path):
 
 def in_multi_worker_mode():
   """Whether we are operating in a Multi-Worker setting."""
+  # TODO(rchao): Consider a warning if user uses multiple `model` method
+  # calls in multi-worker setting.
   tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
   cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
   return tf_config and 'master' not in cluster_spec.jobs

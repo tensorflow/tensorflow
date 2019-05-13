@@ -23,8 +23,7 @@ namespace xla {
 
 namespace py = pybind11;
 
-xla::StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
-    const py::dtype& np_type) {
+xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto* types =
       new absl::flat_hash_map<std::pair<char, int>, PrimitiveType>({
           {{'b', 1}, PRED},
@@ -48,6 +47,42 @@ xla::StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
                            np_type.itemsize());
   }
   return it->second;
+}
+
+xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return py::dtype::of<bool>();
+    case S8:
+      return py::dtype::of<int8>();
+    case S16:
+      return py::dtype::of<int16>();
+    case S32:
+      return py::dtype::of<int32>();
+    case S64:
+      return py::dtype::of<int64>();
+    case U8:
+      return py::dtype::of<uint8>();
+    case U16:
+      return py::dtype::of<uint16>();
+    case U32:
+      return py::dtype::of<uint32>();
+    case U64:
+      return py::dtype::of<uint64>();
+    case F16:
+      return py::dtype("e");
+    case F32:
+      return py::dtype::of<float>();
+    case F64:
+      return py::dtype::of<double>();
+    case C64:
+      return py::dtype::of<std::complex<float>>();
+    case C128:
+      return py::dtype::of<std::complex<double>>();
+    default:
+      return Unimplemented("Unimplemented primitive type %s",
+                           PrimitiveType_Name(type));
+  }
 }
 
 // Returns a numpy-style format descriptor string for `type`.
@@ -157,6 +192,22 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     tree.shape = tree.leaves.front().shape();
   }
   return tree;
+}
+
+py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+  py::tuple out(xs.size());
+  for (int i = 0; i < xs.size(); ++i) {
+    out[i] = py::int_(xs[i]);
+  }
+  return out;
+}
+
+std::vector<int64> IntSequenceToVector(const py::object& sequence) {
+  std::vector<int64> output;
+  for (auto item : sequence) {
+    output.push_back(item.cast<int64>());
+  }
+  return output;
 }
 
 }  // namespace xla

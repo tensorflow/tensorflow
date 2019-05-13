@@ -336,10 +336,10 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class PrefetchWithSlackTest(test_base.DatasetTestBase):
+class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @test_util.run_v1_only("b/121264236")
-  def testPrefetchWithSlack(self):
+  def testPrefetchWithSlackOption(self):
     dataset = dataset_ops.Dataset.range(10)
     options = dataset_ops.Options()
     options.experimental_slack = True
@@ -363,7 +363,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  def testPrefetchWithSlackWithoutIterator(self):
+  def testPrefetchWithSlackOptionWithoutIterator(self):
     dataset = dataset_ops.Dataset.range(10)
     options = dataset_ops.Options()
     options.experimental_slack = True
@@ -373,7 +373,6 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase):
                   dataset.options()._static_optimization_configs())
 
     self.assertDatasetProduces(dataset, range(10))
-
 
 if __name__ == "__main__":
   ops.enable_eager_execution(
