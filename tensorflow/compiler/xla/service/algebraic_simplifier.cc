@@ -585,20 +585,20 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
       return Status::OK();
     }
+  }
 
-    // A && False => False
-    VLOG(10) << "trying transform [A && False => False]: "
-             << logical_and->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
-      return Status::OK();
-    }
+  // A && False => False or A & 0 => 0
+  VLOG(10) << "trying transform [A && False => False]: "
+           << logical_and->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+    return Status::OK();
+  }
 
-    // False && A => False
-    VLOG(10) << "trying transform [False && A => False]: "
-             << logical_and->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
-      return Status::OK();
-    }
+  // False && A => False or A & 0 => 0
+  VLOG(10) << "trying transform [False && A => False]: "
+           << logical_and->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+    return Status::OK();
   }
 
   return Status::OK();
@@ -2012,20 +2012,18 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
       return Status::OK();
     }
+  }
 
-    // A || False => A
-    VLOG(10) << "trying transform [A || False => A]: "
-             << logical_or->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
-      return Status::OK();
-    }
+  // A || False => A and A | 0 => A
+  VLOG(10) << "trying transform [A || False => A]: " << logical_or->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+    return Status::OK();
+  }
 
-    // False || A => A
-    VLOG(10) << "trying transform [False || A => A]: "
-             << logical_or->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
-      return Status::OK();
-    }
+  // False || A => A and 0 | A => A
+  VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+    return Status::OK();
   }
 
   return Status::OK();
