@@ -4688,21 +4688,16 @@ Status ConvertResize(OpConverterParams* params) {
 
   // Verify and consume node attributes.
   TFAttrs attrs(node_def);
-  bool alignCorners = attrs.get<bool>("align_corners");
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
-  if (dtype != nvinfer1::DataType::kFLOAT &&
-      dtype != nvinfer1::DataType::kHALF) {
-    return errors::Unimplemented(node_def.op(),
-                                 " only support FLOAT and HALF data type, at ",
-                                 node_def.name());
-  }
+  bool align_corners = attrs.get<bool>("align_corners");
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   // Verify resize mode. Initialize resize mode if supported.
-  nvinfer1::ResizeMode resizeMode;
+  nvinfer1::ResizeMode resize_mode;
   if (node_def.op() == "ResizeBilinear") {
-    resizeMode = nvinfer1::ResizeMode::kLINEAR;
+    resize_mode = nvinfer1::ResizeMode::kLINEAR;
   } else if (node_def.op() == "ResizeNearestNeighbor") {
-    resizeMode = nvinfer1::ResizeMode::kNEAREST;
+    resize_mode = nvinfer1::ResizeMode::kNEAREST;
   } else {
     return errors::Unimplemented(node_def.op(), " is not yet implemented at ",
                                  node_def.name());
@@ -4718,13 +4713,13 @@ Status ConvertResize(OpConverterParams* params) {
   // Calculate output dimensions.
   // Given input dimensions [N, C, H, W] and output size [H_out, W_out],
   // output dimensions equals [N, C, H_out, W_out]
-  nvinfer1::Dims outputDimensions;
-  outputDimensions.nbDims = tensor->getDimensions().nbDims;
-  for (int i = 0; i < outputDimensions.nbDims; ++i) {
-    outputDimensions.d[i] = tensor->getDimensions().d[i];
+  nvinfer1::Dims output_dimensions;
+  output_dimensions.nbDims = tensor->getDimensions().nbDims;
+  for (int i = 0; i < output_dimensions.nbDims; ++i) {
+    output_dimensions.d[i] = tensor->getDimensions().d[i];
   }
-  outputDimensions.d[outputDimensions.nbDims - 2] = weights_ptr[0];
-  outputDimensions.d[outputDimensions.nbDims - 1] = weights_ptr[1];
+  output_dimensions.d[output_dimensions.nbDims - 2] = weights_ptr[0];
+  output_dimensions.d[output_dimensions.nbDims - 1] = weights_ptr[1];
 
   // Add resize layer.
   nvinfer1::IResizeLayer* layer =
@@ -4732,9 +4727,9 @@ Status ConvertResize(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   // Set layer parameters.
-  layer->setResizeMode(resizeMode);
-  layer->setOutputDimensions(outputDimensions);
-  layer->setAlignCorners(alignCorners);
+  layer->setResizeMode(resize_mode);
+  layer->setOutputDimensions(output_dimensions);
+  layer->setAlignCorners(align_corners);
 
   // Get output tensor. Transpose it from NCHW to NHWC.
   nvinfer1::ITensor* output = layer->getOutput(0);
