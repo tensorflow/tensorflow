@@ -170,7 +170,7 @@ class ScratchAllocator {
 template <typename T>
 class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
  public:
-  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context){}
+  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context) {}
 };
 
 template <typename T>
@@ -181,7 +181,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     OP_REQUIRES_OK(context_,
                    context_->allocate_output(5, {}, &dummy_reserve_space));
   }
-  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index){}
+  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index) {}
 };
 #endif // GOOGLE_CUDA
 
