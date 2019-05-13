@@ -211,7 +211,8 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
   return true;
 }
 
-static InFlightDiagnostic emitRemarkForBlock(Block &block) {
+static InFlightDiagnostic LLVM_ATTRIBUTE_UNUSED
+emitRemarkForBlock(Block &block) {
   auto *op = block.getContainingOp();
   return op ? op->emitRemark() : block.getFunction()->emitRemark();
 }

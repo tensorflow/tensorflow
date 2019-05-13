@@ -197,6 +197,7 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   /// TODO(ntv): there should be a single function for all ops to do this so we
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
+  (void)mustDivide;
   VectorType superVectorType;
   if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
     superVectorType = read.getResultType();
