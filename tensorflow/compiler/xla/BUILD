@@ -165,6 +165,10 @@ cc_library(
         "statusor.h",
     ],
     visibility = ["//visibility:public"],
+    linkopts = select({
+        "@org_tensorflow//tensorflow:freebsd": ["-lexecinfo"],
+        "//conditions:default": []
+    }),
     deps = [
         ":status",
         "//tensorflow/stream_executor/lib",
