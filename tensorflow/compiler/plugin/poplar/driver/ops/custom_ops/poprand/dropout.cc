@@ -54,7 +54,8 @@ class DropoutOp : public PoplibsOpDef {
 
     const HloDropoutInstruction* dropout_instruction =
         dynamic_cast<const HloDropoutInstruction*>(inst);
-    assert(op && "Expected operation to be an xla::poplarplugin::DropoutOp");
+    assert(dropout_instruction &&
+           "Expected operation to be an xla::poplarplugin::DropoutOp");
 
     // The probabilty that any given element of "x" will be disgarded.
     double rate = dropout_instruction->Rate();
