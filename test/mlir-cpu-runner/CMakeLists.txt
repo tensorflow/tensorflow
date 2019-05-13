@@ -1,0 +1,27 @@
+set(LIBS
+  MLIRAffineOps
+  MLIRAnalysis
+  MLIREDSC
+  MLIRExecutionEngine
+  MLIRIR
+  MLIRLLVMIR
+  MLIRParser
+  MLIRTargetLLVMIR
+  MLIRTransforms
+  MLIRSupport
+  MLIRCPURunnerLib
+  LLVMCore
+  LLVMSupport
+)
+add_executable(mlir-blas-cpu-runner
+  mlir-blas-cpu-runner.cpp
+)
+llvm_update_compile_flags(mlir-blas-cpu-runner)
+whole_archive_link(mlir-blas-cpu-runner
+  MLIRLLVMIR
+  MLIRStandardOps
+  MLIRTargetLLVMIR
+  MLIRTransforms
+  MLIRTranslation
+)
+target_link_libraries(mlir-blas-cpu-runner MLIRIR ${LIBS})

@@ -1,8 +1,29 @@
-// RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | mlir-cpu-runner -e entry1 -entry-point-result=f32 | FileCheck %s
+// RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | mlir-blas-cpu-runner -e entry1 -entry-point-result=f32 | FileCheck %s
 
-func @linalg_dot(!llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">) {
+func @cblas_sdot(!llvm.i64, !llvm<"float*">, !llvm.i64, !llvm<"float*">, !llvm.i64) -> !llvm.float
+
+func @linalg_dot(%arg0 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
+                 %arg1 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
+                 %arg2 : !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">) {
+  %n = llvm.extractvalue %arg0[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+
+  %x0 = llvm.extractvalue %arg0[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+  %x1 = llvm.extractvalue %arg0[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+  %x = llvm.getelementptr %x0[%x1] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+
+  %inc_x = llvm.extractvalue %arg0[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+
+  %y0 = llvm.extractvalue %arg1[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+  %y1 = llvm.extractvalue %arg1[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+  %y = llvm.getelementptr %y0[%y1] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+
+  %inc_y = llvm.extractvalue %arg1[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+
+  %res = llvm.call @cblas_sdot(%n, %x, %inc_x, %y, %inc_y) : (!llvm.i64, !llvm<"float*">, !llvm.i64, !llvm<"float*">, !llvm.i64) -> (!llvm.float)
+  %0 = llvm.extractvalue %arg2[0] : !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">
+  %old = llvm.load %0 : !llvm<"float*">
+  %new = llvm.fadd %res, %old : !llvm.float
+  llvm.store %new, %0 : !llvm<"float*">
   return
 }
 
@@ -41,18 +62,21 @@ func @entry1() -> f32 {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %c16 = constant 16 : index
-  %f0 = constant 0.00000e+00 : f32
-  %f1 = constant 0.00000e+00 : f32
+  %f10 = constant 10.00000e+00 : f32
+  %f1 = constant 1.00000e+00 : f32
   %f2 = constant 2.00000e+00 : f32
 
   %A = call @alloc_filled_f32(%c16, %f2) : (index, f32) -> (!linalg.buffer<f32>)
   %B = call @alloc_filled_f32(%c16, %f1) : (index, f32) -> (!linalg.buffer<f32>)
-  %C = call @alloc_filled_f32(%c1, %f0) : (index, f32) -> (!linalg.buffer<f32>)
+  %C = call @alloc_filled_f32(%c1, %f10) : (index, f32) -> (!linalg.buffer<f32>)
+
   %res = call @dot(%A, %B, %C) : (!linalg.buffer<f32>, !linalg.buffer<f32>, !linalg.buffer<f32>) -> (f32)
+
   linalg.buffer_dealloc %C : !linalg.buffer<f32>
   linalg.buffer_dealloc %B : !linalg.buffer<f32>
   linalg.buffer_dealloc %A : !linalg.buffer<f32>
+
   return %res : f32
 }
 
-// CHECK: 0.{{0+}}e+00
+// CHECK: 4.2{{0+}}e+01

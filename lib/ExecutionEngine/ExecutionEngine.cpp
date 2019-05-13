@@ -75,6 +75,52 @@ private:
 
 namespace mlir {
 namespace impl {
+
+/// Wrapper class around DynamicLibrarySearchGenerator to allow searching
+/// in-process symbols that have not been explicitly exported.
+/// This first tries to resolve a symbol by using DynamicLibrarySearchGenerator.
+/// For symbols that are not found this way, it then uses
+///   `llvm::sys::DynamicLibrary::SearchForAddressOfSymbol` to extract symbols
+/// that have been explicitly added with `llvm::sys::DynamicLibrary::AddSymbol`,
+/// previously.
+class SearchGenerator {
+public:
+  SearchGenerator(char GlobalPrefix)
+      : defaultGenerator(cantFail(
+            llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+                GlobalPrefix))) {}
+
+  // This function forwards to DynamicLibrarySearchGenerator::operator() and
+  // adds an extra resolution for names explicitly registered via
+  // `llvm::sys::DynamicLibrary::AddSymbol`.
+  Expected<llvm::orc::SymbolNameSet>
+  operator()(llvm::orc::JITDylib &JD, const llvm::orc::SymbolNameSet &Names) {
+    auto res = defaultGenerator(JD, Names);
+    if (!res)
+      return res;
+    llvm::orc::SymbolMap newSymbols;
+    for (auto &Name : Names) {
+      if (res.get().count(Name) > 0)
+        continue;
+      res.get().insert(Name);
+      auto addedSymbolAddress =
+          llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(*Name);
+      if (!addedSymbolAddress)
+        continue;
+      llvm::JITEvaluatedSymbol Sym(
+          reinterpret_cast<uintptr_t>(addedSymbolAddress),
+          llvm::JITSymbolFlags::Exported);
+      newSymbols[Name] = Sym;
+    }
+    if (!newSymbols.empty())
+      cantFail(JD.define(absoluteSymbols(std::move(newSymbols))));
+    return res;
+  }
+
+private:
+  llvm::orc::DynamicLibrarySearchGenerator defaultGenerator;
+};
+
 // Simple layered Orc JIT compilation engine.
 class OrcJIT {
 public:
@@ -82,8 +128,8 @@ public:
 
   // Construct a JIT engine for the target host defined by `machineBuilder`,
   // using the data layout provided as `dataLayout`.
-  // Setup the object layer to use our custom memory manager in order to resolve
-  // calls to library functions present in the process.
+  // Setup the object layer to use our custom memory manager in order to
+  // resolve calls to library functions present in the process.
   OrcJIT(llvm::orc::JITTargetMachineBuilder machineBuilder,
          llvm::DataLayout layout, IRTransformer transform)
       : irTransformer(transform),
@@ -97,8 +143,7 @@ public:
         dataLayout(layout), mangler(session, this->dataLayout),
         threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
     session.getMainJITDylib().setGenerator(
-        cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-            layout.getGlobalPrefix())));
+        SearchGenerator(layout.getGlobalPrefix()));
   }
 
   // Create a JIT engine for the current host.
@@ -130,8 +175,8 @@ public:
 
 private:
   // Wrap the `irTransformer` into a function that can be called by the
-  // IRTranformLayer.  If `irTransformer` is not set up, return the module as is
-  // without errors.
+  // IRTranformLayer.  If `irTransformer` is not set up, return the module as
+  // is without errors.
   llvm::orc::IRTransformLayer::TransformFunction makeIRTransformFunction() {
     return [this](llvm::orc::ThreadSafeModule module,
                   const llvm::orc::MaterializationResponsibility &resp)

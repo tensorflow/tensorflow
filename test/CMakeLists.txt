@@ -1,7 +1,8 @@
+add_subdirectory(mlir-cpu-runner)
+
 llvm_canonicalize_cmake_booleans(
   LLVM_BUILD_EXAMPLES
   )
-
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
@@ -19,6 +20,7 @@ configure_lit_site_cfg(
 set(MLIR_TEST_DEPENDS
   FileCheck count not
   MLIRUnitTests
+  mlir-blas-cpu-runner
   mlir-cpu-runner
   mlir-opt
   mlir-tblgen
