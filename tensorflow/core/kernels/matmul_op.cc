@@ -25,14 +25,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/util/matmul_autotune.h"
 #if GOOGLE_CUDA
-<<<<<<< HEAD
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#include "third_party/gpus/cuda/include/cuda.h"
->>>>>>> upstream/master
-#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

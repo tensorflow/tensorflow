@@ -663,11 +663,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
       kBlockDepth * (tile_pixels + filter_pixels) * sizeof(S);
   const int num_outputs = args.out_rows * args.out_cols * block_count;
   auto device = ctx->eigen_gpu_device();
-<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
-=======
-  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
->>>>>>> upstream/master
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
   TF_CHECK_OK(GpuLaunchKernel(kernel,
@@ -982,15 +978,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-<<<<<<< HEAD
-  TF_CHECK_OK(GpuLaunchKernel(kernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, device.stream(), args,
-                    out_backprop, filter, in_backprop, num_in_backprop));
-=======
-  TF_CHECK_OK(CudaLaunchKernel(
+  TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
->>>>>>> upstream/master
   return Status::OK();
 }
 
@@ -1642,11 +1632,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
                                      " is not supported");
   }
   const int num_out_backprop = args.out_rows * args.out_cols * block_count;
-<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
-=======
-  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
->>>>>>> upstream/master
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
   TF_CHECK_OK(GpuLaunchKernel(kernel,
@@ -1753,13 +1739,8 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
-<<<<<<< HEAD
-  TF_CHECK_OK(GpuLaunchKernel(kernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, device.stream(),
-=======
-  TF_CHECK_OK(CudaLaunchKernel(
+  TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
->>>>>>> upstream/master
       args, out_backprop, input, filter_backprop, num_out_backprop));
   return Status::OK();
 }

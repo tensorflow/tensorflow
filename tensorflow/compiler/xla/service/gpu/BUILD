@@ -455,10 +455,9 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
-        "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/stream_executor/gpu:gpu_stream",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -468,21 +467,20 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-<<<<<<< HEAD
     ]
      + if_cuda_is_configured([
         ":cusolver_context",
+        "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
-     ])
-     + if_rocm_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-     ]),
-=======
         "@local_config_cuda//cuda:cuda_headers",
-    ],
->>>>>>> upstream/master
+     ])
+     + if_rocm_is_configured([
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "@local_config_rocm//rocm:rocm_headers",
+     ]),
 )
 
 cc_library(
@@ -549,12 +547,12 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -591,8 +589,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
@@ -609,19 +607,16 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
-<<<<<<< HEAD
-=======
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
->>>>>>> upstream/master
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
+        "//tensorflow/stream_executor:device_memory_allocator",
     ]
      + if_cuda_is_configured([
         ":cusolver_context",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
      ])
      + if_rocm_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_rocm",
      ]),
@@ -708,48 +703,27 @@ cc_library(
 
 cc_library(
     name = "cusolver_rewriter",
-<<<<<<< HEAD
     srcs = if_cuda_is_configured([
-             "cusolver_rewriter.cc"
+            "cusolver_rewriter.cc"
      ]),
     hdrs = if_cuda_is_configured([
-          "cusolver_context.h",
-           "cusolver_rewriter.h",
+            "cusolver_rewriter.h",
        ]),
-    deps =  if_cuda_is_configured([
-             ":cusolver_context",
-             ":ir_emission_utils",
-             ":scratch_allocator",
-             "//tensorflow/compiler/xla:literal",
-             "//tensorflow/compiler/xla:util",
-             "//tensorflow/compiler/xla:xla_data_proto",
-             "//tensorflow/compiler/xla/service:device_memory_allocator",
-             "//tensorflow/compiler/xla/service:hlo",
-             "//tensorflow/compiler/xla/service:hlo_pass",
-             "//tensorflow/core:lib",
-             "//tensorflow/core:stream_executor_no_cuda",
-             "//tensorflow/stream_executor:blas",
-              "@com_google_absl//absl/types:optional",
+    deps = if_cuda_is_configured([
+            ":cusolver_context",
+            ":ir_emission_utils",
+            ":scratch_allocator",
+            "//tensorflow/compiler/xla:literal",
+            "//tensorflow/compiler/xla:util",
+            "//tensorflow/compiler/xla:xla_data_proto",
+            "//tensorflow/compiler/xla/service:hlo",
+            "//tensorflow/compiler/xla/service:hlo_pass",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:stream_executor_no_cuda",
+            "//tensorflow/stream_executor:blas",
+            "//tensorflow/stream_executor:device_memory_allocator",
+            "@com_google_absl//absl/types:optional",
       ]),
-=======
-    srcs = ["cusolver_rewriter.cc"],
-    hdrs = ["cusolver_rewriter.h"],
-    deps = [
-        ":cusolver_context",
-        ":ir_emission_utils",
-        ":scratch_allocator",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:blas",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "@com_google_absl//absl/types:optional",
-    ],
->>>>>>> upstream/master
 )
 
 cc_library(

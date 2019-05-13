@@ -21,7 +21,10 @@ limitations under the License.
 #include <stddef.h>
 #include "tensorflow/stream_executor/platform/port.h"
 
+#if google_cuda
 #include "third_party/gpus/cuda/include/cuda.h"
+#endif //google_cuda
+
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"

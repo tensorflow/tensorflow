@@ -76,8 +76,8 @@ class TridiagonalMatMulOpGpu : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
 
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
-    CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
-    TF_CHECK_OK(CudaLaunchKernel(
+    CudaLaunchConfig cfg = GetGpuLaunchConfig(1, device);
+    TF_CHECK_OK(GpuLaunchKernel(
         TridiagonalMatMulKernel<Scalar>, cfg.block_count, cfg.thread_per_block,
         0, device.stream(), batch_size, m, n, superdiag.flat<Scalar>().data(),
         maindiag.flat<Scalar>().data(), subdiag.flat<Scalar>().data(),

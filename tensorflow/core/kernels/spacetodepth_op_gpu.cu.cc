@@ -156,21 +156,12 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
     if (total_count == 0) {
       return;
     }
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(GpuLaunchKernel(
-        S2D_NHWC<T>, dim3(config.block_count), dim3(config.thread_per_block), 0,
-        d.stream(), config.virtual_thread_count, input.data(), block_size,
-        batch_size, input_height, input_width, input_depth, output_height,
-        output_width, output_depth, output.data()));
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-    TF_CHECK_OK(CudaLaunchKernel(
         S2D_NHWC<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, batch_size,
         input_height, input_width, input_depth, output_height, output_width,
         output_depth, output.data()));
->>>>>>> upstream/master
   }
   void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output) {
@@ -199,11 +190,7 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       if (total_count == 0) {
         return;
       }
-<<<<<<< HEAD
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-=======
-      GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
->>>>>>> upstream/master
       switch (block_size) {
         case 2:
           TF_CHECK_OK(GpuLaunchKernel((S2D_NCHW_LOOP<T, 2>),
@@ -237,15 +224,9 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     if (total_count == 0) {
       return;
     }
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-    TF_CHECK_OK(GpuLaunchKernel(S2D_NCHW<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-    TF_CHECK_OK(CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         S2D_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
->>>>>>> upstream/master
         config.virtual_thread_count, input.data(), block_size, output_width,
         input_depth * output_height, output.data()));
   }

@@ -79,19 +79,11 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-<<<<<<< HEAD
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
-  TF_CHECK_OK(GpuLaunchKernel((TransposeKernel<T, conjugate>),
-      dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
-          cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
-          ndims, q));
-=======
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
-  TF_CHECK_OK(CudaLaunchKernel(
+  TF_CHECK_OK(GpuLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,
       reinterpret_cast<const int32*>(dev_buf), ndims, q));
->>>>>>> upstream/master
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }

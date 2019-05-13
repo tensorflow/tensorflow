@@ -39,7 +39,7 @@ void IncrementKernel(const float* d_input, float inc, float* d_output,
   int threads_per_block = 256;
   int blocks_per_grid = (count + threads_per_block - 1) / threads_per_block;
 
-  TF_CHECK_OK(CudaLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0,
+  TF_CHECK_OK(GpuLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0,
                                stream, d_input, inc, d_output, count));
 }
 

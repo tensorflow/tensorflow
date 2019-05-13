@@ -22,12 +22,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-<<<<<<< HEAD
-#include "cuda/include/cudnn.h"
-#endif
-=======
 #include "third_party/gpus/cudnn/cudnn.h"
->>>>>>> upstream/master
+#endif
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #if TENSORFLOW_USE_ROCM

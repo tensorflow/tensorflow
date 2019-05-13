@@ -13,40 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
-namespace tensorflow {
-
-#ifndef TENSORFLOW_USE_ROCM
-  #define CREATE_CUDA_HOST_FUNCTION_ALIAS(func, cuda_alias) \
-  template <typename... Args> \
-  auto cuda_alias(Args&&... args) -> decltype(func(std::forward<Args>(args)...)) { \
-    return func(std::forward<Args>(args)...); \
-  }
-#else
-  #define CREATE_CUDA_HOST_FUNCTION_ALIAS(func, cuda_alias)
-#endif
-
-#ifndef TENSORFLOW_USE_ROCM
-  #define CREATE_CUDA_DEVICE_FUNCTION_ALIAS(func, cuda_alias) \
-  template <typename... Args> \
-  __device__ auto cuda_alias(Args&&... args) -> decltype(func(std::forward<Args>(args)...)) { \
-    return func(std::forward<Args>(args)...); \
-  }
-#else
-  #define CREATE_CUDA_DEVICE_FUNCTION_ALIAS(func, cuda_alias)
-#endif
-
-
-#ifndef TENSORFLOW_USE_ROCM
-  #define CREATE_CUDA_TYPE_ALIAS(type, cuda_alias) \
-  using cuda_alias = type;
-#else
-  #define CREATE_CUDA_TYPE_ALIAS(type, cuda_alias)
-#endif
-}
-
-
-=======
 #ifndef TENSORFLOW_CORE_UTIL_GPU_CUDA_ALIAS_H_
 #define TENSORFLOW_CORE_UTIL_GPU_CUDA_ALIAS_H_
 
@@ -92,4 +58,3 @@ namespace tensorflow {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_GPU_CUDA_ALIAS_H_
->>>>>>> upstream/master

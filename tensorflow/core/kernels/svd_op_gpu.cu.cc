@@ -75,11 +75,7 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
 __global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
-<<<<<<< HEAD
   GPU_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
-=======
-  CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
->>>>>>> upstream/master
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
 }
@@ -206,17 +202,10 @@ class SvdOpGpu : public AsyncOpKernel {
                         input_copy.flat<Scalar>().data(),
                         outputU_ptr, outputS_ptr, outputV_ptr));
       // 2. clamp V to -1 or +1
-<<<<<<< HEAD
       GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
       TF_CHECK_OK(GpuLaunchKernel(ExtractSignOfVKernel<Scalar>,
-                        dim3(cfg1D.block_count), dim3(cfg1D.thread_per_block), 0,
-                        d.stream(), cfg1D, outputV_ptr));
-=======
-      GpuLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
-      TF_CHECK_OK(CudaLaunchKernel(ExtractSignOfVKernel<Scalar>,
                                    cfg1D.block_count, cfg1D.thread_per_block, 0,
                                    d.stream(), cfg1D, outputV_ptr));
->>>>>>> upstream/master
     }
 
     if (compute_uv_) {

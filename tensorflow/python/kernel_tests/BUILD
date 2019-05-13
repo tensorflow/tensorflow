@@ -1759,13 +1759,10 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-<<<<<<< HEAD
-    tags = ["no_cuda",], # fails on CUDA, but not on ROCm, do not upstream tag
-=======
     tags = [
         "notsan",  # TODO(b/132205147): Re-enable this.
+        "no_cuda", # fails on CUDA, but not on ROCm, do not upstream tag
     ],
->>>>>>> upstream/master
     xla_enable_strict_auto_jit = True,
 )
 

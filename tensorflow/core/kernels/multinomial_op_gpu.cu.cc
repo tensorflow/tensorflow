@@ -115,20 +115,11 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     output.device(d) = output.constant(0LL);
 
     const int32 work_items = batch_size * num_samples * num_classes;
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(work_items, d);
-    TF_CHECK_OK(GpuLaunchKernel(MultinomialKernel<OutputType>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0,
-        d.stream(),
-        config.virtual_thread_count, num_classes, num_samples, scores.data(),
-        maxima.data(), output.data()));
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(work_items, d);
-    TF_CHECK_OK(CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         MultinomialKernel<OutputType>, config.block_count,
         config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
         num_classes, num_samples, scores.data(), maxima.data(), output.data()));
->>>>>>> upstream/master
   }
 };
 

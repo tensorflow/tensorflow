@@ -198,32 +198,18 @@ __global__ void SplitVOpKernel_fixed(const T* input, int32 prefix_dim_size,
 }
 
 template <typename T>
-<<<<<<< HEAD
-  void SplitOpGPULaunch<T>:: Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
-           const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-    GpuLaunchConfig config = GetGpuLaunchConfig(
-        prefix_dim_size * split_dim_size * suffix_dim_size, d);
-
-    TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        input, prefix_dim_size, split_dim_size, suffix_dim_size,
-        output_ptr_data));
-  }
-=======
 void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
                               int32 prefix_dim_size, int32 split_dim_size,
                               int32 suffix_dim_size,
                               const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-  GpuLaunchConfig config = GetCudaLaunchConfig(
+  GpuLaunchConfig config = GetGpuLaunchConfig(
       prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-  TF_CHECK_OK(CudaLaunchKernel(SplitOpKernel<T>, config.block_count,
+  TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>, config.block_count,
                                config.thread_per_block, 0, d.stream(), input,
                                prefix_dim_size, split_dim_size, suffix_dim_size,
                                output_ptr_data));
 }
->>>>>>> upstream/master
 
 template <typename T, typename IntType>
 void SplitVOpGPULaunch<T, IntType>::Run(

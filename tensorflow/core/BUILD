@@ -172,12 +172,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-<<<<<<< HEAD
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-=======
->>>>>>> upstream/master
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",

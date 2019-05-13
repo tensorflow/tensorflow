@@ -26,17 +26,10 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cusolverDn.h"
-#endif
-=======
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
->>>>>>> upstream/master
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
+#endif
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
 

@@ -25,13 +25,9 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#endif
-=======
 #include "third_party/gpus/cuda/include/cuda.h"
->>>>>>> upstream/master
+#endif
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -442,34 +438,23 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     }
     combined_dims[1] = in.dimension(NDIMS - 2);  // input filters
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
->>>>>>> upstream/master
 
     if (dst_filter_format == FORMAT_OIHW) {
-      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
                                    config.block_count, config.thread_per_block,
                                    0, d.stream(), config.virtual_thread_count,
                                    in.data(), combined_dims, out.data()));
 
-<<<<<<< HEAD
-    TF_CHECK_OK(GpuLaunchKernel((ShuffleInTensor3Simple<T, 2, 1, 0>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in.data(), combined_dims, out.data()));
-=======
     } else if (dst_filter_format == FORMAT_OHWI) {
-      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 1, 2, 0>,
+      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 1, 2, 0>,
                                    config.block_count, config.thread_per_block,
                                    0, d.stream(), config.virtual_thread_count,
                                    in.data(), combined_dims, out.data()));
-
     } else {
       LOG(ERROR) << "Unsupported filter format: "
                  << ToString(dst_filter_format);
     }
->>>>>>> upstream/master
   }
 };
 
@@ -487,18 +472,11 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
     for (int i = 3; i < NDIMS; ++i) {
       combined_dims[2] *= in.dimension(i);
     }
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-    TF_CHECK_OK(GpuLaunchKernel((ShuffleInTensor3Simple<T, 2, 1, 0>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in.data(), combined_dims, out.data()));
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+    TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
                                  config.block_count, config.thread_per_block, 0,
                                  d.stream(), config.virtual_thread_count,
                                  in.data(), combined_dims, out.data()));
->>>>>>> upstream/master
   }
 };
 
@@ -513,11 +491,7 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, int>::Tensor out,
                   TensorFormat format) {
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
->>>>>>> upstream/master
     Dimension<NDIMS> input_dims;
     for (int i = 0; i < NDIMS; ++i) {
       input_dims[i] = in.dimension(i);
@@ -966,18 +940,11 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
         d, input, input_dims, output, kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(total_element_count, d);
-    TF_CHECK_OK(GpuLaunchKernel((ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, input, input_dims, output));
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
+    TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
                                  config.block_count, config.thread_per_block, 0,
                                  d.stream(), config.virtual_thread_count, input,
                                  input_dims, output));
->>>>>>> upstream/master
   }
 }
 
@@ -1006,18 +973,11 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
-<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
-    TF_CHECK_OK(GpuLaunchKernel((ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in, input_dims, out));
-=======
-    GpuLaunchConfig config = GetCudaLaunchConfig(total_size, d);
-    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
+    TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
                                  config.block_count, config.thread_per_block, 0,
                                  d.stream(), config.virtual_thread_count, in,
                                  input_dims, out));
->>>>>>> upstream/master
   }
 };
 

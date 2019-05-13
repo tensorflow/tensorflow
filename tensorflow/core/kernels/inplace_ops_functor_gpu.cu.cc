@@ -43,11 +43,7 @@ template <typename T>
 Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
                               Tensor* output) {
   const int64 nelem = value.NumElements();
-<<<<<<< HEAD
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
-=======
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
->>>>>>> upstream/master
   auto Toutput = output->flat_outer_dims<T>();
   const int64 nrows = Toutput.dimension(0);
   const int64 ncols = Toutput.dimension(1);
@@ -110,11 +106,7 @@ template <typename T>
 void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
   const int64 nelem = v.NumElements();
-<<<<<<< HEAD
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
-=======
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
->>>>>>> upstream/master
   auto Ty = y->flat_outer_dims<T>();
   const int64 nrows = Ty.dimension(0);
   const int64 ncols = Ty.dimension(1);
@@ -146,11 +138,7 @@ template <bool>
 void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
   const int64 nelem = v.NumElements();
-<<<<<<< HEAD
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
-=======
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
->>>>>>> upstream/master
   auto Ty = y->flat_outer_dims<bool>();
   const int64 nrows = Ty.dimension(0);
   const int64 ncols = Ty.dimension(1);

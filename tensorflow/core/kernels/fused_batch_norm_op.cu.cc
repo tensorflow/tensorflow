@@ -15,13 +15,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#endif
-=======
 #include "third_party/gpus/cuda/include/cuda.h"
->>>>>>> upstream/master
+#endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -43,18 +39,11 @@ template <class T>
 void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           const T* variance, double epsilon,
                                           int channels, T* inv_variance) {
-<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
   TF_CHECK_OK(GpuLaunchKernel(VarianceToInvVarianceKernel<T>,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      config.virtual_thread_count, variance, epsilon, inv_variance));
-=======
-  GpuLaunchConfig config = GetCudaLaunchConfig(channels, d);
-  TF_CHECK_OK(CudaLaunchKernel(VarianceToInvVarianceKernel<T>,
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count,
                                variance, epsilon, inv_variance));
->>>>>>> upstream/master
 }
 
 template <class T>
@@ -78,18 +67,11 @@ template <class T>
 void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           double epsilon, int sample_size,
                                           int channels, T* variance) {
-<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
   TF_CHECK_OK(GpuLaunchKernel(InvVarianceToVarianceKernel<T>,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      config.virtual_thread_count, epsilon, sample_size, variance));
-=======
-  GpuLaunchConfig config = GetCudaLaunchConfig(channels, d);
-  TF_CHECK_OK(CudaLaunchKernel(InvVarianceToVarianceKernel<T>,
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count, epsilon,
                                sample_size, variance));
->>>>>>> upstream/master
 }
 
 template <class T>
