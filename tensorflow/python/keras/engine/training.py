@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -48,6 +49,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
@@ -328,7 +330,7 @@ class Model(network.Network):
           masks=self._prepare_output_masks())
 
       # Prepare sample weight modes. List with the same length as model outputs.
-      self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
+      training_utils.prepare_sample_weight_modes(
           self._training_endpoints, sample_weight_mode)
 
       # Creates the model loss and weighted metrics sub-graphs.
@@ -1617,7 +1619,7 @@ class Model(network.Network):
                        'with a LossScaleOptimizer.')
 
     # Prepare sample weight modes. List with the same length as model outputs.
-    self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
+    training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
     # Prepare sample weights.
     self._prepare_sample_weights()
@@ -1647,32 +1649,28 @@ class Model(network.Network):
     """
     if not self._is_compiled:
       return
-    for i in range(len(self._sample_weight_modes)):
-      sample_weight = sample_weights[i] if sample_weights else None
-      if self._sample_weight_modes[i] == 'temporal':
-        # If sample weight mode for output i is 'temporal', do nothing.
+    if not sample_weights:
+      sample_weights = [None] * len(self._training_endpoints)
+    for endpoint, sample_weight in zip(self._training_endpoints,
+                                       sample_weights):
+      if endpoint.sample_weight_mode == 'temporal':
+        # If sample weight mode for endpoint is 'temporal', do nothing.
         continue
-      if self._sample_weight_modes[i] is None and sample_weight is not None:
+      if endpoint.sample_weight_mode is None and sample_weight is not None:
         # Set sample weight mode to be 'samplewise' for output i if sample
         # weight mode was not set before and sample weight inputs are given.
-        self._sample_weight_modes[i] = 'samplewise'
-      elif (self._sample_weight_modes[i] == 'samplewise' and
+        endpoint.sample_weight_mode = 'samplewise'
+      elif (endpoint.sample_weight_mode == 'samplewise' and
             sample_weight is None):
         # Reset sample weight mode to None for output i if sample weight mode
         # was set to 'samplewise' but there is no sample weight input.
-        self._sample_weight_modes[i] = None
+        endpoint.sample_weight_mode = None
 
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = False
-    for i, mode in enumerate(self._sample_weight_modes):
-      if ((mode is not None and self.sample_weights[i] is None) or
-          (mode is None and self.sample_weights[i] is not None)):
-        # If there is a mismatch between sample weight mode and the placeholders
-        # created, then recompile the sub-graphs that depend on sample weights.
-        recompile = True
-        break
+    recompile = any([e.sample_weights_mismatch()
+                     for e in self._training_endpoints])
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()
@@ -1737,8 +1735,7 @@ class Model(network.Network):
                       'run_eagerly = True.')
     total_loss = None
     with K.name_scope('loss'):
-      for endpoint, sample_weight, mask in zip(self._training_endpoints,
-                                               self.sample_weights, masks):
+      for endpoint, mask in zip(self._training_endpoints, masks):
         if endpoint.should_skip_target():
           continue
         y_true = endpoint.training_target.target
@@ -1746,6 +1743,7 @@ class Model(network.Network):
         loss_fn = endpoint.loss_fn
         loss_weight = endpoint.loss_weight
         loss_name = endpoint.loss_name()
+        sample_weight = endpoint.sample_weight
 
         with K.name_scope(loss_name):
           if mask is not None:
@@ -1945,16 +1943,8 @@ class Model(network.Network):
   def _prepare_sample_weights(self):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
-    self.sample_weights = []
-    for endpoint, sample_weight_mode in zip(self._training_endpoints,
-                                            self._sample_weight_modes):
-      self.sample_weights.append(
-          training_utils.get_output_sample_weight(endpoint, sample_weight_mode))
-
-    # Filtering just the placeholders from the above list.
-    self._feed_sample_weights = [
-        s for s in self.sample_weights if s is not None
-    ]
+    for endpoint in self._training_endpoints:
+      endpoint.populate_sample_weight()
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
     """Caches metric name and function attributes for every model output."""
@@ -2892,6 +2882,19 @@ class Model(network.Network):
       ]
     return None
 
+  @property
+  def sample_weights(self):
+    return [e.sample_weight for e in self._training_endpoints]
+
+  @property
+  def _sample_weight_modes(self):
+    return [e.sample_weight_mode for e in self._training_endpoints]
+
+  @property
+  def _feed_sample_weights(self):
+    return [e.sample_weight for e in self._training_endpoints
+            if e.sample_weight is not None]
+
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
@@ -2975,7 +2978,9 @@ class _TrainingEndpoint(object):
                loss_fn,
                loss_weight=None,
                training_target=None,
-               output_loss_metric=None):
+               output_loss_metric=None,
+               sample_weight=None,
+               sample_weight_mode=None):
     """Initialize the _TrainingEndpoint.
 
     Note that the output and output_name should be stable as long as the model
@@ -2989,6 +2994,10 @@ class _TrainingEndpoint(object):
       loss_weight: float, the weights for the loss.
       training_target: the _TrainingTarget for the model.
       output_loss_metric: the metric object for the loss function.
+      sample_weight: the weights for how a sample is weighted during metric and
+        loss calculation. Could be None.
+      sample_weight_mode: string, 'temporal', 'samplewise' or None. The mode for
+        how the sample_weight is populated.
     """
     self._output = output
     self._output_name = output_name
@@ -2996,6 +3005,8 @@ class _TrainingEndpoint(object):
     self._loss_weight = loss_weight
     self._training_target = training_target
     self._output_loss_metric = output_loss_metric
+    self._sample_weight = sample_weight
+    self._sample_weight_mode = sample_weight_mode
 
   @property
   def output(self):
@@ -3087,6 +3098,22 @@ class _TrainingEndpoint(object):
   def output_loss_metric(self, value):
     self._output_loss_metric = value
 
+  @property
+  def sample_weight(self):
+    return self._sample_weight
+
+  @sample_weight.setter
+  def sample_weight(self, value):
+    self._sample_weight = value
+
+  @property
+  def sample_weight_mode(self):
+    return self._sample_weight_mode
+
+  @sample_weight_mode.setter
+  def sample_weight_mode(self, value):
+    self._sample_weight_mode = value
+
   def should_skip_target(self):
     return self._loss_fn is None
 
@@ -3129,6 +3156,35 @@ class _TrainingEndpoint(object):
       return None
     else:
       return self.shape
+
+  def sample_weights_mismatch(self):
+    """Check if the sample weight and the mode match or not."""
+    # If there is a mismatch between sample weight mode and the placeholders
+    # created, then recompile the sub-graphs that depend on sample weights.
+    return (
+        (self.sample_weight_mode is not None and self.sample_weight is None) or
+        (self.sample_weight_mode is None and self.sample_weight is not None))
+
+  def populate_sample_weight(self):
+    """Populate the sample weight and based on the sample weight mode."""
+    if (self.should_skip_target_weights() or
+        self.sample_weight_mode is None or context.executing_eagerly()):
+      self._sample_weight = None
+      return
+
+    assert self.sample_weight_mode in ['temporal', 'samplewise']
+    if self.sample_weight_mode == 'temporal':
+      default_value = [[1.]]
+      shape = [None, None]
+    else:
+      # self.sample_weight_mode == 'samplewise'
+      default_value = [1.]
+      shape = [None]
+
+    self._sample_weight = array_ops.placeholder_with_default(
+        constant_op.constant(default_value, dtype=K.floatx()),
+        shape=shape,
+        name=self.output_name + '_sample_weights')
 
 
 class _TrainingTarget(object):
