@@ -34,7 +34,8 @@ genrule(
         "tensorrt/lib/libnvinfer.so.5",
         "tensorrt/lib/libnvinfer_plugin.so.5",
     ],
-    cmd = """cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5" $(location tensorrt/lib/libnvinfer.so.5) && cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.5" $(location tensorrt/lib/libnvinfer_plugin.so.5) """,
+    cmd = """cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer.so.5" "$(location tensorrt/lib/libnvinfer.so.5)" && \
+cp -f "/usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.5" "$(location tensorrt/lib/libnvinfer_plugin.so.5)" """,
 )
 
 genrule(
@@ -44,5 +45,7 @@ genrule(
         "tensorrt/include/NvUtils.h",
         "tensorrt/include/NvInferPlugin.h",
     ],
-    cmd = """cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" $(location tensorrt/include/NvInfer.h) && cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" $(location tensorrt/include/NvUtils.h) && cp -f "/usr/include/x86_64-linux-gnu/NvInferPlugin.h" $(location tensorrt/include/NvInferPlugin.h) """,
+    cmd = """cp -f "/usr/include/x86_64-linux-gnu/NvInfer.h" "$(location tensorrt/include/NvInfer.h)" && \
+cp -f "/usr/include/x86_64-linux-gnu/NvUtils.h" "$(location tensorrt/include/NvUtils.h)" && \
+cp -f "/usr/include/x86_64-linux-gnu/NvInferPlugin.h" "$(location tensorrt/include/NvInferPlugin.h)" """,
 )

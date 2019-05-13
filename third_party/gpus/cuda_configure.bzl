@@ -879,7 +879,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 
     # Copy files.
     for src, out in zip(srcs, outs):
-        cmds.append('cp -f "%s" $(location %s)' % (src, out))
+        cmds.append('cp -f "%s" "$(location %s)"' % (src, out))
     outs = [('        "%s",' % out) for out in outs]
     return """genrule(
     name = "%s",
@@ -887,7 +887,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 %s
     ],
     cmd = \"""%s \""",
-)""" % (name, "\n".join(outs), " && ".join(cmds))
+)""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
 def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
     """Returns a rule to recursively copy a directory."""
