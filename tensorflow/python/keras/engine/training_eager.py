@@ -339,12 +339,14 @@ def test_on_batch(model,
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
       inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
                                                                      model)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
       inputs = training_utils.cast_if_floating_to_model_input_dtypes(
           [ops.convert_to_tensor(val) for val in inputs], model)
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))

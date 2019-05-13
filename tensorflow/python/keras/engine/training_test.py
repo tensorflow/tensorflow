@@ -1201,8 +1201,7 @@ class TrainingTest(keras_parameterized.TestCase):
     inputs = keras.Input(shape=(1,))
     outputs = keras.layers.Dense(1)(inputs)
     model = keras.Model(inputs, outputs)
-    with self.assertRaisesRegex(
-        RuntimeError, 'You must compile a model before training/testing.'):
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
       model.fit(np.ones((1, 1)), np.ones((1, 1)))
 
     class MyModel(keras.Model):
@@ -1212,10 +1211,7 @@ class TrainingTest(keras_parameterized.TestCase):
         return x
 
     model = MyModel()
-    model.compile(keras.optimizers.Adam(1e-3))
-
-    with self.assertRaisesRegex(RuntimeError,
-                                'You must compile your model before using it.'):
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
       model.fit(np.random.random((32, 1)), epochs=2)
 
 
