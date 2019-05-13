@@ -36,8 +36,24 @@ class _Continue(object):
 
 
 class _Block(object):
+  """Tracks information about lexical blocks as they are visited in the AST.
+
+  Mainly, this object tracks the creation of block guards that replace
+  `continue` statements (e.g. `if not continue_:`).
+
+  Attributes:
+    guard_created: bool, whether the guard has been created for the last
+      continue statement.
+    create_guard: bool, whether a guard should be created because a continue
+      statement has just been encountered.
+    is_loop_type: bool, whether this block is the body of a loop.
+  """
 
   def __init__(self):
+    self.is_loop_type = False
+    self.reset_guard_state()
+
+  def reset_guard_state(self):
     self.guard_created = False
     self.create_guard = False
 
@@ -47,6 +63,13 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
+    for block in reversed(self.state[_Block].stack):
+      block.reset_guard_state()
+      # See ContinueCanonicalizationTest.test_multiple_continues for an example
+      # it's necessary to reset the state of all enclosing affected blocks, not
+      # just that of the current block.
+      if block.is_loop_type:
+        break
     template = """
       var_name = True
     """
@@ -97,6 +120,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
   def _visit_loop_body(self, node, nodes):
     self.state[_Continue].enter()
     self.state[_Block].enter()
+    self.state[_Block].is_loop_type = True
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.state[_Continue].control_var_name = continue_var

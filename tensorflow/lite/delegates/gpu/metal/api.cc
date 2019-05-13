@@ -51,10 +51,22 @@ namespace {
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
     const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
+  // Special precise version, in case we cover dst_shape poorly with standard
+  // work group size.
   const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
-  if (GetAppleSocVersion() >= 12 &&
-      GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
-    return ConvolutionPrecise(id, input_id, output_id, attr, options);
+  if (GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    // Special version for PowerVR >= IPhone6S/SE
+    // Metal has bad driver for PowerVR in IPhone6, so for Iphone6 we should use
+    // default kernel with shared memory.
+    if ((GetAppleSocVersion() == 9 || GetAppleSocVersion() == 10) &&
+        CheckConvolutionPrecise1x1Support(attr)) {
+      return ConvolutionPrecise1x1PowerVR(id, input_id, output_id, attr,
+                                          options);
+    }
+    if (GetAppleSocVersion() >= 11 &&
+        GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+      return ConvolutionPrecise(id, input_id, output_id, attr, options);
+    }
   }
   if (GetAppleSocVersion() >= 11) {
     if (CheckConvolution1x1Support(attr)) {
@@ -77,6 +89,28 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     return DepthWiseConv3x3Stride2(id, input_id, output_id, attr, options);
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectReshape(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const ReshapeAttributes& attr) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
+    return Reshapex4(id, input_id, output_id, attr);
+  } else {
+    return Reshape(id, input_id, output_id, attr);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
+                                                    int id, ValueId input_id,
+                                                    ValueId output_id) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.w == 1 && src_shape.h == 1) {
+    return Softmax1x1(id, input_id, output_id, src_shape.c);
+  } else {
+    return Softmax(id, input_id, output_id, src_shape.c);
   }
 }
 
@@ -110,7 +144,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             Concat(node_id, inputs, outputs[0],
                    absl::any_cast<ConcatAttributes>(node->operation.attributes),
                    input_shapes);
-      } break;
+        break;
+      }
       case OperationType::CONVOLUTION_2D:
         tasks = SelectConvolution(
             graph, node_id, inputs[0], outputs[0],
@@ -170,20 +205,24 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
                  absl::any_cast<ReLUAttributes>(node->operation.attributes));
         break;
       case OperationType::RESHAPE:
-        tasks = Reshape(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<ReshapeAttributes>(node->operation.attributes)
-                .new_shape);
+        tasks = SelectReshape(
+            graph, node_id, inputs[0], outputs[0],
+            absl::any_cast<ReshapeAttributes>(node->operation.attributes));
         break;
       case OperationType::SLICE:
         tasks =
             Slice(node_id, inputs[0], outputs[0],
                   absl::any_cast<SliceAttributes>(node->operation.attributes));
         break;
-      case OperationType::SOFT_MAX:
-        tasks = Softmax(node_id, inputs[0], outputs[0],
-                        graph.FindInputs(node->id)[0]->tensor.shape.c, options);
+      case OperationType::SOFT_MAX: {
+        auto attr =
+            absl::any_cast<SoftMaxAttributes>(node->operation.attributes);
+        if (attr.axis != Axis::CHANNELS) {
+          return UnimplementedError("Softmax supports only CHANNELS dimension");
+        }
+        tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
         break;
+      }
       case OperationType::UPSAMPLE_2D:
         tasks = Upsample(
             node_id, inputs[0], outputs[0],
@@ -212,10 +251,12 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
 
       case OperationType::APPLY_MASK:
       case OperationType::BATCH_NORMALIZATION:
+      case OperationType::BATCH_TO_SPACE:
       case OperationType::CONST:
       case OperationType::LSTM:
       case OperationType::MUL:
       case OperationType::RESIZE:
+      case OperationType::SPACE_TO_BATCH:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

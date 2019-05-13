@@ -15,9 +15,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -37,7 +37,7 @@ template <class T>
 void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           const T* variance, double epsilon,
                                           int channels, T* inv_variance) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(channels, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(channels, d);
   TF_CHECK_OK(CudaLaunchKernel(VarianceToInvVarianceKernel<T>,
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count,
@@ -60,7 +60,7 @@ template <class T>
 void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           double epsilon, int sample_size,
                                           int channels, T* variance) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(channels, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(channels, d);
   TF_CHECK_OK(CudaLaunchKernel(InvVarianceToVarianceKernel<T>,
                                config.block_count, config.thread_per_block, 0,
                                d.stream(), config.virtual_thread_count, epsilon,

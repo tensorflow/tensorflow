@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <math.h>
+
 #include <algorithm>
 #include <memory>
 #include <new>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -604,10 +604,9 @@ std::unique_ptr<HloComputation> MakeReduceTestComputation() {
 
 XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
   auto hlo_module = CreateNewVerifiedModule();
-
   auto builder = HloComputation::Builder(TestName());
-  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>({1, 2, 4, 8})));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {32}), 0));
   auto const1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
@@ -618,7 +617,7 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
                                 HloInstruction::FusionKind::kInput);
 
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32>(15),
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32>(496),
                              ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
@@ -830,7 +829,7 @@ void BM_ParallelFusion(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
 
   const int64 intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;
@@ -896,8 +895,7 @@ void BM_ParallelFusion(int num_iters) {
   // Initialize thread pool.
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
                                       intra_op_parallelism_threads);
-  tensorflow::EigenThreadPoolWrapper tp(&pool);
-  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+  Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;

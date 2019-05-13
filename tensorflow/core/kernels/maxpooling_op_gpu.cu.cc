@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
+
 #include <cfloat>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -485,7 +486,7 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
     const Eigen::GpuDevice& d) {
   const int num_kernels = batch * channels * pooled_height * pooled_width;
   if (num_kernels == 0) return true;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
     TF_CHECK_OK(
@@ -512,7 +513,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
-  CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(output_size, d);
   TF_CHECK_OK(CudaLaunchKernel(
       MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
       d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,

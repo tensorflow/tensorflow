@@ -29,7 +29,7 @@ TB_FUNCNAME = 2
 TB_CODEDICT = 3  # Dictionary of Python interpreter state.
 
 
-def extract_stack():
+def extract_stack(limit=None):
   """A lightweight, extensible re-implementation of traceback.extract_stack.
 
   NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
@@ -37,6 +37,9 @@ def extract_stack():
       calls. This implementation does not retrieve the code, and any consumer
       should apply _convert_stack to the result to obtain a traceback that can
       be formatted etc. using traceback methods.
+
+  Args:
+    limit: A limit on the number of frames to return.
 
   Returns:
     A list of 5-tuples
@@ -50,7 +53,8 @@ def extract_stack():
   except ZeroDivisionError:
     f = sys.exc_info()[2].tb_frame.f_back
   ret = []
-  while f is not None:
+  length = 0
+  while f is not None and (limit is None or length < limit):
     lineno = f.f_lineno
     co = f.f_code
     filename = co.co_filename
@@ -58,6 +62,7 @@ def extract_stack():
     frame_globals = f.f_globals
     func_start_lineno = co.co_firstlineno
     ret.append((filename, lineno, name, frame_globals, func_start_lineno))
+    length += 1
     f = f.f_back
   ret.reverse()
   return ret

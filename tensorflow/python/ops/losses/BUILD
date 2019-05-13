@@ -29,14 +29,20 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python:weights_broadcast_ops",
-        "//tensorflow/python/distribute:distribute_lib",
     ],
+)
+
+py_library(
+    name = "loss_reduction",
+    srcs = ["loss_reduction.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":losses",

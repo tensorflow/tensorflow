@@ -9,12 +9,20 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "key"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "state"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'copy_from\', \'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "binomial"
+    argspec: "args=[\'self\', \'shape\', \'counts\', \'probs\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "make_seeds"
@@ -27,6 +35,10 @@ tf_class {
   member_method {
     name: "reset"
     argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "skip"
+    argspec: "args=[\'self\', \'delta\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "split"

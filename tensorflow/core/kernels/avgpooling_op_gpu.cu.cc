@@ -18,13 +18,13 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
-#include <iostream>
 
-#include "tensorflow/core/kernels/avgpooling_op.h"
+#include <iostream>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/avgpooling_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -90,7 +90,7 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
   int x_size = num * height * width * channels;
-  CudaLaunchConfig config = GetCudaLaunchConfig(x_size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(x_size, d);
   TF_CHECK_OK(CudaLaunchKernel(
       AvePoolBackwardNHWC<T>, config.block_count, config.thread_per_block, 0,
       d.stream(), config.virtual_thread_count, top_diff, num, height, width,

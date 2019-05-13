@@ -35,11 +35,12 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#endif
+#endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -113,7 +114,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   if (it != ndef.attr().end()) {
     options.executor_type = it->second.s();
   }
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM)
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
   if (it != ndef.attr().end()) {
@@ -141,7 +142,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
         options.config_proto, function_def->signature().name(),
         optimization_options, std::placeholders::_6);
   }
-#endif
+#endif  // !IS_MOBILE_PLATFORM
   options.graph_collector = graph_collector;
 
   // In Eager mode we always inline all functions into the top-level
@@ -289,13 +290,20 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     done.WaitForNotification();
   } else {
     const string& op_name = kernel_->name();
-    // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
+    // If tracing if off, the overheads of ScopedAnnotation and TraceMe
     // are negligible.
     if (device_->TraceUsingAnnotations()) {
-      tracing::ScopedAnnotation activity(op_name, kernel_->type_string());
+      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          profiler::TraceMeLevel::kInfo);
+      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
-      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      profiler::TraceMe activity(
+          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          profiler::TraceMeLevel::kInfo);
       device_->Compute(kernel_.get(), &context);
     }
   }
@@ -319,18 +327,13 @@ Status KernelAndDeviceFunc::Run(
   FunctionLibraryRuntime::Options opts;
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
-  // of the same multi-device function concurrently. Instead, we ask the
-  // function library runtime to create a new for this call. We could have
-  // created one here but it requires more state to be kept in
-  // KernelAndDeviceFunc.
+  // of the same multi-device function concurrently.
   Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
   opts.cancellation_manager = &cm_;
   cm_.Reset();
-  // eager runtime does not yet support collective ops.
-  opts.collective_executor = nullptr;
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;
   opts.collective_executor =

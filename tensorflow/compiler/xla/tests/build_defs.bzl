@@ -265,6 +265,8 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
+                "@com_google_absl//absl/container:flat_hash_map",
+                "@com_google_absl//absl/strings",
                 "//tensorflow/compiler/xla:types",
                 "//tensorflow/core:lib",
                 "//tensorflow/core:regexp_internal",

@@ -31,7 +31,7 @@ CoreParameterServerExtended = parameter_server_strategy.ParameterServerStrategyE
 # pylint: enable=protected-access,invalid-name,line-too-long
 
 
-class ParameterServerStrategy(distribute_lib.DistributionStrategy):
+class ParameterServerStrategy(distribute_lib.StrategyV1):
   """A parameter server DistributionStrategy.
 
   *** contrib version ***
@@ -61,8 +61,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
 
-  1) Always use `tf.get_variable` instead of `tf.Variable` which is not able
-  to refer to the same variable on different replicas.
+  1) Always use `tf.compat.v1.get_variable` instead of `tf.Variable` which
+  is not able to refer to the same variable on different replicas.
 
   2) It is generally not recommended to open a device scope under the strategy's
   scope. A device scope (i.e. calling `tf.device`) will be merged with or
@@ -70,9 +70,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   variables.
 
   3) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
-  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
-  possibly create conflicts of device assignment.
+  `tf.compat.v1.colocate_with`) under the strategy's scope. For colocating
+  variables, use `strategy.extended.colocate_vars_with` instead. Colocation of
+  ops will possibly create conflicts of device assignment.
   """
 
   def __init__(self, num_gpus_per_worker=0):
@@ -113,37 +113,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       computation.  User should call `initialize` on the returned iterator.
     """
     return super(ParameterServerStrategy, self).make_dataset_iterator(dataset)
-
-  # Override to change the documentation to reflect the different handling of
-  # global vs. local batch size between core and contrib.
-  def experimental_make_numpy_iterator(  # pylint: disable=useless-super-delegation
-      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
-    """Makes an iterator for input provided via a nest of numpy arrays.
-
-    NOTE: The `batch_size` argument here has different behavior for this
-    contrib version of `ParameterServerStrategy`.
-
-    Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas.
-      batch_size: The number of entries from the array we should consume in one
-        step of the computation, across all replicas. This is the per-replica
-        batch size. The global batch size will be this times
-        `num_replicas_in_sync`.
-      num_epochs: The number of times to iterate through the examples. A value
-        of `None` means repeat forever.
-      shuffle: Size of buffer to use for shuffling the input examples.
-        Use `None` to disable shuffling.
-      session: (TensorFlow v1.x graph execution only) A session used for
-        initialization.
-
-    Returns:
-      An `tf.distribute.InputIterator` which returns inputs for each step of the
-      computation.  User should call `initialize` on the returned iterator.
-    """
-    return super(ParameterServerStrategy,
-                 self).experimental_make_numpy_iterator(
-                     numpy_input, batch_size, num_epochs, shuffle, session)
 
 
 class ParameterServerExtended(CoreParameterServerExtended):

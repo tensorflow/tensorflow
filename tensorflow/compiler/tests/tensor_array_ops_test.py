@@ -387,11 +387,18 @@ class TensorArrayTest(xla_test.XLATestCase):
       def fn():
         ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32, tensor_array_name="foo", size=3)
-        return ta.write(-1, np.int32(7)).flow
+        return ta.write(-1, constant_op.constant(7)).flow
 
       # Test writing the wrong datatype.
-      with self.assertRaisesOpError(
-          "TensorArray dtype is float but op has dtype int32"):
+      # TODO(b/129870929): Remove InvalidArgumentError/second regexp after all
+      # callers provide proper init dtype.
+      with self.assertRaisesRegexp(
+          (ValueError, errors.InvalidArgumentError),
+          r"("
+          r"conversion requested dtype float32 for Tensor with dtype int32"
+          r"|"
+          r"TensorArray dtype is float but op has dtype int32"
+          r")"):
         xla.compile(fn)[0].eval()
 
   @test_util.disable_control_flow_v2("b/124334096 verify dtype")

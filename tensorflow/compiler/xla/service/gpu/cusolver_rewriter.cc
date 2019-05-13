@@ -174,9 +174,9 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
   const auto device_ordinal = stream_exec_->device_ordinal();
 
   // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  absl::optional<StreamExecutorMemoryAllocator> se_allocator;
+  // se::StreamExecutorMemoryAllocator for stream_exec_.
+  se::DeviceMemoryAllocator* allocator;
+  absl::optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
@@ -200,7 +200,7 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
 }
 
 CusolverRewriter::CusolverRewriter(se::StreamExecutor* stream_exec,
-                                   DeviceMemoryAllocator* allocator)
+                                   se::DeviceMemoryAllocator* allocator)
     : stream_exec_(stream_exec), allocator_(allocator) {}
 
 StatusOr<bool> CusolverRewriter::Run(HloModule* module) {

@@ -52,6 +52,9 @@ patch_am_sdk() {
   # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
   sed -i -e $'s/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\\\nextern "C" {\\\n#endif\\\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
 
+  # Add a delay after establishing serial connection
+  sed -ir -E $'s/    with serial\.Serial\(args\.port, args\.baud, timeout=12\) as ser:/    with serial.Serial(args.port, args.baud, timeout=12) as ser:\\\n        # Patched.\\\n        import time\\\n        time.sleep(0.25)\\\n        # End patch./g' "${am_dir}/tools/apollo3_scripts/uart_wired_update.py"
+
   echo "Finished preparing Apollo3 files"
 }
 
@@ -79,13 +82,11 @@ download_and_extract() {
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   curl -Ls "${url}" > ${tempfile}
-  # Two spaces are needed as separator below.
-  echo "${expected_md5}  ${tempfile}" > ${tempdir}/md5.txt
-  MD5_STATUS=0
-  md5sum --check ${tempdir}/md5.txt 1>/dev/null 2>/dev/null || MD5_STATUS=$? && true
-  if [ ${MD5_STATUS} -ne 0 ]; then
-    echo "Checksum error for '${url}'. Expected ${expected_md5} but found"
-    echo `md5sum ${tempfile}`
+
+  # Check that the file was downloaded correctly using a checksum.
+  DOWNLOADED_MD5=$(openssl dgst -md5 ${tempfile} | sed 's/.* //g')
+  if [ ${expected_md5} != ${DOWNLOADED_MD5} ]; then
+    echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
   

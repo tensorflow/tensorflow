@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/cwise_op_clip.h"
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -60,7 +60,7 @@ struct UnaryClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         UnaryClipCustomKernel<T>, config.block_count, config.thread_per_block,
@@ -76,7 +76,7 @@ struct BinaryRightClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         BinaryRightClipCustomKernel<T>, config.block_count,
@@ -92,7 +92,7 @@ struct BinaryLeftClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
-    CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         BinaryLeftClipCustomKernel<T>, config.block_count,

@@ -215,7 +215,7 @@ class ExhaustiveOpTest
         RunImpl<half, uint16>(enqueue_op, evaluate_op);
         break;
       case BF16:
-        SetDefaultErrSpec(0.001, 0.01);
+        SetDefaultErrSpec(0.002, 0.02);
         RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op);
         break;
       default:
@@ -245,14 +245,6 @@ class ExhaustiveOpTest
     int64 begin, end;
     std::tie(begin, end) = test_range;
 
-    if (begin >= known_incorrect_begin_ && end <= known_incorrect_end_) {
-      LOG(INFO) << absl::StreamFormat(
-          "Skipping this shard, as the range under test, [%d, %d), falls "
-          "entirely within the known-incorrect range [%d, %d).",
-          begin, end, known_incorrect_begin_, known_incorrect_end_);
-      return;
-    }
-
     LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
 
     int64 input_size = end - begin;
@@ -262,8 +254,7 @@ class ExhaustiveOpTest
       IntegralT input_val = i + begin;
       // If the operation is known to be buggy on a specific input clamp that
       // input to 0 under the assumption that the op is at least correct on 0.
-      if (input_val >= known_incorrect_begin_ &&
-          input_val < known_incorrect_end_) {
+      if (known_incorrect_fn_ && known_incorrect_fn_(input_val)) {
         input_arr[i] = T{0};
       } else {
         input_arr[i] = absl::bit_cast<T>(input_val);
@@ -347,6 +338,10 @@ class ExhaustiveOpTest
     // denormals.
     const T expected_at_pos_zero = static_cast<T>(evaluate_op(0));
     const T expected_at_neg_zero = static_cast<T>(evaluate_op(-0.0));
+    const T expected_at_pos_min_normal_float =
+        static_cast<T>(evaluate_op(std::numeric_limits<float>::min()));
+    const T expected_at_neg_min_normal_float =
+        static_cast<T>(evaluate_op(-std::numeric_limits<float>::min()));
     for (int64 i = 0; i < input_arr.size(); ++i) {
       T input = input_arr[i];
       float input_f32 = static_cast<float>(input);
@@ -378,13 +373,23 @@ class ExhaustiveOpTest
       //   - evaluate_op(input)
       //   - evaluate_op(+/-0), where the sign of 0 equal to the sign of
       //     `input`,
+      //   - evaluate_op(+/-min_normal_float), where the sign of
+      //     min_normal_float matches `input`.
       //   - if relaxed_denormal_signs_, evaluate_op(-/+0), where the sign of
       //     0 is the opposite of `input`.
+      //
+      // (In particular, the XLA:CPU implementation of log flushes positive
+      // denormals to min-normal-float.  This seems kind of reasonable if our
+      // goal is to avoid infinities because they cause nans?)
       T sign_preserving_ftz_expected =
           std::signbit(input_f32) ? expected_at_neg_zero : expected_at_pos_zero;
+      T flush_to_normal_expected = std::signbit(input_f32)
+                                       ? expected_at_neg_min_normal_float
+                                       : expected_at_pos_min_normal_float;
       T sign_nonpreserving_ftz_expected =
           std::signbit(input_f32) ? expected_at_pos_zero : expected_at_neg_zero;
       if (IsClose(sign_preserving_ftz_expected, actual) ||
+          IsClose(flush_to_normal_expected, actual) ||
           (relaxed_denormal_signs_ &&
            IsClose(sign_nonpreserving_ftz_expected, actual))) {
         continue;
@@ -395,11 +400,13 @@ class ExhaustiveOpTest
           return absl::StrFormat(
               "Mismatch on denormal value %s.  Expected one of:\n"
               "  %10s (evaluated at full-precision value)\n"
+              "  %10s (evaluated at sign-preserving min-normal-float)\n"
               "  %10s (evaluated after flushing to sign-preserving zero)\n"
               "  %10s (evaluated after flushing to non-sign-preserving "
               "zero)\n"
               "but got %s.",
-              StringifyNum(input), StringifyNum(expected),
+              StringifyNum(input),  //
+              StringifyNum(expected), StringifyNum(flush_to_normal_expected),
               StringifyNum(sign_preserving_ftz_expected),
               StringifyNum(sign_nonpreserving_ftz_expected),
               StringifyNum(actual));
@@ -409,10 +416,13 @@ class ExhaustiveOpTest
           return absl::StrFormat(
               "Mismatch on denormal value %s.  Expected one of:\n"
               "  %10s (evaluated at full-precision value)\n"
+              "  %10s (evaluated at sign-preserving min-normal-float)\n"
               "  %10s (evaluated after flushing to sign-preserving zero)\n"
               "but got %s.",
-              StringifyNum(input), StringifyNum(expected),
-              StringifyNum(sign_preserving_ftz_expected), StringifyNum(actual));
+              StringifyNum(input),  //
+              StringifyNum(expected), StringifyNum(flush_to_normal_expected),
+              StringifyNum(sign_preserving_ftz_expected),  //
+              StringifyNum(actual));
         });
       }
     }
@@ -434,10 +444,13 @@ class ExhaustiveOpTest
       LOG(ERROR) << err_generator();
     } else if (*mismatches == kMaxMismatchesLoggedToErr) {
       LOG(ERROR) << "Not printing any more mismatches; pass "
-                    "--vmodule=exhaustive_f32__op_test=2 to see "
+                    "--vmodule=exhaustive_op_test=2 to see "
                     "all of them.";
     }
   }
+
+  // Sets error parameters appropriately for testing sin/cos/tan.
+  void SetParamsForSinCosTan();
 
   // The following members are set during construction so testcases can read
   // these values and use them e.g. to influence the values given to the mutable
@@ -452,10 +465,9 @@ class ExhaustiveOpTest
   // Tests can set the following variables for control over execution.  This is
   // safe because each XLA_TEST_P instantiates a new instance of this class.
 
-  // Testing will ignore the given range (encoded as bitwise representations of
-  // the type under test zero-extended to int64).
-  int64 known_incorrect_begin_ = 0;
-  int64 known_incorrect_end_ = 0;
+  // Testing will ignore inputs for which known_incorect_fn_ returns true.  (Its
+  // argument is the type under test, e.g. f32, zero-extended to int64).
+  std::function<bool(int64)> known_incorrect_fn_;
 
   // If unset, reasonable defaults will be used depending on the type under
   // test.
@@ -496,40 +508,39 @@ XLA_TEST_P(ExhaustiveOpTest, Log1p) {
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Exp) {
-  if (platform_ == "Host" && ty_ == F32) {
-    // TODO(b/73142289): The vectorized Exp implementation gives results outside
-    // our error spec in this range.
-    known_incorrect_begin_ = 1107296256 + 11583654;
-    known_incorrect_end_ = 1107296256 + 11629080;
-  } else if (platform_ == "Host" && ty_ == BF16) {
-    // TODO(jlebar): Is this a rounding error?  Why doesn't it occur on XLA:GPU?
-    //
-    // Mismatch on 88.5 (0x42b1).
-    //   Expected 2.72491739e+38 (0x7f4d), but got inf (0x7f80).
-    known_incorrect_begin_ = 0x42b1;
-    known_incorrect_end_ = 0x42b2;
+  // Our CPU implementation of exp returns one incorrect value: says
+  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
+  // acceptable and check for it explicitly so that we can be aware if anything
+  // changes.
+  if (platform_ == "Host") {
+    auto host_exp_with_overflow = +[](float f) {
+      if (f == 88.7228394f) {
+        return 3.40282347e+38f;
+      }
+      return std::exp(f);
+    };
+    Run(Exp, host_exp_with_overflow);
+  } else {
+    Run(Exp, std::exp);
   }
-
-  Run(Exp, std::exp);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Expm1) {
-  // Expm1 has the same erroneous behavior on CPU as Exp.
-  if (platform_ == "Host" && ty_ == F32) {
-    // TODO(b/73142289): The vectorized Exp implementation gives results outside
-    // our error spec in this range.
-    known_incorrect_begin_ = 1107296256 + 11583654;
-    known_incorrect_end_ = 1107296256 + 11629080;
-  } else if (platform_ == "Host" && ty_ == BF16) {
-    // TODO(jlebar): Is this a rounding error?  Why doesn't it occur on XLA:GPU?
-    //
-    // Mismatch on 88.5 (0x42b1).
-    //   Expected 2.72491739e+38 (0x7f4d), but got inf (0x7f80).
-    known_incorrect_begin_ = 0x42b1;
-    known_incorrect_end_ = 0x42b2;
+  // Our CPU implementation of expm1 returns one incorrect value: says
+  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
+  // acceptable and check for it explicitly so that we can be aware if anything
+  // changes.
+  if (platform_ == "Host") {
+    auto host_expm1_with_overflow = +[](float f) {
+      if (f == 88.7228394f) {
+        return 3.40282347e+38f;
+      }
+      return std::expm1(f);
+    };
+    Run(Expm1, host_expm1_with_overflow);
+  } else {
+    Run(Expm1, std::expm1);
   }
-
-  Run(Expm1, std::expm1);
 }
 
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
@@ -553,9 +564,110 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
   Run(Sqrt, std::sqrt);
 }
 
-// TODO(jlebar): Add remaining trig functions.  Don't forget Atan2!
 // TODO(jlebar): Test trig functions over complex inputs.
+
+XLA_TEST_P(ExhaustiveOpTest, Acosh) {
+  // Error inherited from Log, which our implementation of Acosh uses.
+  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
+    abs_err_ = 0.001;
+    rel_err_ = 0.001;
+  }
+  Run(Acosh, std::acosh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Asinh) {
+  // Error inherited from Log, which our implementation of Asinh uses.
+  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
+    abs_err_ = 0.001;
+    rel_err_ = 0.001;
+  }
+  Run(Asinh, std::asinh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
+XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
+XLA_TEST_P(ExhaustiveOpTest, Asin) { Run(Asin, std::asin); }
+
+XLA_TEST_P(ExhaustiveOpTest, Cosh) {
+  // Our cosh implementation incorrectly overflows to inf for +/-89.4159851.
+  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
+  // max-float, so we deem this acceptable.
+  //
+  // This does not occur on CPU because we have an offsetting error in our
+  // implementation of exp.
+  float (*host_cosh)(float);
+  if (platform_ == "Host") {
+    host_cosh = &std::cosh;
+  } else {
+    host_cosh = +[](float x) {
+      if (std::abs(x) == 89.4159851f) {
+        return std::numeric_limits<float>::infinity();
+      }
+      return std::cosh(x);
+    };
+  }
+  Run(Cosh, host_cosh);
+}
+XLA_TEST_P(ExhaustiveOpTest, Sinh) {
+  // Our sinh implementation incorrectly overflows to +/-inf for +/-89.4159851.
+  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
+  // max-float, so we deem this acceptable.
+  //
+  // This does not occur on CPU because we have an offsetting error in our
+  // implementation of exp.
+  float (*host_sinh)(float);
+  if (platform_ == "Host") {
+    host_sinh = &std::sinh;
+  } else {
+    host_sinh = +[](float x) {
+      if (std::abs(x) == 89.4159851f) {
+        return std::copysign(std::numeric_limits<float>::infinity(), x);
+      }
+      return std::sinh(x);
+    };
+  }
+  Run(Sinh, host_sinh);
+}
 XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+
+void ExhaustiveOpTest::SetParamsForSinCosTan() {
+  if (platform_ == "Host" || platform_ == "CUDA") {
+    return;
+  }
+
+  // Non CPU/GPU targets may have used the Cody-Waite range reduction technique
+  // and will not provide meaningful results for sin/cos/tan if magnitudes
+  // exceed 2**p.
+  if (ty_ == F32) {
+    rel_err_ = 0.001;
+    abs_err_ = 0.001;
+    known_incorrect_fn_ = [](int64 v) {
+      float f = absl::bit_cast<float>(static_cast<uint32>(v));
+      return std::abs(f) > (1 << 13);
+    };
+  } else if (ty_ == BF16) {
+    known_incorrect_fn_ = [](int64 v) {
+      float f =
+          static_cast<float>(absl::bit_cast<bfloat16>(static_cast<uint16>(v)));
+      return std::abs(f) > (1 << 13);
+    };
+  }
+}
+
+XLA_TEST_P(ExhaustiveOpTest, Cos) {
+  SetParamsForSinCosTan();
+  Run(Cos, std::cos);
+}
+XLA_TEST_P(ExhaustiveOpTest, Sin) {
+  SetParamsForSinCosTan();
+  Run(Sin, std::sin);
+}
+XLA_TEST_P(ExhaustiveOpTest, Tan) {
+  SetParamsForSinCosTan();
+  Run(Tan, std::tan);
+}
+
+// TODO(jlebar): Enable these.
+// XLA_TEST_P(ExhaustiveOpTest, Atan) { Run(Atan, std::atan); }
+// XLA_TEST_P(ExhaustiveOpTest, Atan2) { Run(Atan2, std::atan2); }
 
 XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
@@ -595,19 +707,24 @@ XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
   if (platform_ == "CUDA" && (ty_ == F32 || ty_ == F16)) {
     rel_err_ = 0.001;
   }
+  float (*host_lgamma)(float) = std::lgamma;
   if (platform_ != "Host" && platform_ != "CUDA") {
     // TODO(b/123956399): This is a fairly high error, significantly higher than
     // we see on CPU/GPU.
     rel_err_ = 0.01;
     abs_err_ = 0.01;
 
-    // Overflows for to inf for input 4.08500343e+36 (0x7c44af8e).
+    // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
     if (ty_ == F32) {
-      known_incorrect_begin_ = 0x7c44af8e;
-      known_incorrect_end_ = 0x7c44af8e + 1;
+      host_lgamma = +[](float v) {
+        if (absl::bit_cast<uint32>(v) == 0x7c44af8e) {
+          return std::numeric_limits<float>::infinity();
+        }
+        return std::lgamma(v);
+      };
     }
   }
-  Run(Lgamma, std::lgamma);
+  Run(Lgamma, host_lgamma);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Round) { Run(Round, std::round); }

@@ -47,8 +47,12 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -727,6 +731,64 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
+
+  def testTensorArray(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array)
+    self.assertDatasetProduces(
+        dataset, expected_output=[list(range(i)) for i in range(10)])
+
+  def testTensorArrayChain(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    def _check(x):
+      self.assertIsInstance(x, tensor_array_ops.TensorArray)
+      return x.identity()
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array).map(_check)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[list(range(i)) for i in range(10)])
+
+  def testRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(5).map(_ragged)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[ragged_factory_ops.constant([[i]]) for i in range(5)])
+
+  def testRaggedChain(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    def _concat(i):
+      self.assertTrue(ragged_tensor.is_ragged(i))
+      return ragged_concat_ops.concat([i, i], 0)
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).map(_concat)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            self.evaluate(_concat(ragged_factory_ops.constant([[i]])))
+            for i in range(10)
+        ])
 
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):

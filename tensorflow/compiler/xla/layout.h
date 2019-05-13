@@ -69,6 +69,11 @@ class Tile {
   // combined with the next minor dimension before tiling is applied.
   static constexpr int64 kCombineDimension = std::numeric_limits<int64>::min();
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Tile& t) {
+    return H::combine(std::move(h), t.dimensions_);
+  }
+
  private:
   // The bounds of the tile.
   std::vector<int64> dimensions_;
@@ -210,6 +215,13 @@ class Layout {
     minor_to_major_.clear();
     max_sparse_elements_ = 0;
     element_size_in_bits_ = 0;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Layout& l) {
+    return H::combine(std::move(h), l.format_, l.minor_to_major_,
+                      l.max_sparse_elements_, l.tiles_,
+                      l.element_size_in_bits_);
   }
 
  private:

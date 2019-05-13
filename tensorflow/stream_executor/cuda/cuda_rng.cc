@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
 // clang-format off
-#include "cuda/include/curand.h"
+#include "third_party/gpus/cuda/include/curand.h"
 // clang-format on
 
 // Formats curandStatus_t to output prettified values into a log stream.
@@ -71,7 +71,7 @@ GpuRng::~GpuRng() {
 }
 
 bool GpuRng::Init() {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   CHECK(rng_ == nullptr);
 
   cuda::ScopedActivateExecutorContext sac(parent_);
@@ -106,7 +106,7 @@ constexpr bool ComplexIsConsecutiveFloats() {
 
 template <typename T>
 bool GpuRng::DoPopulateRandUniformInternal(Stream* stream, DeviceMemory<T>* v) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   static_assert(ComplexIsConsecutiveFloats(),
                 "std::complex values are not stored as consecutive values");
 
@@ -164,7 +164,7 @@ bool GpuRng::DoPopulateRandGaussianInternal(Stream* stream, ElemT mean,
                                             ElemT stddev,
                                             DeviceMemory<ElemT>* v,
                                             FuncT func) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   if (!SetStream(stream)) {
     return false;
@@ -197,7 +197,7 @@ bool GpuRng::DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
 }
 
 bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   CHECK(rng_ != nullptr);
 
   if (!CheckSeed(seed, seed_bytes)) {

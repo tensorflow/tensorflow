@@ -538,11 +538,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(argmax)
     self.assertAllEqual(grad([0.0])[0], None)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def fn(x):
       with context.device('/gpu:0'):
         b = constant_op.constant(2.0)
@@ -554,10 +552,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPUImplicitGrad(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPU found')
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(
           constant_op.constant(1.0), name='v')
@@ -580,11 +577,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyGPU2CPU2GPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def f(a, b):
       return a.cpu() + b.cpu()
 
@@ -928,11 +923,9 @@ class BackpropTest(test.TestCase):
     self.assertEqual(1, len(grads))
     self.assertAllEqual(grads[0], x)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyCPU2GPU2CPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # forward: a (cpu->gpu) -> add (gpu) -> c (gpu->cpu) -> add (cpu) -> e (cpu)
     # back: e (cpu) -> add (cpu) -> c (cpu->gpu) -> add (gpu) -> grad (gpu->cpu)
     def f(a, b):

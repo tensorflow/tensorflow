@@ -17,11 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/spacetodepth_op.h"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/spacetodepth_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -157,7 +156,7 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
     if (total_count == 0) {
       return;
     }
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         S2D_NHWC<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, batch_size,
@@ -191,7 +190,7 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       if (total_count == 0) {
         return;
       }
-      CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+      GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
           TF_CHECK_OK(CudaLaunchKernel(
@@ -222,7 +221,7 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     if (total_count == 0) {
       return;
     }
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         S2D_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, output_width,

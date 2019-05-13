@@ -119,6 +119,12 @@ class ArCrsCombiner : public HloModulePass {
   absl::optional<HloInstruction*> WhileFromBodyParameter(
       HloInstruction* instruction);
 
+  // If the passed instruction is a parameter in one of the branch computations,
+  // and the branch body is only called by a single instruction, return the
+  // conditional instruction.
+  absl::optional<HloInstruction*> ConditionalFromBodyParameter(
+      HloInstruction* instruction);
+
   // Returns a vector of tuple instructions.
   // If all instructions that flow to "instruction" are tuples, return them.
   // Otherwise, return an empty vector.

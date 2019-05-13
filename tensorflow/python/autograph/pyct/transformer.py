@@ -93,6 +93,7 @@ class _StateStack(object):
   Attributes:
     type: Any, the type of objects that this stack holds
     level: int, the current stack depth
+    stack: List[Any], the actual stack
     value: Any, the instance of the object at the top of the stack
   """
 
@@ -109,6 +110,10 @@ class _StateStack(object):
 
   def exit(self):
     return self._stack.pop()
+
+  @property
+  def stack(self):
+    return self._stack
 
   @property
   def level(self):
@@ -485,6 +490,20 @@ class Base(gast.NodeTransformer):
         if isinstance(result.value,
                       (list, tuple, gast.Assign, gast.AugAssign)):
           result = result.value
+
+    # By default, all replacements receive the origin info of the replaced node.
+    if result is not node and result is not None:
+      nodes_to_adjust = result
+      if isinstance(result, (list, tuple)):
+        nodes_to_adjust = result
+      else:
+        nodes_to_adjust = (result,)
+      for n in nodes_to_adjust:
+        if not anno.hasanno(n, anno.Basic.ORIGIN):
+          inherited_origin = anno.getanno(
+              node, anno.Basic.ORIGIN, default=parent_origin)
+          if inherited_origin is not None:
+            anno.setanno(n, anno.Basic.ORIGIN, inherited_origin)
 
     # On exception, the local scope integrity is not guaranteed.
     if did_enter_function:

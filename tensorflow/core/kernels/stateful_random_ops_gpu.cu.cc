@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -70,14 +70,26 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
-                                             FillKernel<Distribution>, 0, 0);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
+                                            FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
   TF_CHECK_OK(CudaLaunchKernel(
       FillKernel<Distribution>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), dist, state_size, output_size, state_data, output_data));
+}
+
+// Precondition: there is only 1 block and 1 thread.
+__global__ void SkipKernel(int64 delta, StateElementType* state_data) {
+  auto philox = GetPhiloxRandomFromMem(state_data);
+  UpdateMemWithPhiloxRandom(philox, delta, state_data);
+}
+
+void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
+                                           Tensor* state_tensor) {
+  SkipKernel<<<1, 1, 0, d.stream()>>>(
+      delta, state_tensor->flat<StateElementType>().data());
 }
 
 // Explicit instantiation of the GPU distributions functors.

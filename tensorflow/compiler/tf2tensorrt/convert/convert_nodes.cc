@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -789,6 +790,14 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   float getDynamicRangeMax() const override { return 0.f; }
 #endif
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
+#endif
+
  private:
   nvinfer1::DataType trt_dtype_;
   nvinfer1::Dims trt_dims_;
@@ -1350,10 +1359,18 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   // the dims are unknown or need to be inferred. And we don't do further checks
   // but rely on the caller to not make mistakes.
   // Otherwise we do simple check to make sure the total sizes are the same.
-  if (AreDimsStaticWithDifferentSize(input_dims, dims, input.is_tensor())) {
+  // If an input is a weight, it is going to become a tensor via
+  // CreateConstantLayer. So we can treat it as a tensor for
+  // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
+  if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
     return errors::InvalidArgument(
         "Incompatible shapes: ", DebugString(input_dims), " vs. ",
         DebugString(dims));
+  }
+  // ConstantLayer requires static shapes (cannot infer -1).
+  if (input.is_weights() && !HasStaticShape(dims)) {
+    return errors::InvalidArgument("Shape is not fully defined: ",
+                                   DebugString(dims));
   }
   if (validation_only) {
     *tensor = nullptr;
@@ -1589,18 +1606,6 @@ Status AllowDataTypes(const OpConverterParams& params,
   return Status::OK();
 }
 
-TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
-                                    const TRT_ShapedWeights& weights_src) {
-  TRT_ShapedWeights weights =
-      store->GetTempWeights(nvinfer1::DataType::kHALF, weights_src.shape_);
-  const float* src = static_cast<const float*>(weights_src.GetValues());
-  Eigen::half* dst = static_cast<Eigen::half*>(weights.GetValues());
-  for (int64_t i = 0; i < weights_src.count(); i++) {
-    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
-  }
-  return weights;
-}
-
 // ****************************************************************************
 // Constant folding functions for weights.
 // TODO(laigd): we should probably use eigen directly.
@@ -1614,7 +1619,7 @@ struct LambdaFactory {
     switch (op) {
       case OP_CATEGORY::RSQRT: {
         VLOG(2) << "RSQRT GETS DONE";
-        return [](T t) -> T { return 1.0 / sqrt(t); };
+        return [](T t) -> T { return 1.0 / std::sqrt(t); };
       }
       case OP_CATEGORY::NEG:
         return [](T t) -> T { return -t; };
@@ -1633,7 +1638,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) {
-        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
+        return Eigen::half(1.0 / std::sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:
@@ -1770,10 +1775,6 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
     permutation[dims_t.nbDims] = 1;
     TF_RETURN_IF_ERROR(
         params->converter->TransposeTensor(tensor, permutation, &tensor));
-  }
-
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
 
   // Prepare weights
@@ -1937,9 +1938,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
-  }
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
   // Therefore, this reorder will work for both cases.
@@ -1979,6 +1977,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   } else {
     padding = {{0, 0}, {0, 0}};
   }
+
+// TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we
+// can only use asymmetric padding in convolutions with 5.1.3+.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // Handle asymmetric padding.
@@ -1991,6 +1993,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -2001,7 +2004,23 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      // SAME_UPPER means that post padding is preferred.
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    // For VALID padding, we need to manually set the padding.
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     conv_layer = layer;
@@ -2012,7 +2031,20 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     layer->setDilation(dilation);
@@ -2758,6 +2790,8 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
   }
 
+// TensorRT 5.1 added support for asymmetric padding.
+#if !IS_TRT_VERSION_GE(5, 1, 0, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
@@ -2771,6 +2805,7 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   nvinfer1::IPoolingLayer* layer =
       params->converter->network()->addPooling(*tensor, type, ksize);
@@ -2782,7 +2817,21 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+  if (attrs.get<string>("padding") == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+#endif
+// TensorRT 5.1 has support for asymmetric padding.
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  // If padding mode is not SAME, then these values will be used instead.
+  layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+  layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
+#else
+  layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+#endif
   layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
@@ -2794,17 +2843,28 @@ Status ConvertPool(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(tmorris): Use ActivationType::kLEAKY_RELU in TRT 5.1+ once perf
-// improves.
 Status ConvertLeakyRelu(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
   TFAttrs attrs(node_def);
   const float alpha = attrs.get<float>("alpha");
+
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  // Use IActivationLayer when available.
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kLEAKY_RELU);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setAlpha(alpha);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+#else
+  // Use elementwise ops when IActivationLayer is not available.
   if (alpha < 0.0f || alpha > 1.0f) {
     return errors::Unimplemented(
         "Alpha value for LeakyRelu must be between 0 and 1, at ",
@@ -2812,7 +2872,6 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-  // Input Tensor
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   // Create const for alpha.
   nvinfer1::ITensor* const_alpha_tensor = nullptr;
@@ -2835,6 +2894,67 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
+#endif
+}
+
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+Status ConvertClipByValue(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  // TODO(tmorris): We can also allow the case where min and max are tensors by
+  // using elementwise min and max layers.
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params,
+      {{"t", false}, {"clip_value_min", true}, {"clip_value_max", true}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  if (params->validation_only) return Status::OK();
+
+  TFAttrs attrs(node_def);
+  const DataType dtype = attrs.get<DataType>("T");
+  float clip_value_min = 0.0f;
+  float clip_value_max = 0.0f;
+  // TODO(tmorris): Add a templated helper function to get scalar weights of
+  // InType casted to OutType.
+  if (dtype == DataType::DT_FLOAT) {
+    clip_value_min = inputs.at(1).weights().GetSpan<float>()[0];
+    clip_value_max = inputs.at(2).weights().GetSpan<float>()[0];
+  } else if (dtype == DataType::DT_HALF) {
+    clip_value_min = Eigen::half_impl::half_to_float(
+        inputs.at(1).weights().GetSpan<Eigen::half>()[0]);
+    clip_value_max = Eigen::half_impl::half_to_float(
+        inputs.at(2).weights().GetSpan<Eigen::half>()[0]);
+  }
+
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  layer->setAlpha(clip_value_min);
+  layer->setBeta(clip_value_max);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->ProvideQuantizationRange(output_tensor, clip_value_min,
+                                              clip_value_max);
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+#endif
+
+const std::unordered_map<string, nvinfer1::ActivationType>*
+ActivationTypeMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::ActivationType>({
+        {"Relu", nvinfer1::ActivationType::kRELU},
+            {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+            {"Tanh", nvinfer1::ActivationType::kTANH},
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+            {"Elu", nvinfer1::ActivationType::kELU},
+            {"Selu", nvinfer1::ActivationType::kSELU},
+            {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
+            {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
+#endif
+      });
+  return m;
 }
 
 Status ConvertActivation(OpConverterParams* params) {
@@ -2843,28 +2963,38 @@ Status ConvertActivation(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  static const std::unordered_map<string, nvinfer1::ActivationType> ops{
-      {"Relu", nvinfer1::ActivationType::kRELU},
-      {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
-      {"Tanh", nvinfer1::ActivationType::kTANH},
-  };
-  auto op_pair = ops.find(node_def.op());
-  if (op_pair == ops.end()) {
+  auto op_pair = ActivationTypeMap()->find(node_def.op());
+  if (op_pair == ActivationTypeMap()->end()) {
     return errors::Unimplemented("Activation op: ", node_def.op(),
                                  " not supported at: ", node_def.name());
   }
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer =
-      params->converter->network()->addActivation(*tensor, op_pair->second);
+      params->converter->network()->addActivation(*inputs.at(0).tensor(),
+                                                  op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // Set parameters.
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  if (node_def.op() == "Elu") {
+    layer->setAlpha(1.0f);
+  } else if (node_def.op() == "Selu") {
+    // From tensorflow/core/kernels/relu_op_functor.h
+    layer->setAlpha(1.7580993408473768599402175208123f);
+    layer->setBeta(1.0507009873554804934193349852946f);
+  } else if (node_def.op() == "Softplus") {
+    layer->setAlpha(1.0f);
+    layer->setBeta(1.0f);
+  }
+#endif
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  // Set quantization range for output of Sigmoid, Tanh.
+  // Set quantization range for output when known.
   if (node_def.op() == "Sigmoid") {
     params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
   } else if (node_def.op() == "Tanh") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  } else if (node_def.op() == "Softsign") {
     params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -2932,7 +3062,6 @@ Status ConvertQuantize(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(tmorris): Use ActivationType::kCLIP in TRT 5.1+ once perf improves.
 Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2940,11 +3069,21 @@ Status ConvertRelu6(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
-  // ***************************************************************************
-  // TensorRT does not implement Relu6 natively. This function converts Relu6 op
-  // to available TensorRT ops: Relu6(x) = min(Relu(x), 6)
-  // ***************************************************************************
 
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  // Use IActivationLayer for TRT >= 5.1
+  nvinfer1::IActivationLayer* layer =
+      params->converter->network()->addActivation(
+          *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  layer->setAlpha(0.0f);
+  layer->setBeta(6.0f);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+#else
+  // Convert using min(Relu(x), 6) before TRT 5.1
   // Input Tensor
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
@@ -2979,6 +3118,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
+#endif
 }
 
 Status ConvertBiasAdd(OpConverterParams* params) {
@@ -3038,9 +3178,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   if (weights.shape_.d[0] == 1) {
     mode = nvinfer1::ScaleMode::kUNIFORM;
@@ -4237,6 +4374,129 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TFAttrs attrs(node_def);
+  const int block_size = attrs.get<int64>("block_size");
+  if (block_size < 2) {
+    return errors::InvalidArgument("Block size must be 2 or greater, at ",
+                                   node_def.name());
+  }
+  const string data_format = attrs.get<string>("data_format");
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    return errors::Unimplemented("Data format ", data_format,
+                                 " is not supported, at ", node_def.name());
+  }
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  if (dims.nbDims != 3) {
+    return errors::InvalidArgument("The input to ", node_def.op(),
+                                   " must be rank 4, at ", node_def.name());
+  }
+  const int num_channels = data_format == "NCHW" ? dims.d[0] : dims.d[2];
+  const int h = data_format == "NCHW" ? dims.d[1] : dims.d[0];
+  const int w = data_format == "NCHW" ? dims.d[2] : dims.d[1];
+  // Get shuffle parameters.
+  nvinfer1::Dims first_shuffle_shape;
+  nvinfer1::Permutation transpose_perm;
+  nvinfer1::Dims second_shuffle_shape;
+  if (node_def.op() == "DepthToSpace") {
+    if (num_channels % (block_size * block_size) != 0) {
+      return errors::InvalidArgument(
+          "Number of channels must be divisible by block_size*block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] - > [r, r, C/(r*r), H, W]
+    first_shuffle_shape = {
+        /*nbDims=*/5,
+        /*d=*/{block_size, block_size, num_channels / (block_size * block_size),
+               h, w}};
+    // Transpose [r, r, C/(r*r), H, W] -> [C/(r*r), H, r, W, r]
+    transpose_perm = {2, 3, 0, 4, 1};
+    // Second Reshape [C/(r*r), H, r, W, r] -> [C/(r*r), H * r, W * r]
+    second_shuffle_shape =
+        nvinfer1::DimsCHW(num_channels / (block_size * block_size),
+                          h * block_size, w * block_size);
+  } else if (node_def.op() == "SpaceToDepth") {
+    if (h % block_size != 0 || w % block_size != 0) {
+      return errors::InvalidArgument(
+          "Width and height must be divisible by block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] -> [C, H/r, r, W/r, r]
+    first_shuffle_shape = {/*nbDims=*/5,
+                           /*d=*/{num_channels, h / block_size, block_size,
+                                  w / block_size, block_size}};
+    // Transpose [C, H/r, r, W/r, r] -> [r, r, C, H/r, W/r]
+    transpose_perm = {2, 4, 0, 1, 3};
+    // Second Reshape  [r, r, C, H/r, W/r] -> [C*r*r, H/r, W/r]
+    second_shuffle_shape = nvinfer1::DimsCHW(
+        num_channels * block_size * block_size, h / block_size, w / block_size);
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IShuffleLayer* first_shuffle =
+      params->converter->network()->addShuffle(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(first_shuffle, node_def.name());
+  if (data_format == "NHWC") {
+    first_shuffle->setFirstTranspose({2, 0, 1});
+  }
+  first_shuffle->setReshapeDimensions(first_shuffle_shape);
+  first_shuffle->setSecondTranspose(transpose_perm);
+
+  nvinfer1::IShuffleLayer* second_shuffle =
+      params->converter->network()->addShuffle(*first_shuffle->getOutput(0));
+  TFTRT_RETURN_ERROR_IF_NULLPTR(second_shuffle, node_def.name());
+  second_shuffle->setReshapeDimensions(second_shuffle_shape);
+  if (data_format == "NHWC") {
+    second_shuffle->setSecondTranspose({1, 2, 0});
+  }
+
+  params->converter->MarkQuantizationRangesAsInferrable(
+      inputs.at(0).tensor(), first_shuffle->getOutput(0));
+  params->converter->MarkQuantizationRangesAsInferrable(
+      first_shuffle->getOutput(0), second_shuffle->getOutput(0));
+  params->outputs->push_back(TRT_TensorOrWeights(second_shuffle->getOutput(0)));
+  return Status::OK();
+}
+
+Status ConvertSquaredDifference(OpConverterParams* params) {
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y", false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  // Broadcast inputs.
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+      inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
+  nvinfer1::ITensor* tensor_l = nullptr;
+  nvinfer1::ITensor* tensor_r = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
+
+  // Subtract x - y.
+  nvinfer1::IElementWiseLayer* sub =
+      params->converter->network()->addElementWise(
+          *tensor_l, *tensor_r, nvinfer1::ElementWiseOperation::kSUB);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sub, node_def.name());
+  // Multiply (x - y) * (x - y).
+  nvinfer1::IElementWiseLayer* mul =
+      params->converter->network()->addElementWise(
+          *sub->getOutput(0), *sub->getOutput(0),
+          nvinfer1::ElementWiseOperation::kPROD);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(mul, node_def.name());
+
+  params->outputs->push_back(TRT_TensorOrWeights(mul->getOutput(0)));
+  return Status::OK();
+}
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
@@ -4409,6 +4669,9 @@ static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
+  (*registration)["ClipByValue"] = ConvertClipByValue;
+#endif
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
@@ -4416,10 +4679,10 @@ static void RegisterValidatableOpConverters(
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
+  (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pack"] = ConvertPack;
@@ -4428,10 +4691,11 @@ static void RegisterValidatableOpConverters(
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
+  (*registration)["SquaredDifference"] = ConvertSquaredDifference;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
   (*registration)["TopKV2"] = ConvertTopK;
@@ -4447,8 +4711,8 @@ static void RegisterValidatableOpConverters(
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
-  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
-    (*registration)[activation_op_type] = ConvertActivation;
+  for (auto activation_op_pair : *ActivationTypeMap()) {
+    (*registration)[activation_op_pair.first] = ConvertActivation;
   }
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
     (*registration)[pool_op_type] = ConvertPool;
@@ -4464,6 +4728,11 @@ static void RegisterValidatableOpConverters(
   }
   for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
     (*registration)[arg_minmax_type] = ConvertArgMinMax;
+  }
+  // The following are no-ops during inference and will not be mapped to any TRT
+  // layer.
+  for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
+    (*registration)[identity_op_type] = ConvertIdentity;
   }
 }
 

@@ -210,11 +210,11 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     int64 num_replicas, bool use_threads) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
+  options.use_threads = use_threads;
   for (auto argument : arguments) {
     options.arguments.push_back(argument);
   }
-  return test_runner_.ExecuteReplicated(std::move(module), options,
-                                        use_threads);
+  return test_runner_.ExecuteReplicated(std::move(module), options);
 }
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
@@ -224,11 +224,12 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = use_threads;
   for (auto argument : arguments) {
     options.arguments.push_back(argument);
   }
   return test_runner_.ExecuteReplicated(std::move(module), options,
-                                        device_assignment, use_threads);
+                                        device_assignment);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(

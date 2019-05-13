@@ -37,6 +37,16 @@ and the following optional parameters:
 *   `use_nnapi`: `bool` (default=false) \
     Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
     This API is available on recent Android devices.
+*   `use_legacy_nnapi`: `bool` (default=false) \
+    Whether to use the legacy
+    [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
+    TFLite path, which requires the graph to be fully compatible with NNAPI.
+    This is available on recent Android devices.
+*   `use_gpu`: `bool` (default=false) \
+    Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
+    This option is currently only available on Android devices.
+*   `enable_op_profiling`: `bool` (default=false) \
+    Whether to enable per-operator profiling measurement.
 
 ## To build/install/run
 
@@ -121,19 +131,18 @@ where `f0` is the affinity mask for big cores on Pixel 2.
 Note: The affinity mask varies with the device.
 
 ## Profiling model operators
-The benchmark model binary also allows you to profile operators and give execution times of each operator. To do this,
-compile the binary with a compiler flag that enables profiling to be compiled in. Pass **--copt=-DTFLITE_PROFILING_ENABLED**
-to compile benchmark with profiling support.
-For example, to compile with profiling support on Android, add this flag to the previous command:
+The benchmark model binary also allows you to profile operators and give
+execution times of each operator. To do this, pass the flag
+`--enable_op_profiling=true` to `benchmark_model` during invocation, e.g.,
 
 ```
-bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-DTFLITE_PROFILING_ENABLED \
-  tensorflow/lite/tools/benchmark:benchmark_model
+adb shell taskset f0 /data/local/tmp/benchmark_model \
+  --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
+  --enable_op_profiling=true
 ```
-This compiles TFLite with profiling enabled, now you can run the benchmark binary like before. The binary will produce detailed statistics for each operation similar to those shown below:
+
+When enabled, the `benchmark_model` binary will produce detailed statistics for
+each operation similar to those shown below:
 
 ```
 

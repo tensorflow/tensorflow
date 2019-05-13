@@ -84,7 +84,7 @@ class Metric(Layer):
   model.add(tf.keras.layers.Dense(64, activation='relu'))
   model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
-  model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
+  model.compile(optimizer=tf.compat.v1.train.RMSPropOptimizer(0.01),
                 loss=tf.keras.losses.categorical_crossentropy,
                 metrics=[tf.keras.metrics.CategoricalAccuracy()])
 
@@ -179,8 +179,7 @@ class Metric(Layer):
       #   model = Model()
       #   mean = Mean()
       #   model.add_metric(mean(values), name='mean')
-      if not context.executing_eagerly():
-        result_t._metric_obj = self  # pylint: disable=protected-access
+      result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
   @property
@@ -1842,7 +1841,7 @@ class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
   cosine similarity = (a . b) / ||a|| ||b||
-  (https://en.wikipedia.org/wiki/Cosine_similarity)
+  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
   similarity is 0.5.
@@ -2193,7 +2192,7 @@ class Poisson(MeanMetricWrapper):
 
 @keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
-  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
   `metric = y_true * log(y_true / y_pred)`
 
@@ -2291,6 +2290,10 @@ class MeanIoU(Metric):
     Returns:
       Update op.
     """
+
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
       y_pred = array_ops.reshape(y_pred, [-1])
@@ -2750,8 +2753,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), K.floatx())
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
@@ -2763,7 +2766,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
 
-  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
 # Aliases
 

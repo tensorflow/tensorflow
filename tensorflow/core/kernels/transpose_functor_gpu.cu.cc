@@ -20,7 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 // TODO(yangzihao): Remove the dependency of conv_2d.h once we move all
 // GPU util functions and transpose kernels into separate files.
@@ -79,7 +79,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
   TF_CHECK_OK(CudaLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,

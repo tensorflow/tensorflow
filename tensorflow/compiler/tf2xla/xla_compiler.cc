@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -105,7 +106,6 @@ ComputeArgAndRetvalCores(const Graph& graph) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
-      TF_ASSIGN_OR_RETURN(retval_cores[index], get_sharding_for_node(n));
       retval_cores[index] = core;
     }
   }
@@ -200,8 +200,13 @@ Status BuildComputation(
         output.shape = output.constant_value.shape();
         break;
 
-      case XlaExpression::Kind::kTensorList:
-        TF_FALLTHROUGH_INTENDED;
+      case XlaExpression::Kind::kTensorList: {
+        output.is_tensor_list = true;
+        xla::XlaOp value = retval.handle();
+        elems.push_back(value);
+        break;
+      }
+
       case XlaExpression::Kind::kXlaOp: {
         output.is_constant = false;
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());
@@ -228,6 +233,11 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
+        // Resources are pushed into elems later when processing resource
+        // arguments. This is correct as long as the input and output resources
+        // are in the same order. In the case of functionalized while body,
+        // this property is guaranteed since a corresponding output is always
+        // created for a DT_RESOURCE input in a corresponding location.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();
@@ -403,6 +413,8 @@ string XlaCompiler::Argument::HumanString() const {
     }
     case kParameter:
       return absl::StrCat("kind=parameter", common);
+    case kTensorList:
+      return absl::StrCat("kind=tensorlist", common);
     case kToken:
       return absl::StrCat("token", common);
   }
@@ -641,6 +653,11 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
       }
       return Status::OK();
     }
+    case XlaCompiler::Argument::kTensorList: {
+      TF_RET_CHECK(absl::holds_alternative<xla::Shape>(arg.shape));
+      *xla_shape = absl::get<xla::Shape>(arg.shape);
+      return Status::OK();
+    }
     case XlaCompiler::Argument::kResource: {
       TF_RET_CHECK(arg.initialized);
 
@@ -744,6 +761,7 @@ Status XlaCompiler::BuildArguments(
         break;
       }
       case XlaCompiler::Argument::kParameter:
+      case XlaCompiler::Argument::kTensorList:
       case XlaCompiler::Argument::kToken: {
         input_to_args->push_back(i);
         break;
@@ -902,6 +920,10 @@ Status XlaCompiler::BuildArguments(
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
         }
         break;
+      case XlaCompiler::Argument::kTensorList: {
+        arg_expression = XlaExpression::TensorList(arg_handles[i]);
+        break;
+      }
       case XlaCompiler::Argument::kToken: {
         arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
         break;

@@ -191,4 +191,14 @@ REGISTER_OP("XRTReleaseAllAllocations")
 Discards all the XRT allocations. All the client held handles will be invalid.
 )");
 
+REGISTER_OP("XRTCompactAllocations")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(
+        R"(
+Runs a device memory compaction cycle. This copies the device data behind the
+currently alive allocation handles into host memory, releases the device memory
+backing the handles, and re-allocate and send back the data to the device.
+This operation helps with device memory fragmentation.
+)");
+
 }  // namespace tensorflow

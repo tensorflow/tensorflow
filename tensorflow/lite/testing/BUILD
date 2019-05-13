@@ -93,6 +93,7 @@ py_binary(
     data = [
         "//tensorflow/lite/toco",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",

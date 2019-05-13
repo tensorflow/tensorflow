@@ -538,4 +538,10 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   return Status::OK();
 }
 
+std::ostream& operator<<(std::ostream& os,
+                         const DeviceNameUtils::ParsedName& x) {
+  os << DeviceNameUtils::ParsedNameToString(x);
+  return os;
+}
+
 }  // namespace tensorflow

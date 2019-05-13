@@ -42,6 +42,11 @@ from tensorflow.python.training import saver
 from tensorflow.python.util import compat
 
 
+_OPTIONAL_OPS = frozenset([
+    "OptionalFromValue", "OptionalNone", "OptionalHasValue", "OptionalGetValue"
+])
+
+
 class CondV2Test(test.TestCase):
 
   def _testCond(self, true_fn, false_fn, train_vals, feed_dict=None):
@@ -752,6 +757,47 @@ class CondV2Test(test.TestCase):
 
     # TODO(skyewm): check the actual graphs that are run once we have a way to
     # programmatically access those graphs.
+
+  # b/131355614
+  @test_util.run_deprecated_v1
+  def testNoOptionalsInXla(self):
+
+    @def_function.function
+    def func_with_cond():
+      pred = constant_op.constant(True, name="pred")
+      x = constant_op.constant(1.0, name="x")
+
+      def true_fn():
+        intermediate = x + 1
+        return intermediate * x
+
+      def false_fn():
+        return x + 1
+
+      output = cond_v2.cond_v2(pred, true_fn, false_fn)
+      grad = gradients_impl.gradients(output, x)[0]
+
+      forward_if_op = output.op.inputs[0].op
+      gradient_if_op = grad.op.inputs[0].op
+
+      def verify_no_optional_ops(op, branch_name):
+        branch_function = ops.get_default_graph()._get_function(
+            op.get_attr(branch_name).name)
+        function_def = branch_function.definition
+        for node_def in function_def.node_def:
+          self.assertNotIn(node_def.op, _OPTIONAL_OPS)
+
+      verify_no_optional_ops(forward_if_op, "then_branch")
+      verify_no_optional_ops(forward_if_op, "else_branch")
+      verify_no_optional_ops(gradient_if_op, "then_branch")
+      verify_no_optional_ops(gradient_if_op, "else_branch")
+
+      return grad
+
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+    func_with_cond()
+    xla_context.Exit()
 
   @test_util.run_deprecated_v1
   def testLoweringDisabledWithSingleThreadedExecutorContext(self):

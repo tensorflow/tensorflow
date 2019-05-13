@@ -17,11 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -79,7 +78,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
     // TODO(ebrevdo): Should this be alpha * nnz instead of
     // out.size()?  Perhaps p * nnz ?
-    CudaLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,

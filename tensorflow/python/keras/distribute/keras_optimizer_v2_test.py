@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests that show that DistributionStrategy works with canned Estimator."""
+"""Tests that show that DistributionStrategy works with optimizer v2."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,16 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-
-
-# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
-# third_party/tensorflow/python/distribute/strategy_combinations.py
-# pylint: disable=g-long-lambda
-parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
-    'ParameterServer2GPUs',
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
 
 
 def get_model():
@@ -58,10 +48,11 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=['graph', 'eager']))
   def testKerasOptimizerWithUnequalInput(self, distribution):
+    self.skipTest('b/130309197')
     with distribution.scope():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
@@ -114,18 +105,20 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
-          mode=['graph', 'eager']))
-  def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
-
+          mode=['graph', 'eager'],
+          cloning=[True, False]))
+  def testOptimizerWithKerasModelAndNumpyArrays(self, distribution, cloning):
+    self.skipTest('b/130309197')
     with self.cached_session():
       with distribution.scope():
         model = get_model()
         optimizer = gradient_descent.SGD(0.001)
         loss = 'mse'
         metrics = ['mae']
-        model.compile(optimizer, loss, metrics=metrics)
+        model.compile(optimizer, loss, metrics=metrics,
+                      cloning=cloning)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)

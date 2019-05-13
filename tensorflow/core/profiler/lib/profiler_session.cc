@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+
 #include <cstddef>
 #include <string>
-#include "tensorflow/core/common_runtime/eager/context.h"
+
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/gpu/tracer.h"
-#include "tensorflow/core/profiler/internal/runtime/eager_profiler.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
 
@@ -117,7 +117,6 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 
   // TODO(fishx): Convert allocation data as well.
 }
-
 }  // namespace
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
@@ -130,15 +129,15 @@ Status ProfilerSession::Status() {
   return status_;
 }
 
-Status ProfilerSession::SerializeToString(string* content) {
+Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
   mutex_lock l(mutex_);
   if (!status_.ok()) return status_;
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
   }
-  RunMetadata run_metadata;
+
   for (auto& profiler : profilers_) {
-    profiler->CollectData(&run_metadata).IgnoreError();
+    profiler->CollectData(run_metadata).IgnoreError();
   }
 
   if (active_) {
@@ -147,8 +146,14 @@ Status ProfilerSession::SerializeToString(string* content) {
     active_ = false;
   }
 
-  profiler::Trace trace;
+  return Status::OK();
+}
 
+Status ProfilerSession::SerializeToString(string* content) {
+  RunMetadata run_metadata;
+  TF_RETURN_IF_ERROR(CollectData(&run_metadata));
+
+  profiler::Trace trace;
   ConvertRunMetadataToTraceEvent(
       &run_metadata, &trace, start_time_micros_,
       Env::Default()->NowNanos() / EnvTime::kMicrosToNanos);
@@ -161,23 +166,22 @@ ProfilerSession::ProfilerSession(ProfilerContext* const context)
     : active_(!session_active.exchange(true)),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
-    status_ = tensorflow::Status(tensorflow::error::Code::UNAVAILABLE,
-                                 "Another profiling session is active.");
+    status_ = tensorflow::Status(error::UNAVAILABLE,
+                                 "Another profiler session is active.");
     return;
   }
 
-  LOG(INFO) << "Profile Session started.";
+  LOG(INFO) << "Profiler session started.";
 
-  if (context->eager_context != nullptr) {
-    profilers_.push_back(tensorflow::profiler::runtime::EagerProfiler::Create(
-        context->eager_context));
-  }
-  profilers_.push_back(tensorflow::profiler::gpu::Tracer::Create());
-
+  CreateProfilers(context, &profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
-    profiler->Start().IgnoreError();
+    auto start_status = profiler->Start();
+    if (!start_status.ok()) {
+      LOG(WARNING) << "Encountered error while starting profiler: "
+                   << start_status.ToString();
+    }
   }
 }
 
@@ -191,5 +195,4 @@ ProfilerSession::~ProfilerSession() {
     session_active.store(false);
   }
 }
-
 }  // namespace tensorflow

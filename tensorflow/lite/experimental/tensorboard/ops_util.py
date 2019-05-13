@@ -18,7 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-from tensorflow.lite.toco.python import tensorflow_wrap_toco
+
+from tensorflow.lite.python import wrap_toco
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -30,7 +31,7 @@ class SupportedOp(collections.namedtuple("SupportedOp", ["op"])):
   """
 
 
-@tf_export("lite.experimental.get_potentially_supported_ops")
+@tf_export(v1=["lite.experimental.get_potentially_supported_ops"])
 def get_potentially_supported_ops():
   """Returns operations potentially supported by TensorFlow Lite.
 
@@ -45,5 +46,5 @@ def get_potentially_supported_ops():
   Returns:
     A list of SupportedOp.
   """
-  ops = tensorflow_wrap_toco.TocoGetPotentiallySupportedOps()
+  ops = wrap_toco.wrapped_get_potentially_supported_ops()
   return [SupportedOp(o["op"]) for o in ops]

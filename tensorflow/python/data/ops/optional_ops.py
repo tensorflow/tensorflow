@@ -29,6 +29,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.experimental.Optional")
 @six.add_metaclass(abc.ABCMeta)
 class Optional(object):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
@@ -36,7 +37,8 @@ class Optional(object):
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
   `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
-  contains the next value from a `tf.data.Iterator` if one exists, or a "none"
+  contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
+  a "none"
   value that indicates the end of the sequence has been reached.
   """
 
@@ -152,6 +154,14 @@ class OptionalStructure(structure.Structure):
 
   def __init__(self, value_structure):
     self._value_structure = value_structure
+
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, OptionalStructure) and
+            self._value_structure == other._value_structure)
+
+  def __hash__(self):
+    return hash(self._value_structure)
 
   @property
   def _flat_shapes(self):

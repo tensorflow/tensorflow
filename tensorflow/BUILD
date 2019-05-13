@@ -185,6 +185,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -420,6 +426,9 @@ config_setting(
     values = {"cpu": "x64_windows"},
 )
 
+# DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
+# Instead, please use public APIs or public build rules TF provides.
+# If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
     packages = [

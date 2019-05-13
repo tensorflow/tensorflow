@@ -20,14 +20,11 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.tpu import functional as tpu_functional_ops
 from tensorflow.python.tpu import topology
 from tensorflow.python.tpu import tpu
 from tensorflow.python.util import compat
@@ -68,19 +65,9 @@ def initialize_tpu_system(cluster_resolver=None):
     # DistributedTPURewritePass. This pass actually adds real ops that
     # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
     # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
-    # The easiest way to trigger a rewrite is to run the function with
-    # TPUPartitionedCallOp.
     @function.defun
     def _tpu_init_fn():
       return tpu.initialize_system()
-
-    # We can't call _tpu_init_fn normally (because it contains just a dummy op,
-    # see above) but need to define it to get it added to eager context
-    # and get its assigned name.
-    # pylint: disable=protected-access
-    graph_func = _tpu_init_fn._get_concrete_function_internal()
-    func_name = compat.as_str(graph_func._inference_function.name)
-    # pylint: enable=protected-access
 
     tpu_devices = sorted(
         [x for x in context.list_devices() if "device:TPU:" in x])
@@ -88,10 +75,15 @@ def initialize_tpu_system(cluster_resolver=None):
     if not tpu_devices:
       raise RuntimeError("Could not find any TPU devices")
 
-    with ops.device(device_util.get_host_for_device(tpu_devices[0])):
-      output = tpu_functional_ops.TPUPartitionedCall(
-          args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
-    serialized_topology = output[0].numpy()
+    # Replace the remote TPU device with the remote TPU_SYSTEM system device. As
+    # in the remote TPU device case, we will try to compile it instead of
+    # running through optimization passes and TF Executor, but TPU_SYSTEM should
+    # work.
+    tpu_system_device = tpu_devices[0].replace("TPU", "TPU_SYSTEM")
+
+    with ops.device(tpu_system_device):
+      output = _tpu_init_fn()
+    serialized_topology = output.numpy()
   else:
     master = cluster_resolver.master()
     session_config = config_pb2.ConfigProto(allow_soft_placement=True)

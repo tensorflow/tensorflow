@@ -167,6 +167,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "disable_thread_spinning"
+        number: 9
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "share_cluster_devices_in_session"
+        number: 10
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       reserved_range {
         start: 2
         end: 3

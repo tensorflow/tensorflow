@@ -57,11 +57,16 @@ void SpatialConvolutionFunc(const Device& d, Output output, Input input,
                             Filter filter, int row_stride, int col_stride,
                             int row_dilation, int col_dilation,
                             const Eigen::PaddingType& padding,
-                            const OutputKernel& output_kernel) {
-  // Need to swap row/col when calling Eigen.
-  output.device(d) =
-      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding,
-                                col_dilation, row_dilation, output_kernel);
+                            const OutputKernel& output_kernel,
+                            int padding_top = 0, int padding_bottom = 0,
+                            int padding_left = 0, int padding_right = 0) {
+  // Need to swap row/col, padding_top/padding_left, and
+  // padding_bottom/padding_right when calling Eigen. Eigen expects the tensor
+  // in NWHC format, but the tensor given is in NHWC.
+  output.device(d) = Eigen::SpatialConvolution(
+      input, filter, col_stride, row_stride, padding, col_dilation,
+      row_dilation, output_kernel, padding_left, padding_right, padding_top,
+      padding_bottom);
 }
 
 template <typename Device, typename T,
@@ -75,6 +80,18 @@ struct SpatialConvolution {
                   const OutputKernel& output_kernel = OutputKernel()) {
     SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
                            row_dilation, col_dilation, padding, output_kernel);
+  }
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor output,
+                  typename TTypes<T, 4>::ConstTensor input,
+                  typename TTypes<T, 4>::ConstTensor filter, int row_stride,
+                  int col_stride, int row_dilation, int col_dilation,
+                  int padding_top, int padding_bottom, int padding_left,
+                  int padding_right,
+                  const OutputKernel& output_kernel = OutputKernel()) {
+    SpatialConvolutionFunc(
+        d, output, input, filter, row_stride, col_stride, row_dilation,
+        col_dilation, Eigen::PaddingType::PADDING_VALID, output_kernel,
+        padding_top, padding_bottom, padding_left, padding_right);
   }
 };
 
@@ -91,6 +108,22 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
         Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
                                   col_stride, row_stride, padding, col_dilation,
                                   row_dilation, output_kernel)
+            .template cast<Eigen::half>();
+  }
+  void operator()(const Device& d,
+                  typename TTypes<Eigen::half, 4>::Tensor output,
+                  typename TTypes<Eigen::half, 4>::ConstTensor input,
+                  typename TTypes<Eigen::half, 4>::ConstTensor filter,
+                  int row_stride, int col_stride, int row_dilation,
+                  int col_dilation, int padding_top, int padding_bottom,
+                  int padding_left, int padding_right,
+                  const OutputKernel& output_kernel = OutputKernel()) {
+    output.device(d) =
+        Eigen::SpatialConvolution(
+            input.cast<float>(), filter.cast<float>(), col_stride, row_stride,
+            Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+            output_kernel, padding_left, padding_right, padding_top,
+            padding_bottom)
             .template cast<Eigen::half>();
   }
 };
@@ -146,42 +179,50 @@ struct MatMulConvFunctor {
 
 // Shuffles a filter tensor from TensorFlow format HWIO to dst_filter_format.
 //
-// Note: Currently OIHW is the only supported destination format. Support for
-// OHWI format will be added in a follow-up change.
+// Note: Currently supports OIHW and OHWI destination formats.
 template <typename Device, typename T, typename IndexType, int NDIMS>
 struct TransformFilter {
   void operator()(const Device& d, FilterTensorFormat dst_filter_format,
                   typename TTypes<T, NDIMS, IndexType>::ConstTensor in,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out) {
+    // NOTE: Source filter format is always HWIO.
+    Eigen::DSizes<IndexType, NDIMS - 2> spatial_dims;
+    for (int i = 0; i < spatial_dims.rank(); ++i) {
+      spatial_dims[i] = in.dimension(i);
+    }
+
     // Merge the spatial dimensions together to speed up the shuffle operation.
     Eigen::DSizes<IndexType, 3> merged_dims;
-    merged_dims[0] = in.dimension(0);  // spatial dimensions
-    for (int i = 1; i < NDIMS - 2; ++i) {
-      merged_dims[0] *= in.dimension(i);
-    }
-    merged_dims[1] = in.dimension(NDIMS - 2);  // input filters
-    merged_dims[2] = in.dimension(NDIMS - 1);  // output filters
+    merged_dims[0] = spatial_dims.TotalSize();  // product of spatial dims [H*W]
+    merged_dims[1] = in.dimension(NDIMS - 2);   // input filters           [I]
+    merged_dims[2] = in.dimension(NDIMS - 1);   // output filters          [O]
 
-    DCHECK(dst_filter_format == FORMAT_OIHW)
-        << "Unsupported destination filter format: "
-        << ToString(dst_filter_format);
-    // Source filter format is FORMAT_HWIO and spatial dimensions HW are merged
-    // in the beginning.
-    Eigen::DSizes<IndexType, 3> shuffling_perm =
-        Eigen::DSizes<IndexType, 3>(2, 1, 0);
-
+    // Shuffle tensor with merged spatial dimensions.
+    Eigen::DSizes<IndexType, 3> shuffling_perm;
+    // Expand shuffled tensor into final dimensions.
     Eigen::DSizes<IndexType, NDIMS> expanded_dims;
-    int out_index = 0;
-    for (int merged_dim = 0; merged_dim < merged_dims.rank(); ++merged_dim) {
-      if (shuffling_perm[merged_dim] == 0) {
-        for (int spatial_dim = 0; spatial_dim < NDIMS - 2; ++spatial_dim) {
-          expanded_dims[out_index++] = in.dimension(spatial_dim);
-        }
-      } else {
-        constexpr int kLastSpatialDim = NDIMS - 3;
-        expanded_dims[out_index++] =
-            in.dimension(kLastSpatialDim + shuffling_perm[merged_dim]);
+
+    if (dst_filter_format == FORMAT_OIHW) {
+      shuffling_perm = Eigen::DSizes<IndexType, 3>(2, 1, 0);
+
+      expanded_dims[0] = merged_dims[2];  // [O]
+      expanded_dims[1] = merged_dims[1];  // [I]
+      for (int i = 0; i < spatial_dims.rank(); ++i) {
+        expanded_dims[2 + i] = spatial_dims[i];
       }
+
+    } else if (dst_filter_format == FORMAT_OHWI) {
+      shuffling_perm = Eigen::DSizes<IndexType, 3>(2, 0, 1);
+
+      expanded_dims[0] = merged_dims[2];          // [O]
+      expanded_dims[NDIMS - 1] = merged_dims[1];  // [I]
+      for (int i = 0; i < spatial_dims.rank(); ++i) {
+        expanded_dims[1 + i] = spatial_dims[i];
+      }
+
+    } else {
+      DCHECK(false) << "Unsupported destination filter format: "
+                    << ToString(dst_filter_format);
     }
 
     out.device(d) =

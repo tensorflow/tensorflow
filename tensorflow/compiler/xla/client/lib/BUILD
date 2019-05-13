@@ -471,6 +471,7 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
+    # Blacklisted because the tests are flaky.
     blacklisted_backends = [
         "cpu",
         "gpu",

@@ -195,11 +195,15 @@ class Generator(tracking.AutoTrackable):
                                        dtype=SEED_TYPE)
       else:
         state = create_rng_state(seed, algorithm)
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = algorithm
     else:
       assert seed is None
-      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(copy_from.state,
+                                           dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = copy_from.algorithm
 
   def reset(self, seed):
@@ -224,6 +228,40 @@ class Generator(tracking.AutoTrackable):
   def _standard_normal(self, shape, dtype):
     return gen_stateful_random_ops.stateful_standard_normal_v2(
         self.state.handle, self.algorithm, shape, dtype=dtype)
+
+  @property
+  def key(self):
+    """The 'key' part of the state of a counter-based RNG.
+
+    For a counter-base RNG algorithm such as Philox and ThreeFry (as
+    described in paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
+    (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)),
+    the RNG state consists of two parts: counter and key. The output is
+    generated via the formula: output=hash(key, counter), i.e. a hashing of
+    the counter parametrized by the key. Two RNGs with two different keys can
+    be thought as generating two independent random-number streams (a stream
+    is formed by increasing the counter).
+
+    Returns:
+      A scalar which is the 'key' part of the state, if the RNG algorithm is
+        counter-based; otherwise it raises a ValueError.
+    """
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      return self._state_var[-1]
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
+
+  def skip(self, delta):
+    """Advance the counter of a counter-based RNG.
+
+    Args:
+      delta: the amount of advancement. The state of the RNG after
+        `skip(n)` will be the same as that after `normal([n])`
+        (or any other distribution). The actual increment added to the
+        counter is an unspecified implementation detail.
+    """
+    gen_stateful_random_ops.rng_skip(self.state.handle, self.algorithm, delta)
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
@@ -367,6 +405,51 @@ class Generator(tracking.AutoTrackable):
       return gen_stateful_random_ops.stateful_uniform_full_int(
           self.state.handle, self.algorithm, shape=shape,
           dtype=dtype, name=name)
+
+  def binomial(self, shape, counts, probs, dtype=dtypes.int32, name=None):
+    """Outputs random values from a binomial distribution.
+
+    The generated values follow a binomial distribution with specified count and
+    probability of success parameters.
+
+    Example:
+
+    ```python
+    counts = [10., 20.]
+    # Probability of success.
+    probs = [0.8, 0.9]
+
+    rng = tf.random.experimental.Generator(seed=234)
+    binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+    ```
+
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
+        distribution.
+      probs: A 0/1-D Tensor or Python value`. The probability of success for the
+        binomial distribution.
+      dtype: The type of the output. Default: tf.int32
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random binomial values.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:
+      counts = ops.convert_to_tensor(counts, name="counts")
+      probs = ops.convert_to_tensor(probs, name="probs")
+      shape_tensor = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_random_binomial(
+          self.state.handle,
+          self.algorithm,
+          shape=shape_tensor,
+          counts=counts,
+          probs=probs,
+          dtype=dtype,
+          name=name)
 
   # TODO(wangpeng): implement other distributions
 

@@ -206,7 +206,7 @@ Status CondBuilder::AddOutputs() {
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("output"), "Merge", graph_->op_registry(),
+        NodeBuilder(NewName("output"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
@@ -224,7 +224,7 @@ Status CondBuilder::AddOutputs() {
   //
   // We will use this node to rewrite outgoing control edges from lowered 'If'
   // node. All data edges will read tensors directly from Merge nodes.
-  TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("branch_executed"), "Merge",
                                  graph_->op_registry(), &debug_info_)
                          .Input({pivot_t_, pivot_f_})
                          .ControlInputs({then_call_node_, else_call_node_})
