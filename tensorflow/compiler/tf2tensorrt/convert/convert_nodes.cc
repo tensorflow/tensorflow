@@ -55,8 +55,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
-#include "tensorrt/include/NvInferPlugin.h"
+#include "third_party/tensorrt/NvInfer.h"
+#include "third_party/tensorrt/NvInferPlugin.h"
 
 // Check if the types are equal. Cast to int first so that failure log message
 // would work!

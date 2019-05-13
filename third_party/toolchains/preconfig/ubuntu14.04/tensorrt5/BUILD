@@ -12,8 +12,8 @@ exports_files(["LICENSE"])
 cc_library(
     name = "tensorrt_headers",
     hdrs = [":tensorrt_include"],
-    include_prefix = "",
-    visibility = ["//visibility:public"],
+    include_prefix = "third_party/tensorrt",
+    strip_include_prefix = "tensorrt/include",
 )
 
 cc_library(
@@ -21,9 +21,7 @@ cc_library(
     srcs = [":tensorrt_lib"],
     copts = cuda_default_copts(),
     data = [":tensorrt_lib"],
-    include_prefix = "",
     linkstatic = 1,
-    visibility = ["//visibility:public"],
     deps = [
         ":tensorrt_headers",
         "@local_config_cuda//cuda",
