@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <netdb.h>
 #else
 #include <Windows.h>

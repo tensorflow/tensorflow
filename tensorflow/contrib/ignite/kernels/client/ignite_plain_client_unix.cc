@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/ignite/kernels/client/ignite_plain_client.h"
 
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
