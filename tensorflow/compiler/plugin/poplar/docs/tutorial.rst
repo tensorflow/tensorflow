@@ -80,7 +80,7 @@ We begin with the most humble of aspirations: the ability to add.
     # Configure arguments for targeting the IPU
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 1)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):
@@ -229,7 +229,7 @@ session definition.
     # Configure argument for targetting the IPU
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 1)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):
@@ -330,7 +330,7 @@ Let's now return to our basic script and add the sharding component.
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     # Request 4 IPUs to run the model
-    cfg = ipu.utils.auto_select_ipus(cfg, 4, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 4)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):

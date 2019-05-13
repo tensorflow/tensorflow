@@ -338,7 +338,7 @@ def set_floating_point_behaviour_options(opts,
   return opts
 
 
-def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
+def auto_select_ipus(opts, num_ipus):
   """Configure the IPUs to be used by the session.
 
   The configuration describes a system consisting of multiple Tensorflow
@@ -383,8 +383,6 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
   Args:
     opts: An IpuOptions session control protobuf.
     num_ipus: List of IPUs per Tensorflow device
-    sharded: Deprecated.
-    number_of_replicas: Deprecated.
 
   Returns:
     The IpuOptions configuration protobuf, configured for auto-selecting a set
@@ -395,15 +393,6 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
 
   if not isinstance(num_ipus, (int, list, tuple)):
     raise Exception("`num_ipus` must be an integer, list or tuple.")
-
-  if sharded:
-    logging.warning("`sharded` has been deprecated.  Mark operations with a "
-                    "sharding attribute to enable sharding")
-
-  if number_of_replicas:
-    logging.warning("`number_of_replicas` has been deprecated. The number of "
-                    " replicas is automatically calculated from the device "
-                    " and any sharding (if present).")
 
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
@@ -416,7 +405,7 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
   return opts
 
 
-def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
+def select_ipus(opts, indices):
   """Configure the IPUs to be used by the session.
 
   The configuration describes a system consisting of multiple Tensorflow
@@ -586,8 +575,6 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
   Args:
     opts: An IpuOptions session control protobuf.
     indices: List of IPU configuration indices.
-    sharded: Deprecated.
-    number_of_replicas: Deprecated.
   Returns:
     The IpuOptions configuration protobuf, with a number of devices selected by
     IPU configuration index.
@@ -601,15 +588,6 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
 
   if len(set(indices)) != len(indices):
     raise Exception("All device indeicies in `indices` must be unique.")
-
-  if sharded:
-    logging.warning("`sharded` has been deprecated.  Mark operations with a "
-                    "sharding attribute to enable sharding")
-
-  if number_of_replicas:
-    logging.warning("`number_of_replicas` has been deprecated. The number of "
-                    " replicas is automatically calculated from the device "
-                    " and any sharding (if present).")
 
   for n, i in enumerate(indices):
     dev = opts.device_config.add()

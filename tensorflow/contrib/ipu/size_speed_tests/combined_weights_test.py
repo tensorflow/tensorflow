@@ -82,7 +82,7 @@ class CombinedWightsTest(test_util.TensorFlowTestCase):
 
     opts = utils.create_ipu_config(profiling=True)
     opts = utils.set_ipu_model_options(opts, True)
-    opts = utils.auto_select_ipus(opts, 1, sharded=False)
+    opts = utils.auto_select_ipus(opts, 1)
     utils.configure_ipu_system(opts)
     sess = sl.Session()
 

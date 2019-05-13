@@ -90,7 +90,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -111,7 +111,7 @@ class IPUOutfeedQueue:
 
      .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -133,7 +133,7 @@ class IPUOutfeedQueue:
 
      .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -183,7 +183,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed", replication_factor=2)
 
         def body(input):
           output = input + 1
@@ -221,7 +221,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
         def body(input):
           output = input + 1
@@ -262,7 +262,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=8)
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed", replication_factor=8)
 
         def body(input):
           output = input + 1

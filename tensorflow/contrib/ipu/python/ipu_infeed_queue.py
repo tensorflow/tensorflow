@@ -57,7 +57,7 @@ class IPUInfeedQueue:
     # The resulting dataset has a nested structure of: {features, labels}.
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="training_infeed")
 
     # dataset can no longer be used beyond this point.
 
