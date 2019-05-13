@@ -43,7 +43,7 @@ std::string HloHash::GetProtoStr() {
 
 void HloHash::HashModule() {
   HloModuleProto proto = module_->ToProto();
-  SerializeHloModuleProto(&proto, module_);
+  SanitizeHloModuleProto(&proto, module_);
 
   tensorflow::SerializeToStringDeterministic(proto, &proto_str_);
 
@@ -59,11 +59,15 @@ void HloHash::HashModule() {
   performed_hash_ = true;
 }
 
-void HloHash::SerializeHloModuleProto(HloModuleProto* proto,
-                                      const HloModule* module) {
+void HloHash::SanitizeHloModuleProto(HloModuleProto* proto,
+                                     const HloModule* module) {
   // Always force the HloModule id to be 0 and set the name to "hlo_module"
   proto->set_id(0);
   proto->set_name("hlo_module");
+
+  std::map<uint64, uint64> computation_id_map;
+
+  // TODO Sort the computations into reliable post order
 
   // Serialize the computations
   uint64 serial_id = 0;
@@ -71,11 +75,25 @@ void HloHash::SerializeHloModuleProto(HloModuleProto* proto,
     HloComputationProto* computation_proto =
         proto->mutable_computations(serial_id);
     CHECK_EQ(computation_proto->name(), computation->name());
-    SerializeHloComputationProto(computation_proto, computation);
+    auto old_id =
+        SanitizeHloComputationProto(computation_proto, computation, serial_id);
+    computation_id_map[old_id] = serial_id;
     if (computation->name() == module->entry_computation()->name()) {
       *proto->mutable_host_program_shape() = computation_proto->program_shape();
     }
     serial_id++;
+  }
+
+  // Patch up computation IDs with the renumbered ones
+  for (uint64 comp_id = 0; comp_id < serial_id; comp_id++) {
+    HloComputationProto* computation_proto =
+        proto->mutable_computations(comp_id);
+    for (uint64 inst_id = 0; inst_id < computation_proto->instructions().size();
+         inst_id++) {
+      HloInstructionProto* instruction_proto =
+          computation_proto->mutable_instructions(inst_id);
+      PatchComputationReferences(instruction_proto, computation_id_map);
+    }
   }
 
   // Serialize entry_computation_name
@@ -84,11 +102,17 @@ void HloHash::SerializeHloModuleProto(HloModuleProto* proto,
   proto->set_entry_computation_name(entry_computation_name);
 }
 
-void HloHash::SerializeHloComputationProto(HloComputationProto* proto,
-                                           const HloComputation* computation) {
+uint64 HloHash::SanitizeHloComputationProto(HloComputationProto* proto,
+                                            const HloComputation* computation,
+                                            uint64 new_id) {
+  uint64 old_id = proto->id();
+
   // Replace computation name with id
-  std::string name = std::to_string(proto->id());
+  std::string name = std::to_string(new_id);
   proto->set_name(name);
+  proto->set_id(new_id);
+
+  std::map<uint64, uint64> instruction_id_map;
 
   // Serialize the instructions
   uint64 serial_id = 0;
@@ -97,15 +121,26 @@ void HloHash::SerializeHloComputationProto(HloComputationProto* proto,
     HloInstructionProto* instruction_proto =
         proto->mutable_instructions(serial_id);
     CHECK_EQ(instruction_proto->name(), instruction->name());
-    SerializeHloInstructionProto(instruction_proto);
+    auto old_id = SanitizeHloInstructionProto(instruction_proto, serial_id);
+    instruction_id_map[old_id] = serial_id;
     serial_id++;
   }
 
+  // Patch up instruction IDs with the renumbered ones
+  for (uint64 id = 0; id < serial_id; id++) {
+    HloInstructionProto* instruction_proto = proto->mutable_instructions(id);
+    PatchInstructionReferences(instruction_proto, instruction_id_map);
+  }
+
   // Serialize the shape
-  SerializeComputeProgramShape(proto->mutable_program_shape(), computation);
+  SanitizeComputeProgramShape(proto->mutable_program_shape(), computation);
+
+  return old_id;
 }
 
-void HloHash::SerializeHloInstructionProto(HloInstructionProto* proto) {
+uint64 HloHash::SanitizeHloInstructionProto(HloInstructionProto* proto,
+                                            uint64 new_id) {
+  uint64 old_id = proto->id();
   // Clear metadata - assuming metadata is irrelevant
   OpMetadata* metadata = proto->mutable_metadata();
   metadata->set_op_type("");
@@ -113,20 +148,39 @@ void HloHash::SerializeHloInstructionProto(HloInstructionProto* proto) {
   metadata->set_source_file("");
   metadata->set_source_line(0);
   // Replace instruction name with id
-  std::string name = std::to_string(proto->id());
+  std::string name = std::to_string(new_id);
   proto->set_name(name);
+  proto->set_id(new_id);
+  return old_id;
 }
 
-void HloHash::SerializeComputeProgramShape(ProgramShapeProto* program_shape,
-                                           const HloComputation* computation) {
+void HloHash::SanitizeComputeProgramShape(ProgramShapeProto* program_shape,
+                                          const HloComputation* computation) {
   // Replace parameter names with unique ids
-  uint64 serial_id = 0;
   for (auto* param_instruction : computation->parameter_instructions()) {
-    CHECK_EQ(program_shape->parameter_names(serial_id),
-             param_instruction->name());
-    std::string name = std::to_string(param_instruction->unique_id());
+    uint64 serial_id = param_instruction->parameter_number();
+    std::string name = std::to_string(serial_id);
     program_shape->set_parameter_names(serial_id, name);
-    serial_id++;
+  }
+}
+
+void HloHash::PatchInstructionReferences(
+    HloInstructionProto* proto, const std::map<uint64, uint64>& id_map) {
+  auto* operands = proto->mutable_operand_ids();
+  for (auto it = operands->begin(); it != operands->end(); it++) {
+    *it = id_map.at(*it);
+  }
+  auto* control_deps = proto->mutable_control_predecessor_ids();
+  for (auto it = control_deps->begin(); it != control_deps->end(); it++) {
+    *it = id_map.at(*it);
+  }
+}
+
+void HloHash::PatchComputationReferences(
+    HloInstructionProto* proto, const std::map<uint64, uint64>& id_map) {
+  auto* ids = proto->mutable_called_computation_ids();
+  for (auto it = ids->begin(); it != ids->end(); it++) {
+    *it = id_map.at(*it);
   }
 }
 

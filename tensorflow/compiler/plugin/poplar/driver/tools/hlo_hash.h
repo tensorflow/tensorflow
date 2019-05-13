@@ -45,11 +45,16 @@ class HloHash {
   bool performed_hash_ = false;
 
   void HashModule();
-  void SerializeHloModuleProto(HloModuleProto*, const HloModule*);
-  void SerializeHloComputationProto(HloComputationProto*,
-                                    const HloComputation*);
-  void SerializeHloInstructionProto(HloInstructionProto*);
-  void SerializeComputeProgramShape(ProgramShapeProto*, const HloComputation*);
+  void SanitizeHloModuleProto(HloModuleProto*, const HloModule*);
+  uint64 SanitizeHloComputationProto(HloComputationProto*,
+                                     const HloComputation*, uint64);
+  uint64 SanitizeHloInstructionProto(HloInstructionProto*, uint64);
+  void SanitizeComputeProgramShape(ProgramShapeProto*, const HloComputation*);
+
+  void PatchInstructionReferences(HloInstructionProto*,
+                                  const std::map<uint64, uint64>&);
+  void PatchComputationReferences(HloInstructionProto*,
+                                  const std::map<uint64, uint64>&);
 };
 
 }  // namespace poplarplugin

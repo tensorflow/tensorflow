@@ -378,6 +378,7 @@ more sum for shard *2*), and now each portion of the sum is performed on a
 distinct shard, using
 
 ::
+
     with ipu.ops.ipu_shard(shard_index):
 
 

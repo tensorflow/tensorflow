@@ -28,7 +28,7 @@ Unsupported operations
 ~~~~~~~~~~~~~~~~~~~~~~
 
 TensorFlow core operations which use variable buffers or strings are not
- supported. For instance, ``JpegDecode``.
+supported. For instance, ``JpegDecode``.
 
 Unsupported operations will cause the compilation to fail. By including
 ``config=tf.ConfigProto(log_device_placement=True)`` as an argument to the

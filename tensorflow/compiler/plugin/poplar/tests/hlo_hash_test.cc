@@ -620,6 +620,218 @@ ENTRY cluster_2 {
   EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
 }
 
+TEST_F(HloHashTest, DifferentInstructionOrder) {
+  std::string hlo_string0 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg1 = f32[2] parameter(1)
+  arg2 = f32[2] parameter(2)
+  mul0 = f32[2] multiply(arg0, arg1)
+  mul1 = f32[2] multiply(arg0, arg2)
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  std::string hlo_string1 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg1 = f32[2] parameter(1)
+  arg2 = f32[2] parameter(2)
+  mul1 = f32[2] multiply(arg0, arg2)
+  mul0 = f32[2] multiply(arg0, arg1)
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  auto module0_or_status =
+      HloRunner::CreateModuleFromString(hlo_string0, GetDebugOptionsForTest());
+  EXPECT_TRUE(module0_or_status.ok());
+  auto* module0 = module0_or_status.ValueOrDie().get();
+
+  auto module1_or_status =
+      HloRunner::CreateModuleFromString(hlo_string1, GetDebugOptionsForTest());
+  EXPECT_TRUE(module1_or_status.ok());
+  auto* module1 = module1_or_status.ValueOrDie().get();
+
+  HloHash hash0(module0);
+  HloHash hash1(module1);
+  EXPECT_EQ(hash0.GetHash(), hash1.GetHash());
+  EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
+}
+
+TEST_F(HloHashTest, DifferentParameterOrder) {
+  std::string hlo_string0 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg1 = f32[2] parameter(1)
+  arg2 = f32[2] parameter(2)
+  mul0 = f32[2] multiply(arg0, arg1)
+  mul1 = f32[2] multiply(arg0, arg2)
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  std::string hlo_string1 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg2 = f32[2] parameter(2)
+  arg1 = f32[2] parameter(1)
+  mul0 = f32[2] multiply(arg0, arg1)
+  mul1 = f32[2] multiply(arg0, arg2)
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  auto module0_or_status =
+      HloRunner::CreateModuleFromString(hlo_string0, GetDebugOptionsForTest());
+  EXPECT_TRUE(module0_or_status.ok());
+  auto* module0 = module0_or_status.ValueOrDie().get();
+
+  auto module1_or_status =
+      HloRunner::CreateModuleFromString(hlo_string1, GetDebugOptionsForTest());
+  EXPECT_TRUE(module1_or_status.ok());
+  auto* module1 = module1_or_status.ValueOrDie().get();
+
+  HloHash hash0(module0);
+  HloHash hash1(module1);
+  EXPECT_EQ(hash0.GetHash(), hash1.GetHash());
+  EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
+}
+
+TEST_F(HloHashTest, DifferentInstructionOrderWithControlDeps) {
+  std::string hlo_string0 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg1 = f32[2] parameter(1)
+  arg2 = f32[2] parameter(2)
+  mul0 = f32[2] multiply(arg0, arg1)
+  mul1 = f32[2] multiply(arg0, arg2), control-predecessors={arg2}
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  std::string hlo_string1 = R"(
+HloModule top1
+
+ENTRY cluster_1 {
+  arg0 = f32[2] parameter(0)
+  arg1 = f32[2] parameter(1)
+  arg2 = f32[2] parameter(2)
+  mul1 = f32[2] multiply(arg0, arg2), control-predecessors={arg2}
+  mul0 = f32[2] multiply(arg0, arg1)
+  ROOT tuple = (f32[2], f32[2]) tuple(mul0, mul1)
+}
+
+)";
+
+  auto module0_or_status =
+      HloRunner::CreateModuleFromString(hlo_string0, GetDebugOptionsForTest());
+  EXPECT_TRUE(module0_or_status.ok());
+  auto* module0 = module0_or_status.ValueOrDie().get();
+
+  auto module1_or_status =
+      HloRunner::CreateModuleFromString(hlo_string1, GetDebugOptionsForTest());
+  EXPECT_TRUE(module1_or_status.ok());
+  auto* module1 = module1_or_status.ValueOrDie().get();
+
+  HloHash hash0(module0);
+  HloHash hash1(module1);
+  EXPECT_EQ(hash0.GetHash(), hash1.GetHash());
+  EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
+}
+
+// TEST_F(HloHashTest, DifferentComputationOrder) {
+// std::string hlo_string0 = R"(
+// HloModule top1
+//
+//_pop_op_relu {
+//  c0 = f32[] constant(0)
+//  b0 = f32[2] broadcast(c0), dimensions={}
+//  a0 = f32[2] parameter(0)
+//  ROOT m0 = f32[2] maximum(b0, a0)
+//}
+//
+//_pop_op_relugrad {
+//  a1.1 = f32[2] parameter(0)
+//  c1 = f32[] constant(0)
+//  b1 = f32[2] broadcast(c1), dimensions={}
+//  gt1 = pred[2] compare(a1.1, b1), direction=GT
+//  a1.2 = f32[2] parameter(1)
+//  ROOT s1 = f32[2] select(gt1, a1.2, b1)
+//}
+//
+// ENTRY cluster_1 {
+//  arg0 = f32[2] parameter(0)
+//  arg1 = f32[2] parameter(1)
+//  arg2 = f32[2] parameter(2)
+//  c0 = f32[2] call(arg0, arg2), to_apply=_pop_op_relugrad
+//  c1 = f32[2] call(arg1), to_apply=_pop_op_relu
+//  ROOT tuple = (f32[2], f32[2]) tuple(c0, c1)
+//}
+//
+//)";
+//
+// std::string hlo_string1 = R"(
+// HloModule top1
+//
+//_pop_op_relugrad {
+//  a1.1 = f32[2] parameter(0)
+//  c1 = f32[] constant(0)
+//  b1 = f32[2] broadcast(c1), dimensions={}
+//  gt1 = pred[2] compare(a1.1, b1), direction=GT
+//  a1.2 = f32[2] parameter(1)
+//  ROOT s1 = f32[2] select(gt1, a1.2, b1)
+//}
+//
+//_pop_op_relu {
+//  c0 = f32[] constant(0)
+//  b0 = f32[2] broadcast(c0), dimensions={}
+//  a0 = f32[2] parameter(0)
+//  ROOT m0 = f32[2] maximum(b0, a0)
+//}
+//
+// ENTRY cluster_1 {
+//  arg0 = f32[2] parameter(0)
+//  arg1 = f32[2] parameter(1)
+//  arg2 = f32[2] parameter(2)
+//  c0 = f32[2] call(arg0, arg2), to_apply=_pop_op_relugrad
+//  c1 = f32[2] call(arg1), to_apply=_pop_op_relu
+//  ROOT tuple = (f32[2], f32[2]) tuple(c0, c1)
+//}
+//
+//)";
+//
+// auto module0_or_status =
+//    HloRunner::CreateModuleFromString(hlo_string0, GetDebugOptionsForTest());
+// EXPECT_TRUE(module0_or_status.ok());
+// auto* module0 = module0_or_status.ValueOrDie().get();
+//
+// auto module1_or_status =
+//    HloRunner::CreateModuleFromString(hlo_string1, GetDebugOptionsForTest());
+// EXPECT_TRUE(module1_or_status.ok());
+// auto* module1 = module1_or_status.ValueOrDie().get();
+//
+// HloHash hash0(module0);
+// HloHash hash1(module1);
+// EXPECT_EQ(hash0.GetHash(), hash1.GetHash());
+// EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
+//}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
