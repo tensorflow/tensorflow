@@ -460,11 +460,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         }
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             operand_shapes, proto.custom_call_opaque());
+                             operand_shapes, proto.backend_config());
       } else {
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             proto.custom_call_opaque());
+                             proto.backend_config());
       }
       if (proto.has_window()) {
         static_cast<HloCustomCallInstruction*>(instruction.get())
@@ -1299,18 +1299,18 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque) {
+    absl::string_view custom_call_target, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, custom_call_target, opaque);
+      shape, operands, custom_call_target, std::move(opaque));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
-    absl::Span<const Shape> operand_shapes_with_layout,
-    absl::string_view opaque) {
+    absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, custom_call_target, opaque, operand_shapes_with_layout);
+      shape, operands, custom_call_target, std::move(opaque),
+      operand_shapes_with_layout);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
