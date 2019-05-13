@@ -185,30 +185,6 @@ def get_local_backend(name=None):
   return list(backends.values())[-1]
 
 
-# Compatibility shims to support older clients.
-
-_default_platform_name = None
-
-
-def XlaLocalBackend():
-  # Deprecated. Use get_local_backend(platform_name).
-  return get_local_backend(_default_platform_name)
-
-
-def initialize_platform_name(platform_name):
-  """Deprecated. Use get_local_backend(platform_name)."""
-  if platform_name == 'Host':
-    platform_name = 'cpu'
-  elif platform_name == 'CUDA':
-    platform_name = 'gpu'
-
-  # Make sure the platform is valid by trying to instantiate it.
-  get_local_backend(platform_name)
-
-  global _default_platform_name
-  _default_platform_name = platform_name
-
-
 class OpMetadata(object):
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
