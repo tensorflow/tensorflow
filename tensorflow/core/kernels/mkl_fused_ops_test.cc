@@ -40,6 +40,10 @@ static const TensorShape dummy_shape({8});
 
 using BiasAddGraphRunner =
     std::function<void(const Tensor& input_data, const Tensor& filter_data,
+                       const Tensor& bias_data, Tensor* out)>;
+
+using FusedGraphRunner =
+    std::function<void(const Tensor& input_data, const Tensor& filter_data,
                        const Tensor& bias_data,
                        const std::vector<string>& fused_ops, Tensor* out)>;
 
@@ -93,9 +97,38 @@ class CommonTestUtilities : public OpsTestBase {
   static void VerifyBiasAddTensorsClose(int depth, int image_width,
                                         int image_height, int image_batch_count,
                                         int filter_size, int filter_count,
-                                        const std::vector<string>& fused_ops,
                                         const BiasAddGraphRunner& run_default,
                                         const BiasAddGraphRunner& run_fused) {
+    DataType dtype = DataTypeToEnum<T>::v();
+
+    Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
+    image.flat<T>() = image.flat<T>().setRandom();
+
+    Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
+    filter.flat<T>() = filter.flat<T>().setRandom();
+
+    const int bias_size = filter_count;
+    Tensor bias(dtype, {bias_size});
+    bias.flat<T>() = bias.flat<T>().setRandom();
+
+    Tensor conv_2d;
+    Tensor fused_conv_2d;
+
+    run_default(image, filter, bias, &conv_2d);
+    run_fused(image, filter, bias, &fused_conv_2d);
+
+    ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
+    ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
+
+    test::ExpectClose(conv_2d, fused_conv_2d, 1e-5);
+  }
+
+  static void VerifyFusedTensorsClose(int depth, int image_width,
+                                      int image_height, int image_batch_count,
+                                      int filter_size, int filter_count,
+                                      const std::vector<string>& fused_ops,
+                                      const FusedGraphRunner& run_default,
+                                      const FusedGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
@@ -144,7 +177,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
         {1, stride, stride, 1}, "SAME");
 
     string last_op = "";
-    if (std::find(fused_ops.being(), fused_ops.end(), "BiasAdd") !=
+    if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
         fused_ops.end()) {
       last_op = "with_bias";
       next_op = ops::BiasAdd(
@@ -152,15 +185,14 @@ class MklFusedConv2DOpTest : public OpsTestBase {
           ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
     }
 
-    if (std::find(fused_ops.being(), fused_ops.end(), "Add") !=
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
         fused_ops.end()) {
       last_op = "with_add";
-      next_op =
-          ops::AddN(root.WithOpName("with_add"),
-                    std::initializer_list<Input>{with_bias, input_data_op});
+      next_op = ops::AddN(root.WithOpName("with_add"),
+                          std::initializer_list<Input>{next_op, input_data_op});
     }
 
-    if (std::find(fused_ops.being(), fused_ops.end(), "Relu") !=
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
         fused_ops.end()) {
       last_op = "with_relu";
       next_op = ops::Relu(root.WithOpName(last_op), next_op);
@@ -219,21 +251,26 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                          int depth = kDepth, int image_width = kImageWidth,
                          int image_height = kImageHeight,
                          int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default = [this](
+    const FusedGraphRunner run_default = [this](
         const Tensor& input_data, const Tensor& filter_data,
         const Tensor& bias_data, const std::vector<string>& fused_ops,
         Tensor* out) {
       RunConv2DUnfused(input_data, filter_data, bias_data, fused_ops, out);
     };
 
-    const BiasAddGraphRunner run_fused = [this](
+    const FusedGraphRunner run_fused = [this](
         const Tensor& input_data, const Tensor& filter_data,
         const Tensor& bias_data, const std::vector<string>& fused_ops,
         Tensor* out) {
-      RunMklFusedConv2DOp(input_data, filter_data, {bias_data}, fused_ops, out);
+      std::vector<Tensor> fused_input = {bias_data};
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
+          fused_ops.end()) {
+        fused_input.push_back(input_data);
+      }
+      RunMklFusedConv2DOp(input_data, filter_data, fused_input, fused_ops, out);
     };
 
-    CommonTestUtilities<T>::VerifyBiasAddTensorsClose(
+    CommonTestUtilities<T>::VerifyFusedTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
         filter_count, fused_ops, run_default, run_fused);
   }
@@ -274,26 +311,26 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAdd) {
   const int filter_size = 1;
-  const int filter_count = 12;
+  const int filter_count = 3;
   this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Add"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAdd) {
   const int filter_size = 3;
-  const int filter_count = 12;
+  const int filter_count = 3;
   this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Add"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddRelu) {
   const int filter_size = 1;
-  const int filter_count = 12;
+  const int filter_count = 3;
   this->VerifyFusedConv2D(filter_size, filter_count,
                           {"BiasAdd", "Add", "Relu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddRelu) {
   const int filter_size = 3;
-  const int filter_count = 12;
+  const int filter_count = 3;
   this->VerifyFusedConv2D(filter_size, filter_count,
                           {"BiasAdd", "Add", "Relu"});
 }
