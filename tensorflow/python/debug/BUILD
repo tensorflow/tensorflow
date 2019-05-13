@@ -1076,6 +1076,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
+        "notap",  # TODO(b/132281726): re-enable this test.
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
