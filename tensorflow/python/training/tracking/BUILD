@@ -12,6 +12,10 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_logged_benchmark",
+)
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 py_library(
@@ -284,4 +288,19 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+)
+
+tf_py_test(
+    name = "benchmarks_test",
+    srcs = ["benchmarks_test.py"],
+    additional_deps = [
+        ":util",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+tf_py_logged_benchmark(
+    name = "benchmarks",
+    target = "//tensorflow/python/training/tracking:benchmarks_test",
 )

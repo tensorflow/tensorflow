@@ -75,8 +75,13 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
+<<<<<<< HEAD
   GpuLaunchConfig cfg = GetGpuLaunchConfig(work_element_count, d,
                                              FillKernel<Distribution>, 0, 0);
+=======
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
+                                            FillKernel<Distribution>, 0, 0);
+>>>>>>> upstream/master
 
   int zero = 0;
 #if GOOGLE_CUDA

@@ -138,10 +138,17 @@ void SegmentSumFunctor<T, Index>::operator()(
     return;
   }
   // Set 'output' to zeros.
+<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
   TF_CHECK_OK(GpuLaunchKernel(SetZero<T>,
       dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
       output.size(), output.data()));
+=======
+  GpuLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
+  TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(),
+                               output.size(), output.data()));
+>>>>>>> upstream/master
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -164,8 +171,14 @@ void SegmentSumFunctor<T, Index>::operator()(
       input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetGpuLaunchConfig(total_stripe_count, d);
+<<<<<<< HEAD
   TF_CHECK_OK(GpuLaunchKernel((SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>),
       dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+=======
+  TF_CHECK_OK(CudaLaunchKernel(
+      SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
+>>>>>>> upstream/master
       input_outer_dim_size, input_inner_dim_size, output_rows,
       segment_ids.data(), data, output.data(), total_stripe_count));
 }
@@ -183,10 +196,17 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
     TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         output.size(), output.data(), InitialValueF()()));
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
+    TF_CHECK_OK(CudaLaunchKernel(
+        SetToValue<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output.size(), output.data(), InitialValueF()()));
+>>>>>>> upstream/master
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }

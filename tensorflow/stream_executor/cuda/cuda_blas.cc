@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 #define SE_CUDA_DATA_HALF CUDA_R_16F
 
@@ -40,7 +40,7 @@ limitations under the License.
 // TODO(b/73793421): Remove the following code block to switch to the second
 // approach when the issue is fixed.
 #if CUDA_VERSION < 9000
-#include "cuda/include/cuda_fp16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
 #define EIGEN_HAS_CUDA_FP16
 #endif
 

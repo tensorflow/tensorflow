@@ -126,12 +126,20 @@ struct ScatterFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index updates_size = updates.size();
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(updates_size, d);
     TF_CHECK_OK(GpuLaunchKernel((scatter_op_gpu::ScatterOpCustomKernel<T, Index, op>),
                       dim3(config.block_count), dim3(config.thread_per_block),
                       0, d.stream(), params.data(), updates.data(),
                       indices.data(), first_dim_size, updates_size,
                       indices_size));
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(updates_size, d);
+    TF_CHECK_OK(CudaLaunchKernel(
+        scatter_op_gpu::ScatterOpCustomKernel<T, Index, op>, config.block_count,
+        config.thread_per_block, 0, d.stream(), params.data(), updates.data(),
+        indices.data(), first_dim_size, updates_size, indices_size));
+>>>>>>> upstream/master
     return -1;
   }
 };
@@ -148,10 +156,17 @@ struct ScatterScalarFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index synthesized_updates_size = indices_size * params.dimension(1);
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(synthesized_updates_size, d);
     TF_CHECK_OK(GpuLaunchKernel(
         (scatter_op_gpu::ScatterScalarOpCustomKernel<T, Index, op>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(synthesized_updates_size, d);
+    TF_CHECK_OK(CudaLaunchKernel(
+        scatter_op_gpu::ScatterScalarOpCustomKernel<T, Index, op>,
+        config.block_count, config.thread_per_block, 0, d.stream(),
+>>>>>>> upstream/master
         params.data(), update.data(), indices.data(), first_dim_size,
         indices_size, synthesized_updates_size));
     return -1;

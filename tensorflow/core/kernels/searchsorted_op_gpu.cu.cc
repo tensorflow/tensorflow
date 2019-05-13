@@ -63,9 +63,15 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
+<<<<<<< HEAD
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
+=======
+    const cudaStream_t& stream = GetCudaStream(context);
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(values.size(), context->eigen_gpu_device());
+>>>>>>> upstream/master
 
     TF_CHECK_OK(GpuLaunchKernel(UpperBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,
@@ -84,9 +90,15 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
+<<<<<<< HEAD
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
+=======
+    const cudaStream_t& stream = GetCudaStream(context);
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(values.size(), context->eigen_gpu_device());
+>>>>>>> upstream/master
 
     TF_CHECK_OK(GpuLaunchKernel(LowerBoundKernel<T, OutType>,
            dim3(config.block_count), dim3(config.thread_per_block), 0,

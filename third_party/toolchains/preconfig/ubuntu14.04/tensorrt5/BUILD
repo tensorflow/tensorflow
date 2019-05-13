@@ -3,11 +3,11 @@
 
 licenses(["notice"])
 
-exports_files(["LICENSE"])
-
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorrt_headers",
@@ -18,15 +18,9 @@ cc_library(
 
 cc_library(
     name = "tensorrt",
-    srcs = [
-        "tensorrt/lib/libnvinfer.so.5",
-        "tensorrt/lib/libnvinfer_plugin.so.5",
-    ],
+    srcs = [":tensorrt_lib"],
     copts = cuda_default_copts(),
-    data = [
-        "tensorrt/lib/libnvinfer.so.5",
-        "tensorrt/lib/libnvinfer_plugin.so.5",
-    ],
+    data = [":tensorrt_lib"],
     include_prefix = "",
     linkstatic = 1,
     visibility = ["//visibility:public"],

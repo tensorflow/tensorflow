@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARED_DEVICE_BUFFER_H_
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 
@@ -93,14 +93,14 @@ class PySharedDeviceBuffer {
   // Makes a tuple buffer. Does not initialize the tuple table.
   static StatusOr<std::shared_ptr<PySharedDeviceBuffer>> MakeTuple(
       std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
-      TransferManager* transfer_manager, DeviceMemoryAllocator* allocator,
+      TransferManager* transfer_manager, se::DeviceMemoryAllocator* allocator,
       int device_ordinal,
       std::shared_ptr<BufferDefinitionEvent> definition_event);
 
   // Makes an uninitialized array buffer.
   static StatusOr<std::shared_ptr<PySharedDeviceBuffer>> MakeArray(
       Shape on_device_shape, TransferManager* transfer_manager,
-      DeviceMemoryAllocator* allocator, int device_ordinal,
+      se::DeviceMemoryAllocator* allocator, int device_ordinal,
       std::shared_ptr<BufferDefinitionEvent> definition_event);
 
   // Builds a ShapedBuffer view onto the buffers of 'tree'. Since
@@ -113,7 +113,7 @@ class PySharedDeviceBuffer {
   const std::vector<std::shared_ptr<PySharedDeviceBuffer>>& children() const {
     return children_;
   }
-  const OwningDeviceMemory& device_memory() const { return device_memory_; }
+  const se::OwningDeviceMemory& device_memory() const { return device_memory_; }
   int device_ordinal() const { return device_memory_.device_ordinal(); }
   const std::shared_ptr<BufferDefinitionEvent> definition_event() const {
     return definition_event_;
@@ -121,7 +121,7 @@ class PySharedDeviceBuffer {
 
   PySharedDeviceBuffer() = default;
   PySharedDeviceBuffer(
-      Shape on_device_shape, OwningDeviceMemory device_memory,
+      Shape on_device_shape, se::OwningDeviceMemory device_memory,
       std::vector<std::shared_ptr<PySharedDeviceBuffer>> children,
       std::shared_ptr<BufferDefinitionEvent> definition_event);
 
@@ -130,7 +130,7 @@ class PySharedDeviceBuffer {
   // one-to-one with the tree of device buffers, so to avoid representational
   // awkwardness we maintain on-host shapes separately.
   Shape on_device_shape_;
-  OwningDeviceMemory device_memory_;
+  se::OwningDeviceMemory device_memory_;
   std::vector<std::shared_ptr<PySharedDeviceBuffer>> children_;
 
   // An event that is triggered when the content of one or more buffers is

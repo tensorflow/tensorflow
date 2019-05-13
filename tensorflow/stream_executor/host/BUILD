@@ -67,6 +67,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/synchronization",

@@ -100,7 +100,7 @@ class CompositeTensor(object):
   @abc.abstractproperty
   def _is_graph_tensor(self):
     """Returns True if this tensor's components belong to a TF graph."""
-    raise NotImplementedError("CompositeTensor._is_symbolic_tensor")
+    raise NotImplementedError("CompositeTensor._is_graph_tensor")
 
   def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.

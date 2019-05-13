@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -165,7 +166,7 @@ TEST(BasicInterpreter, CheckAllocate) {
   } cases[] = {
       {kTfLiteFloat32, sizeof(float)}, {kTfLiteInt32, sizeof(int32_t)},
       {kTfLiteUInt8, sizeof(uint8_t)}, {kTfLiteInt64, sizeof(int64_t)},
-      {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteInt16, sizeof(int16_t)}, {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
   for (auto test : cases) {
@@ -238,6 +239,8 @@ TEST(BasicInterpreter, CheckResize) {
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
   const int16_t int16s[] = {8, -9};
+  const Eigen::half float16s[] = {Eigen::half_impl::float_to_half_rtne(-3.f),
+                                  Eigen::half_impl::float_to_half_rtne(-4.f)};
 
   struct {
     TfLiteType type;
@@ -249,6 +252,8 @@ TEST(BasicInterpreter, CheckResize) {
       {kTfLiteUInt8, sizeof(uint8_t), reinterpret_cast<const char*>(uint8s)},
       {kTfLiteInt64, sizeof(int64_t), reinterpret_cast<const char*>(int64s)},
       {kTfLiteInt16, sizeof(int16_t), reinterpret_cast<const char*>(int16s)},
+      {kTfLiteFloat16, sizeof(TfLiteFloat16),
+       reinterpret_cast<const char*>(float16s)},
   };
 
   for (auto test : cases) {
@@ -283,10 +288,8 @@ TEST(BasicInterpreter, CheckResize) {
 TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
-  } cases[] = {
-      {kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
-      {kTfLiteInt64},   {kTfLiteInt16},
-  };
+  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
+               {kTfLiteInt64},   {kTfLiteInt16}, {kTfLiteFloat16}};
 
   for (auto test : cases) {
     Interpreter interpreter;

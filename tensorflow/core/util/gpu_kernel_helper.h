@@ -18,7 +18,13 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_cuda_alias.h"
+=======
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#endif
+>>>>>>> upstream/master
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -27,6 +33,7 @@ limitations under the License.
 #define TF_HAS_GPU_FP16
 #endif
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
@@ -36,6 +43,9 @@ limitations under the License.
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
 #define GPU_1D_KERNEL_LOOP(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+=======
+// Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
+>>>>>>> upstream/master
 #define CUDA_1D_KERNEL_LOOP(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
 

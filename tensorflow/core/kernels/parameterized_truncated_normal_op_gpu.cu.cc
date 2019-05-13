@@ -242,6 +242,7 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::Flat output) {
     const auto config = GetGpuLaunchConfig(num_elements, d);
 
+<<<<<<< HEAD
     TF_CHECK_OK(GpuLaunchKernel(TruncatedNormalKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         gen, output.data(), num_batches, samples_per_batch, num_elements,
@@ -251,6 +252,15 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
         maxvals.dimension(0) == 1,
         static_cast<int64>(kMaxIterations)));
   };
+=======
+    TF_CHECK_OK(CudaLaunchKernel(
+        TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,
+        0, d.stream(), gen, output.data(), num_batches, samples_per_batch,
+        num_elements, means.data(), means.dimension(0) == 1, stddevs.data(),
+        stddevs.dimension(0) == 1, minvals.data(), minvals.dimension(0) == 1,
+        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations));
+  }
+>>>>>>> upstream/master
 };
 
 // Explicit instantiation of the GPU distributions functors

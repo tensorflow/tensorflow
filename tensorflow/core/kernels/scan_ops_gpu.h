@@ -30,10 +30,14 @@ limitations under the License.
 #include "third_party/cub/block/block_store.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
+<<<<<<< HEAD
 #include "cuda/include/cuComplex.h"
 #elif TENSORFLOW_USE_ROCM
 #include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
 #endif
+=======
+#include "third_party/gpus/cuda/include/cuComplex.h"
+>>>>>>> upstream/master
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scan_ops.h"

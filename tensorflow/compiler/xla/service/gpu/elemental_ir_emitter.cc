@@ -73,8 +73,12 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
     llvm::IRBuilder<>* b, NestedComputer compute_nested)
     : ElementalIrEmitter(hlo_module_config, module, b),
+<<<<<<< HEAD
       hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)){}
+=======
+      compute_nested_(std::move(compute_nested)) {}
+>>>>>>> upstream/master
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
     TargetFunctionID callee_id, absl::Span<llvm::Value* const> operands,

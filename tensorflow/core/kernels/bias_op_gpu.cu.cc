@@ -81,7 +81,11 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   if (total_count == 0) {
     return;
   }
+<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
+=======
+  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+>>>>>>> upstream/master
   if (data_format == FORMAT_NHWC) {
     TF_CHECK_OK(GpuLaunchKernel(BiasNHWCKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -219,7 +223,11 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
     return;
   }
   static constexpr int32 kWarpSize = 32;
+<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
+=======
+  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+>>>>>>> upstream/master
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
   int32 shared_memory_size = 0;

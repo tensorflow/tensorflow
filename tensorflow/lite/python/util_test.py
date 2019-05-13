@@ -50,6 +50,8 @@ class UtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.complex64),
         _types_pb2.COMPLEX64)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.half), _types_pb2.FLOAT16)
     with self.assertRaises(ValueError):
       util.convert_dtype_to_tflite_type(dtypes.bool)
 

@@ -1253,6 +1253,10 @@ tf_module {
     argspec: "args=[\'dims\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'farmhash64\', \'None\'], "
+  }
+  member_method {
     name: "fixed_size_partitioner"
     argspec: "args=[\'num_shards\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
@@ -2415,6 +2419,10 @@ tf_module {
   member_method {
     name: "variables_initializer"
     argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'init\'], "
+  }
+  member_method {
+    name: "vectorized_map"
+    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "verify_tensor_all_finite"

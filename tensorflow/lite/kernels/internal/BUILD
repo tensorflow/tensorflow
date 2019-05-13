@@ -168,6 +168,27 @@ config_setting(
 )
 
 cc_library(
+    name = "common",
+    srcs = [],
+    hdrs = ["common.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        "@gemmlowp//:fixedpoint",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "optimized_base",
     srcs = [],
     hdrs = [
@@ -180,6 +201,7 @@ cc_library(
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
         "optimized/integer_ops/depthwise_conv.h",
+        "optimized/integer_ops/depthwise_conv_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
@@ -196,7 +218,8 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         "//third_party/eigen3",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -359,7 +382,8 @@ cc_library(
         ":strided_slice_logic",
         ":tensor",
         ":types",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
@@ -479,7 +503,8 @@ cc_library(
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
     ],
 )
 
@@ -535,7 +560,8 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
         "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",
@@ -642,7 +668,6 @@ cc_test(
         ":types",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@gemmlowp",
     ],
 )
 

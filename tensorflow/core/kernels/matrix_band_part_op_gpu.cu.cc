@@ -57,12 +57,21 @@ struct MatrixBandPartFunctor<GPUDevice, Scalar> {
     const int batch_size = input.dimension(0);
     const int m = input.dimension(1);
     const int n = input.dimension(2);
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
     TF_CHECK_OK(GpuLaunchKernel(MatrixBandPartKernel<Scalar>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         device.stream(),
         config.virtual_thread_count, batch_size, m, n, num_lower_diags,
         num_upper_diags, input.data(), output.data()));
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
+    TF_CHECK_OK(CudaLaunchKernel(MatrixBandPartKernel<Scalar>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 device.stream(), config.virtual_thread_count,
+                                 batch_size, m, n, num_lower_diags,
+                                 num_upper_diags, input.data(), output.data()));
+>>>>>>> upstream/master
   }
 };
 

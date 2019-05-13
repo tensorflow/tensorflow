@@ -71,6 +71,7 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     CHECK_EQ(diag.dimension(1), minsize);
     if (batch_size == 0 || minsize == 0) return;
     if (input.data() == output.data()) {
+<<<<<<< HEAD
       GpuLaunchConfig config =
           GetGpuLaunchConfig(batch_size * minsize, device);
       TF_CHECK_OK(GpuLaunchKernel(MatrixSetDiagKernel<Scalar>,
@@ -85,6 +86,21 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
           device.stream(),
           config.virtual_thread_count, m, n, minsize, input.data(),
           diag.data(), output.data()));
+=======
+      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * minsize, device);
+      TF_CHECK_OK(CudaLaunchKernel(MatrixSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   diag.data(), output.data()));
+    } else {
+      GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
+      TF_CHECK_OK(CudaLaunchKernel(MatrixCopyInputAndSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   input.data(), diag.data(), output.data()));
+>>>>>>> upstream/master
     }
   }
 };

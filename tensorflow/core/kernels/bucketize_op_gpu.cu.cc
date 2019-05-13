@@ -96,7 +96,11 @@ struct BucketizeFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(boundaries_array.Finalize());
 
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(input.size(), d);
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
+>>>>>>> upstream/master
     int32 shared_mem_size = sizeof(float) * boundaries_vector.size();
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&

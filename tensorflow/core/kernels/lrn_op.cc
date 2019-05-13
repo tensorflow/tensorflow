@@ -35,6 +35,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
+<<<<<<< HEAD
 #include "cuda/include/cuda.h"
 #endif
 
@@ -44,6 +45,9 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #endif 
+=======
+#include "third_party/gpus/cuda/include/cuda.h"
+>>>>>>> upstream/master
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"

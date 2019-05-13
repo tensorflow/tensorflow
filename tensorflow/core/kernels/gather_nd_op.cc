@@ -71,6 +71,7 @@ class GatherNdOp : public OpKernel {
 //
 // Same for the GPU kernel.
 TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_ND_CPU);
 
 #undef REGISTER_GATHER_ND_CPU
 

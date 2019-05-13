@@ -13,12 +13,15 @@ starter model and labels</a>
 
 ### Sample application
 
-We have provided a pre-built APK that demonstrates the smart reply model on
-Android.
+There is a TensorFlow Lite sample application that demonstrates the smart reply
+model on Android.
 
-Go to the
-<a href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/g3doc">GitHub
-page</a> for instructions and list of supported ops and functionalities.
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply">View
+Android example</a>
+
+Read the
+[GitHub page](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/g3doc)
+to learn how the app works.
 
 ## How it works
 

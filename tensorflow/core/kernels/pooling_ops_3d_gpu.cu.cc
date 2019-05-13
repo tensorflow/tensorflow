@@ -142,7 +142,11 @@ bool MaxPool3dGradBackward<T>::operator()(
     const T* top_diff, T* bottom_diff, const Eigen::GpuDevice& d) {
   int num_kernels =
       batch * channels * pooled_plane * pooled_height * pooled_width;
+<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
+=======
+  GpuLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
+>>>>>>> upstream/master
   if (data_format == FORMAT_NHWC) {
     TF_CHECK_OK(GpuLaunchKernel(MaxPoolGradBackwardNoMaskNDHWC<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),

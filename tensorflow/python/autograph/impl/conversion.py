@@ -335,15 +335,9 @@ def is_whitelisted_for_graph(o, check_call_override=True):
   if hasattr(m, '__name__'):
     # Builtins typically have unnamed modules.
     for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-      if m.__name__.startswith(prefix):
+      if m.__name__.startswith(prefix + '.') or m.__name__ == prefix:
         logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
         return True
-
-    # Temporary -- whitelist tensorboard modules.
-    # TODO(b/122731813): Remove.
-    if m.__name__ == 'tensorboard' or '.tensorboard' in m.__name__:
-      logging.log(2, 'Whitelisted: %s: name contains "tensorboard"', o)
-      return True
 
   if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
     logging.log(2, 'Whitelisted: %s: already converted', o)

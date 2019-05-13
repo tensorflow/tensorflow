@@ -84,7 +84,11 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
       batch_indices[i - 1] = Tparams.dimension(i - 1);
       batch_strides[i - 1] = batch_strides[i] * Tparams.dimension(i);
     }
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+>>>>>>> upstream/master
 
     // clang-format off
     TF_CHECK_OK(GpuLaunchKernel((GatherSliceOpKernel<T, Index, IXDIM>),

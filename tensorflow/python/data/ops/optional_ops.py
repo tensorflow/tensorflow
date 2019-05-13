@@ -155,6 +155,14 @@ class OptionalStructure(structure.Structure):
   def __init__(self, value_structure):
     self._value_structure = value_structure
 
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, OptionalStructure) and
+            self._value_structure == other._value_structure)
+
+  def __hash__(self):
+    return hash(self._value_structure)
+
   @property
   def _flat_shapes(self):
     return [tensor_shape.scalar()]

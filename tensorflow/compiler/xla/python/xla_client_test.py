@@ -315,10 +315,11 @@ class ComputationsWithConstantsTest(ComputationTest):
     c.CustomCall(
         b"test_subtract_f32",
         operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
-        shape_with_layout=xla_client.Shape.array_shape(np.float32, (), ()),
+        shape_with_layout=xla_client.Shape.array_shape(
+            np.dtype(np.float32), (), ()),
         operand_shapes_with_layout=(
-            xla_client.Shape.array_shape(np.float32, (), ()),
-            xla_client.Shape.array_shape(np.float32, (), ()),
+            xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+            xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
         ))
     self._ExecuteAndCompareClose(c, expected=0.75)
 
@@ -1745,7 +1746,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.Shape.from_pyval(to_infeed[0]))
+    c.Infeed(xla_client.shape_from_pyval(to_infeed[0]))
     compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1757,7 +1758,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.Shape.from_pyval(to_round_trip[0]))
+    x = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
     c.Outfeed(x)
 
     compiled_c = c.Build().Compile()
@@ -1767,7 +1768,7 @@ class EmbeddedComputationsTest(ComputationTest):
       execution.start()
       xla_client.transfer_to_infeed(want)
       got = xla_client.transfer_from_outfeed(
-          xla_client.Shape.from_pyval(to_round_trip[0]))
+          xla_client.shape_from_pyval(to_round_trip[0]))
       execution.join()
       self.assertEqual(want, got)
 
@@ -1803,7 +1804,9 @@ class ErrorTest(ComputationTest):
     c.ClearOpMetadata()
 
     options = xla_client.CompileOptions()
-    options.argument_layouts = [xla_client.Shape.array_shape(np.float32, [])]
+    options.argument_layouts = [
+        xla_client.Shape.array_shape(np.dtype(np.float32), [])
+    ]
 
     def TestFun():
       return c.Build().Compile(compile_options=options)

@@ -90,12 +90,21 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
   int x_size = num * height * width * channels;
+<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfig(x_size, d);
   TF_CHECK_OK(GpuLaunchKernel(AvePoolBackwardNHWC<T>,
       dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
           config.virtual_thread_count, top_diff, num, height, width, channels,
           pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
           pad_t, pad_t, bottom_diff));
+=======
+  GpuLaunchConfig config = GetCudaLaunchConfig(x_size, d);
+  TF_CHECK_OK(CudaLaunchKernel(
+      AvePoolBackwardNHWC<T>, config.block_count, config.thread_per_block, 0,
+      d.stream(), config.virtual_thread_count, top_diff, num, height, width,
+      channels, pooled_height, pooled_width, kernel_h, kernel_w, stride_h,
+      stride_w, pad_t, pad_t, bottom_diff));
+>>>>>>> upstream/master
 
   return d.ok();
 }

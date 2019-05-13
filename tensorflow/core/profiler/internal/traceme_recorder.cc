@@ -14,21 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
-// To avoid unnecessary synchronization between threads, each thread has a
-// ThreadLocalRecorder that independently records its events.
-//
-// Events are stored in an EventQueue implemented as a linked-list of blocks,
-// with start and end pointers:
-//  [ events........ | next-]--> [ events......... | next ]
-//  ^start_block  ^start         ^end_block  ^end
-//
-// Record() writes at end, and then advances it, allocating a block if needed.
-// Clear() takes ownership of events in the range [start, end).
-// The end pointer is atomic so these can be concurrent.
-//
-// If a thread dies, the ThreadLocalRecorder's destructor hands its data off to
-// the orphaned_events list.
-
 #include <cstddef>
 
 #include "tensorflow/core/platform/env.h"
@@ -48,17 +33,27 @@ namespace {
 
 // A single-producer single-consumer queue of Events.
 //
-// Push and Consume are lock free and each might be called from at most one
-// thread. Push is only be called by the owner thread. Consume is called by the
-// owner thread when it shuts down, or by the tracing control thread.
-// Thus, Consume might race with Push, so Consume only removes events that were
-// in the queue when it was invoked. If Push is called while Consume is active,
-// the new event remains in the queue. Thus, the tracing control thread should
-// call Consume when tracing stops to remove events created during tracing, but
-// also when tracing starts again to clear any remaining events.
+// Implemented as a linked-list of blocks containing numbered slots, with start
+// and end pointers:
 //
-// Internally, we have a linked list of blocks containing numbered slots.
-// start is the first occupied slot, end is the first unoccupied slot.
+//  [ events........ | next-]--> [ events......... | next ]
+//  ^start_block_ ^start_         ^end_block_ ^end_
+//
+// start_ is the first occupied slot, end_ is the first unoccupied slot.
+//
+// Push writes at end_, and then advances it, allocating a block if needed.
+// PopAll takes ownership of events in the range [start_, end_).
+// The end_ pointer is atomic so Push and PopAll can be concurrent.
+//
+// Push and PopAll are lock free and each might be called from at most one
+// thread. Push is only called by the owner thread. PopAll is called by the
+// owner thread when it shuts down, or by the tracing control thread.
+//
+// Thus, PopAll might race with Push, so PopAll only removes events that were
+// in the queue when it was invoked. If Push is called while PopAll is active,
+// the new event remains in the queue. Thus, the tracing control thread should
+// call PopAll when tracing stops to remove events created during tracing, but
+// also when tracing starts again to clear any remaining events.
 class EventQueue {
  public:
   EventQueue()
@@ -67,13 +62,13 @@ class EventQueue {
         end_block_(start_block_),
         end_(start_) {}
 
-  // REQUIRES: Consume() was called since the last Push().
+  // REQUIRES: PopAll() was called since the last Push().
   // Memory should be deallocated and trace events destroyed on destruction.
   // This doesn't require global lock as this discards all the stored trace
-  // events and we assume of destruction of this class only after the last
+  // events and we assume of destruction of this instance only after the last
   // Push() has been called.
   ~EventQueue() {
-    DCHECK_EQ(start_, end_.load()) << "EventQueue destroyed without Consume()";
+    DCHECK(Empty()) << "EventQueue destroyed without PopAll()";
     delete end_block_;
   }
 
@@ -91,25 +86,32 @@ class EventQueue {
   }
 
   // Retrieve and remove all events in the queue at the time of invocation.
-  // If Push is called while Consume is active, the new event will not be
+  // If Push is called while PopAll is active, the new event will not be
   // removed from the queue.
-  std::vector<TraceMeRecorder::Event> Consume() {
+  std::vector<TraceMeRecorder::Event> PopAll() {
     // Read index before contents.
     size_t end = end_.load(std::memory_order_acquire);
     std::vector<TraceMeRecorder::Event> result;
     result.reserve(end - start_);
     while (start_ != end) {
-      Shift(&result);
+      result.emplace_back(Pop());
     }
     return result;
   }
 
  private:
-  // Shift one event off the front of the queue into *out.
-  void Shift(std::vector<TraceMeRecorder::Event>* out) {
+  // Returns true if the queue is empty at the time of invocation.
+  bool Empty() const {
+    return (start_ == end_.load(std::memory_order_acquire));
+  }
+
+  // Remove one event off the front of the queue and return it.
+  // REQUIRES: The queue must not be empty.
+  TraceMeRecorder::Event Pop() {
+    DCHECK(!Empty());
     // Move the next event into the output.
     auto& event = start_block_->events[start_++ - start_block_->start].event;
-    out->push_back(std::move(event));
+    TraceMeRecorder::Event out = std::move(event);
     event.~Event();  // Events must be individually destroyed.
     // If we reach the end of a block, we own it and should delete it.
     // The next block is present: end always points to something.
@@ -117,10 +119,11 @@ class EventQueue {
       auto* next_block = start_block_->next;
       delete start_block_;
       start_block_ = next_block;
+      DCHECK_EQ(start_, start_block_->start);
     }
+    return out;
   }
 
-  // The number of slots in a block. Chosen so that the block fits in 64k.
   struct Block {
     // The number of slots in a block is chosen so the block fits in 64 KiB.
     static constexpr size_t kSize = 1 << 16;
@@ -151,6 +154,8 @@ class EventQueue {
 
 }  // namespace
 
+// To avoid unnecessary synchronization between threads, each thread has a
+// ThreadLocalRecorder that independently records its events.
 class TraceMeRecorder::ThreadLocalRecorder {
  public:
   // The recorder is created the first time TraceMeRecorder::Record() is called
@@ -170,7 +175,7 @@ class TraceMeRecorder::ThreadLocalRecorder {
 
   // Clear is called from the control thread when tracing starts/stops, or from
   // the owner thread when it shuts down (see destructor).
-  TraceMeRecorder::ThreadEvents Clear() { return {info_, queue_.Consume()}; }
+  TraceMeRecorder::ThreadEvents Clear() { return {info_, queue_.PopAll()}; }
 
  private:
   TraceMeRecorder::ThreadInfo info_;

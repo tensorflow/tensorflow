@@ -196,9 +196,7 @@ void ClusterFunctionLibraryRuntime::Run(
   req->set_session_handle(worker_session_->session_name);
   req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
-  // Borrowed from master_session.cc
-  const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
-  req->set_step_id(step_id);
+  req->set_step_id(opts.step_id);
   int i = 0;
   for (const auto& send_key : function_data->send_keys) {
     NamedTensorProto* send = req->add_send();
@@ -212,7 +210,7 @@ void ClusterFunctionLibraryRuntime::Run(
   }
 
   CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;
-  cleanup_req->set_step_id(step_id);
+  cleanup_req->set_step_id(opts.step_id);
 
   RunGraphResponse* resp = new RunGraphResponse();
   CleanupGraphResponse* cleanup_resp = new CleanupGraphResponse;

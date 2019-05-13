@@ -51,11 +51,19 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int batch_size = matrix_batch.dimension(0);
     const int m = matrix_batch.dimension(1);
     const int n = matrix_batch.dimension(2);
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
     TF_CHECK_OK(GpuLaunchKernel(EyeKernel<Scalar>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         device.stream(),
         config.virtual_thread_count, batch_size, m, n, matrix_batch.data()));
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
+    TF_CHECK_OK(CudaLaunchKernel(EyeKernel<Scalar>, config.block_count,
+                                 config.thread_per_block, 0, device.stream(),
+                                 config.virtual_thread_count, batch_size, m, n,
+                                 matrix_batch.data()));
+>>>>>>> upstream/master
   }
 };
 

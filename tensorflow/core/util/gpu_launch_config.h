@@ -26,7 +26,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_cuda_alias.h"
+<<<<<<< HEAD
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+=======
+>>>>>>> upstream/master
 
 // Usage of GetGpuLaunchConfig, GetGpu2DLaunchConfig, and
 // GetGpu3DLaunchConfig:
@@ -115,17 +118,29 @@ struct GpuLaunchConfig {
   int virtual_thread_count = -1;
   // Number of threads per block.
   int thread_per_block = -1;
+<<<<<<< HEAD
   // Number of blocks for Gpu kernel launch.
+=======
+  // Number of blocks for GPU kernel launch.
+>>>>>>> upstream/master
   int block_count = -1;
 };
 CREATE_CUDA_TYPE_ALIAS(GpuLaunchConfig, CudaLaunchConfig);
 
+<<<<<<< HEAD
 // Calculate the Gpu launch config we should use for a kernel launch.
+=======
+// Calculate the GPU launch config we should use for a kernel launch.
+>>>>>>> upstream/master
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
 // REQUIRES: work_element_count > 0.
 inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
+<<<<<<< HEAD
                                             const Eigen::GpuDevice& d) {
+=======
+                                          const Eigen::GpuDevice& d) {
+>>>>>>> upstream/master
   CHECK_GT(work_element_count, 0);
   GpuLaunchConfig config;
   const int virtual_thread_count = work_element_count;
@@ -143,7 +158,12 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
+inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+                                            const Eigen::GpuDevice& d) {
+  return GetGpuLaunchConfig(work_element_count, d);
+}
 
+<<<<<<< HEAD
 // Calculate the Gpu launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
 // REQUIRES: work_element_count > 0.
@@ -153,6 +173,16 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
                                             DeviceFunc func,
                                             size_t dynamic_shared_memory_size,
                                             int block_size_limit) {
+=======
+// Calculate the GPU launch config we should use for a kernel launch. This
+// variant takes the resource limits of func into account to maximize occupancy.
+// REQUIRES: work_element_count > 0.
+template <typename DeviceFunc>
+GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
+                                   const Eigen::GpuDevice& d, DeviceFunc func,
+                                   size_t dynamic_shared_memory_size,
+                                   int block_size_limit) {
+>>>>>>> upstream/master
   CHECK_GT(work_element_count, 0);
   GpuLaunchConfig config;
   int block_count = 0;
@@ -191,14 +221,31 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
+<<<<<<< HEAD
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
 
 // Calculate the Gpu launch config we should use for a kernel launch. This
+=======
+template <typename DeviceFunc>
+CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+                                     const Eigen::GpuDevice& d, DeviceFunc func,
+                                     size_t dynamic_shared_memory_size,
+                                     int block_size_limit) {
+  return GetGpuLaunchConfig(work_element_count, d, func,
+                            dynamic_shared_memory_size, block_size_limit);
+}
+
+// Calculate the GPU launch config we should use for a kernel launch. This
+>>>>>>> upstream/master
 // variant takes the resource limits of func into account to maximize occupancy.
 // The returned launch config has thread_per_block set to fixed_block_size.
 // REQUIRES: work_element_count > 0.
 template <typename DeviceFunc>
+<<<<<<< HEAD
 inline GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
+=======
+GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
+>>>>>>> upstream/master
     int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
     size_t dynamic_shared_memory_size, int fixed_block_size) {
   CHECK_GT(work_element_count, 0);
@@ -236,7 +283,18 @@ inline GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   config.block_count = block_count;
   return config;
 }
+<<<<<<< HEAD
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfigFixedBlockSize, GetCudaLaunchConfigFixedBlockSize);
+=======
+template <typename DeviceFunc>
+CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
+    int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
+    size_t dynamic_shared_memory_size, int fixed_block_size) {
+  return GetGpuLaunchConfigFixedBlockSize(work_element_count, d, func,
+                                          dynamic_shared_memory_size,
+                                          fixed_block_size);
+}
+>>>>>>> upstream/master
 
 struct Gpu2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
@@ -246,7 +304,11 @@ struct Gpu2DLaunchConfig {
 CREATE_CUDA_TYPE_ALIAS(Gpu2DLaunchConfig, Cuda2DLaunchConfig);
 
 inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
+<<<<<<< HEAD
                                                 const Eigen::GpuDevice& d) {
+=======
+                                              const Eigen::GpuDevice& d) {
+>>>>>>> upstream/master
   Gpu2DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0) {
@@ -272,17 +334,33 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
   return config;
 }
+inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
+                                                const Eigen::GpuDevice& d) {
+  return GetGpu2DLaunchConfig(xdim, ydim, d);
+}
 
+<<<<<<< HEAD
 // Calculate the Gpu 2D and 3D launch config we should use for a kernel launch.
+=======
+// Calculate the GPU 2D and 3D launch config we should use for a kernel launch.
+>>>>>>> upstream/master
 // This variant takes the resource limits of func into account to maximize
 // occupancy.
 using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
 CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
+<<<<<<< HEAD
 inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
     int xdim, int ydim, int zdim, const Eigen::GpuDevice& d, DeviceFunc func,
     size_t dynamic_shared_memory_size, int block_size_limit) {
+=======
+Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
+                                        const Eigen::GpuDevice& d,
+                                        DeviceFunc func,
+                                        size_t dynamic_shared_memory_size,
+                                        int block_size_limit) {
+>>>>>>> upstream/master
   Gpu3DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0 || zdim <= 0) {
@@ -347,6 +425,7 @@ inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
   config.block_count = dim3(blocksx, blocksy, blocksz);
   return config;
 }
+<<<<<<< HEAD
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
 
 template <typename DeviceFunc>
@@ -355,6 +434,26 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(
     size_t dynamic_shared_memory_size, int block_size_limit) {
   return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
                                dynamic_shared_memory_size, block_size_limit);
+=======
+template <typename DeviceFunc>
+Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
+                                         const Eigen::GpuDevice& d,
+                                         DeviceFunc func,
+                                         size_t dynamic_shared_memory_size,
+                                         int block_size_limit) {
+  return GetGpu3DLaunchConfig(xdim, ydim, zdim, d, func,
+                              dynamic_shared_memory_size, block_size_limit);
+}
+
+template <typename DeviceFunc>
+Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
+                                       const Eigen::GpuDevice& d,
+                                       DeviceFunc func,
+                                       size_t dynamic_shared_memory_size,
+                                       int block_size_limit) {
+  return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
+                              dynamic_shared_memory_size, block_size_limit);
+>>>>>>> upstream/master
 }
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
@@ -369,6 +468,15 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   return *ptr;
+}
+template <typename DeviceFunc>
+Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
+                                         const Eigen::GpuDevice& d,
+                                         DeviceFunc func,
+                                         size_t dynamic_shared_memory_size,
+                                         int block_size_limit) {
+  return GetGpu2DLaunchConfig(xdim, ydim, d, func, dynamic_shared_memory_size,
+                              block_size_limit);
 }
 #endif  // GOOGLE_CUDA
 

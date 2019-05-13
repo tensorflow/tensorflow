@@ -42,8 +42,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
+<<<<<<< HEAD
   #include "cuda/include/cudnn.h"
 #endif 
+=======
+#include "third_party/gpus/cudnn/cudnn.h"
+>>>>>>> upstream/master
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"

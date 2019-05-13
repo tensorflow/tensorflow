@@ -891,6 +891,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
       break;
     }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -4142,6 +4151,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
+  }
+
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
   }
 
   module->AddEntryComputation(builder.Build());

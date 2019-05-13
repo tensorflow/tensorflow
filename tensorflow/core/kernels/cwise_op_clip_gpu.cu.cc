@@ -60,7 +60,11 @@ struct UnaryClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+>>>>>>> upstream/master
 
     TF_CHECK_OK(GpuLaunchKernel(UnaryClipCustomKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -76,7 +80,11 @@ struct BinaryRightClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+>>>>>>> upstream/master
 
     TF_CHECK_OK(GpuLaunchKernel(BinaryRightClipCustomKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -92,7 +100,11 @@ struct BinaryLeftClipOp<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat &in1_flat,
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const {
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
+>>>>>>> upstream/master
 
     TF_CHECK_OK(GpuLaunchKernel(BinaryLeftClipCustomKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),

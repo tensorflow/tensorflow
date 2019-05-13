@@ -106,7 +106,11 @@ struct ReluGrad<Device, Eigen::half> {
     if (count == 0) return;
     int32 half2_count = Eigen::divup(count, 2);
     constexpr int32 kThreadInBlock = 512;
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+>>>>>>> upstream/master
         half2_count, d, ReluGradHalfKernel, 0, kThreadInBlock);
     TF_CHECK_OK(GpuLaunchKernel(ReluGradHalfKernel,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -138,7 +142,11 @@ struct Relu<Device, qint8> {
 
     int32 vect_count = Eigen::divup(count, 4);
     constexpr int32 kThreadInBlock = 512;
+<<<<<<< HEAD
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
+=======
+    GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+>>>>>>> upstream/master
         vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
     TF_CHECK_OK(GpuLaunchKernel(Relu_int8x4_kernel,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),

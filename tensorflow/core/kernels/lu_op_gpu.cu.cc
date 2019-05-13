@@ -222,11 +222,19 @@ class LuOpGpu : public AsyncOpKernel {
     int* pivots_ptr = pivots.flat<int>().data();
     Tidx* permutation_indices_ptr =
         permutation_indices->template flat<Tidx>().data();
+<<<<<<< HEAD
     GpuLaunchConfig cfgPivots = GetGpuLaunchConfig(batch_size, device);
     ComputePermutationFromTranspositionsKernel<<<cfgPivots.block_count,
                                                  cfgPivots.thread_per_block, 0,
                                                  device.stream()>>>(
         cfgPivots, num_rows, pivots_ptr, permutation_indices_ptr);
+=======
+    GpuLaunchConfig cfgPivots = GetCudaLaunchConfig(batch_size, device);
+    TF_CHECK_OK(CudaLaunchKernel(
+        ComputePermutationFromTranspositionsKernel<Tidx>, cfgPivots.block_count,
+        cfgPivots.thread_per_block, 0, device.stream(), cfgPivots, num_rows,
+        pivots_ptr, permutation_indices_ptr));
+>>>>>>> upstream/master
 
     // Callback for checking info after kernels finish. Also capture the
     // temporary Tensors/ScratchSpace so they don't get deallocated before the

@@ -198,8 +198,10 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
-    with self.assertRaises(RuntimeError):
-      context.set_log_device_placement(False)
+
+    # If the setting the device placement is a no-op, do not throw a runtime
+    # exception.
+    context.set_log_device_placement(False)
 
   @test_util.run_gpu_only
   @reset_eager
