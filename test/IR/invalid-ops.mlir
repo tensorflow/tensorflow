@@ -201,7 +201,7 @@ func @func_with_ops(i32) {
 
 // Comparison are defined for arguments of the same type.
 func @func_with_ops(i32, i64) {
-^bb0(%a : i32, %b : i64): // expected-error {{prior use here}}
+^bb0(%a : i32, %b : i64): // expected-note {{prior use here}}
   %r = cmpi "eq", %a, %b : i32 // expected-error {{use of value '%b' expects different type than prior uses}}
 }
 
@@ -251,7 +251,7 @@ func @func_with_ops() {
 func @func_with_ops(i32, i32, i32) {
 ^bb0(%cond : i32, %t : i32, %f : i32):
   // expected-error@+2 {{different type than prior uses}}
-  // expected-error@-2 {{prior use here}}
+  // expected-note@-2 {{prior use here}}
   %r = select %cond, %t, %f : i32
 }
 
@@ -579,7 +579,7 @@ func @cmpf_generic_wrong_result_type(%a : f32, %b : f32) {
 // -----
 
 func @cmpf_canonical_wrong_result_type(%a : f32, %b : f32) -> f32 {
-  %r = cmpf "oeq", %a, %b : f32 // expected-error {{prior use here}}
+  %r = cmpf "oeq", %a, %b : f32 // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%r' expects different type than prior uses}}
   return %r : f32
 }
@@ -607,7 +607,7 @@ func @cmpf_generic_operand_type_mismatch(%a : f32, %b : f64) {
 
 // -----
 
-func @cmpf_canonical_type_mismatch(%a : f32, %b : f64) { // expected-error {{prior use here}}
+func @cmpf_canonical_type_mismatch(%a : f32, %b : f64) { // expected-note {{prior use here}}
   // expected-error@+1 {{use of value '%b' expects different type than prior uses}}
   %r = cmpf "oeq", %a, %b : f32
 }

@@ -2520,9 +2520,10 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
     if (result->getType() == type)
       return result;
 
-    emitError(useInfo.loc, "use of value '" + useInfo.name.str() +
-                               "' expects different type than prior uses");
-    emitError(entries[useInfo.number].second, "prior use here");
+    emitError(useInfo.loc, "use of value '")
+        .append(useInfo.name, "' expects different type than prior uses")
+        .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
+        .append("prior use here");
     return nullptr;
   }
 
@@ -2587,10 +2588,11 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   // or a forward reference.
   if (auto *existing = entries[useInfo.number].first) {
     if (!isForwardReferencePlaceholder(existing)) {
-      emitError(useInfo.loc,
-                "redefinition of SSA value '" + useInfo.name + "'");
-      return emitError(entries[useInfo.number].second,
-                       "previously defined here");
+      emitError(useInfo.loc)
+          .append("redefinition of SSA value '", useInfo.name, "'")
+          .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
+          .append("previously defined here");
+      return failure();
     }
 
     // If it was a forward reference, update everything that used it to use

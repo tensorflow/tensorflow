@@ -295,7 +295,7 @@ func @test() {
 
 func @redef() {
 ^bb42:
-  %x = "xxx"(){index: 0} : ()->i32 // expected-error {{previously defined here}}
+  %x = "xxx"(){index: 0} : ()->i32 // expected-note {{previously defined here}}
   %x = "xxx"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
   return
 }
@@ -335,7 +335,7 @@ func @func_resulterror() -> i32 {
 // -----
 
 func @argError() {
-^bb1(%a: i64):  // expected-error {{previously defined here}}
+^bb1(%a: i64):  // expected-note {{previously defined here}}
   br ^bb2
 ^bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
   return
@@ -371,7 +371,7 @@ func @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
 
 func @condbr_notbool() {
 ^bb0:
-  %a = "foo"() : () -> i32 // expected-error {{prior use here}}
+  %a = "foo"() : () -> i32 // expected-note {{prior use here}}
   cond_br %a, ^bb0, ^bb0 // expected-error {{use of value '%a' expects different type than prior uses}}
 // expected-error@-1 {{expected condition type was boolean (i1)}}
 }
@@ -1026,7 +1026,7 @@ func @no_result_with_name() {
 // -----
 
 func @conflicting_names() {
-  // expected-error@+1 {{previously defined here}}
+  // expected-note@+1 {{previously defined here}}
   %foo, %bar  = "foo" () : () -> (i32, i32)
 
   // expected-error@+1 {{redefinition of SSA value '%bar'}}

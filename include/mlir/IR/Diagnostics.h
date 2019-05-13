@@ -317,13 +317,22 @@ public:
   }
 
   /// Stream operator for new diagnostic arguments.
-  template <typename Arg> InFlightDiagnostic &&operator<<(Arg &&arg) && {
-    appendArgument(std::forward<Arg>(arg));
-    return std::move(*this);
-  }
   template <typename Arg> InFlightDiagnostic &operator<<(Arg &&arg) & {
-    appendArgument(std::forward<Arg>(arg));
+    return append(std::forward<Arg>(arg));
+  }
+  template <typename Arg> InFlightDiagnostic &&operator<<(Arg &&arg) && {
+    return std::move(append(std::forward<Arg>(arg)));
+  }
+
+  /// Append arguments to the diagnostic.
+  template <typename... Args> InFlightDiagnostic &append(Args &&... args) & {
+    assert(isActive() && "diagnostic not active");
+    if (isInFlight())
+      impl->append(std::forward<Args>(args)...);
     return *this;
+  }
+  template <typename... Args> InFlightDiagnostic &&append(Args &&... args) && {
+    return std::move(append(std::forward<Args>(args)...));
   }
 
   /// Attaches a note to this diagnostic.
@@ -347,13 +356,6 @@ private:
   InFlightDiagnostic &operator=(InFlightDiagnostic &&) = delete;
   InFlightDiagnostic(DiagnosticEngine *owner, Diagnostic &&rhs)
       : owner(owner), impl(std::move(rhs)) {}
-
-  /// Add an argument to the internal diagnostic.
-  template <typename Arg> void appendArgument(Arg &&arg) {
-    assert(isActive() && "diagnostic not active");
-    if (isInFlight())
-      *impl << std::forward<Arg>(arg);
-  }
 
   /// Returns if the diagnostic is still active, i.e. it has a live diagnostic.
   bool isActive() const { return impl.hasValue(); }
