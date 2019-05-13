@@ -371,6 +371,62 @@ However, this control flow granularity is not available in the ML functions
 where min/max, and thus `select`, are likely to appear. In addition, simpler
 control flow may be beneficial for optimization in general.
 
+### Regions
+
+#### Attributes of type 'Block'
+
+We considered representing regions through `ArrayAttr`s containing a list of a
+special type `IRBlockAttr`, which in turn would contain a list of operations.
+All attributes in MLIR are unique’d within the context, which would make the IR
+inside the regions immortal for no good reason.
+
+#### Use "inlined" functions as regions
+
+We considered attaching a "force-inline" attribute on a function and/or a
+function `call` operation. Even the minimal region support (use cases in
+affine.for and affine.if existing before the regions) requires access to the
+values defined in the dominating block, which is not supported by functions.
+Conceptually, function bodies are instances of regions rather than the inverse;
+regions can also be device kernels, alternative sections, etc.
+
+#### Dedicated `region` operation
+
+This would mean we have a special kind of operation that is allowed to have
+regions while other operations are not. Such distinction is similar to the
+Stmt/Op difference we have had and chose to remove to make the IR simpler and
+more flexible. It would also require analyses and passes to consider the
+interplay between operations (e.g., an `affine.for` operation must be followed
+by a region operation). Finally, a region operation can be introduced using the
+current implementation, among other operations and without being special in any
+sense.
+
+#### Explicit capture of the values used in a region
+
+Being able to use values defined outside the region implies that use-def chains
+may contain uses from different nested regions. Consequently, IR transformations
+and analyses can pull the instruction defining the value across region
+boundaries, for example in case of TableGen-defined canonicalization patterns.
+This would not be the case if all used values had been passed as region
+arguments. One of the motivations for introducing regions in the IR is precisely
+to enable cross-region analyses and transformations that are simpler than
+inter-procedural transformations. Having uses from different regions appear in
+the same use-def chain, contrary to an additional data structure maintaining
+correspondence between function call arguments as uses of the original
+definitions and formal arguments as new definitions, enables such
+simplification. Since individual operations now belong to blocks, which belong
+to regions, it is always possible to check if the definition of the value
+belongs to the same region as its particular use. The risk is that any IR
+traversal will need to handle explicitly this situation and it is easy to forget
+a check (or conversely it isn’t easy to design the right check in a tablegen
+pattern for example): traversing use-def chains potentially crosses implicitly
+semantic barriers, making it possible to unknowingly break region semantics.
+This is expected to be caught in the verifier after the transformation.
+
+At the same time, one may choose to pass certain or all values as region
+arguments to explicitly break the use-def chains in the current proposal. This
+can be combined with an attribute-imposed semantic requirement disallowing the
+body of the region to refer to any value from outside it.
+
 ### Quantized integer operations
 
 We haven't designed integer quantized operations in MLIR, but experience from
@@ -859,6 +915,50 @@ bb0 (%0, %1: memref<128xf32>, i64):
   return %p
 }
 ```
+
+### Regions
+
+#### Making function definition an operation
+
+MLIR supports values of a Function type. Instead of having first-class IR
+concept for functions, one could define an operation with a body region that
+defines a function value. The particularity of functions is that their names are
+globally visible and can be referred to before being defined, unlike SSA values
+that must be defined first. Implementing a "function definition" operation would
+require to relax some of the SSA constraints in a region, and also make the IR
+Module a region as well. It would also affect the core infrastructure (e.g.,
+function passes) only for the sake of concept unification.
+
+#### Having types on a region
+
+Instead of inspecting the types of arguments of the first block, one could give
+the region itself a type. This type would be redundant with block argument
+types, which must have values and create room for type mismatches. While
+functions do have types that are partly redundant with the arguments of the
+first block in the function, this is necessary to support function declarations
+that do not have a body which we can refer to in order to obtain the argument
+types. A region is always contained in an operation or a function that can be
+queried to obtain the “type” of the region if necessary.
+
+A type on a region can be justified if Regions were to be considered separately
+from the enclosing entity (operation or function) and had their own semantics
+that should be checked.
+
+#### Attaching attributes to regions
+
+Regions could be annotated with dialect attributes to use attribute verification
+hooks. An operation could take multiple regions as arguments, and each of them
+may require different attributes. However, there are currently very few
+practical cases where this would be necessary. Instead, one could simulate
+per-region attributes with array attributes attached to the entity containing
+the region (operation or function). This decreases the overall complexity of the
+IR and enables more concise and op-specific forms, e.g., when all regions of an
+op have the same attribute that can be only mentioned once. Since the semantics
+of the region is entirely defined by the enclosing entity, it also makes sense
+to have attributes attached to that entity rather than to the region itself.
+
+This can be reconsidered in the future if we see a non-neglectable amount of use
+cases.
 
 ### Read/Write/May_Read/May_Write sets for External Functions
 

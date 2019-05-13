@@ -1249,31 +1249,36 @@ func @count(%x: i64) -> (i64, i64)
 
 ## Regions
 
-A region is a CFG of MLIR [Blocks](#blocks). Regions serve as a generalization
-of a function body that can be nested under arbitrary operations. A region
-semantics is defined by the containing entity (operation or function). Regions
-do not have a name or an address, only the blocks contained in a region do.
+### Definition
+
+A region is a CFG of MLIR [Blocks](#blocks). Regions serve to group semantically
+connected blocks, where the semantics is not imposed by the IR. Instead, the
+containing entity (operation or function) defines the semantics of the regions
+it contains. Regions do not have a name or an address, only the blocks contained
+in a region do. Regions are meaningless outside of the containing entity and
+have no type or attributes.
 
 The first block in the region cannot be a successor of any other block. The
-arguments of this block are treated as arguments of the region. The syntax for
-the region is as follows:
+syntax for the region is as follows:
 
 ``` {.ebnf}
-region ::= region-signature? region-body
-region-signature ::= `(` argument-list `)` (`->` function-result-type)?
-region-body ::= `{` block+ `}`
+region ::= `{` block+ `}`
 ```
 
-The function body is an example of a region, the body of an `affine.for`
-operation is another example, this time of an single-block region.
+The function body is an example of a region: it consists of a CFG of blocks and
+has additional semantic restrictions that other types of regions may not have
+(block terminators must either branch to a different block, or return from a
+function where the types of the `return` arguments must match the result types
+of the function signature).
+
+### Control and Value Scoping
 
 Regions provide nested control isolation: it is impossible to branch to a block
 within a region from outside it, or to branch from within a region to a block
 outside it. Similarly it provides a natural scoping for value visibility: SSA
 values defined in a region don't escape to the enclosing region if any. By
-default, a region can referenced values defined outside of the region, whenever
+default, a region can reference values defined outside of the region, whenever
 it would have been legal to use them as operands to the enclosing operation.
-This can be further restricted using custom verifier.
 
 Example:
 
@@ -1299,6 +1304,11 @@ func $@accelerator_compute(i64, i1) -> i64 {
 }
 ```
 
+This can be further restricted using custom verifier, for example, disallowing
+references to values defined outside the region completely.
+
+### Control Flow
+
 Regions are Single-Entry-Multiple-Exit (SEME). It means that control can only
 flow into the first block of the region, but can flow out of the region at the
 end of any of the blocks it contains. (This behavior is similar to that of
@@ -1306,30 +1316,32 @@ functions in most programming languages). Nonetheless, when exiting the region
 from any of its multiple exit points, the control flows to the same successor.
 
 Regions present in an operation can be executed any number of times. The IR does
-not guarantee if a region passed as an argument to an operation will be
-executed; if so, how many times and when. In particular, a region can be
-executed zero, one or multiple times, in no particular order with respect to
-other regions or operations. It may be executed as a part of an operation, or by
-some later operation using any values produced by the operation that contains
-the region. The successor to a region’s exit points may not necessarily exist:
-regions enclosing non-terminating code such as infinite loops are possible, as
-well as an operation implementing an infinite loop over a region. Concurrent or
-asynchronous execution of regions is unspecified. Operations may define pecific
+not guarantee if a region of an operation will be executed; if so, how many
+times and when. In particular, a region can be executed zero, one or multiple
+times, in no particular order with respect to other regions or operations. It
+may be executed as a part of an operation, or by some later operation using any
+values produced by the operation that contains the region. The successor to a
+region’s exit points may not necessarily exist: regions enclosing
+non-terminating code such as infinite loops are possible, as well as an
+operation implementing an infinite loop over a region. Concurrent or
+asynchronous execution of regions is unspecified. Operations may define specific
 rules of execution, e.g. sequential loops or switch-like blocks.
 
 In case of zero executions, control does not flow into the region. In case of
 multiple executions, the control may exit the region from any of the region exit
 points and enter it again at its entry point. It may also enter another region.
-If an operation has multiple region arguments, the semantics of the operation
-defines into which regions the control flows and in which order, if any. An
-operation may trigger execution of regions that were specified in other
-operations, in particular those that defined the values the given operation
-uses. When all argument regions were executed the number of times required by
-the operation semantics, the control flows from any of the region exit points to
-the original control-successor of the operation that triggered the execution.
-Thus operations with region arguments can be treated opaquely in the enclosing
-control flow graph, providing a level of control flow isolation similar to that
-of the call operation.
+If an operation has multiple regions, the semantics of the operation defines
+into which regions the control flows and in which order, if any. An operation
+may trigger execution of regions that were specified in other operations, in
+particular those that defined the values the given operation uses. When all
+argument regions were executed the number of times required by the operation
+semantics, the control flows from any of the region exit points to the original
+control-successor of the operation that triggered the execution. Thus operations
+with region arguments can be treated opaquely in the enclosing control flow
+graph, providing a level of control flow isolation similar to that of the call
+operation.
+
+### Closure
 
 Regions allow to define an operation that creates a closure, for example by
 “boxing” the body of the region into a value they produce. It remains up to the
@@ -1343,9 +1355,18 @@ Note that if an operation triggers asynchronous execution of the region, it is
 under the responsibility of the operation caller to wait for the region to be
 executed guaranteeing that any directly used values remain live.
 
+### Arguments and Results
+
+The arguments of the first block of a region are treated as arguments of the
+region. The source of these arguments is defined by the parent entity of the
+region. If a region is a function body, its arguments are the function
+arguments. If a region is used in an operation, the operation semantics
+specified how these values are produced. They may correspond to some of the
+values the operation itself uses.
+
 Regions produce a (possibly empty) list of values. For function body regions,
 `return` is the standard region-exiting terminator, but dialects can provide
-their own. For regions passed as operation arguments, the operation semantics
+their own. For regions that belong to an operation, the operation semantics
 defines the relation between the region results and the operation results.
 
 ## Blocks
