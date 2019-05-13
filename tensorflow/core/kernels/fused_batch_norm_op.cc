@@ -179,9 +179,14 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   ~CudnnBatchNormAllocatorInOutput() override {
     Tensor* dummy_reserve_space = nullptr;
     OP_REQUIRES_OK(context_,
-                   context_->allocate_output(5, {}, &dummy_reserve_space));
+                   context_->allocate_output(output_index_, {},
+                                             &dummy_reserve_space));
   }
-  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index) {}
+  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
+      : context_(context), output_index_(output_index) {}
+ private:
+  OpKernelContext* context_;  // not owned
+  int output_index_;
 };
 #endif // GOOGLE_CUDA
 
