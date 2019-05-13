@@ -13,7 +13,7 @@ build:android_arm64 --fat_apk_cpu=arm64-v8a
 # This is required for the default Android emulators, right? 
 build:android_x86 --config=android
 build:android_x86 --cpu=x86
-build:andorid_x86 --fat_apk_cpu=x86
+build:android_x86 --fat_apk_cpu=x86
 build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
