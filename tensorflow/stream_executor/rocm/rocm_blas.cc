@@ -1818,10 +1818,15 @@ struct ROCMBlas::EigenHalfToRocBlasHalf<Eigen::half> {
 
 template <typename T>
 port::Status ROCMBlas::AllocateStridedBuffer(
-    const std::vector<typename EigenHalfToRocBlasHalf<T>::type *>& raw_ptrs, int batch_count, 
-    uint64_t batch_stride, ScratchAllocator* scratch_allocator, Stream * stream, 
-    std::unique_ptr<TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>& temp_memory,
-    DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>& device_memory) {
+    const std::vector<typename EigenHalfToRocBlasHalf<T>::type *> &raw_ptrs,
+    int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
+    Stream *stream,
+    std::unique_ptr<
+        TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>
+        *temp_memory,
+    DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type> *device_memory) {
+  assert(device_memory != nullptr);
+
   using MAPPED_T = typename EigenHalfToRocBlasHalf<T>::type;
 
   bool needs_allocate_strided = false;
@@ -1838,29 +1843,35 @@ port::Status ROCMBlas::AllocateStridedBuffer(
 
   // No need to do re-allocation, take the short cut and return
   if (!needs_allocate_strided) {
-    device_memory = DeviceMemory<MAPPED_T>(DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
+    *device_memory = DeviceMemory<MAPPED_T>(
+        DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
     return port::Status::OK();
   }
 
-  if (scratch_allocator != nullptr){
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
-                        scratch_allocator->AllocateBytes(stream, matrix_batch_byte_size));
-    device_memory = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
+  if (scratch_allocator != nullptr) {
+    SE_ASSIGN_OR_RETURN(
+        DeviceMemory<uint8> batch_matrix_bytes,
+        scratch_allocator->AllocateBytes(stream, matrix_batch_byte_size));
+    *device_memory = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   } else {
-    SE_ASSIGN_OR_RETURN(temp_memory,
-                        stream->AllocateTemporaryArray<MAPPED_T>(matrix_batch_byte_size));
-    device_memory = DeviceMemory<MAPPED_T>(*temp_memory->mutable_device_memory());
+    assert(temp_memory != nullptr);
+    SE_ASSIGN_OR_RETURN(*temp_memory, stream->AllocateTemporaryArray<MAPPED_T>(
+                                          matrix_batch_byte_size));
+    *device_memory =
+        DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
   }
 
   for (int i = 0; i < batch_count; ++i) {
-    char * device_memory_ptr = static_cast<char *>(device_memory.opaque());
-    DeviceMemoryBase src_mem = DeviceMemoryBase(raw_ptrs[i], matrix_byte_size); 
-    DeviceMemoryBase target_mem = DeviceMemoryBase(device_memory_ptr + i * matrix_byte_size, matrix_byte_size);
-    bool a_status = stream->ThenMemcpy(&target_mem, src_mem, matrix_byte_size).ok();
-    //parent_->Deallocate(&src_mem);
-    if (!a_status){
-      return port::Status(port::error::INTERNAL,
-                          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+    char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
+    DeviceMemoryBase src_mem = DeviceMemoryBase(raw_ptrs[i], matrix_byte_size);
+    DeviceMemoryBase target_mem = DeviceMemoryBase(
+        device_memory_ptr + i * matrix_byte_size, matrix_byte_size);
+    bool a_status =
+        stream->ThenMemcpy(&target_mem, src_mem, matrix_byte_size).ok();
+    if (!a_status) {
+      return port::Status(
+          port::error::INTERNAL,
+          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
     }
   }
   return port::Status::OK();
@@ -1868,13 +1879,12 @@ port::Status ROCMBlas::AllocateStridedBuffer(
 
 template <typename T, typename FuncT>
 port::Status ROCMBlas::DoBlasGemmBatchedInternal(
-    FuncT rocblas_func, Stream* stream, blas::Transpose transa,
+    FuncT rocblas_func, Stream *stream, blas::Transpose transa,
     blas::Transpose transb, uint64 m, uint64 n, uint64 k, T alpha,
-    const port::ArraySlice<DeviceMemory<T>*>& a_ptrs_to_wrappers, int lda,
-    const port::ArraySlice<DeviceMemory<T>*>& b_ptrs_to_wrappers, int ldb,
-    T beta, const port::ArraySlice<DeviceMemory<T>*>& c_ptrs_to_wrappers,
-    int ldc, int batch_count, ScratchAllocator* scratch_allocator) {
-
+    const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
+    const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
+    T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   // MAPPED_T will be same as T for all types except Eigen::Half
   // for T = Eigen::half, MAPPED_T = rocblas_half
   using MAPPED_T = typename EigenHalfToRocBlasHalf<T>::type;
@@ -1888,19 +1898,19 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   batch_stride_c = ldc * n;
 
   if (ROCMBlasTranspose(transa) == rocblas_operation_none) {
-      assert(lda >= m);
-      batch_stride_a = lda * k;
+    assert(lda >= m);
+    batch_stride_a = lda * k;
   } else {
-      assert(lda >= k);
-      batch_stride_a = lda * m;
+    assert(lda >= k);
+    batch_stride_a = lda * m;
   }
 
   if (ROCMBlasTranspose(transb) == rocblas_operation_none) {
-      assert(ldb >= k);
-      batch_stride_b = ldb * n;
+    assert(ldb >= k);
+    batch_stride_b = ldb * n;
   } else {
-      assert(ldb >= n);
-      batch_stride_b = ldb * k;
+    assert(ldb >= n);
+    batch_stride_b = ldb * k;
   }
 
   // Alocate local vectors to hold device pointers to matrices
@@ -1909,53 +1919,56 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     // static_cast does work when converting Eigen::half* to rocblas_half*,
     // hence the use of reinterpret_cast
     a_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T*>(a_ptrs_to_wrappers[i]->opaque()));
+        reinterpret_cast<MAPPED_T *>(a_ptrs_to_wrappers[i]->opaque()));
     b_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T*>(b_ptrs_to_wrappers[i]->opaque()));
+        reinterpret_cast<MAPPED_T *>(b_ptrs_to_wrappers[i]->opaque()));
     c_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T*>(c_ptrs_to_wrappers[i]->opaque()));
+        reinterpret_cast<MAPPED_T *>(c_ptrs_to_wrappers[i]->opaque()));
   }
 
   DeviceMemory<MAPPED_T> a;
   // Make sure the temporary memory are in-scope before the function returns
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> a_temp;
-  port::Status a_allocation_status = AllocateStridedBuffer<T>(
-      a_raw_ptrs, batch_count, batch_stride_a, scratch_allocator, stream, a_temp, a);
-  if(a_allocation_status != port::Status::OK()){
-      return a_allocation_status;
+  port::Status a_allocation_status =
+      AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
+                               scratch_allocator, stream, &a_temp, &a);
+  if (a_allocation_status != port::Status::OK()) {
+    return a_allocation_status;
   }
 
   DeviceMemory<MAPPED_T> b;
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> b_temp;
-  port::Status b_allocation_status = AllocateStridedBuffer<T>(
-      b_raw_ptrs, batch_count, batch_stride_b, scratch_allocator, stream, b_temp, b);
-  if(b_allocation_status != port::Status::OK()){
-      return b_allocation_status;
+  port::Status b_allocation_status =
+      AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
+                               scratch_allocator, stream, &b_temp, &b);
+  if (b_allocation_status != port::Status::OK()) {
+    return b_allocation_status;
   }
 
   DeviceMemory<MAPPED_T> c;
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> c_temp;
-  port::Status c_allocation_status = AllocateStridedBuffer<T>(
-      c_raw_ptrs, batch_count, batch_stride_c, scratch_allocator, stream, c_temp, c);
-  if(c_allocation_status != port::Status::OK()){
-      return c_allocation_status;
+  port::Status c_allocation_status =
+      AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
+                               scratch_allocator, stream, &c_temp, &c);
+  if (c_allocation_status != port::Status::OK()) {
+    return c_allocation_status;
   }
 
   MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
   MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
 
-  bool ok = DoBlasInternal(
-      rocblas_func, stream, true /* = pointer_mode_host */,
-      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-      GpuComplex(alpha_ptr), GpuMemory(a), lda, batch_stride_a, 
-      GpuMemory(b), ldb, batch_stride_b,
-      GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc, batch_stride_c, batch_count);
+  bool ok = DoBlasInternal(rocblas_func, stream, true /* = pointer_mode_host */,
+                           ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
+                           m, n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
+                           batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
+                           GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
+                           batch_stride_c, batch_count);
 
   if (ok) {
     return port::Status::OK();
   } else {
     return port::Status(port::error::INTERNAL,
-                    "failed BLAS call, see log for details");
+                        "failed BLAS call, see log for details");
   }
 }
 

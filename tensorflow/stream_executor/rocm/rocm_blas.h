@@ -104,24 +104,42 @@ class ROCMBlas : public blas::BlasSupport {
     using type = T;
   };
   
-  // A helper allocation funciton to convert raw pointers memory layout to strided flavor 
+  // A helper allocation funciton to convert raw pointers memory layout to
+  // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
-      const std::vector<typename EigenHalfToRocBlasHalf<T>::type *>& raw_ptrs, int batch_count, 
-      uint64_t batch_stride, ScratchAllocator* scrach_allocator, Stream * stream, 
-      std::unique_ptr<TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>& temp_memory,
-      DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>& device_memory);
+      const std::vector<typename EigenHalfToRocBlasHalf<T>::type *> &raw_ptrs,
+      int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
+      Stream *stream,
+      std::unique_ptr<
+          TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>
+          *temp_memory,
+      DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type> *device_memory);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
+  //
+  // Note: This function is implemented using gemm_strided_batched interface,
+  // NOT gemm_batched interface, because rocblas do not support it. As a
+  // result, if the passed in batch matrix are not allocated in strided batched
+  // format, it might end up in non-trivial amount of memory allocation and
+  // copy. To avoid this, always prioritize to use DoBlasGemmStridedBatched
+  // interface.
+  //
+  // In most use cases, batch matrix do get allocated in strided manner, making
+  // calling this interface equivalent with DoBlasGemmStridedBatched. The only
+  // use case we see so far that violates this observation is when batch
+  // matrix is created by broadcasting from a smaller matrix. When it happens,
+  // It will take advantage of the AllocateStridedBuffer subroutine to
+  // reallocate the memory layout to be strided batched.
   template <typename T, typename FuncT>
   port::Status DoBlasGemmBatchedInternal(
       FuncT rocblas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64 m, uint64 n, uint64 k, T alpha,
-      const port::ArraySlice<DeviceMemory<T> *> &a_array, int lda,
-      const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, T beta,
-      const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
-      int batch_count, ScratchAllocator *scratch_allocator);
+      const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
+      const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
+      T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
 
   // Helper function for implementing DoBlasGemmWithAlgorithm.
   //
