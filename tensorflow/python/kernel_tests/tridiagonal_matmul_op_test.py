@@ -27,6 +27,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
@@ -88,9 +90,36 @@ class TridiagonalMulOpTest(test.TestCase):
     for result in results_batch:
       self.assertAllClose(result, expected_batch)
 
+  def _makeTridiagonalMatrix(self, superdiag, maindiag, subdiag):
+    super_pad = [[0, 0], [0, 1], [1, 0]]
+    sub_pad = [[0, 0], [1, 0], [0, 1]]
+
+    super_part = array_ops.pad(array_ops.matrix_diag(superdiag), super_pad)
+    main_part = array_ops.matrix_diag(maindiag)
+    sub_part = array_ops.pad(array_ops.matrix_diag(subdiag), sub_pad)
+    return super_part + main_part + sub_part
+
   def _randomComplexArray(self, shape):
+    np.random.seed(43)
     return (np.random.uniform(-10, 10, shape) +
             np.random.uniform(-10, 10, shape) * 1j)
+
+  def _gradientTest(self, diags, rhs, dtype=dtypes.float64):
+
+    def reference_matmul(diags, rhs):
+      matrix = self._makeTridiagonalMatrix(diags[..., 0, :-1], diags[..., 1, :],
+                                           diags[..., 2, 1:])
+      return math_ops.matmul(matrix, rhs)
+
+    diags = constant_op.constant(diags, dtype=dtype)
+    rhs = constant_op.constant(rhs, dtype=dtype)
+    with self.cached_session(use_gpu=True):
+      grad_reference, _ = gradient_checker_v2.compute_gradient(
+          reference_matmul, [diags, rhs])
+      grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+          linalg_impl.tridiagonal_matmul, [diags, rhs])
+    self.assertAllClose(grad_theoretical, grad_numerical)
+    self.assertAllClose(grad_theoretical, grad_reference)
 
   def test1x1(self):
     self._testAllFormats([], [2], [], [[1, 4]], [[2, 8]])
@@ -133,8 +162,26 @@ class TridiagonalMulOpTest(test.TestCase):
 
     self.assertAllClose(result, expected_result)
 
-  # Benchmark
+  def testGradientSmall(self):
+    self._gradientTest([[[1, 2, 0], [1, 2, 3], [0, 1, 2]]],
+                       [[[1, 2], [3, 4], [5, 6]]],
+                       dtype=dtypes.float64)
 
+  def testGradientComplexSmall(self):
+    self._gradientTest(
+        np.array([[[1 + 1j, 2j, 0], [1 + 2j, 2j, 3 + 0j], [0, 1j, 2 + 0j]]]),
+        np.array([[[1j, 2 + 0j], [3 + 1j, 4j], [5j, 6 + 3j]]]),
+        dtype=dtypes.complex128)
+
+  def testGradientComplexWithBatches(self):
+    b = 5
+    m = 10
+    n = 15
+    diags = self._randomComplexArray((b, 3, m))
+    rhs = self._randomComplexArray((b, m, n))
+    self._gradientTest(diags, rhs, dtype=dtypes.complex128)
+
+  # Benchmark
   class TridiagonalMatMulBenchmark(test.Benchmark):
     sizes = [(100000, 1, 1), (1000000, 1, 1), (10000000, 1, 1), (100000, 10, 1),
              (100000, 100, 1), (10000, 1, 100), (10000, 1, 1000),
