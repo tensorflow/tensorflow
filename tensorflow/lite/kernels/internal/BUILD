@@ -175,7 +175,6 @@ cc_library(
     deps = [
         ":types",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,

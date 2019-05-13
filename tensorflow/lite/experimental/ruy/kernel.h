@@ -43,11 +43,25 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
                     Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
   Kernel kernel(tuning);
+  using LhsLayout = typename Kernel::LhsLayout;
+  using RhsLayout = typename Kernel::RhsLayout;
+  // end_row and end_col may be larger than dst dimensions.
+  // that is because kernels write directly to the destination matrix, whose
+  // dimensions may not be a multiple of the kernel dimensions, and we try to
+  // keep this annoyance localized as an implementation detail in kernels,
+  // by allowing to pass rounded-up values down as far as possible.
+  // These assertions encode the contract.
+  RUY_DCHECK_LE(0, start_row);
+  RUY_DCHECK_LE(start_row, end_row);
+  RUY_DCHECK_LT(end_row, dst->layout.rows + LhsLayout::kCols);
+  RUY_DCHECK_EQ((end_row - start_row) % LhsLayout::kCols, 0);
+  RUY_DCHECK_LE(0, start_col);
+  RUY_DCHECK_LE(start_col, end_col);
+  RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
+  RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
 #if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
-  using LhsLayout = typename Kernel::LhsLayout;
-  using RhsLayout = typename Kernel::RhsLayout;
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
     int block_end_col = std::min(col + RhsLayout::kCols, end_col);
     for (int row = start_row; row < end_row; row += LhsLayout::kCols) {
@@ -141,10 +155,26 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
            const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,
            int start_col, int end_row, int end_col,
            Matrix<DstScalar>* dst) const {
+    // See the comment in RunKernelTyped. end_row may be larger than
+    // dst->layout.rows. It's the responsibility of the kernel to avoid
+    // overrunning dst boundaries, which we do here by computing
+    // clamped_end_row.
+    int clamped_end_row = std::min(end_row, dst->layout.rows);
+    int clamped_end_col = std::min(end_col, dst->layout.cols);
+    RUY_DCHECK_LE(0, start_row);
+    RUY_DCHECK_LE(start_row, clamped_end_row);
+    RUY_DCHECK_LE(clamped_end_row, dst->layout.rows);
+    RUY_DCHECK_LE(clamped_end_row, end_row);
+    RUY_DCHECK_LE(end_row - clamped_end_row, LhsLayout::kCols);
+    RUY_DCHECK_LE(0, start_col);
+    RUY_DCHECK_LE(start_col, clamped_end_col);
+    RUY_DCHECK_LE(clamped_end_col, dst->layout.cols);
+    RUY_DCHECK_LE(clamped_end_col, end_col);
+    RUY_DCHECK_LE(end_col - clamped_end_col, RhsLayout::kCols);
     gemmlowp::ScopedProfilingLabel label("Kernel (Standard Cpp)");
     const int depth = lhs.layout.rows;
-    for (int i = start_row; i < end_row; i++) {
-      for (int j = start_col; j < end_col; j++) {
+    for (int i = start_row; i < clamped_end_row; i++) {
+      for (int j = start_col; j < clamped_end_col; j++) {
         using AccumScalar = typename Spec::AccumScalar;
         AccumScalar accum = 0;
         for (int k = 0; k < depth; k++) {

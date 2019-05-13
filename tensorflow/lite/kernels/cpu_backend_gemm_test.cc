@@ -594,7 +594,7 @@ TYPED_TEST(CpuBackendGemmTest, Rectangular) {
 
 TYPED_TEST(CpuBackendGemmTest, HighlyRectangular) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size <= 10000; size *= 10) {
+  for (int size = 1; size <= 1000; size *= 10) {
     shapes.push_back(std::make_tuple(size, 10, 10));
     shapes.push_back(std::make_tuple(10, size, 10));
     shapes.push_back(std::make_tuple(10, 10, size));

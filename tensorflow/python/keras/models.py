@@ -406,20 +406,19 @@ def _in_place_subclassed_model_reset(model):
       attributes_to_cache = [
           'inputs',
           'outputs',
-          'loss_weights_list',
-          '_training_targets',
-          '_sample_weight_modes',
           'total_loss',
-          'sample_weights',
-          '_feed_sample_weights',
+          'optimizer',
           'train_function',
           'test_function',
           'predict_function',
+          '_training_endpoints',
+          'sample_weights',
+          '_sample_weight_modes',
+          '_feed_sample_weights',
           '_collected_trainable_weights',
           '_feed_inputs',
           '_feed_input_names',
           '_feed_input_shapes',
-          'optimizer',
       ]
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)

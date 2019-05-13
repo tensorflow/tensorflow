@@ -585,20 +585,20 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
       return Status::OK();
     }
+  }
 
-    // A && False => False
-    VLOG(10) << "trying transform [A && False => False]: "
-             << logical_and->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
-      return Status::OK();
-    }
+  // A && False => False or A & 0 => 0
+  VLOG(10) << "trying transform [A && False => False]: "
+           << logical_and->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+    return Status::OK();
+  }
 
-    // False && A => False
-    VLOG(10) << "trying transform [False && A => False]: "
-             << logical_and->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
-      return Status::OK();
-    }
+  // False && A => False or A & 0 => 0
+  VLOG(10) << "trying transform [False && A => False]: "
+           << logical_and->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+    return Status::OK();
   }
 
   return Status::OK();
@@ -1584,6 +1584,15 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
       lhs_contracting_dims.Add(i);
     }
   }
+  // We require the "unsquished" lhs contracting dims to be consecutive.
+  auto is_iota = [](absl::Span<const int64> dims) {
+    return absl::c_adjacent_find(dims, [](const int64 a, const int64 b) {
+             return (b != a + 1);
+           }) == dims.end();
+  };
+  if (!is_iota(AsInt64Slice(lhs_contracting_dims))) {
+    return nullptr;
+  }
   lhs = lhs->mutable_operand(0);
 
   // Check that the transpose only permutes the contracting dims.
@@ -1600,6 +1609,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
+  CHECK(IsPermutation(permutation, permutation.size()));
   auto new_lhs_contracting_dims =
       ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
   lhs_contracting_dims.Clear();
@@ -2002,20 +2012,18 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
     if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
       return Status::OK();
     }
+  }
 
-    // A || False => A
-    VLOG(10) << "trying transform [A || False => A]: "
-             << logical_or->ToString();
-    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
-      return Status::OK();
-    }
+  // A || False => A and A | 0 => A
+  VLOG(10) << "trying transform [A || False => A]: " << logical_or->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+    return Status::OK();
+  }
 
-    // False || A => A
-    VLOG(10) << "trying transform [False || A => A]: "
-             << logical_or->ToString();
-    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
-      return Status::OK();
-    }
+  // False || A => A and 0 | A => A
+  VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+    return Status::OK();
   }
 
   return Status::OK();

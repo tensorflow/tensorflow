@@ -1033,10 +1033,9 @@ def cast_if_floating_to_model_input_dtypes(x, model):
   return nest.map_structure(cast_single_tensor, x, input_dtypes)
 
 
-def get_output_sample_weight(skip_target_weighing_indices, sample_weight_mode,
-                             output_name, output_index):
+def get_output_sample_weight(training_endpoint, sample_weight_mode):
   """Returns the sample weight and weight mode for a single output."""
-  if (output_index in skip_target_weighing_indices or
+  if (training_endpoint.should_skip_target_weights() or
       sample_weight_mode is None or context.executing_eagerly()):
     return None
 
@@ -1051,19 +1050,16 @@ def get_output_sample_weight(skip_target_weighing_indices, sample_weight_mode,
   weight = array_ops.placeholder_with_default(
       constant_op.constant(default_value, dtype=K.floatx()),
       shape=shape,
-      name=output_name + '_sample_weights')
+      name=training_endpoint.output_name + '_sample_weights')
   return weight
 
 
-def prepare_sample_weight_modes(output_names, sample_weight_mode,
-                                skip_target_weighing_indices):
+def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
   """Prepares sample weight modes for the model.
 
   Args:
-    output_names: List of model output names.
+    training_endpoints: List of model _TrainingEndpoints.
     sample_weight_mode: sample weight mode user input passed from compile API.
-    skip_target_weighing_indices: Indices of output for which sample weights
-      should be skipped.
 
   Returns:
     List of sample weight modes (one for each output).
@@ -1073,36 +1069,38 @@ def prepare_sample_weight_modes(output_names, sample_weight_mode,
   """
 
   if isinstance(sample_weight_mode, collections.Mapping):
-    generic_utils.check_for_unexpected_keys('sample_weight_mode',
-                                            sample_weight_mode, output_names)
+    generic_utils.check_for_unexpected_keys(
+        'sample_weight_mode', sample_weight_mode,
+        [e.output_name for e in training_endpoints])
 
     sample_weight_modes = []
-    for i, name in enumerate(output_names):
-      if i in skip_target_weighing_indices:
+    for end_point in training_endpoints:
+      if end_point.should_skip_target_weights():
         sample_weight_modes.append(None)
-      elif name not in sample_weight_mode:
-        raise ValueError('Output ' + name +
+      elif end_point.output_name not in sample_weight_mode:
+        raise ValueError('Output ' + end_point.output_name +
                          'missing from `_sample_weight_modes` dictionary')
       else:
-        sample_weight_modes.append(sample_weight_mode.get(name))
+        sample_weight_modes.append(
+            sample_weight_mode.get(end_point.output_name))
     return sample_weight_modes
 
   if isinstance(sample_weight_mode, (list, tuple)):
-    if len(sample_weight_mode) != len(output_names):
+    if len(sample_weight_mode) != len(training_endpoints):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed ' +
                        str(len(sample_weight_mode)) + '_sample_weight_modes.')
 
     return [
-        None if i in skip_target_weighing_indices else sample_weight_mode[i]
-        for i in range(len(output_names))
+        None if endpoint.should_skip_target_weights() else mode
+        for mode, endpoint in zip(sample_weight_mode, training_endpoints)
     ]
 
   return [
-      None if i in skip_target_weighing_indices else sample_weight_mode
-      for i in range(len(output_names))
+      None if endpoint.should_skip_target_weights() else sample_weight_mode
+      for endpoint in training_endpoints
   ]
 
 
@@ -1148,11 +1146,13 @@ def prepare_loss_functions(loss, output_names):
   return loss_functions
 
 
-def prepare_loss_weights(output_names, loss_weights=None):
+def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
+  The result loss weights will be populated on the trainging endpoint.
+
   Arguments:
-      output_names: List of model output names.
+      training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
         outputs. The loss value that will be minimized by the model will then be
@@ -1161,32 +1161,31 @@ def prepare_loss_weights(output_names, loss_weights=None):
             mapping to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
 
-  Returns:
-      A list of loss weights of python floats.
-
   Raises:
       ValueError: If loss weight is a dict with key not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
   if loss_weights is None:
-    weights_list = [1.] * len(output_names)
+    for e in training_endpoints:
+      e.loss_weight = 1.
   elif isinstance(loss_weights, collections.Mapping):
-    generic_utils.check_for_unexpected_keys('loss_weights', loss_weights,
-                                            output_names)
-    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+    generic_utils.check_for_unexpected_keys(
+        'loss_weights', loss_weights,
+        [e.output_name for e in training_endpoints])
+    for e in training_endpoints:
+      e.loss_weight = loss_weights.get(e.output_name, 1.)
   elif isinstance(loss_weights, list):
-    if len(loss_weights) != len(output_names):
+    if len(loss_weights) != len(training_endpoints):
       raise ValueError('When passing a list as loss_weights, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed loss_weights=' +
                        str(loss_weights))
-    weights_list = loss_weights
+    for w, e in zip(loss_weights, training_endpoints):
+      e.loss_weight = w
   else:
     raise TypeError('Could not interpret loss_weights argument: ' +
                     str(loss_weights) + ' - expected a list of dicts.')
-
-  return weights_list
 
 
 # TODO(rohanj): This is a hack to get around not depending on feature_column and

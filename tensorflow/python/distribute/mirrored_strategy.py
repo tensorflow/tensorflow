@@ -549,7 +549,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
-        with ops.init_scope(), ops.device(d):
+        with ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -559,7 +559,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
             def initial_value_fn(device=d):
-              if context.executing_eagerly():
+              if context.executing_eagerly() or ops.inside_function():
                 init_value = value_list[0].value()
                 return array_ops.identity(init_value)
               else:

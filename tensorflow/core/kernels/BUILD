@@ -3245,7 +3245,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_matmul_op",
     srcs = ["tridiagonal_matmul_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_matmul_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
