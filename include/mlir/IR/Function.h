@@ -22,7 +22,10 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
-#include "mlir/IR/Operation.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Identifier.h"
+#include "mlir/IR/Location.h"
 
 namespace mlir {
 class BlockAndValueMapping;
@@ -245,15 +248,18 @@ public:
 
   /// Emit an error about fatal conditions with this function, reporting up to
   /// any diagnostic handlers that may be listening.
-  InFlightDiagnostic emitError(const Twine &message = {});
+  InFlightDiagnostic emitError();
+  InFlightDiagnostic emitError(const Twine &message);
 
   /// Emit a warning about this function, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitWarning(const Twine &message = {});
+  InFlightDiagnostic emitWarning();
+  InFlightDiagnostic emitWarning(const Twine &message);
 
   /// Emit a remark about this function, reporting up to any diagnostic
   /// handlers that may be listening.
-  InFlightDiagnostic emitRemark(const Twine &message = {});
+  InFlightDiagnostic emitRemark();
+  InFlightDiagnostic emitRemark(const Twine &message);
 
   /// Displays the CFG in a window. This is for use from the debugger and
   /// depends on Graphviz to generate the graph.
@@ -362,4 +368,4 @@ private:
 };
 } // end namespace llvm
 
-#endif  // MLIR_IR_FUNCTION_H
+#endif // MLIR_IR_FUNCTION_H

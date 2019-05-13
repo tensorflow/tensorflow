@@ -18,10 +18,12 @@
 #include "mlir/IR/Attributes.h"
 #include "AttributeDetail.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/Twine.h"
 
 using namespace mlir;
 using namespace mlir::detail;

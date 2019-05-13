@@ -19,6 +19,7 @@
 #define MLIR_ANALYSIS_MLFUNCTIONMATCHER_H_
 
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Operation.h"
 #include "llvm/Support/Allocator.h"
 
 namespace mlir {
