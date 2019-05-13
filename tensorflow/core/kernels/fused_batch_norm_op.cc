@@ -177,9 +177,9 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   bool output_allocated = false;
 };
 #else
-// A dummy class for the non-GPU environment. In particular, its child class
-// CudnnBatchNormAllocatorInOutput needs to be used to allocate the 5th output
-// for the FusedBatchNormV3 in the non-GPU env.
+// A dummy class for the non-GPU environment. Its child classes
+// CudnnBatchNormAllocatorInTemp and CudnnBatchNormAllocatorInOutput are used
+// to make the non-GPU operations compatible with GPU ones.
 class ScratchAllocator {
  public:
   virtual ~ScratchAllocator();
@@ -188,34 +188,18 @@ class ScratchAllocator {
 template <typename T>
 class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
  public:
-  ~CudnnBatchNormAllocatorInTemp() override = default;
-
-  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
-      : context_(context) {}
-
- private:
-  OpKernelContext* context_;  // not owned
+  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context){}
 };
 
 template <typename T>
 class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
  public:
   ~CudnnBatchNormAllocatorInOutput() override {
-    if (!output_allocated) {
-      Tensor* dummy_reserve_space = nullptr;
-      OP_REQUIRES_OK(context_,
-                     context_->allocate_output(output_index_, {},
-                                               &dummy_reserve_space));
-    }
+    Tensor* dummy_reserve_space = nullptr;
+    OP_REQUIRES_OK(context_,
+                   context_->allocate_output(5, {}, &dummy_reserve_space));
   }
-
-  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
-      : context_(context), output_index_(output_index) {}
-
- private:
-  OpKernelContext* context_;  // not owned
-  int output_index_;
-  bool output_allocated = false;
+  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index){}
 };
 #endif // GOOGLE_CUDA
 
