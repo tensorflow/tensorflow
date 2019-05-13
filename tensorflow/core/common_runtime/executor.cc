@@ -1603,8 +1603,8 @@ bool MightTrace(const NodeItem& item,
   }
   auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
-    if (using_annotations) {
-      return trace_collector->IsEnabledForAnnotations();
+    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
+      return true;
     }
   }
   return profiler::TraceMeRecorder::Active(
