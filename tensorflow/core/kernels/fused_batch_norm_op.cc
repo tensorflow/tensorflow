@@ -52,24 +52,6 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-template <bool IsSame, typename Y, typename X, typename T>
-struct CastIfNecessary {
-  static inline void process(
-      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
-      const CPUDevice& d) {
-    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
-  }
-};
-
-template <typename Y, typename X, typename T>
-struct CastIfNecessary<true, Y, X, T> {
-  static inline void process(
-      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
-      const CPUDevice& d) {
-    y.reshape(rest_by_depth).device(d) = x_shifted;
-  }
-};
-
 template <typename U, typename T>
 DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
   return DeviceMemory<U>::MakeFromByteSize(
@@ -202,6 +184,24 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index){}
 };
 #endif // GOOGLE_CUDA
+
+template <bool IsSame, typename Y, typename X, typename T>
+struct CastIfNecessary {
+  static inline void process(
+      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
+      const CPUDevice& d) {
+    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
+  }
+};
+
+template <typename Y, typename X, typename T>
+struct CastIfNecessary<true, Y, X, T> {
+  static inline void process(
+      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
+      const CPUDevice& d) {
+    y.reshape(rest_by_depth).device(d) = x_shifted;
+  }
+};
 
 template <typename T, typename U>
 struct FusedBatchNorm<CPUDevice, T, U> {
