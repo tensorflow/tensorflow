@@ -5803,7 +5803,6 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
     // x4 %[function_params]
 
     asm volatile(
-        // %bb.0:
         "ldp    w12, w11, [%[function_params], #" STR(DP_OFFSET_BIAS_INCREMENT) "]\n"
         "ldrsw  x9, [%[function_params], #" STR(DP_OFFSET_OUTPUT_DEPTH) "]\n"
         "ldr    w10, [%[function_params], #" STR(DP_OFFSET_DEPTH_MICRO_REPEATS) "]\n"
@@ -5895,9 +5894,10 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
         "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x15", "x16");
   }
 
-  static inline void Run(const uint8* filter_data, const int32* bias_data,
-                         int8* shuffled_filter_data, int32* adjusted_bias_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const uint8* filter_data, const int32* bias_data,
+      int8* shuffled_filter_data, int32* adjusted_bias_data,
+      const DepthwiseConvDotProdParams* function_params) {
     ProcessPerDepthNeon(filter_data, bias_data, shuffled_filter_data,
                         adjusted_bias_data, function_params);
   }
