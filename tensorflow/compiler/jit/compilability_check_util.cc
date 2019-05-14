@@ -179,6 +179,10 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, int depth, FunctionLibraryRuntime* lib_runtime) {
+  if (node.IsSource() || node.IsSink()) {
+    return LogNotCompilableAndReturn(node, "source or sink node");
+  }
+
   // _Arg nodes in a top-level function represent feeds and _Retval nodes in a
   // top-level function represent fetches.
   if (depth == 0 &&

@@ -17,6 +17,9 @@ package_group(
 package(
     default_visibility = [
         ":internal",
+        # BEGIN-GOOGLE-INTERNAL
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        # END-GOOGLE-INTERNAL
     ],
 )
 
