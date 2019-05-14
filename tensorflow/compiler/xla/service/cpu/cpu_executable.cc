@@ -113,17 +113,17 @@ CpuExecutable::CreateBufferTable(
     } else {
       TF_ASSIGN_OR_RETURN(owning_buffers[i], memory_allocator->Allocate(
                                                  device_ordinal, buffer_size));
-      unowning_buffers[i] = owning_buffers[i].AsDeviceMemoryBase();
+      unowning_buffers[i] = *owning_buffers[i];
 
       VLOG(3) << "buffer #" << i << " allocated " << buffer_size << " bytes ["
-              << owning_buffers[i].opaque() << "]";
+              << owning_buffers[i]->opaque() << "]";
     }
 
     // Since the output buffer and all the temporary buffers were written into
     // by the JITed code, msan has no way of knowing their memory was
     // initialized. Mark them initialized so that msan doesn't flag loads from
     // these buffers.
-    TF_ANNOTATE_MEMORY_IS_INITIALIZED(owning_buffers[i].opaque(), buffer_size);
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(owning_buffers[i]->opaque(), buffer_size);
   }
 
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
@@ -247,7 +247,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
           // ownership, and hence a buffer coming from there cannot be part of
           // the new ScopedShapedBuffer we create for the result (which assumes
           // ownership).
-          *device_memory = buffer.Forget();
+          *device_memory = buffer.Release();
         } else {
           auto output_alias = input_output_alias.GetAliasedOutput(
               slice.allocation()->parameter_number(),

@@ -61,8 +61,7 @@ StatusOr<se::DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
   allocated_bytes_excluding_redzones_ += byte_size;
 
   static_assert(sizeof(uint8) == 1, "Unexpected size");
-  se::DeviceMemory<uint8> allocated_buffer_memory(
-      allocated_buffer.AsDeviceMemoryBase());
+  se::DeviceMemory<uint8> allocated_buffer_memory(*allocated_buffer);
 
   se::DeviceMemory<uint8> lhs_redzone = stream->parent()->GetSubBuffer(
       &allocated_buffer_memory, 0, redzone_size_);
@@ -295,10 +294,9 @@ StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
-        CheckRedzonesForBuffer(stream, buf_and_size.first.AsDeviceMemoryBase(),
-                               out_param.cref(), *comparison_kernel,
-                               buf_and_size.second, redzone_size_,
-                               redzone_pattern_));
+        CheckRedzonesForBuffer(stream, *buf_and_size.first, out_param.cref(),
+                               *comparison_kernel, buf_and_size.second,
+                               redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;
     }
