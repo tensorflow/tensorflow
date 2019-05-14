@@ -40,9 +40,10 @@ void TestOneDepthwiseConv(
   reference_ops::DepthwiseConv(params, input_shape, input_data, filter_shape,
                                filter_data, bias_shape, bias_data, output_shape,
                                reference_output_data.data());
-  optimized_ops::DepthwiseConv(params, input_shape, input_data, filter_shape,
-                               filter_data, bias_shape, bias_data, output_shape,
-                               output_data.data());
+  optimized_ops::DepthwiseConvImpl(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data.data(), /*thread_start=*/0,
+      /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
 
   double sum_abs_diff = 0;
   float max_abs_val = 0;
