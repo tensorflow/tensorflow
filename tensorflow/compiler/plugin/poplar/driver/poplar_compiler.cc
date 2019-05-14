@@ -338,14 +338,14 @@ void PrintHelpString() { LOG(INFO) << tensorflow::GetFlagUsageString(); }
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
     perftools::gputools::StreamExecutor* executor,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
     perftools::gputools::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   if (stream_exec == nullptr) {
     return tensorflow::errors::Unknown(
         "NULL stream pointer in poplar compiler");
@@ -742,7 +742,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 Status PoplarCompiler::RunHloPassesOnModuleGroup(
     HloModuleGroup* module_group,
     absl::Span<se::StreamExecutor* const> executors,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   return xla::InvalidArgument("Module groups not supported on Poplar");
 }
 
@@ -750,14 +750,14 @@ StatusOr<std::vector<std::unique_ptr<Executable>>>
 PoplarCompiler::RunBackendOnModuleGroup(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   return xla::InvalidArgument("Module groups not supported on Poplar");
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   if (module_group->empty()) {
     return std::vector<std::unique_ptr<Executable>>();
   }

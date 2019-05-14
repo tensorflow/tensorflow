@@ -593,5 +593,10 @@ Status BaseVisitor::HandleCholesky(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandlePartitionId(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+
 }  // namespace poplarplugin
 }  // namespace xla

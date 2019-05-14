@@ -16,6 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
@@ -25,14 +28,16 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 
 #include <poplar/Device.hpp>
 #include <poplar/DeviceManager.hpp>
 #include <poplar/Graph.hpp>
+
+// Pre-processor convert token to string
+#define QUOTE(str) #str
+#define TOSTRING(str) QUOTE(str)
 
 namespace se = ::stream_executor;
 
@@ -101,6 +106,21 @@ void PoplarPlatform::RegisterTraceListener(
 
 void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
+}
+
+StatusOr<std::unique_ptr<se::DeviceDescription>>
+PoplarPlatform::DescriptionForDevice(int ordinal) const {
+  se::internal::DeviceDescriptionBuilder builder;
+
+  std::string tf_poplar_build_tag = TOSTRING(TF_POPLAR_BUILD_TAG);
+
+  builder.set_name("Poplar");
+  const auto version = poplar::versionString() +
+                       " (Poplar package: " + poplar::packageHash() +
+                       ") (Tensorflow package: " + tf_poplar_build_tag + ")";
+  builder.set_platform_version(version);
+
+  return builder.Build();
 }
 
 Status PoplarPlatform::ConfigurePoplarDevices(const IpuOptions& opts) {

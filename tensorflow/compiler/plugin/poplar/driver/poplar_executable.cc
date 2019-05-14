@@ -87,7 +87,7 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
   PoplarExecutor* poplarExecutor(
       static_cast<PoplarExecutor*>(executor->implementation()));
 
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
   se::DeviceMemoryBase result;
   PoplarExecutor::AsPoplarStream(stream)->BlockUntilDone();

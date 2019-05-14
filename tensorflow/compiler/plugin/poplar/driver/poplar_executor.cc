@@ -54,10 +54,6 @@ limitations under the License.
 #include <poplar/IPUModel.hpp>
 #include <poplar/Tensor.hpp>
 
-// Pre-processor convert token to string
-#define QUOTE(str) #str
-#define TOSTRING(str) QUOTE(str)
-
 /*
  * TensorControl is a structure that maintains state about the location
  * of a tensor - either on the device or cached on the host.
@@ -515,19 +511,15 @@ bool PoplarExecutor::SynchronizeAllActivity() {
   return true;
 }
 
-se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
-  se::internal::DeviceDescriptionBuilder builder;
-
-  std::string tf_poplar_build_tag = TOSTRING(TF_POPLAR_BUILD_TAG);
-
-  builder.set_name("Poplar");
-  const auto version = poplar::versionString() +
-                       " (Poplar package: " + poplar::packageHash() +
-                       ") (Tensorflow package: " + tf_poplar_build_tag + ")";
-  builder.set_platform_version(version);
-
-  auto built = builder.Build();
-  return built.release();
+StatusOr<std::unique_ptr<se::DeviceDescription>>
+PoplarExecutor::CreateDeviceDescription() const {
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::PLATFORM_NAME);
+  if (platform.ok()) {
+    auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
+    return p->DescriptionForDevice(0);
+  }
+  return InternalError("Failed to create device description.");
 }
 
 std::string PoplarExecutor::GetDeviceTargetName() const {
@@ -997,7 +989,7 @@ void PoplarExecutor::UpdateOutputsHandleMap(
 }
 
 se::DeviceMemoryBase PoplarExecutor::ConstantOutputAllocation::GetAllocation(
-    xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
+    se::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
     const int64 output_index, int64& flat_tensor_index, const Args&,
     const InputOutputAliasingMap::OutputInfo&, const ArgsHandleMap&,
     const int ordinal) const {
@@ -1017,7 +1009,7 @@ se::DeviceMemoryBase PoplarExecutor::ConstantOutputAllocation::GetAllocation(
 }
 
 se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
-    xla::DeviceMemoryAllocator* allocator, const xla::Shape&,
+    se::DeviceMemoryAllocator* allocator, const xla::Shape&,
     const int64 output_index, int64& flat_tensor_index, const Args& args,
     const InputOutputAliasingMap::OutputInfo&, const ArgsHandleMap& args_map,
     const int ordinal) const {
@@ -1062,7 +1054,7 @@ se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
 }
 
 se::DeviceMemoryBase PoplarExecutor::BufferOutputAllocation::GetAllocation(
-    xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
+    se::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
     const int64 output_index, int64& flat_tensor_index, const Args& args,
     const InputOutputAliasingMap::OutputInfo& output_info,
     const ArgsHandleMap& args_map, const int ordinal) const {
@@ -1096,7 +1088,7 @@ se::DeviceMemoryBase PoplarExecutor::BufferOutputAllocation::GetAllocation(
 }
 
 se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
-    xla::DeviceMemoryAllocator* allocator,
+    se::DeviceMemoryAllocator* allocator,
     const PoplarExecutor::OutputAllocation& allocation_info,
     const xla::Shape& shape, const int64 output_index, int64& flat_tensor_index,
     const Args& args, const InputOutputAliasingMap::OutputInfo& output_info) {
@@ -1125,7 +1117,7 @@ se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
 
 se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
     const xla::poplarplugin::PoplarExecutable& executable,
-    xla::DeviceMemoryAllocator* allocator,
+    se::DeviceMemoryAllocator* allocator,
     const PoplarExecutor::OutputAllocation& allocation_info,
     const xla::Shape& shape, const Args& args,
     const InputOutputAliasingMap& input_output_aliasing_map) {
@@ -1447,7 +1439,7 @@ Status PoplarExecutor::RegisterOutfeeds(const OutfeedInfos& outfeed_infos) {
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
     xla::poplarplugin::PoplarExecutable& executable,
-    xla::DeviceMemoryAllocator* allocator, const Args& args) {
+    se::DeviceMemoryAllocator* allocator, const Args& args) {
   std::lock_guard<std::recursive_mutex> g(mutex_);
   const auto& input_output_aliasing_map =
       executable.GetInputOutputAliasingMap();

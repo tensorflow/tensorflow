@@ -438,7 +438,7 @@ main {
   EXPECT_FALSE(output_infos[2].IsResourceModified());
   EXPECT_FALSE(output_infos[3].IsResourceModified());
 
-  StreamExecutorMemoryAllocator allocator(platform, {stream_executor});
+  se::StreamExecutorMemoryAllocator allocator(platform, {stream_executor});
 
   se::DeviceMemoryBase buf0 = allocator.Allocate(0, sizeof(float) * 2, false)
                                   .ConsumeValueOrDie()

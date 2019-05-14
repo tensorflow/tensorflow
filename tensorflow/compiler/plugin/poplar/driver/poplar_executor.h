@@ -22,9 +22,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTOR_H_
 
-#include "tensorflow/stream_executor/host/host_stream.h"
-#include "tensorflow/stream_executor/host/host_timer.h"
-
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
@@ -33,11 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/host/host_stream.h"
+#include "tensorflow/stream_executor/host/host_timer.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -203,7 +203,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return false;
   }
 
-  se::DeviceDescription* PopulateDeviceDescription() const override;
+  StatusOr<std::unique_ptr<se::DeviceDescription>>
+  CreateDeviceDescription() const override;
 
   Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return Status::OK();
@@ -346,7 +347,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   StatusOr<se::DeviceMemoryBase> ExecuteEngine(
       se::StreamExecutor* executor, xla::poplarplugin::PoplarExecutable&,
-      xla::DeviceMemoryAllocator* allocator, const Args&);
+      se::DeviceMemoryAllocator* allocator, const Args&);
 
   StatusOr<se::DeviceMemoryBase> GetTupleBufferByIndex(
       const se::DeviceMemoryBase& base, int64 value);
@@ -432,7 +433,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   class OutputAllocation {
    public:
     virtual se::DeviceMemoryBase GetAllocation(
-        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        se::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
         const Args&, const InputOutputAliasingMap::OutputInfo&,
         const ArgsHandleMap&, const int) const = 0;
 
@@ -446,7 +447,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
         : constants_(constants) {}
 
     se::DeviceMemoryBase GetAllocation(
-        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        se::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
         const Args&, const InputOutputAliasingMap::OutputInfo&,
         const ArgsHandleMap&, const int) const override;
 
@@ -464,7 +465,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
           input_output_aliasing_map_(io_map) {}
 
     se::DeviceMemoryBase GetAllocation(
-        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        se::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
         const Args&, const InputOutputAliasingMap::OutputInfo&,
         const ArgsHandleMap&, const int) const override;
 
@@ -479,20 +480,20 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     BufferOutputAllocation(){};
 
     se::DeviceMemoryBase GetAllocation(
-        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        se::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
         const Args&, const InputOutputAliasingMap::OutputInfo&,
         const ArgsHandleMap&, const int) const override;
   };
 
   se::DeviceMemoryBase HandleOutputBuffer(
-      xla::DeviceMemoryAllocator* allocator,
+      se::DeviceMemoryAllocator* allocator,
       const OutputAllocation& allocation_info, const xla::Shape& shape,
       const int64 output_index, int64& flat_tensor_index, const Args& args,
       const InputOutputAliasingMap::OutputInfo& output_info);
 
   se::DeviceMemoryBase GetOutputBuffer(
       const xla::poplarplugin::PoplarExecutable& executable,
-      xla::DeviceMemoryAllocator* allocator,
+      se::DeviceMemoryAllocator* allocator,
       const OutputAllocation& allocation_info, const xla::Shape& shape,
       const Args& args, const InputOutputAliasingMap& output_info);
 

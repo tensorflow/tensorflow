@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
 
+#include "absl/synchronization/notification.h"
+
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/core/platform/macros.h"
@@ -175,7 +177,7 @@ class PoplarOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   int32 length_;
   StatusOr<Shape> status_;
   void* destination_;
-  tensorflow::Notification done_;
+  absl::Notification done_;
 };
 
 class PoplarTransferManager : public GenericTransferManager {

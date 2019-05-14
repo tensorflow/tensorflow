@@ -23,12 +23,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/mutex.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
 
+#include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
@@ -79,6 +81,9 @@ class PoplarPlatform : public se::Platform {
   void RegisterTraceListener(std::unique_ptr<se::TraceListener>) override;
 
   void UnregisterTraceListener(se::TraceListener* listener) override;
+
+  StatusOr<std::unique_ptr<se::DeviceDescription>>
+  DescriptionForDevice(int ordinal) const override;
 
   // Poplar specific interface
 
