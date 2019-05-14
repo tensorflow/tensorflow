@@ -22,6 +22,7 @@ from tensorflow.contrib.framework.python import ops as contrib_ops
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import graph_matcher
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,6 +37,8 @@ from tensorflow.python.platform import googletest
 class GraphMatcherTest(test_util.TensorFlowTestCase):
 
   def test_conv_layer(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     g = ops.Graph()
     with g.as_default():
       inputs = array_ops.placeholder(dtypes.float32, shape=[8, 5, 5, 3])

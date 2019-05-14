@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import device_properties_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1456,6 +1457,8 @@ class LayoutOptimizerTest(test.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testBinaryOpSecondPort(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     if test.is_gpu_available(cuda_only=True):
       output = _model_with_second_port()
 

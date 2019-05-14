@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
@@ -340,6 +341,8 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_conv_bn(self):
     """Test graph with convolution followed by batch norm."""
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
@@ -360,6 +363,8 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_conv_bn_dropout(self):
     """Test dropout precision of convolution batch norm graph."""
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])

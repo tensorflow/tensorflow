@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import fold_batch_norms
 from tensorflow.contrib.quantize.python import quantize
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -484,6 +485,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self._AssertIdempotent(graph)
 
   def testQuantize_Conv2dWithBatchNorm(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunBatchNormTestOverParameters(self._TestQuantize_Conv2dWithBatchNorm)
 
   def _TestQuantize_Conv2dWithBatchNorm(self, activation, activation_op_name,
@@ -541,6 +544,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           use_resource)
 
   def testQuantize_FCWithBatchNorm(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunBatchNormTestOverParameters(self._TestQuantize_FCWithBatchNorm)
 
   def _TestQuantize_FCWithBatchNorm(self, activation, activation_op_name,
@@ -596,6 +601,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         use_resource)
 
   def testQuantize_DepthwiseConv2dWithBatchNorm(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunBatchNormTestOverParameters(
         self._TestQuantize_DepthwiseConv2dWithBatchNorm)
 
@@ -654,6 +661,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           with_bypass, delay, use_resource)
 
   def testQuantize_AtrousConvWithBatchNorm(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunBatchNormTestOverParameters(
         self._TestQuantize_AtrousConvWithBatchNorm)
 
@@ -723,6 +732,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(graph_def_before, graph_def_after)
 
   def testBatchNormForcedUpdates(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     parameter_list = [
         # (activation, activation_op_name, fused_batch_norm)
         (nn_ops.relu6, 'Relu6', False),

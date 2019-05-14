@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import fold_batch_norms
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -167,6 +168,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2d(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverParameters(self._TestFoldConv2d)
 
   def testMultipleLayerConv2d(self,
@@ -337,6 +340,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2dUnknownShape(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
   def _TestFoldFullyConnectedLayer(
@@ -432,6 +437,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
 
   def _TestFoldDepthwiseConv2d(self, relu, relu_op_name, with_bypass,
@@ -543,6 +550,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldDepthwiseConv2d(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
   def _TestFoldAtrousConv2d(self, relu, relu_op_name, with_bypass, has_scaling,
@@ -660,6 +669,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldAtrousConv2d(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverParameters(self._TestFoldAtrousConv2d)
 
   def _TestCompareFoldAndUnfolded(self,

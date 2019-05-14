@@ -23,6 +23,7 @@ import functools
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize_graph
 from tensorflow.python import training
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -275,6 +276,8 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertEqual(graph_def_before, graph_def_after)
 
   def testIdentityNode(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverAllRewrites(self._TestIdentityNode)
 
   def _TestIdentityNode(self, rewrite_fn):
@@ -296,6 +299,8 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
                                 ['test/BatchNorm/FusedBatchNormV3'])
 
   def testActivationQuantization(self):
+    if not compat.forward_compatible(2019, 6, 6):
+      self.skipTest("Skipping test for future functionality.")
     self._RunTestOverAllRewrites(self._TestActivationQuantization)
 
   def _TestActivationQuantization(self, rewrite_fn):
