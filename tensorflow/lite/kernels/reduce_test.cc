@@ -228,6 +228,35 @@ class AnyOpDynamicModel : public BaseOpModel {
   }
 };
 
+// Model for the tests case where axis is a const tensor.
+class AllOpConstModel : public BaseOpModel {
+ public:
+  AllOpConstModel(const TensorData& input, const TensorData& output,
+                  std::initializer_list<int> axis_shape,
+                  std::initializer_list<int> axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_ALL, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Model for the tests case where axis is a dynamic tensor.
+class AllOpDynamicModel : public BaseOpModel {
+ public:
+  AllOpDynamicModel(const TensorData& input, const TensorData& output,
+                    const TensorData& axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddInput(axis);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_ALL, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
 // for quantized Add, the error shouldn't exceed step
 float GetTolerance(int min, int max) { return (max - min) / 255.0; }
 
@@ -1219,6 +1248,90 @@ TEST(DynamicAnyOpTest, Scalar) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
+}
+
+// Tests for reduce_all
+TEST(ConstAllOpTestFalse, NotKeepDims) {
+  std::vector<bool> data = {false, false, false, false, false, false,
+                            false, true,  false, false, false, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}}, {4},
+                    {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false, false}));
+}
+
+TEST(ConstAllOpTestTrue, NotKeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, true,
+                            true, true,  true, true, true, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}}, {4},
+                    {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true}));
+}
+
+TEST(ConstAllOpTest, KeepDims) {
+  std::vector<bool> data = {false, false, false, false, false, false,
+                            false, true,  false, false, false, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false, false, false}));
+}
+
+TEST(DynamicAllOpTest, NotKeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, true,
+                            true, true,  true, true, true, true};
+  AllOpDynamicModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}},
+                      {TensorType_INT32, {4}}, false);
+  std::vector<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true}));
+}
+
+TEST(DynamicAllOpTest, KeepDims) {
+  std::vector<bool> data = {true, false, true, true, true, true,
+                            true, true,  true, false, true, true};
+  AllOpDynamicModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}},
+                      {TensorType_INT32, {2}}, true);
+  std::vector<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false, false, true}));
+}
+
+TEST(DynamicAllOpTestFalse, Scalar) {
+  std::vector<bool> data = {false};
+  AllOpDynamicModel m({TensorType_BOOL, {1}}, {TensorType_BOOL, {1}},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
+}
+
+TEST(DynamicAllOpTestTrue, Scalar) {
+  std::vector<bool> data = {true};
+  AllOpDynamicModel m({TensorType_BOOL, {1}}, {TensorType_BOOL, {1}},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true}));
 }
 
 }  // namespace
