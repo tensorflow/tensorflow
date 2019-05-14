@@ -178,7 +178,6 @@ class GraphConverter(object):
     self._calibration_graph = None
     self._calibration_sess = None
     self._calibration_data_collected = False
-    self._calibration_tables = []
 
   def get_rewriter_config(self):
     """Returns a RewriterConfig proto for TRT transformation.
@@ -355,7 +354,11 @@ class GraphConverter(object):
           fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
 
     self.finalize_calibration()
-    return self._converted_graph_def, self._calibration_tables
+    return self._converted_graph_def
+
+  def get_calibration_tables(self):
+      """Return calibration tables of the graph generated during INT8 calibration."""
+      return self._calibration_tables
 
   def finalize_calibration(self):
     """Clean up calibration resources and finalize the calibration.
@@ -773,17 +776,20 @@ class TrtGraphConverter(GraphConverter):
         cached_engine_batches=cached_engine_batches)
     _check_conversion_params(self._conversion_params)
 
+    self._calibration_tables = {}
+
   def get_rewriter_config(self):
     return get_tensorrt_rewriter_config(
         conversion_params=self._conversion_params)
 
-  def set_calib_tables(self, calib_tables):
+  def set_calibration_tables(self, calibration_tables):
     """Set calibration tables into converted graph definition."""
     assert self._converted, "Calibration tables can only be set on converted graph"
     trt_nodes = [n for n in self._converted_graph_def.node if n.op == "TRTEngineOp"]
-    assert len(trt_nodes) == len(calib_tables), "Mismatch in number of TRT nodes and calibration tables"
-    for trt_node, calib_table in zip(trt_nodes, calib_tables):
-      trt_node.attr["calibration_data"].s = calib_table
+    assert len(trt_nodes) == len(calibration_tables), "Mismatch in number of TRT nodes and calibration tables"
+    for trt_node in trt_nodes:
+      assert trt_node.name in calibration_tables, "No calibration data found for TRTEngineOp: {}".format(trt_node.name)
+      trt_node.attr["calibration_data"].s = calibration_tables[trt_node.name]
     return self._converted_graph_def
 
   def finalize_calibration(self):
@@ -800,7 +806,7 @@ class TrtGraphConverter(GraphConverter):
     device_to_get_resource_op_map = {}
 
     # Reset calibration tables
-    self._calibration_tables = []
+    self._calibration_tables = {}
 
     with self._calibration_graph.as_default():
       container_input = array_ops.placeholder(dtypes.string)
@@ -829,7 +835,7 @@ class TrtGraphConverter(GraphConverter):
                 resource_name_input: node.name
             })
         node.attr["calibration_data"].s = calibration_result
-        self._calibration_tables.append(calibration_result)
+        self._calibration_tables[node.name] = calibration_result
 
     self._calibration_data_collected = True
     self._calibration_sess.close()
@@ -1165,7 +1171,7 @@ def create_inference_graph(
       use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if precision_mode == TrtPrecisionMode.INT8 and calib_tables:
-      converted_graph_def = trt_converter.set_calib_tables(calib_tables)
+    converted_graph_def = trt_converter.set_calib_tables(calib_tables)
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)
   return converted_graph_def
