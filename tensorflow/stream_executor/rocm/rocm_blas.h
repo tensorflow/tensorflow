@@ -33,6 +33,18 @@ class Stream;
 
 namespace gpu {
 
+// Type conversion helper that helps to map non-rocblas types to rocblas types
+// Right now, it only converts the Eigen::half type to rocblas_half type
+template <typename T>
+struct RocBlasTypeConversionHelper {
+  using mapped_type = T;
+};
+
+template <>
+struct RocBlasTypeConversionHelper<Eigen::half> {
+  using mapped_type = rocblas_half;
+};
+
 // Opaque and unique identifier for the rocBLAS plugin.
 extern const PluginId kRocBlasPlugin;
 
@@ -98,23 +110,18 @@ class ROCMBlas : public blas::BlasSupport {
                               /*err_on_failure=*/false, args...);
   }
 
-  // A helper struct to for type conversion in DoBlasGemmBatchedInternal
-  template <typename T>
-  struct EigenHalfToRocBlasHalf{
-    using type = T;
-  };
-  
   // A helper allocation funciton to convert raw pointers memory layout to
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
-      const std::vector<typename EigenHalfToRocBlasHalf<T>::type *> &raw_ptrs,
-      int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
-      Stream *stream,
-      std::unique_ptr<
-          TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>
-          *temp_memory,
-      DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type> *device_memory);
+      const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type*>&
+          raw_ptrs,
+      int batch_count, uint64_t batch_stride,
+      ScratchAllocator* scratch_allocator, Stream* stream,
+      std::unique_ptr<TemporaryDeviceMemory<
+          typename RocBlasTypeConversionHelper<T>::mapped_type>>* temp_memory,
+      DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>*
+          device_memory);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.

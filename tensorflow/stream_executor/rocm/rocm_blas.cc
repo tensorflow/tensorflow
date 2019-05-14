@@ -1811,23 +1811,19 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
   return false;
 }
 
-template <>
-struct ROCMBlas::EigenHalfToRocBlasHalf<Eigen::half> {
-  using type = rocblas_half;
-};
-
 template <typename T>
 port::Status ROCMBlas::AllocateStridedBuffer(
-    const std::vector<typename EigenHalfToRocBlasHalf<T>::type *> &raw_ptrs,
-    int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
-    Stream *stream,
-    std::unique_ptr<
-        TemporaryDeviceMemory<typename EigenHalfToRocBlasHalf<T>::type>>
-        *temp_memory,
-    DeviceMemory<typename EigenHalfToRocBlasHalf<T>::type> *device_memory) {
+    const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type*>&
+        raw_ptrs,
+    int batch_count, uint64_t batch_stride, ScratchAllocator* scratch_allocator,
+    Stream* stream,
+    std::unique_ptr<TemporaryDeviceMemory<
+        typename RocBlasTypeConversionHelper<T>::mapped_type>>* temp_memory,
+    DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>*
+        device_memory) {
   assert(device_memory != nullptr);
 
-  using MAPPED_T = typename EigenHalfToRocBlasHalf<T>::type;
+  using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
 
   bool needs_allocate_strided = false;
   for (int i = 1; i < batch_count; ++i) {
@@ -1885,9 +1881,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
     T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  // MAPPED_T will be same as T for all types except Eigen::Half
-  // for T = Eigen::half, MAPPED_T = rocblas_half
-  using MAPPED_T = typename EigenHalfToRocBlasHalf<T>::type;
+  using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
 
   // Sanity checks before making any further progress
   uint64_t batch_stride_a = 0;
