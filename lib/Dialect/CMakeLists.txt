@@ -1,3 +1,6 @@
+add_subdirectory(FxpMathOps)
+add_subdirectory(QuantOps)
+
 add_llvm_library(MLIRDialect
   Traits.cpp
 
