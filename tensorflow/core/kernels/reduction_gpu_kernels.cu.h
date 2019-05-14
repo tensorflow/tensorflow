@@ -644,7 +644,6 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
         (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
-    dim3 num_threads(128, 1, 1);
     TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
                                  block_dim, 0, cu_stream,
                                  (T*)temp_storage.flat<int8_t>().data(), out,
