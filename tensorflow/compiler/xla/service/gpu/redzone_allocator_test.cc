@@ -29,6 +29,18 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+
+static void EXPECT_REDZONE_OK(StatusOr<RedzoneCheckStatus> status) {
+  EXPECT_TRUE(status.ok());
+  EXPECT_TRUE(status.ValueOrDie().ok());
+}
+
+static void EXPECT_REDZONE_VIOLATION(StatusOr<RedzoneCheckStatus> status) {
+  EXPECT_TRUE(status.ok());
+  EXPECT_FALSE(status.ValueOrDie().ok());
+}
+
 TEST(RedzoneAllocatorTest, WriteToRedzone) {
   constexpr int64 kRedzoneSize = 1 << 23;  // 8MiB redzone on each side
   // Redzone pattern should not be equal to zero; otherwise modify_redzone will
@@ -51,7 +63,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemory<uint8> buf,
                           allocator.AllocateBytes(&stream,
                                                   /*byte_size=*/kAllocSize));
-  TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
   se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
@@ -91,13 +103,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     char old_redzone_value = 0;
     {
       XLA_SCOPED_LOGGING_TIMER("Checking redzones");
-      TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+      EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
     }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
-    EXPECT_FALSE(allocator.CheckRedzones(&stream).ok());
+    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones(&stream));
     stream.ThenMemcpy(&redzone_at_offset, &old_redzone_value, 1);
-    TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
   };
 
   modify_redzone(lhs_redzone, /*offset=*/0, "lhs");
@@ -124,7 +136,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   se::Stream stream(stream_exec);
   stream.Init();
   (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
-  TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
 }
 
 }  // namespace
