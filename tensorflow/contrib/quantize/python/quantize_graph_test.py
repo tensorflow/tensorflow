@@ -293,7 +293,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
 
     conv_out_identity = graph.get_operation_by_name('test/conv_out')
     self._AssertOutputGoesToOps(conv_out_identity, graph,
-                                ['test/BatchNorm/FusedBatchNorm'])
+                                ['test/BatchNorm/FusedBatchNormV3'])
 
   def testActivationQuantization(self):
     self._RunTestOverAllRewrites(self._TestActivationQuantization)

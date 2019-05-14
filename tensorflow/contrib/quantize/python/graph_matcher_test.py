@@ -65,7 +65,7 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
         name='relu',
         inputs=[
             graph_matcher.OpTypePattern(
-                'FusedBatchNorm',
+                'FusedBatchNormV3',
                 inputs=[
                     graph_matcher.OpTypePattern(
                         'Conv2D', inputs=[inputs_pattern, '*']), '*', '*', '*',
