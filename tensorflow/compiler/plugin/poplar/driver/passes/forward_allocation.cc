@@ -269,14 +269,25 @@ void ForwardAllocation::FlattenInputs(
         if (tuple_indexes.contains(tuple_index)) {
           // We can't defer allocation here - we require GTEs to be unique.
           return;
-        } else if (!user->has_compatible_sharding(inst)) {
-          // We can't defer allocation here - we require compatible sharding -
-          // otherwise a copy would have to take place which requires the tensor
-          // to be allocated.
-          return;
-        } else {
-          tuple_indexes.insert(tuple_index);
         }
+        if (user->has_sharding() || inst->has_sharding()) {
+          // Make sure they both have sharding.
+          if (!(user->has_sharding() && inst->has_sharding())) {
+            return;
+          }
+          // We require compatible sharding - otherwise a copy would have to
+          // take place which requires the tensor to be allocated.
+          const auto& sharding = inst->sharding();
+          const auto& tuple_sub_sharding =
+              sharding.IsTuple()
+                  ? sharding.GetSubSharding(inst->shape(), {tuple_index})
+                  : sharding;
+          if (tuple_sub_sharding != user->sharding()) {
+            // We can't defer allocation here due to incompatible sharding.
+            return;
+          }
+        }
+        tuple_indexes.insert(tuple_index);
       } else {
         // We can't defer allocation here - we can only look through GTEs.
         return;
