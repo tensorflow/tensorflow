@@ -146,7 +146,7 @@ string GetROCDLDir(const HloModuleConfig& config) {
 // It takes a compiler pointer, as passes may compile and execute HLOs on the
 // fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         DeviceMemoryAllocator* device_allocator,
+                         se::DeviceMemoryAllocator* device_allocator,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
@@ -379,7 +379,7 @@ AMDGPUCompiler::AMDGPUCompiler()
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   VLOG(3) << "*** HLO Before Optimization";
   XLA_VLOG_LINES(3, module->ToString());
@@ -398,7 +398,7 @@ StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
@@ -455,7 +455,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
 #endif
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
-                                      &stream_exec->GetDeviceDescription(),
+                                      stream_exec->platform(), &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();

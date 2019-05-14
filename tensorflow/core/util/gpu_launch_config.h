@@ -142,7 +142,7 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
-inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+inline GpuLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const Eigen::GpuDevice& d) {
   return GetGpuLaunchConfig(work_element_count, d);
 }
@@ -194,7 +194,7 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   return config;
 }
 template <typename DeviceFunc>
-GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
+GpuLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                      const Eigen::GpuDevice& d, DeviceFunc func,
                                      size_t dynamic_shared_memory_size,
                                      int block_size_limit) {
@@ -246,7 +246,7 @@ GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   return config;
 }
 template <typename DeviceFunc>
-GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
+GpuLaunchConfig GetCudaLaunchConfigFixedBlockSize(
     int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
     size_t dynamic_shared_memory_size, int fixed_block_size) {
   return GetGpuLaunchConfigFixedBlockSize(work_element_count, d, func,
@@ -288,7 +288,7 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
   return config;
 }
-inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
+inline Gpu2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                                 const Eigen::GpuDevice& d) {
   return GetGpu2DLaunchConfig(xdim, ydim, d);
 }
@@ -370,7 +370,7 @@ Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
   return config;
 }
 template <typename DeviceFunc>
-Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
+Gpu3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
                                          const Eigen::GpuDevice& d,
                                          DeviceFunc func,
                                          size_t dynamic_shared_memory_size,
@@ -380,7 +380,7 @@ Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
 }
 
 template <typename DeviceFunc>
-Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
+Gpu2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                        const Eigen::GpuDevice& d,
                                        DeviceFunc func,
                                        size_t dynamic_shared_memory_size,
@@ -403,7 +403,7 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
   return *ptr;
 }
 template <typename DeviceFunc>
-Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
+Gpu2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                          const Eigen::GpuDevice& d,
                                          DeviceFunc func,
                                          size_t dynamic_shared_memory_size,
