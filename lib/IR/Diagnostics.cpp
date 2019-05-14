@@ -361,10 +361,12 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Diagnostic &diag) {
   if (auto callLoc = loc.dyn_cast<CallSiteLoc>()) {
     // Print the call stack while valid, or until the limit is reached.
     Location callerLoc = callLoc->getCaller();
-    for (unsigned currentDepth = 0; currentDepth < callStackLimit && callLoc;
-         ++currentDepth, callLoc = callerLoc.dyn_cast<CallSiteLoc>()) {
+    for (unsigned curDepth = 0; curDepth < callStackLimit; ++curDepth) {
       emitDiagnostic(callerLoc, "called from", DiagnosticSeverity::Note);
-      callerLoc = callLoc->getCaller();
+      if ((callLoc = callerLoc.dyn_cast<CallSiteLoc>()))
+        callerLoc = callLoc->getCaller();
+      else
+        break;
     }
   }
 
@@ -424,6 +426,17 @@ llvm::SMLoc SourceMgrDiagnosticHandler::convertLocToSMLoc(FileLineColLoc loc) {
   // the buffer.
   if (lineNo || position + columnNo > end)
     return llvm::SMLoc::getFromPointer(membuf->getBufferStart());
+
+  // If the column is zero, try to skip to the first non-whitespace character.
+  if (columnNo == 0) {
+    auto isNewline = [](char c) { return c == '\n' || c == '\r'; };
+    auto isWhitespace = [](char c) { return c == ' ' || c == '\t'; };
+
+    // Look for a valid non-whitespace character before the next line.
+    for (auto *newPos = position; newPos < end && !isNewline(*newPos); ++newPos)
+      if (!isWhitespace(*newPos))
+        return llvm::SMLoc::getFromPointer(newPos);
+  }
 
   // Otherwise return the right pointer.
   return llvm::SMLoc::getFromPointer(position + columnNo);
