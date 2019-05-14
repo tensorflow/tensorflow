@@ -441,6 +441,9 @@ public:
   void emitDiagnostic(Location loc, Twine message, DiagnosticSeverity kind);
 
 protected:
+  /// Emit the given diagnostic with the held source manager.
+  void emitDiagnostic(Diagnostic &diag);
+
   /// Get a memory buffer for the given file, or nullptr if no file is
   /// available.
   const llvm::MemoryBuffer *getBufferForFile(StringRef filename);
@@ -450,7 +453,11 @@ protected:
 
 private:
   /// Convert a location into the given memory buffer into an SMLoc.
-  llvm::SMLoc convertLocToSMLoc(Location loc);
+  llvm::SMLoc convertLocToSMLoc(FileLineColLoc loc);
+
+  /// The maximum depth that a call stack will be printed.
+  /// TODO(riverriddle) This should be a tunable flag.
+  unsigned callStackLimit = 10;
 
   std::unique_ptr<detail::SourceMgrDiagnosticHandlerImpl> impl;
 };
