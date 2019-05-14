@@ -1174,8 +1174,8 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{nvcc_path}": nvcc_path,
             "%{gcc_host_compiler_path}": str(cc),
-            "%{cuda_compute_capabilities}": to_list_of_strings(
-                cuda_config.compute_capabilities,
+            "%{cuda_compute_capabilities}": ", ".join(
+                ["\"%s\"" % c for c in cuda_config.compute_capabilities],
             ),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
         }
