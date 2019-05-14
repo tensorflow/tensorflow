@@ -1,4 +1,4 @@
-//===- LowerVectorTransfers.cpp - LowerVectorTransfers Pass Impl *- C++ -*-===//
+//===- LowerVectorTransfers.cpp - LowerVectorTransfers Pass Impl ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

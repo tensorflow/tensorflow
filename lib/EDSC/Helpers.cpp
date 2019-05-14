@@ -1,4 +1,4 @@
-//===- Helpers.cpp - MLIR Declarative Helper Functionality ------*- C++ -*-===//
+//===- Helpers.cpp - MLIR Declarative Helper Functionality ----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -1,4 +1,4 @@
-//===- AffineStructures.cpp - MLIR Affine Structures Class-------*- C++ -*-===//
+//===- AffineStructures.cpp - MLIR Affine Structures Class-----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

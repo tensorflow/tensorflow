@@ -1,4 +1,4 @@
-//===- NestedMatcher.cpp - NestedMatcher Impl  ------------------*- C++ -*-===//
+//===- NestedMatcher.cpp - NestedMatcher Impl  ----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

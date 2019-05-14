@@ -1,4 +1,4 @@
-//===- MemRefBoundCheck.cpp - MLIR Affine Structures Class-----*- C++ -*-===//
+//===- MemRefBoundCheck.cpp - MLIR Affine Structures Class ----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

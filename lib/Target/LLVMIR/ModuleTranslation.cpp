@@ -1,4 +1,4 @@
-//===- ModuleTranslation.cpp - MLIR to LLVM conversion ----------*- C++ -*-===//
+//===- ModuleTranslation.cpp - MLIR to LLVM conversion --------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

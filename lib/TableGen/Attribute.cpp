@@ -1,4 +1,4 @@
-//===- Attribute.cpp - Attribute wrapper class ------------------*- C++ -*-===//
+//===- Attribute.cpp - Attribute wrapper class ----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

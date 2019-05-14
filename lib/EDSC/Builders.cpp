@@ -1,4 +1,4 @@
-//===- Builders.cpp - MLIR Declarative Builder Classes ----------*- C++ -*-===//
+//===- Builders.cpp - MLIR Declarative Builder Classes --------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

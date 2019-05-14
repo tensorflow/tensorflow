@@ -1,4 +1,4 @@
-//===- MaterializeVectors.cpp - MaterializeVectors Pass Impl ----*- C++ -*-===//
+//===- MaterializeVectors.cpp - MaterializeVectors Pass Impl --------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -1,4 +1,4 @@
-//===- Argument.cpp - Argument definitions ----------------------*- C++ -*-===//
+//===- Argument.cpp - Argument definitions --------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

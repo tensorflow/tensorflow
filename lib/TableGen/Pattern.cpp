@@ -1,4 +1,4 @@
-//===- Pattern.cpp - Pattern wrapper class ----------------------*- C++ -*-===//
+//===- Pattern.cpp - Pattern wrapper class --------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -1,4 +1,4 @@
-//===- ConvertToLLVMIR.cpp - MLIR to LLVM IR conversion ---------*- C++ -*-===//
+//===- ConvertToLLVMIR.cpp - MLIR to LLVM IR conversion -------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

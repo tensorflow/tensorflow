@@ -1,4 +1,4 @@
-//===- FileUtilities.cpp - utilities for working with files -----*- C++ -*-===//
+//===- FileUtilities.cpp - utilities for working with files ---------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -1,4 +1,4 @@
-//===- StorageUniquer.cpp - Common Storage Class Uniquer --------*- C++ -*-===//
+//===- StorageUniquer.cpp - Common Storage Class Uniquer ------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

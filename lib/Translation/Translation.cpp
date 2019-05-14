@@ -1,4 +1,4 @@
-//===- Translation.cpp - Translation registry -------------------*- C++ -*-===//
+//===- Translation.cpp - Translation registry -----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

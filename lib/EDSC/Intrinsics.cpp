@@ -1,4 +1,4 @@
-//===- Intrinsics.cpp - MLIR Operations for Declarative Builders *- C++ -*-===//
+//===- Intrinsics.cpp - MLIR Operations for Declarative Builders ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

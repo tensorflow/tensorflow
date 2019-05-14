@@ -1,4 +1,4 @@
-//===- Vectorize.cpp - Vectorize Pass Impl ----------------------*- C++ -*-===//
+//===- Vectorize.cpp - Vectorize Pass Impl --------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
