@@ -189,7 +189,7 @@ public:
       // FIXME: this seems like a bug in `cloneInto()` above?
       auto &entryBlock = f->getBlocks().front();
       int blockArgSize = entryBlock.getArguments().size();
-      assert(blockArgSize == f->getType().getInputs().size());
+      assert(blockArgSize == static_cast<int>(f->getType().getInputs().size()));
       entryBlock.addArguments(f->getType().getInputs());
       auto argList = entryBlock.getArguments();
       for (int argNum = 0; argNum < blockArgSize; ++argNum) {

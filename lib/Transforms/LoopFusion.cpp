@@ -39,6 +39,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <iomanip>
+#include <sstream>
 #define DEBUG_TYPE "affine-loop-fusion"
 
 using llvm::SetVector;

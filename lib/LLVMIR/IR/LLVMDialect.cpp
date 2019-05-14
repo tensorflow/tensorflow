@@ -576,12 +576,14 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
              nullptr;
     int position = positionElementAttr.getInt();
     if (llvmContainerType->isArrayTy()) {
-      if (position < 0 || position >= llvmContainerType->getArrayNumElements())
+      if (position < 0 || static_cast<unsigned>(position) >=
+                              llvmContainerType->getArrayNumElements())
         return parser->emitError(attributeLoc, "position out of bounds"),
                nullptr;
       llvmContainerType = llvmContainerType->getArrayElementType();
     } else if (llvmContainerType->isStructTy()) {
-      if (position < 0 || position >= llvmContainerType->getStructNumElements())
+      if (position < 0 || static_cast<unsigned>(position) >=
+                              llvmContainerType->getStructNumElements())
         return parser->emitError(attributeLoc, "position out of bounds"),
                nullptr;
       llvmContainerType = llvmContainerType->getStructElementType(position);

@@ -340,7 +340,8 @@ APInt DenseElementsAttr::RawElementIterator::operator*() const {
 
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
                                          ArrayRef<char> data) {
-  assert((type.getSizeInBits() <= data.size() * APInt::APINT_WORD_SIZE) &&
+  assert((static_cast<uint64_t>(type.getSizeInBits()) <=
+          data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
   switch (type.getElementType().getKind()) {
   case StandardTypes::BF16:

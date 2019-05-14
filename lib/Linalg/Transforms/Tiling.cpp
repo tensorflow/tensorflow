@@ -189,9 +189,9 @@ static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
                                               PerFunctionState &state) {
-  assert(ivs.size() == llvm::count_if(
+  assert(ivs.size() == static_cast<size_t>(llvm::count_if(
                            llvm::make_range(tileSizes.begin(), tileSizes.end()),
-                           [](Value *v) { return !isZero(v); }) &&
+                           [](Value *v) { return !isZero(v); })) &&
          "expected as many ivs as non-zero sizes");
   auto *context = op->getContext();
 

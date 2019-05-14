@@ -3292,7 +3292,8 @@ public:
       break;
     }
 
-    if (requiredOperandCount != -1 && result.size() != requiredOperandCount)
+    if (requiredOperandCount != -1 &&
+        result.size() != static_cast<size_t>(requiredOperandCount))
       return emitError(startLoc, "expected ")
              << requiredOperandCount << " operands";
     return success();
