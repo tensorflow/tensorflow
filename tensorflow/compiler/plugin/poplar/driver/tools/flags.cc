@@ -128,6 +128,11 @@ const PoplarXlaFlags& GetPoplarXlaFlags() {
   return *poplar_xla_flags;
 }
 
+const std::string& GetPoplarXlaFlagsString() {
+  static std::string flag_string = getenv("TF_POPLAR_FLAGS");
+  return flag_string;
+}
+
 const std::string GetFlagUsageString() {
   auto flag_usage = GetFlagUsage();
   std::stringstream usage_stream;

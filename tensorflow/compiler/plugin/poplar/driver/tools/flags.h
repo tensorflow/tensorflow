@@ -63,6 +63,9 @@ struct PoplarXlaFlags {
 // parses TF_POPLAR_FLAGS for all of them.
 const PoplarXlaFlags& GetPoplarXlaFlags();
 
+// Get the TF_POPLAR_FLAGS env var as a string
+const std::string& GetPoplarXlaFlagsString();
+
 // Getter for the flag usage string.
 const std::string GetFlagUsageString();
 }  // namespace tensorflow
