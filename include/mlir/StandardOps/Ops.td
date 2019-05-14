@@ -28,14 +28,28 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-def Standard_Dialect : Dialect {
+def Std_Dialect : Dialect {
   let name = "std";
+}
+
+// Base class for Standard dialect ops.
+class Std_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<Std_Dialect, mnemonic, traits> {
+  // For every standard op, there needs to be a:
+  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * LogicalResult verify(${C++ class of Op} op)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
+  //                                         OperationState *result)
+  // functions.
+  let printer = [{ return ::print(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+  let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
 // Base class for standard cast operations. Requires single operand and result,
 // but does not constrain them to specific types.
 class CastOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<Standard_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+    Std_Op<mnemonic, !listconcat(traits, [NoSideEffect])> {
 
   let results = (outs AnyType);
 
@@ -59,7 +73,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
 class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<Standard_Dialect, mnemonic,
+    Op<Std_Dialect, mnemonic,
        !listconcat(traits, [NoSideEffect, SameValueType])> {
 
   let results = (outs AnyType);
@@ -107,7 +121,7 @@ def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let hasConstantFolder = 0b1;
 }
 
-def AllocOp : Op<Standard_Dialect, "alloc"> {
+def AllocOp : Std_Op<"alloc"> {
   let summary = "memory allocation operation";
   let description = [{
     The "alloc" operation allocates a region of memory, as specified by its
@@ -140,10 +154,6 @@ def AllocOp : Op<Standard_Dialect, "alloc"> {
      }]
   >];
 
-  let parser = [{ return parseAllocOp(parser, result); }];
-  let printer = [{ return printAllocOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
   }];
@@ -157,7 +167,7 @@ def AndOp : IntArithmeticOp<"and", [Commutative]> {
   let hasFolder = 1;
 }
 
-def BranchOp : Op<Standard_Dialect, "br", [Terminator]> {
+def BranchOp : Std_Op<"br", [Terminator]> {
   let summary = "branch operation";
   let description = [{
     The "br" operation represents a branch operation in a function.
@@ -173,14 +183,14 @@ def BranchOp : Op<Standard_Dialect, "br", [Terminator]> {
 
   let arguments = (ins Variadic<AnyType>:$operands);
 
-  let parser = [{ return parseBranchOp(parser, result); }];
-  let printer = [{ return printBranchOp(p, *this); }];
-
   let builders = [OpBuilder<
     "Builder *, OperationState *result, Block *dest,"
     "ArrayRef<Value *> operands = {}", [{
       result->addSuccessor(dest, operands);
   }]>];
+
+  // BranchOp is fully verified by traits.
+  let verifier = ?;
 
   let extraClassDeclaration = [{
     Block *getDest();
@@ -191,7 +201,7 @@ def BranchOp : Op<Standard_Dialect, "br", [Terminator]> {
   }];
 }
 
-def CallOp : Op<Standard_Dialect, "call"> {
+def CallOp : Std_Op<"call"> {
   let summary = "call operation";
   let description = [{
     The "call" operation represents a direct call to a function.  The operands
@@ -203,10 +213,6 @@ def CallOp : Op<Standard_Dialect, "call"> {
 
   let arguments = (ins FunctionAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
-
-  let parser = [{ return parseCallOp(parser, result); }];
-  let printer = [{ return printCallOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Function *callee,"
@@ -231,7 +237,7 @@ def CallOp : Op<Standard_Dialect, "call"> {
   }];
 }
 
-def CallIndirectOp : Op<Standard_Dialect, "call_indirect"> {
+def CallIndirectOp : Std_Op<"call_indirect"> {
   let summary = "indirect call operation";
   let description = [{
     The "call_indirect" operation represents an indirect call to a value of
@@ -244,10 +250,6 @@ def CallIndirectOp : Op<Standard_Dialect, "call_indirect"> {
 
   let arguments = (ins FunctionType:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
-
-  let parser = [{ return parseCallIndirectOp(parser, result); }];
-  let printer = [{ return printCallIndirectOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
 
   let builders = [OpBuilder<
     "Builder *, OperationState *result, Value *callee,"
@@ -272,7 +274,7 @@ def CallIndirectOp : Op<Standard_Dialect, "call_indirect"> {
   let hasCanonicalizer = 0b1;
 }
 
-def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
+def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
   let summary = "constant";
 
   let arguments = (ins AnyAttr:$value);
@@ -282,10 +284,6 @@ def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
     "Builder *builder, OperationState *result, Attribute value",
     [{ build(builder, result, value.getType(), value); }]>];
 
-  let parser = [{ return parseConstantOp(parser, result); }];
-  let printer = [{ return printConstantOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-
   let extraClassDeclaration = [{
     Attribute getValue() { return getAttr("value"); }
   }];
@@ -293,7 +291,7 @@ def ConstantOp : Op<Standard_Dialect, "constant", [NoSideEffect]> {
   let hasConstantFolder = 1;
 }
 
-def DeallocOp : Op<Standard_Dialect, "dealloc"> {
+def DeallocOp : Std_Op<"dealloc"> {
   let summary = "memory deallocation operation";
   let description = [{
     The "dealloc" operation frees the region of memory referenced by a memref
@@ -308,14 +306,10 @@ def DeallocOp : Op<Standard_Dialect, "dealloc"> {
 
   let arguments = (ins MemRef<AnyType>:$memref);
 
-  let parser = [{ return parseDeallocOp(parser, result); }];
-  let printer = [{ return printDeallocOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-
   let hasCanonicalizer = 0b1;
 }
 
-def DimOp : Op<Standard_Dialect, "dim", [NoSideEffect]> {
+def DimOp : Std_Op<"dim", [NoSideEffect]> {
   let summary = "dimension index operation";
   let description = [{
     The "dim" operation takes a memref or tensor operand and returns an "index".
@@ -329,10 +323,6 @@ def DimOp : Op<Standard_Dialect, "dim", [NoSideEffect]> {
                                  "any tensor or memref type">:$memrefOrTensor,
                        APIntAttr:$index);
   let results = (outs Index);
-
-  let parser = [{ return parseDimOp(parser, result); }];
-  let printer = [{ return printDimOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Value *memrefOrTensor,"
@@ -365,7 +355,7 @@ def DivIUOp : IntArithmeticOp<"diviu"> {
   let hasConstantFolder = 0b1;
 }
 
-def ExtractElementOp : Op<Standard_Dialect, "extract_element", [NoSideEffect]> {
+def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let summary = "element extract operation";
   let description = [{
     The "extract_element" op reads a tensor or vector and returns one element
@@ -381,10 +371,6 @@ def ExtractElementOp : Op<Standard_Dialect, "extract_element", [NoSideEffect]> {
   let arguments = (ins VectorOrTensor:$aggregate,
                        Variadic<Index>:$indices);
   let results = (outs AnyType);
-
-  let parser = [{ return parseExtractElementOp(parser, result); }];
-  let printer = [{ return printExtractElementOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Value *aggregate,"
@@ -469,7 +455,7 @@ def RemIUOp : IntArithmeticOp<"remiu"> {
   let hasConstantFolder = 0b1;
 }
 
-def ReturnOp : Op<Standard_Dialect, "return", [Terminator]> {
+def ReturnOp : Std_Op<"return", [Terminator]> {
   let summary = "return operation";
   let description = [{
     The "return" operation represents a return operation within a function.
@@ -483,10 +469,6 @@ def ReturnOp : Op<Standard_Dialect, "return", [Terminator]> {
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
-
-  let parser = [{ return parseReturnOp(parser, result); }];
-  let printer = [{ return printReturnOp(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
 
   let builders = [OpBuilder<
     "Builder *b, OperationState *result", [{ build(b, result, llvm::None); }]

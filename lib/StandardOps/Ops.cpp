@@ -224,7 +224,7 @@ Value *AddIOp::fold() {
 // AllocOp
 //===----------------------------------------------------------------------===//
 
-static void printAllocOp(OpAsmPrinter *p, AllocOp op) {
+static void print(OpAsmPrinter *p, AllocOp op) {
   *p << "alloc";
 
   // Print dynamic dimension operands.
@@ -401,7 +401,7 @@ static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-static void printBranchOp(OpAsmPrinter *p, BranchOp op) {
+static void print(OpAsmPrinter *p, BranchOp op) {
   *p << "br ";
   p->printSuccessorAndUseList(op.getOperation(), 0);
 }
@@ -441,7 +441,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-static void printCallOp(OpAsmPrinter *p, CallOp op) {
+static void print(OpAsmPrinter *p, CallOp op) {
   *p << "call ";
   p->printFunctionReference(op.getCallee());
   *p << '(';
@@ -526,7 +526,7 @@ static ParseResult parseCallIndirectOp(OpAsmParser *parser,
       parser->addTypesToList(calleeType.getResults(), result->types));
 }
 
-static void printCallIndirectOp(OpAsmPrinter *p, CallIndirectOp op) {
+static void print(OpAsmPrinter *p, CallIndirectOp op) {
   *p << "call_indirect ";
   p->printOperand(op.getCallee());
   *p << '(';
@@ -1109,7 +1109,7 @@ void CondBranchOp::eraseFalseOperand(unsigned index) {
 // Constant*Op
 //===----------------------------------------------------------------------===//
 
-static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
+static void print(OpAsmPrinter *p, ConstantOp &op) {
   *p << "constant ";
   p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"value"});
 
@@ -1261,7 +1261,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
 };
 } // end anonymous namespace.
 
-static void printDeallocOp(OpAsmPrinter *p, DeallocOp op) {
+static void print(OpAsmPrinter *p, DeallocOp op) {
   *p << "dealloc " << *op.memref() << " : " << op.memref()->getType();
 }
 
@@ -1292,7 +1292,7 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // DimOp
 //===----------------------------------------------------------------------===//
 
-static void printDimOp(OpAsmPrinter *p, DimOp op) {
+static void print(OpAsmPrinter *p, DimOp op) {
   *p << "dim " << *op.getOperand() << ", " << op.getIndex();
   p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
   *p << " : " << op.getOperand()->getType();
@@ -1627,7 +1627,7 @@ void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void printExtractElementOp(OpAsmPrinter *p, ExtractElementOp op) {
+static void print(OpAsmPrinter *p, ExtractElementOp op) {
   *p << "extract_element " << *op.getAggregate() << '[';
   p->printOperands(op.getIndices());
   *p << ']';
@@ -1907,7 +1907,7 @@ static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
                  parser->resolveOperands(opInfo, types, loc, result->operands));
 }
 
-static void printReturnOp(OpAsmPrinter *p, ReturnOp op) {
+static void print(OpAsmPrinter *p, ReturnOp op) {
   *p << "return";
   if (op.getNumOperands() > 0) {
     *p << ' ';

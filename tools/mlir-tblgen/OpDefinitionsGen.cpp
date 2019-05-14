@@ -186,6 +186,9 @@ public:
   // Writes the method definitions in this op's class to the given `os`.
   void writeDefTo(raw_ostream &os) const;
 
+  // Returns the C++ class name of the op.
+  StringRef getClassName() const { return className; }
+
 private:
   StringRef className;
   StringRef extraClassDeclaration;
@@ -865,8 +868,10 @@ void OpEmitter::genParser() {
   auto &method = opClass.newMethod(
       "ParseResult", "parse", "OpAsmParser *parser, OperationState *result",
       OpMethod::MP_Static);
+  FmtContext fctx;
+  fctx.addSubst("cppClass", opClass.getClassName());
   auto parser = def.getValueAsString("parser").ltrim().rtrim(" \t\v\f\r");
-  method.body() << "  " << parser;
+  method.body() << "  " << tgfmt(parser, &fctx);
 }
 
 void OpEmitter::genPrinter() {
