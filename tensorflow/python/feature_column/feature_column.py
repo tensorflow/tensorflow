@@ -408,6 +408,41 @@ def linear_model(features,
   prediction = linear_model(features, columns)
   ```
 
+  The `sparse_combiner` argument works as follows
+  For example, for two features represented as the categorical columns:
+
+  ```python
+    # Feature 1
+
+    shape = [2, 2]
+    {
+        [0, 0]: "a"
+        [0, 1]: "b"
+        [1, 0]: "c"
+    }
+
+    # Feature 2
+
+    shape = [2, 3]
+    {
+        [0, 0]: "d"
+        [1, 0]: "e"
+        [1, 1]: "f"
+        [1, 2]: "f"
+    }
+  ```
+
+  with `sparse_combiner` as "mean", the linear model outputs consequently
+  are:
+
+  ```
+    y_0 = 1.0 / 2.0 * ( w_a + w_b ) + w_d + b
+    y_1 = w_c + 1.0 / 3.0 * ( w_e + 2.0 * w_f ) + b
+  ```
+
+  where `y_i` is the output, `b` is the bias, and `w_x` is the weight
+  assigned to the presence of `x` in the input features.
+
   Args:
     features: A mapping from key to tensors. `_FeatureColumn`s look up via these
       keys. For example `numeric_column('price')` will look at 'price' key in
@@ -426,36 +461,6 @@ def linear_model(features,
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
-      For example, for two features represented as the categorical columns:
-
-      ```python
-        # Feature 1
-
-        shape = [2, 2]
-        {
-            [0, 0]: "a"
-            [0, 1]: "b"
-            [1, 0]: "c"
-        }
-
-        # Feature 2
-
-        shape = [2, 3]
-        {
-            [0, 0]: "d"
-            [1, 0]: "e"
-            [1, 1]: "f"
-            [1, 2]: "f"
-        }
-      ```
-      with `sparse_combiner` as "mean", the linear model outputs consequently
-      are:
-      ```
-        y_0 = 1.0 / 2.0 * ( w_a + w_b ) + w_d + b
-        y_1 = w_c + 1.0 / 3.0 * ( w_e + 2.0 * w_f ) + b
-      ```
-      where `y_i` is the output, `b` is the bias, and `w_x` is the weight
-      assigned to the presence of `x` in the input features.
     weight_collections: A list of collection names to which the Variable will be
       added. Note that, variables will also be added to collections
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.

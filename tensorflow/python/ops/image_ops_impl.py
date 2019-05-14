@@ -1662,6 +1662,7 @@ def adjust_gamma(image, gamma=1, gain=1):
   input images at first to float representation, then transforms them
   pixelwise according to the equation `Out = gain * In**gamma`,
   and then converts the back to the original data type.
+
   Args:
     image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
