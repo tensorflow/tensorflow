@@ -29,7 +29,10 @@ import traceback
 import pasta
 import six
 
-import IPython.core.inputtransformer2 as ip
+try:
+    import IPython.core.inputtransformer2 as ip
+except ImportError:
+    print("Warning: Can't find IPython needed to convert notebooks")
 
 # Some regular expressions we will need for parsing
 FIND_OPEN = re.compile(r"^\s*(\[).*$")
@@ -546,10 +549,13 @@ class ASTCodeUpgrader(object):
       A tuple representing number of files processed, log of actions, errors
     """
     lines = in_file.readlines()
-    tm=ip.TransformerManager()
-    lines_with_iptyhon_translation=tm.transform_cell(lines)
+
+    #if ipython available use it to translate content
     processed_file, new_file_content, log, process_errors = (
-        self.update_string_pasta("".join(lines_with_ipython_translation), in_filename))
+        self.update_string_pasta("".join(ip.TransformerManager().transform_cell(lines) if 'ip' in globals() else lines),
+            in_filename
+            )
+        )
 
     if out_file and processed_file:
       out_file.write(new_file_content)
