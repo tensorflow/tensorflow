@@ -518,6 +518,13 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
   }
 
   const Device& device = client_->device(device_ordinal);
+  // The choice of where we wait in "synchronous" mode is arbitrary; the reason
+  // for the wait is pacing to avoid problems such as memory fragmentation, not
+  // for correctness.
+  if (!device.asynchronous()) {
+    TF_RETURN_IF_ERROR(device.compute_stream()->BlockHostUntilDone());
+  }
+
   for (BufferDefinitionEvent* event : events) {
     event->WaitForEventOnStream(device.compute_stream());
   }
@@ -561,9 +568,6 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
     device.ThenReleaseOnWorkerThread(device.compute_stream(),
                                      std::move(buffers));
     device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
-  }
-  if (!device.asynchronous()) {
-    TF_RETURN_IF_ERROR(device.compute_stream()->BlockHostUntilDone());
   }
   return PyLocalBuffer(on_host_shape, std::move(out_buffer), client_);
 }
