@@ -442,9 +442,6 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
-  VLOG(2) << "Before instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
-
   bool changed = false;
   module_ = module;
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -521,9 +518,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
-
-  VLOG(2) << "After instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
 
   return changed;
 }
