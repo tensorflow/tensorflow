@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Test saved_model with distribution strategies."""
+"""Base class for testing saving/loading with DS."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,12 +28,12 @@ from tensorflow.python.distribute import model_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
-from tensorflow.python.saved_model import saved_model
 
 _RANDOM_SEED = 1337
-_DEFAULT_FUNCTION_KEY = 'serving_default'
 _IN_SCOPE_SAVE_DIR = 'in_scope/'
 _OUT_OF_SCOPE_SAVE_DIR = 'out_of_scope/'
+
+PREDICT_STEPS = 1
 
 simple_models = [
     model_combinations.simple_functional_model,
@@ -44,10 +44,19 @@ simple_models = [
 ]
 
 
+strategies_minus_tpu = [
+    # TODO(b/132702156): include default strategy
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.one_device_strategy_gpu,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus
+]
+
+
 def get_strategy_cross_product():
   result = []
-  for strategy_1 in strategy_combinations.strategies_minus_tpu:
-    for strategy_2 in strategy_combinations.strategies_minus_tpu:
+  for strategy_1 in strategies_minus_tpu:
+    for strategy_2 in strategies_minus_tpu:
       result.append(combinations.NamedDistributionPair(strategy_1, strategy_2))
 
   return result
@@ -56,16 +65,54 @@ def get_strategy_cross_product():
 def simple_models_with_strategies():
   return combinations.combine(
       model_and_input=simple_models,
-      distribution=strategy_combinations.strategies_minus_tpu,
+      distribution=strategies_minus_tpu,
       mode=['eager'])
 
 
-class TestSavedModel(test.TestCase, parameterized.TestCase):
+def simple_models_with_strategy_pairs():
+  return combinations.combine(
+      model_and_input=simple_models,
+      distribution_pair=get_strategy_cross_product(),
+      mode=['eager'])
+
+
+class TestSavedModelBase(test.TestCase, parameterized.TestCase):
+  """Base class for testing saving/loading with DS."""
 
   def setUp(self):
     np.random.seed(_RANDOM_SEED)
     random_seed.set_random_seed(_RANDOM_SEED)
-    super(TestSavedModel, self).setUp()
+    self._root_dir = 'base'
+    super(TestSavedModelBase, self).setUp()
+
+  def _save_model(self, model, saved_dir):
+    """Save the given model to the given saved_dir.
+
+    This method needs to be implemeted by the subclasses.
+
+    Args:
+      model: a keras model object to save.
+      saved_dir: a string representing the path to save the keras model
+    """
+    raise NotImplementedError('must be implemented in descendants')
+
+  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
+                          output_name):
+    """Load the model and run 1 step of predict with it.
+
+    This method must be implemented by the subclasses.
+
+    Args:
+      distribution: the distribution strategy used to load the model. None if no
+        distribution strategy is used
+      saved_dir: the string representing the path where the model is saved.
+      predict_dataset: the data used to do the predict on the model for
+        cross_replica context.
+      output_name: the string representing the name of the output layer of the
+        model.
+    """
+
+    raise NotImplementedError('must be implemented in descendants')
 
   def _train_model(self, model, x_train, y_train, batch_size):
     training_dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -73,25 +120,20 @@ class TestSavedModel(test.TestCase, parameterized.TestCase):
     training_dataset = training_dataset.repeat()
     training_dataset = training_dataset.batch(batch_size)
 
-    # Train the model for 1 step
-    model.fit(x=training_dataset, epochs=1, steps_per_epoch=1)
-
-  def _load_and_run_model(self, saved_dir, x_predict):
-    func = saved_model.load(saved_dir)
-    return func.signatures[_DEFAULT_FUNCTION_KEY](x_predict)
+    # Train the model for 1 epoch
+    model.fit(x=training_dataset, epochs=1, steps_per_epoch=100)
 
   def _get_predict_dataset(self, x_predict, batch_size):
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
+    predict_dataset = predict_dataset.repeat()
     predict_dataset = predict_dataset.batch(batch_size)
     return predict_dataset
 
-  @combinations.generate(simple_models_with_strategies())
-  def test_save_no_dist_restore_dist(self, model_and_input, distribution):
+  def run_test_save_no_strategy_restore_strategy(self, model_and_input,
+                                                 distribution):
     """Save a model without DS, and restore it with DS."""
 
-    self.skipTest('Loading model with DS is not supported yet')
-
-    saved_dir = os.path.join(self.get_temp_dir(),
+    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
                              'test_save_no_dist_restore_dist')
 
     model, output_name = model_and_input.get_model()
@@ -100,25 +142,24 @@ class TestSavedModel(test.TestCase, parameterized.TestCase):
 
     self._train_model(model, x_train, y_train, batch_size)
     predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-    result_before_save = model.predict(predict_dataset)
+    result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
 
-    saved_model.save(model, saved_dir)
+    self._save_model(model, saved_dir)
 
     with distribution.scope():
-      predict_dataset = distribution.experimental_distribute_dataset(
-          predict_dataset)
-      actual_data = next(iter(predict_dataset))
-      result_after_save = self._load_and_run_model(saved_dir, actual_data)
+      result_after_save = self._load_and_run_model(
+          distribution=distribution,
+          saved_dir=saved_dir,
+          predict_dataset=predict_dataset,
+          output_name=output_name)
 
-    self.assertAllEqual(result_before_save, result_after_save[output_name])
+    self.assertAllEqual(result_before_save, result_after_save)
 
-  @combinations.generate(simple_models_with_strategies())
-  def test_save_dist_restore_no_dist(self, model_and_input, distribution):
+  def run_test_save_strategy_restore_no_strategy(self, model_and_input,
+                                                 distribution):
     """Save a model with DS, and restore it without DS."""
 
-    self.skipTest('Saving model with DS is not supported yet')
-
-    saved_dir = os.path.join(self.get_temp_dir(),
+    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
                              'test_save_no_dist_restore_dist')
     saved_dir_in_scope = os.path.join(saved_dir, _IN_SCOPE_SAVE_DIR)
     saved_dir_out_of_scope = os.path.join(saved_dir, _OUT_OF_SCOPE_SAVE_DIR)
@@ -130,37 +171,35 @@ class TestSavedModel(test.TestCase, parameterized.TestCase):
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset)
+      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
 
       # save the model both in and out of the DS scope
-      saved_model.save(model, saved_dir_in_scope)
-    saved_model.save(model, saved_dir_out_of_scope)
+      self._save_model(model, saved_dir_in_scope)
+    self._save_model(model, saved_dir_out_of_scope)
 
-    actual_data = next(iter(predict_dataset))
     result_load_from_save_in_scope = self._load_and_run_model(
-        saved_dir_in_scope, actual_data)
+        distribution=None,
+        saved_dir=saved_dir_in_scope,
+        predict_dataset=predict_dataset,
+        output_name=output_name)
     result_load_from_save_out_of_scope = self._load_and_run_model(
-        saved_dir_out_of_scope, actual_data)
+        distribution=None,
+        saved_dir=saved_dir_out_of_scope,
+        predict_dataset=predict_dataset,
+        output_name=output_name)
 
-    self.assertAllEqual(result_before_save,
-                        result_load_from_save_in_scope[output_name])
-    self.assertAllEqual(result_before_save,
-                        result_load_from_save_out_of_scope[output_name])
+    self.assertAllEqual(result_before_save, result_load_from_save_in_scope)
+    self.assertAllEqual(result_before_save, result_load_from_save_out_of_scope)
 
-  @combinations.generate(
-      combinations.combine(
-          model_and_input=simple_models,
-          distribution_pair=get_strategy_cross_product(),
-          mode=['eager']))
-  def test_save_dist_restore_dist(self, model_and_input, distribution_pair):
+  def run_test_save_strategy_restore_strategy(self, model_and_input,
+                                              distribution_pair):
     """Save a model with DS, and restore it with potentially different DS."""
-
-    self.skipTest('Saving model with DS is not supported yet')
 
     combinations.maybe_skip_test(self, distribution_pair.is_tpu_required,
                                  distribution_pair.num_gpus_required)
 
-    saved_dir = os.path.join(self.get_temp_dir(), 'test_save_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
+                             'test_save_dist_restore_dist')
     saved_dir_in_scope = os.path.join(saved_dir, _IN_SCOPE_SAVE_DIR)
     saved_dir_out_of_scope = os.path.join(saved_dir, _OUT_OF_SCOPE_SAVE_DIR)
 
@@ -174,27 +213,24 @@ class TestSavedModel(test.TestCase, parameterized.TestCase):
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset)
+      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
 
       # save the model both in and out of the DS scope
-      saved_model.save(model, saved_dir_in_scope)
-    saved_model.save(model, saved_dir_out_of_scope)
+      self._save_model(model, saved_dir_in_scope)
+    self._save_model(model, saved_dir_out_of_scope)
 
     with dist_for_restore.scope():
-      predict_dataset = dist_for_restore.experimental_distribute_dataset(
-          predict_dataset)
-      actual_data = next(iter(predict_dataset))
 
       result_load_from_save_in_scope = self._load_and_run_model(
-          saved_dir_in_scope, actual_data)
+          distribution=dist_for_restore,
+          saved_dir=saved_dir_in_scope,
+          predict_dataset=predict_dataset,
+          output_name=output_name)
       result_load_from_save_out_of_scope = self._load_and_run_model(
-          saved_dir_out_of_scope, actual_data)
+          distribution=dist_for_restore,
+          saved_dir=saved_dir_out_of_scope,
+          predict_dataset=predict_dataset,
+          output_name=output_name)
 
-    self.assertAllEqual(result_before_save,
-                        result_load_from_save_in_scope[output_name])
-    self.assertAllEqual(result_before_save,
-                        result_load_from_save_out_of_scope[output_name])
-
-
-if __name__ == '__main__':
-  test.main()
+    self.assertAllEqual(result_before_save, result_load_from_save_in_scope)
+    self.assertAllEqual(result_before_save, result_load_from_save_out_of_scope)
