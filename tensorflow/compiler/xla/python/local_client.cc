@@ -299,9 +299,6 @@ StatusOr<PyLocalBuffer> PyLocalBuffer::FromPython(
                                                 std::move(client), device));
 
   device.ThenRelease(device.host_to_device_stream(), std::move(py_buffer_ref));
-  if (!device.asynchronous()) {
-    TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
-  }
   return buffer;
 }
 
@@ -360,9 +357,6 @@ PyLocalBuffer::FromPythonValues(
     const Device& device = client->device(device_ordinal);
     device.ThenRelease(device.host_to_device_stream(),
                        std::move(transfers[i].py_buffer_refs));
-    if (!device.asynchronous()) {
-      TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
-    }
   }
 
   for (int i = 0; i < num_arguments; ++i) {
@@ -420,10 +414,6 @@ PyLocalBuffer::FromPythonValues(
     device.ThenReleaseOnWorkerThread(device.host_to_device_stream(),
                                      std::move(tuple_buffer));
   }
-  if (!device.asynchronous()) {
-    TF_RETURN_IF_ERROR(device.host_to_device_stream()->BlockHostUntilDone());
-  }
-
   return buffer;
 }
 
