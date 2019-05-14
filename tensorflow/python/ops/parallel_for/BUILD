@@ -146,7 +146,7 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 5,
-    tags = ["optonly", "no_rocm"],  # Too slow in non-opt mode
+    tags = ["optonly"],  # Too slow in non-opt mode
     xla_enable_strict_auto_jit = True,
 )
 

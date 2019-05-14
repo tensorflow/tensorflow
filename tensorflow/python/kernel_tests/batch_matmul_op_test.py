@@ -281,27 +281,20 @@ if __name__ == "__main__":
               "testBatchMatmulOp_" + name + "_{}".format(use_static_shape_),
               _GetBatchMatmulOpTest(dtype_, adjoint_a_, adjoint_b_,
                                     use_static_shape_))
-          # Broadcasting is supported only in v2.
-          # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
-          if not test.is_built_with_rocm():
-            setattr(
-                BatchMatmulOpTest, "testBatchMatmulBroadcasting_" + name +
-                ("_%s" % use_static_shape_),
-                _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_, adjoint_b_,
-                                                use_static_shape_))
+          setattr(
+              BatchMatmulOpTest, "testBatchMatmulBroadcasting_" + name +
+              ("_%s" % use_static_shape_),
+              _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_, adjoint_b_,
+                                              use_static_shape_))
         if dtype_ == np.int32:
           continue
 
-        if not test.is_built_with_rocm():
-          # TODO: Fix BatchMatmulGradientTest on ROCm
-          setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
-                _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
+        setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
+              _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
 
-          # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
-          # Broadcasting is supported only in v2.
-          setattr(
-              BatchMatmulGradientTest,
-              "testBatchMatmulGradientWithBroadcasting_" + name,
-              _GetBatchMatmulGradientWithBroadcastingTest(dtype_, adjoint_a_,
-                                                          adjoint_b_))
+        setattr(
+            BatchMatmulGradientTest,
+            "testBatchMatmulGradientWithBroadcasting_" + name,
+            _GetBatchMatmulGradientWithBroadcastingTest(dtype_, adjoint_a_,
+                                                        adjoint_b_))
   test.main()
