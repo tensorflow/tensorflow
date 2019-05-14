@@ -3447,16 +3447,17 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
-    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_id.h",
     "common_runtime/gpu/gpu_id_manager.h",
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
+    "common_runtime/gpu/gpu_mem_allocator.h",
     "common_runtime/gpu/gpu_process_state.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
@@ -3520,16 +3521,30 @@ tf_cuda_library(
     name = "gpu_bfc_allocator",
     srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
-        "common_runtime/gpu/gpu_id.h",
     ],
     hdrs = ["common_runtime/gpu/gpu_bfc_allocator.h"],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":bfc_allocator",
+        ":gpu_mem_allocator",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+    ],
+)
+
+tf_cuda_library(
+    name = "gpu_mem_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_id.h",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib_internal",
         ":stream_executor",
     ],
 )
