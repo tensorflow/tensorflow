@@ -491,8 +491,8 @@ Status MetaOptimizer::RunOptimizer(
     if (errors::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
-      message = strings::StrCat(optimizer->name(),
-                                " did nothing. time = ", duration_ms, "ms.");
+      message = strings::StrCat(optimizer->name(), " did nothing. time = ",
+                                duration_ms, "ms.");
       // Swallow the non-critical error.
       status = Status::OK();
     } else if (errors::IsDeadlineExceeded(status)) {
