@@ -3435,7 +3435,9 @@ cuda_py_test(
         "no_rocm",  # flaky test
         "no_windows",
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    # TODO(b/127344411): This test passes because XLA does not actually cluster
+    # the self_adjoint_eig op.
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3472,7 +3474,9 @@ cuda_py_test(
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    # TODO(b/127344411): This test passes because XLA does not actually cluster
+    # the svd op.
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3808,7 +3812,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
-tf_py_test(
+cuda_py_test(
     name = "tridiagonal_matmul_op_test",
     size = "medium",
     srcs = ["tridiagonal_matmul_op_test.py"],
@@ -3818,5 +3822,5 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
     ],
-    shard_count = 5,
+    shard_count = 10,
 )

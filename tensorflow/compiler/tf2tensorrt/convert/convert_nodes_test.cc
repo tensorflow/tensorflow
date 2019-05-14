@@ -50,9 +50,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -278,6 +278,14 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRangeMin() const override { return 0.f; }
 
   float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
 #endif
 
  private:

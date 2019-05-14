@@ -58,17 +58,19 @@ public struct Tensor {
 
 /// Supported TensorFlow Lite tensor data types.
 public enum TensorDataType: Equatable {
-  /// 32-bit single precision floating point tensor data type.
+  /// 32-bit single precision floating point.
   case float32
-  /// 8-bit unsigned integer tensor data type.
+  /// 16-bit half precision floating point.
+  case float16
+  /// 8-bit unsigned integer.
   case uInt8
-  /// 16-bit signed integer tensor data type.
+  /// 16-bit signed integer.
   case int16
-  /// 32-bit signed integer tensor data type.
+  /// 32-bit signed integer.
   case int32
-  /// 64-bit signed integer tensor data type.
+  /// 64-bit signed integer.
   case int64
-  /// Boolean tensor data type.
+  /// Boolean.
   case bool
 
   /// Creates a new tensor data type from the given `TFL_Type` or `nil` if the data type is
@@ -79,6 +81,8 @@ public enum TensorDataType: Equatable {
     switch type {
     case kTfLiteFloat32:
       self = .float32
+    case kTfLiteFloat16:
+      self = .float16
     case kTfLiteUInt8:
       self = .uInt8
     case kTfLiteInt16:

@@ -5372,10 +5372,8 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDims) {
   EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
 }
 
-// This test exposes a real bug: It tries to read an out-of-bounds array index
-// from within ComposePermutations().  TODO(b/132330723): Fix this.
 TEST_F(AlgebraicSimplifierTest,
-       DISABLED_DotContractingReorder_NoChangeInContractingDimsOrder) {
+       DotContractingReorder_NoChangeInContractingDimsOrder) {
   // No optimization opportunity here because the transpose does not reorder the
   // contracting dims.
   const char* kModuleStr = R"(
@@ -5391,6 +5389,34 @@ TEST_F(AlgebraicSimplifierTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareIota) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = s32[] constant(0)
+      iota = s32[128] iota(), iota_dimension=0
+      broad = s32[128] broadcast(zero), dimensions={}
+      ROOT compare = pred[128] compare(iota, broad), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(false))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareSame) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param = s32[123] parameter(0)
+      ROOT compare = pred[123] compare(param, param), direction=GE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(true))));
 }
 
 }  // namespace

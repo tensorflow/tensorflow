@@ -25,6 +25,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
@@ -139,7 +140,8 @@ def make_variable(name,
 
   # TODO(apassos,rohanj) figure out how to remove collections from here so we
   # can remove the V1.
-  v = tf_variables.VariableV1(
+  variable_shape = tensor_shape.TensorShape(shape)
+  return tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
@@ -150,8 +152,8 @@ def make_variable(name,
       use_resource=use_resource,
       collections=collections,
       synchronization=synchronization,
-      aggregation=aggregation)
-  return v
+      aggregation=aggregation,
+      shape=variable_shape if variable_shape.rank else None)
 
 
 def get_default_graph_uid_map():
@@ -452,7 +454,7 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
-  return 'training' in full_args
+  return 'training' in full_args and full_args['training'] is not None
 
 
 def _get_var_read_dtype(input_list, should_cast):

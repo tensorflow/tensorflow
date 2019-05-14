@@ -1481,8 +1481,8 @@ The element in the output array at index
 [`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>] is then the element in the input
 array at index [`X`+`O`<sub>`0`</sub>,`Y`+`O`<sub>`1`</sub>].
 
-`slice_sizes` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
-W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
+`slice_sizes` is `[8,6]`, which decides the range of O<sub>`0`</sub> and
+O<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.

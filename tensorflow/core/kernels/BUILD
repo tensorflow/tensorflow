@@ -47,7 +47,10 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -3242,7 +3245,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_matmul_op",
     srcs = ["tridiagonal_matmul_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_matmul_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(

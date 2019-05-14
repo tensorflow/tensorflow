@@ -11,6 +11,7 @@ py_test(
     name = "bucket_by_sequence_length_test",
     size = "medium",
     srcs = ["bucket_by_sequence_length_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -30,6 +31,7 @@ py_test(
 py_test(
     name = "cardinality_test",
     srcs = ["cardinality_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -64,6 +66,7 @@ py_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -77,6 +80,7 @@ py_test(
     name = "csv_dataset_test",
     size = "medium",
     srcs = ["csv_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -97,6 +101,7 @@ py_test(
 py_test(
     name = "dense_to_sparse_batch_test",
     srcs = ["dense_to_sparse_batch_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -114,6 +119,7 @@ py_test(
     name = "directed_interleave_dataset_test",
     size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -130,6 +136,7 @@ py_test(
     name = "auto_shard_dataset_test",
     size = "medium",
     srcs = ["auto_shard_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -148,6 +155,7 @@ py_test(
     name = "get_single_element_test",
     size = "small",
     srcs = ["get_single_element_test.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -167,6 +175,7 @@ py_test(
     name = "group_by_reducer_test",
     size = "medium",
     srcs = ["group_by_reducer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -188,6 +197,7 @@ py_test(
     name = "group_by_window_test",
     size = "medium",
     srcs = ["group_by_window_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -209,6 +219,7 @@ py_test(
 py_test(
     name = "ignore_errors_test",
     srcs = ["ignore_errors_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -227,6 +238,7 @@ py_test(
     name = "make_batched_features_dataset_test",
     size = "medium",
     srcs = ["make_batched_features_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -248,6 +260,7 @@ py_test(
     name = "make_csv_dataset_test",
     size = "medium",
     srcs = ["make_csv_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -267,6 +280,7 @@ py_test(
     name = "make_tf_record_dataset_test",
     size = "medium",
     srcs = ["make_tf_record_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -284,6 +298,7 @@ py_test(
     name = "map_and_batch_test",
     size = "medium",
     srcs = ["map_and_batch_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -307,6 +322,7 @@ py_test(
     name = "map_defun_op_test",
     size = "small",
     srcs = ["map_defun_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -332,6 +348,7 @@ py_test(
     name = "matching_files_test",
     size = "small",
     srcs = ["matching_files_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -351,6 +368,7 @@ py_test(
     name = "override_threadpool_test",
     size = "small",
     srcs = ["override_threadpool_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -371,6 +389,7 @@ py_test(
     name = "parallel_interleave_test",
     size = "medium",
     srcs = ["parallel_interleave_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -393,6 +412,7 @@ py_test(
     name = "parse_example_dataset_test",
     size = "small",
     srcs = ["parse_example_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -455,6 +475,7 @@ py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -472,6 +493,7 @@ py_test(
     name = "rejection_resample_test",
     size = "medium",
     srcs = ["rejection_resample_test.py"],
+    python_version = "PY2",
     shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
@@ -499,6 +521,7 @@ py_test(
     name = "restructured_dataset_test",
     size = "medium",
     srcs = ["restructured_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -515,6 +538,7 @@ py_test(
     name = "scan_test",
     size = "small",
     srcs = ["scan_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -539,6 +563,7 @@ py_test(
     name = "shuffle_and_repeat_test",
     size = "medium",
     srcs = ["shuffle_and_repeat_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -558,6 +583,7 @@ py_test(
 py_test(
     name = "sleep_test",
     srcs = ["sleep_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -590,6 +616,7 @@ py_test(
     name = "sql_dataset_test",
     size = "medium",
     srcs = ["sql_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -603,6 +630,7 @@ py_test(
 py_test(
     name = "snapshot_test",
     srcs = ["snapshot_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":reader_dataset_ops_test_base",
@@ -622,6 +650,7 @@ py_test(
     name = "stats_dataset_ops_test",
     size = "large",
     srcs = ["stats_dataset_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -660,6 +689,7 @@ py_test(
     name = "take_while_test",
     size = "small",
     srcs = ["take_while_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -682,6 +712,7 @@ py_test(
     name = "tf_record_writer_test",
     size = "small",
     srcs = ["tf_record_writer_test.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -699,6 +730,7 @@ py_test(
     name = "unbatch_test",
     size = "medium",
     srcs = ["unbatch_test.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -725,6 +757,7 @@ py_test(
     name = "unique_test",
     size = "small",
     srcs = ["unique_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -741,6 +774,7 @@ py_test(
 py_test(
     name = "variant_test",
     srcs = ["variant_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",

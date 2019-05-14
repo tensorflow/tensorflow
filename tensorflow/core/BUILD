@@ -169,7 +169,6 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -992,6 +991,32 @@ tf_cuda_library(
     deps = [
         ":framework_internal",
         "@com_google_absl//absl/base",
+    ],
+)
+
+# This is redundant with the "framework" target above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "allocator",
+    srcs = [
+        "framework/allocator.cc",
+        "framework/allocator_registry.cc",
+        "framework/allocator_registry.h",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.cc",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    hdrs = [
+        "framework/allocator.h",
+    ],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2846,6 +2871,9 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "framework/allocator.cc",
+            "framework/allocator_registry.cc",
+            "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
             "example/feature_util.cc",
             "util/reporter.cc",
@@ -2877,6 +2905,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator",
         ":feature_util",
         ":lib",
         ":lib_internal",
@@ -3275,6 +3304,36 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This is redundant with the "core_cpu_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "bfc_allocator",
+    srcs = [
+        "common_runtime/allocator_retry.cc",
+        "common_runtime/allocator_retry.h",
+        "common_runtime/bfc_allocator.cc",
+    ],
+    hdrs = ["common_runtime/bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib",
+        ":lib_internal",
+        ":shared_counter",
+    ],
+)
+
+cc_library(
+    name = "shared_counter",
+    hdrs = ["common_runtime/shared_counter.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ],
+)
+
 cc_library(
     name = "regexp_internal",
     hdrs = [
@@ -3388,16 +3447,17 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
-    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_id.h",
     "common_runtime/gpu/gpu_id_manager.h",
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
+    "common_runtime/gpu/gpu_mem_allocator.h",
     "common_runtime/gpu/gpu_process_state.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
@@ -3453,6 +3513,40 @@ tf_cuda_library(
         ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
+)
+
+# This is redundant with the "gpu_runtime_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+tf_cuda_library(
+    name = "gpu_bfc_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_bfc_allocator.cc",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":bfc_allocator",
+        ":gpu_mem_allocator",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+    ],
+)
+
+tf_cuda_library(
+    name = "gpu_mem_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_id.h",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib_internal",
+        ":stream_executor",
+    ],
 )
 
 tf_cuda_library(

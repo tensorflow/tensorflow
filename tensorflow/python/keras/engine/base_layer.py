@@ -960,10 +960,11 @@ class Layer(module.Module):
           'We currently support only `mean` sample-wise metric aggregation. '
           'You provided aggregation=`%s`' % aggregation)
 
+    from_metric_obj = hasattr(value, '_metric_obj')
     is_symbolic = tf_utils.is_symbolic_tensor(value)
     call_context = base_layer_utils.is_in_call_context()
 
-    if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
+    if name is None and not from_metric_obj:
       # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
       # In eager mode, we use metric name to lookup a metric. Without a name,
       # a new Mean metric wrapper will be created on every model/layer call.
@@ -980,9 +981,9 @@ class Layer(module.Module):
                        'name=\'mean_activation\', aggregation=\'mean\')`')
 
     if call_context:
-      if is_symbolic:
-        with backend.get_graph().as_default():
-          self._symbolic_add_metric(value, aggregation, name)
+      # TF Function path should take the eager path.
+      if is_symbolic and not base_layer_utils.is_in_tf_function():
+        self._symbolic_add_metric(value, aggregation, name)
       else:
         self._eager_add_metric(value, aggregation, name)
     else:
@@ -996,7 +997,7 @@ class Layer(module.Module):
           self._symbolic_add_metric(value, aggregation, name)
         return
 
-      if getattr(value, '_metric_obj', None):
+      if from_metric_obj:
         raise ValueError('Using the result of calling a `Metric` object '
                          'when calling `add_metric` on a Functional '
                          'Model is not supported. Please pass the '

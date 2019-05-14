@@ -147,9 +147,10 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
     // On Mac OS X, 'name' may have a leading underscore prefix, even though the
     // registered name may not.
     std::string stripped_name(name.begin() + 1, name.end());
-    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(stripped_name);
+    func_addr =
+        xla::CustomCallTargetRegistry::Global()->Lookup(stripped_name, "Host");
   } else {
-    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(name);
+    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(name, "Host");
   }
 
   if (func_addr == nullptr) {
@@ -219,7 +220,7 @@ bool RegisterKnownJITSymbols() {
     auto* function_address =                                                 \
         reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
     registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
-                       function_address);                                    \
+                       function_address, "Host");                            \
     CHECK_EQ(absl::string_view(xla::cpu::runtime::k##base_name##SymbolName), \
              "__xla_cpu_runtime_" #base_name);                               \
   } while (false)
@@ -250,8 +251,10 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 
-  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
-  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
+  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
+                     "Host");
+  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
+                     "Host");
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 
@@ -259,11 +262,12 @@ bool RegisterKnownJITSymbols() {
 // Unfortunately the double versions are overloaded on some systems, e.g.
 // Mac so we need an explicit cast. This requires passing the function signature
 // for that case.
-#define REGISTER_LIBM_SYMBOL(name, double_sig)                          \
-  do {                                                                  \
-    registry->Register(#name "f", reinterpret_cast<void*>(name##f));    \
-    registry->Register(                                                 \
-        #name, reinterpret_cast<void*>(static_cast<double_sig>(name))); \
+#define REGISTER_LIBM_SYMBOL(name, double_sig)                                 \
+  do {                                                                         \
+    registry->Register(#name "f", reinterpret_cast<void*>(name##f), "Host");   \
+    registry->Register(#name,                                                  \
+                       reinterpret_cast<void*>(static_cast<double_sig>(name)), \
+                       "Host");                                                \
   } while (false)
 
   REGISTER_LIBM_SYMBOL(acos, double (*)(double));
@@ -321,8 +325,9 @@ bool RegisterKnownJITSymbols() {
 #ifdef __APPLE__
   REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
   registry->Register("__sincosf_stret",
-                     reinterpret_cast<void*>(__sincosf_stret));
-  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret));
+                     reinterpret_cast<void*>(__sincosf_stret), "Host");
+  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret),
+                     "Host");
 #else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
 #endif
@@ -335,19 +340,19 @@ bool RegisterKnownJITSymbols() {
 
 #undef REGISTER_LIBM_SYMBOL
 
-  registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
-  registry->Register("memmove", reinterpret_cast<void*>(memmove));
-  registry->Register("memset", reinterpret_cast<void*>(memset));
+  registry->Register("memcpy", reinterpret_cast<void*>(memcpy), "Host");
+  registry->Register("memmove", reinterpret_cast<void*>(memmove), "Host");
+  registry->Register("memset", reinterpret_cast<void*>(memset), "Host");
 
 #ifdef __APPLE__
-  registry->Register("__bzero", reinterpret_cast<void*>(bzero));
+  registry->Register("__bzero", reinterpret_cast<void*>(bzero), "Host");
   registry->Register("memset_pattern16",
-                     reinterpret_cast<void*>(memset_pattern16));
+                     reinterpret_cast<void*>(memset_pattern16), "Host");
 #endif
 
 #ifdef MEMORY_SANITIZER
   registry->Register("__msan_unpoison",
-                     reinterpret_cast<void*>(__msan_unpoison));
+                     reinterpret_cast<void*>(__msan_unpoison), "Host");
 #endif
 
   return true;

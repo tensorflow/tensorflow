@@ -41,6 +41,20 @@ class _UnwrapPreventer(object):
     self.value = value
 
 
+def scale_loss(loss, loss_scale):
+  """Scales the loss by the loss scale."""
+  if callable(loss):
+    return lambda: loss() * loss_scale
+  else:
+    return loss * loss_scale
+
+
+def unscale_grads(grads, loss_scale):
+  """Unscales the gradients by the loss scale."""
+  loss_scale_reciprocal = 1. / loss_scale
+  return [g * loss_scale_reciprocal if g is not None else None for g in grads]
+
+
 @keras_export('keras.mixed_precision.experimental.LossScaleOptimizer')
 class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   """An optimizer that applies loss scaling.
@@ -98,34 +112,22 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
     self._optimizer = opt
     self._loss_scale = loss_scale_module.get(loss_scale)
+    self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
-    loss = self._scale_loss(loss)
+    loss = scale_loss(loss, self._loss_scale())
     grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
                                                         grad_loss)
     grads = [g for g, _ in grads_and_vars]
     variables = [v for _, v in grads_and_vars]
-    scaled_grads = self._scale_grads(grads)
-    return list(zip(scaled_grads, variables))
+    unscaled_grads = unscale_grads(grads, self._loss_scale())
+    return list(zip(unscaled_grads, variables))
 
   def get_gradients(self, loss, params):
-    loss = self._scale_loss(loss)
+    loss = scale_loss(loss, self._loss_scale())
     grads = self._optimizer.get_gradients(loss, params)
-    return self._scale_grads(grads)
-
-  def _scale_loss(self, loss):
-    # The loss is callable for `_compute_gradients`, but not `get_gradients`.
-    loss_scale = self._loss_scale()
-    if callable(loss):
-      return lambda: loss() * loss_scale
-    else:
-      return loss * loss_scale
-
-  def _scale_grads(self, grads):
-    loss_scale = self._loss_scale()
-    loss_scale_reciprocal = 1 / loss_scale
-    return [None if g is None else g * loss_scale_reciprocal for g in grads]
+    return unscale_grads(grads, self._loss_scale())
 
   def apply_gradients(self, grads_and_vars, name=None):
     if distribution_strategy_context.in_cross_replica_context():

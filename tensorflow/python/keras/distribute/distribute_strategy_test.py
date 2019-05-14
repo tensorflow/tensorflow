@@ -1630,12 +1630,12 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     x = np.ones((64, 10)).astype('float32')
 
     model = _make_model_with_add_loss()
-    model.compile('sgd', cloning=cloning)
+    model.compile('sgd')
     history = model.fit(x, steps_per_epoch=2, epochs=1)
 
     with distribution.scope():
       ds_model = _make_model_with_add_loss()
-      ds_model.compile('sgd')
+      ds_model.compile('sgd', cloning=cloning)
       ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
 
     self.assertAllClose(history.history, ds_history.history)

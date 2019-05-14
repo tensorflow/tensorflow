@@ -55,8 +55,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
-#include "tensorrt/include/NvInferPlugin.h"
+#include "third_party/tensorrt/NvInfer.h"
+#include "third_party/tensorrt/NvInferPlugin.h"
 
 // Check if the types are equal. Cast to int first so that failure log message
 // would work!
@@ -788,6 +788,14 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   float getDynamicRangeMin() const override { return 0.f; }
 
   float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
+
+  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
+
+  bool isShape() const override { return false; }
 #endif
 
  private:
@@ -4675,7 +4683,6 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pack"] = ConvertPack;
@@ -4684,7 +4691,6 @@ static void RegisterValidatableOpConverters(
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
   (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
@@ -4722,6 +4728,11 @@ static void RegisterValidatableOpConverters(
   }
   for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
     (*registration)[arg_minmax_type] = ConvertArgMinMax;
+  }
+  // The following are no-ops during inference and will not be mapped to any TRT
+  // layer.
+  for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
+    (*registration)[identity_op_type] = ConvertIdentity;
   }
 }
 

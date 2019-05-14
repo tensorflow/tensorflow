@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace shape_inference {

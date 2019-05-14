@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include <atomic>
+
 #include "tensorflow/core/framework/allocator_registry.h"
-#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -18,7 +18,6 @@ limitations under the License.
 #include <atomic>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"

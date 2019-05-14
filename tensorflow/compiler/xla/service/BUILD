@@ -1666,6 +1666,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_query",
         ":pattern_matcher",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

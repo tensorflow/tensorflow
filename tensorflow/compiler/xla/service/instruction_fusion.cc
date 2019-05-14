@@ -277,7 +277,7 @@ InstructionFusion::ComputeGloballyUnfusible(
       return size;
     };
     int64 operands_size = 0;
-    for (const HloInstruction* op : producer->operands()) {
+    for (const HloInstruction* op : producer->unique_operands()) {
       operands_size += total_size(op->shape());
     }
     if (operands_size <= total_size(producer->shape())) {

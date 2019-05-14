@@ -118,10 +118,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         input_names = []
         input_specs = []
       # TODO(allenl): Support optional arguments
-      feeds = [wrapped.graph.as_graph_element(inp.name)
-               for inp in input_specs]
-      fetches = {name: wrapped.graph.as_graph_element(out.name)
-                 for name, out in signature_def.outputs.items()}
+      feeds = [wrapped.graph.as_graph_element(inp.name) for inp in input_specs]
+      fetches = {name: out for name, out in signature_def.outputs.items()}
       try:
         signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
       except lift_to_graph.UnliftableError as ex:
@@ -208,4 +206,3 @@ def load(export_dir, tags):
   """Load a v1-style SavedModel as an object."""
   loader = _EagerSavedModelLoader(export_dir)
   return loader.load(tags=tags)
-

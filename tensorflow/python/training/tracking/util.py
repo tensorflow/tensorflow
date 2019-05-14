@@ -201,8 +201,12 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
+    reader = None
     for saveable in python_saveables:
+      if reader is None:
+        # Lazily create the NewCheckpointReader, since this requires file access
+        # and we may not have any Python saveables.
+        reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
       spec_names = [spec.name for spec in saveable.specs]
       saveable.python_restore([reader.get_tensor(name) for name in spec_names])
 
@@ -612,8 +616,10 @@ def streaming_restore(status, session=None):
     session = keras_backend.get_session()
   if isinstance(status, NameBasedSaverStatus):
     raise NotImplementedError(
-        "Streaming restore not supported from name-based checkpoints. File a "
-        "feature request if this limitation bothers you.")
+        "Streaming restore not supported from name-based checkpoints when "
+        "graph building. File a feature request if this limitation bothers "
+        "you. As a workaround, consider either using tf.train.Checkpoint to "
+        "load name-based checkpoints or enabling eager execution.")
   status.run_restore_ops(session=session)
   # pylint: disable=protected-access
   status._checkpoint.new_restore_ops_callback = (

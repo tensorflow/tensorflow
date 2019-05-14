@@ -57,7 +57,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"

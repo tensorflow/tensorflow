@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
@@ -43,6 +44,18 @@ class LayerWithLosses(keras.layers.Layer):
   def call(self, inputs):
     self.add_loss(math_ops.reduce_sum(inputs))
     return self.v * inputs
+
+
+class LayerWithMetrics(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.mean = keras.metrics.Mean(name='mean_object')
+
+  def call(self, inputs):
+    self.add_metric(
+        math_ops.reduce_mean(inputs), name='mean_tensor', aggregation='mean')
+    self.add_metric(self.mean(inputs))
+    return inputs
 
 
 def add_loss_step(defun):
@@ -89,10 +102,40 @@ def batch_norm_step(defun):
   return train_step(x, y)
 
 
+def add_metric_step(defun):
+  optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+  model = testing_utils.get_model_from_layers([
+      LayerWithMetrics(),
+      keras.layers.Dense(1, kernel_initializer='zeros', activation='softmax')
+  ],
+                                              input_shape=(10,))
+
+  def train_step(x, y):
+    with backprop.GradientTape() as tape:
+      y_pred_1 = model(x)
+      y_pred_2 = model(2 * x)
+      y_pred = y_pred_1 + y_pred_2
+      loss = keras.losses.mean_squared_error(y, y_pred)
+    gradients = tape.gradient(loss, model.trainable_weights)
+    optimizer.apply_gradients(zip(gradients, model.trainable_weights))
+    assert len(model.metrics) == 2
+    return [m.result() for m in model.metrics]
+
+  if defun:
+    train_step = def_function.function(train_step)
+
+  x, y = array_ops.ones((10, 10)), array_ops.zeros((10, 1))
+  metrics = train_step(x, y)
+  assert np.allclose(metrics[0], 1.5)
+  assert np.allclose(metrics[1], 1.5)
+  return metrics
+
+
 @keras_parameterized.run_with_all_model_types
 class CustomTrainingLoopTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(('add_loss_step', add_loss_step),
+                                  ('add_metric_step', add_metric_step),
                                   ('batch_norm_step', batch_norm_step))
   def test_eager_and_tf_function(self, train_step):
     eager_result = train_step(defun=False)

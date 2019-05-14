@@ -413,7 +413,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
-  profiler::TraceMe activity(absl::string_view(params_.prefix),
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
