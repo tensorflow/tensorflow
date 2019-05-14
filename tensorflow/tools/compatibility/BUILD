@@ -84,11 +84,24 @@ py_library(
 py_library(
     name = "all_renames_v2",
     srcs = ["all_renames_v2.py"],
+    srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
     ],
     deps = [":renames_v2"],
+)
+
+py_test(
+    name = "all_renames_v2_test",
+    srcs = ["all_renames_v2_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_renames_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
