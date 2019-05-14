@@ -3728,8 +3728,8 @@ def rnn(step_function,
                                             [inp[0] for inp in flatted_inputs])
     # output_time_zero is used to determine the cell output shape and its dtype.
     # the value is discarded.
-    output_time_zero, _ = step_function(input_time_zero,
-                                        initial_states + constants)
+    output_time_zero, _ = step_function(
+        input_time_zero, tuple(initial_states) + tuple(constants))
     output_ta = tuple(
         tensor_array_ops.TensorArray(
             dtype=out.dtype,
