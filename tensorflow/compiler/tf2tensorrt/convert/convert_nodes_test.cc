@@ -1678,8 +1678,10 @@ void OpConverterTest::TestMatMulHelper(
       AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
         if (transpose_a || transpose_b) {
-          RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                                     "TensorRT cannot adjoint inputs.");
+          RunValidationAndConversion(
+              node_def, error::INVALID_ARGUMENT,
+              "Input weight attempts to broadcast across batch dimension for "
+              "BatchMatMul, at my_matmul");
         } else {
           RunValidationAndConversion(
               node_def, error::INVALID_ARGUMENT,
@@ -1717,8 +1719,10 @@ void OpConverterTest::TestMatMulHelper(
     AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
       if (transpose_b) {
-        RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                                   "TensorRT cannot adjoint inputs.");
+        RunValidationAndConversion(
+            node_def, error::INVALID_ARGUMENT,
+            "Input weight attempts to broadcast across batch dimension for "
+            "BatchMatMul, at my_matmul");
       } else {
         RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
@@ -1822,22 +1826,36 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
     return matmul.operation.node()->def();
   };
 
-  {
-    Reset();
-    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false,
-                                                /*transpose_b=*/false);
-    AddTestTensor("input", {1, 3}, /*batch_size=*/1);
-    AddTestWeights<float>("weights", {1, 3, 1}, {1, 2, 3});
+  for (bool transpose_a : {false, true}) {
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def =
+          get_batch_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
+      AddTestTensor("input", {2, 2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {1, 2, 2}, {1, 2, 3, 4});
 
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 1}, output.tensor()->getDimensions());
-    const DataVec input_data{{"input", test::AsTensor<float>({0, 1, 2})}};
-    DataVec output_data{{"my_matmul", ConstructTensor<float>(1, 1)}};
-    BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(8));
+      RunValidationAndConversion(node_def);
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      ASSERT_TRUE(output.is_tensor());
+      ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
+      const DataVec input_data{{"input", test::AsTensor<float>({0, 1, 2, 3})}};
+      DataVec output_data{{"my_matmul", ConstructTensor<float>(4)}};
+      BuildAndRun(input_data, &output_data);
+      if (!transpose_a && !transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(3, 4, 11, 16));
+      } else if (transpose_a && transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(4, 8, 7, 15));
+      } else if (transpose_a) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(6, 8, 10, 14));
+      } else if (transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(2, 4, 8, 18));
+      }
+    }
   }
 
   TestMatMulHelper(get_batch_matmul_nodedef, "BatchMatMul");

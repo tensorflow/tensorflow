@@ -4194,9 +4194,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  if (attrs.get<bool>("adj_x") || attrs.get<bool>("adj_y")) {
-    return errors::InvalidArgument("TensorRT cannot adjoint inputs.");
-  }
+  const bool transpose_a = attrs.get<bool>("adj_x");
+  const bool transpose_b = attrs.get<bool>("adj_y");
 
   // Removes the batch dimension from weights.
   const auto remove_weights_batch_dim =
@@ -4232,8 +4231,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
     return Status::OK();
   }
 
-  return ConvertMatMulHelper(params, tensor_l, tensor_r, /*transpose_a=*/false,
-                             /*transpose_b=*/false, node_def.name());
+  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
+                             transpose_b, node_def.name());
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {
