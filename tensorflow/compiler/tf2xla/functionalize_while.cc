@@ -287,7 +287,7 @@ Status AddMissingFunctionDef(const FunctionDef& fdef,
 Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
                          Graph* graph, Frame* frame,
                          FunctionLibraryDefinition* library) {
-  VLOG(2) << "Frame " << frame->name << " before: "
+  VLOG(3) << "Frame " << frame->name << " before: "
           << DumpGraphToFile("functionalize_before", *graph, library);
 
   // Split loop-varying Enter nodes with multiple successors. If the same
@@ -483,7 +483,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   FixupSourceAndSinkEdges(body_graph.get());
   TF_RETURN_IF_ERROR(FunctionalizeCond(body_graph.get(), library));
 
-  VLOG(2) << "Frame " << frame->name << " condition: "
+  VLOG(3) << "Frame " << frame->name << " condition: "
           << DumpGraphToFile("loop_condition", *cond_graph, library)
           << " body: " << DumpGraphToFile("loop_body", *body_graph);
 
@@ -578,7 +578,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   frame->nodes.clear();
   frame->parent->nodes.insert(while_node);
 
-  VLOG(2) << "Frame " << frame->name << " after: "
+  VLOG(3) << "Frame " << frame->name << " after: "
           << DumpGraphToFile("functionalize_after", *graph, library);
 
   return Status::OK();

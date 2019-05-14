@@ -610,8 +610,8 @@ Status XlaCompiler::CompileFunction(
     }
   }
 
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "XlaCompiler::CompileFunction: "
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "XlaCompiler::CompileFunction: "
             << DumpGraphToFile(
                    absl::StrCat("xla_compile_function_", function_id), *graph);
   }
@@ -1097,8 +1097,8 @@ Status XlaCompiler::CompileGraph(
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "XlaCompiler::CompileGraph: "
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
                                flib_runtime_->GetFunctionLibraryDefinition());
   }

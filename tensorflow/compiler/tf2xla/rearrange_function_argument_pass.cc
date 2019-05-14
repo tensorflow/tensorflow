@@ -713,7 +713,7 @@ Status RearrangeFunctionArgumentForFunction(
 Status RearrangeFunctionArgumentPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("rearrange_function_argument_before", *graph,
                     options.flib_def);
   }
@@ -763,7 +763,7 @@ Status RearrangeFunctionArgumentPass::Run(
         PruneUnreachableFunctionsFromGraph(**options.graph, options.flib_def));
   }
 
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("rearrange_function_argument_after", *graph,
                     options.flib_def);
   }

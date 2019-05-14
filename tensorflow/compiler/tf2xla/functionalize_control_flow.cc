@@ -49,7 +49,7 @@ namespace tensorflow {
 Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
                                 Graph* graph,
                                 FunctionLibraryDefinition* library) {
-  VLOG(2) << "FunctionalizeControlFlow (initial): "
+  VLOG(3) << "FunctionalizeControlFlow (initial): "
           << DumpGraphToFile("functionalize_initial", *graph, library);
 
   // Functionalize and remove while loops from graph.
@@ -60,7 +60,7 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   // in successive invocations.
   TF_RETURN_IF_ERROR(FunctionalizeCond(graph, library));
 
-  VLOG(2) << "FunctionalizeControlFlow (final): "
+  VLOG(3) << "FunctionalizeControlFlow (final): "
           << DumpGraphToFile("functionalize_final", *graph, library);
 
   return Status::OK();
@@ -197,13 +197,13 @@ Status FunctionalizeControlFlowForFunction(
     *modified = true;
 
     // Functionalize the function body.
-    if (VLOG_IS_ON(4)) {
+    if (VLOG_IS_ON(3)) {
       DumpGraphToFile(
           absl::StrCat("functionalize_control_flow_before_fdef_", func_name),
           *g, fld);
     }
     TF_RETURN_IF_ERROR(FunctionalizeControlFlow(g, fld));
-    if (VLOG_IS_ON(4)) {
+    if (VLOG_IS_ON(3)) {
       DumpGraphToFile(
           absl::StrCat("functionalize_control_flow_after_fdef_", func_name), *g,
           fld);
@@ -231,7 +231,7 @@ Status FunctionalizeControlFlowForFunction(
 Status FunctionalizeControlFlowPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("functionalize_control_flow_before", *graph,
                     options.flib_def);
   }
@@ -284,7 +284,7 @@ Status FunctionalizeControlFlowPass::Run(
         PruneUnreachableFunctionsFromGraph(*graph, options.flib_def));
   }
 
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("functionalize_control_flow_after", *graph,
                     options.flib_def);
   }

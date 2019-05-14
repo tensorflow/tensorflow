@@ -371,7 +371,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
 Status EncapsulateXlaComputationsPass::Run(
     const GraphOptimizationPassOptions& options) {
-  VLOG(1) << "EncapsulateXlaComputations(): "
+  VLOG(3) << "EncapsulateXlaComputations(): "
           << DumpGraphToFile("encapsulate_xla_computations_before",
                              **options.graph, options.flib_def);
 
@@ -382,13 +382,13 @@ Status EncapsulateXlaComputationsPass::Run(
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(Encapsulate(options.graph, options.flib_def),
                                   additional_help);
-  VLOG(1) << "EncapsulateXlaComputations() half-way: "
+  VLOG(3) << "EncapsulateXlaComputations() half-way: "
           << DumpGraphToFile("encapsulate_xla_computations_halfway",
                              **options.graph, options.flib_def);
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(BuildXlaLaunchOps(options.graph->get()),
                                   additional_help);
-  VLOG(1) << "EncapsulateXlaComputations() finished: "
+  VLOG(3) << "EncapsulateXlaComputations() finished: "
           << DumpGraphToFile("encapsulate_xla_computations_after",
                              **options.graph, options.flib_def);
   return Status::OK();

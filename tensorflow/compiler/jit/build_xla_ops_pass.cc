@@ -454,7 +454,7 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
         lazy_compilation_enabled, insert_print_nodes, graph, n));
   }
 
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 

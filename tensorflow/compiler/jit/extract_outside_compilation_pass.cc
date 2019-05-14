@@ -600,7 +600,7 @@ Status ConstructHostGraph(
   TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
       &host_graph, outside_compilation_attr_name));
 
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
                                  xla_cluster_name),
                     host_graph, fld);
@@ -806,7 +806,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   PruneForReverseReachability(g,
                               std::unordered_set<const Node*>{send_from_host});
 
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile(shape_inference_graph_name, *g, fld);
   }
 
@@ -1623,7 +1623,7 @@ Status ExtractOutsideCompilationForFunction(
   // restored in `ConstructHostGraph()`.
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
       fbody->graph, outside_compilation_attr_name));
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
         *fbody->graph, fld);
@@ -1708,7 +1708,7 @@ Status ExtractOutsideCompilationForFunction(
   } else {
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(updated_fdef));
   }
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_after_", func_name),
         *graph_out, fld);
@@ -1723,7 +1723,7 @@ Status ExtractOutsideCompilation(
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
     FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
     bool* modified) {
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("extract_outside_compilation_before", *g, fld);
   }
 
@@ -1758,7 +1758,7 @@ Status ExtractOutsideCompilation(
     }
   }
 
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("extract_outside_compilation_after", *g, fld);
   }
   return Status::OK();

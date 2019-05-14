@@ -643,7 +643,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
 
-  if (debug_options_.dump_graphs || VLOG_IS_ON(1)) {
+  if (debug_options_.dump_graphs || VLOG_IS_ON(3)) {
     DumpGraphToFile("before_mark_for_compilation", *graph_, flib_def_);
   }
 
@@ -687,7 +687,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
 Status MarkForCompilationPassImpl::DumpDebugInfo() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && clusters_created_);
 
-  if (debug_options_.dump_graphs || VLOG_IS_ON(1)) {
+  if (debug_options_.dump_graphs || VLOG_IS_ON(3)) {
     DumpPostClusteringGraphs();
   }
 

@@ -1151,8 +1151,8 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &dummy));
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, lookup, &fdef));
 
-  if (VLOG_IS_ON(1)) {
-    VLOG(2) << "Build function def " << name;
+  if (VLOG_IS_ON(3)) {
+    VLOG(4) << "Build function def " << name;
     DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name), *graph_,
                     library);
     DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name), fdef);
@@ -1216,8 +1216,8 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
 
-  if (VLOG_IS_ON(1)) {
-    VLOG(2) << "Replace function def " << name;
+  if (VLOG_IS_ON(3)) {
+    VLOG(4) << "Replace function def " << name;
     DumpGraphToFile(absl::StrCat("replace_encapsulate_fdef_graph_", name),
                     *graph_, library);
     DumpFunctionDefToFile(absl::StrCat("replace_encapsulate_fdef_", name),
@@ -1581,7 +1581,7 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
     FixupSourceAndSinkEdges(subgraph.GetGraph());
   }
 
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(3)) {
     // Dump subgraphs.
     for (auto& entry : subgraphs_) {
       DumpGraphToFile(
@@ -2420,7 +2420,7 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
       *graph_out, &pruned_graph, &back_edge_helper, &shape_refiner,
       &node_images, library));
 
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("pruned_graph_for_shape_inference", *pruned_graph, library);
   }
 
@@ -2549,7 +2549,7 @@ static Status RenumberArguments(Graph* graph,
 Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
                     options.flib_def);
   }
@@ -2690,7 +2690,7 @@ Status EncapsulateSubgraphsPass::Run(
           library),
       "EncapsulateSubgraphsPass failed");
 
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(3)) {
     DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
                     options.flib_def);
   }
