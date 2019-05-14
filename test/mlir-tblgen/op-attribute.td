@@ -75,9 +75,6 @@ def AOp : NS_Op<"a_op", []> {
  
 def SomeTypeAttr : TypeAttrBase<"SomeType", "some type attribute">;
 
-// Test common attribute kinds' constraints
-// ---
-
 def BOp : NS_Op<"b_op", []> {
   let arguments = (ins
     AnyAttr:$any_attr,
@@ -91,9 +88,30 @@ def BOp : NS_Op<"b_op", []> {
     FunctionAttr:$function_attr,
     SomeTypeAttr:$type_attr,
     ArrayAttr:$array_attr,
-    TypedArrayAttrBase<SomeAttr, "SomeAttr array">:$some_attr_array
+    TypedArrayAttrBase<SomeAttr, "SomeAttr array">:$some_attr_array,
+    TypeAttr:$type_attr
   );
 }
+
+// Test common attribute kind getters' return types
+// ---
+
+// CHECK: Attribute BOp::any_attr()
+// CHECK: bool BOp::bool_attr()
+// CHECK: APInt BOp::i32_attr()
+// CHECK: APInt BOp::i64_attr()
+// CHECK: APFloat BOp::f32_attr()
+// CHECK: APFloat BOp::f64_attr()
+// CHECK: StringRef BOp::str_attr()
+// CHECK: ElementsAttr BOp::elements_attr()
+// CHECK: Function *BOp::function_attr()
+// CHECK: SomeType BOp::type_attr()
+// CHECK: ArrayAttr BOp::array_attr()
+// CHECK: ArrayAttr BOp::some_attr_array()
+// CHECK: Type BOp::type_attr()
+
+// Test common attribute kinds' constraints
+// ---
 
 // CHECK-LABEL: BOp::verify
 // CHECK: if (!((true)))
@@ -108,6 +126,7 @@ def BOp : NS_Op<"b_op", []> {
 // CHECK: if (!(((tblgen_type_attr.isa<TypeAttr>())) && ((tblgen_type_attr.cast<TypeAttr>().getValue().isa<SomeType>()))))
 // CHECK: if (!((tblgen_array_attr.isa<ArrayAttr>())))
 // CHECK: if (!(((tblgen_some_attr_array.isa<ArrayAttr>())) && (llvm::all_of(tblgen_some_attr_array.cast<ArrayAttr>(), [](Attribute attr) { return (some-condition); }))))
+// CHECK: if (!(((tblgen_type_attr.isa<TypeAttr>())) && ((tblgen_type_attr.cast<TypeAttr>().getValue().isa<Type>()))))
 
 // Test building constant values for array attribute kinds
 // ---

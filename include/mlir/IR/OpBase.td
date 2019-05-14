@@ -680,6 +680,8 @@ class TypeAttrBase<string retType, string description> :
   let convertFromStorage = "$_self.getValue().cast<" # retType # ">()";
 }
 
+def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
+
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
