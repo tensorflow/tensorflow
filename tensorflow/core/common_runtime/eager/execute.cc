@@ -58,7 +58,7 @@ namespace {
 // Copy of the definition in third_party/tensorflow/compiler/jit/defs.h
 // Copied here because we don't currently compile XLA on windows. So, can't
 // depend on it directly.
-const char* const kXlaCompileAttr = "_XlaCompile";
+const char* const kXlaCompileAttr = "XlaCompile";
 
 // Initializes the step stats if needed.
 void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
