@@ -1531,15 +1531,6 @@ struct TensorFlowSwitchOperator : Operator {
   TensorFlowSwitchOperator() : Operator(OperatorType::kSwitch) {}
 };
 
-// TensorFlow All equivalent. Refer to TensorFlow documentation for details.
-// Not fully supported, just a placeholder to handle TensorFlow graphs and
-// support graph transformations to other operator types by matching sub-graphs.
-// Typically, this is only used as an input to an Assert node, so can be
-// removed as an unused node as we drop Assert nodes.
-struct TensorFlowAllOperator : Operator {
-  TensorFlowAllOperator() : Operator(OperatorType::kAll) {}
-};
-
 // TensorFlow Assert equivalent. Refer to TensorFlow documentation for details.
 // Not fully supported, just a placeholder to handle TensorFlow graphs and
 // support graph transformations to other operator types by matching sub-graphs.
@@ -1939,6 +1930,19 @@ struct SparseToDenseOperator : Operator {
 // TensorFlow equivalent: Pow.
 struct PowOperator : Operator {
   PowOperator() : Operator(OperatorType::kPow) {}
+};
+
+// All operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.reduce_all.
+struct TensorFlowAllOperator : Operator {
+  TensorFlowAllOperator() : Operator(OperatorType::kAll) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
 };
 
 // Any operator:

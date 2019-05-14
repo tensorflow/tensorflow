@@ -542,6 +542,8 @@ bool KeepDims(const Operator& op) {
       return static_cast<const TensorFlowProdOperator&>(op).keep_dims;
     case OperatorType::kMean:
       return static_cast<const MeanOperator&>(op).keep_dims;
+    case OperatorType::kAll:
+      return static_cast<const TensorFlowAllOperator&>(op).keep_dims;
     case OperatorType::kAny:
       return static_cast<const TensorFlowAnyOperator&>(op).keep_dims;
     default:
@@ -2149,7 +2151,6 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kRsqrt:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
-    case OperatorType::kAll:
     case OperatorType::kAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
@@ -2241,6 +2242,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kSum:
     case OperatorType::kReduceProd:
     case OperatorType::kMean:
+    case OperatorType::kAll:
     case OperatorType::kAny:
       ProcessTensorFlowReductionOperator(model, op);
       break;

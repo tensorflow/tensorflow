@@ -65,6 +65,7 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
     case OperatorType::kGreaterEqual:
     case OperatorType::kEqual:
     case OperatorType::kNotEqual:
+    case OperatorType::kAll:
     case OperatorType::kAny:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:

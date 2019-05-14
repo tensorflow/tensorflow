@@ -69,6 +69,10 @@ bool ResolveAttributes(Model* model, T* op) {
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
       return ::tensorflow::Status::OK();
+    case OperatorType::kAll:
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowAllOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kAny:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));

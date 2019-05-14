@@ -1316,6 +1316,27 @@ class ReduceProd
   }
 };
 
+class ReduceAll
+    : public BuiltinOperator<TensorFlowAllOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class ReduceAny
     : public BuiltinOperator<TensorFlowAnyOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
@@ -2453,6 +2474,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                       OperatorType::kReduceMax));
   ops.push_back(MakeUnique<ReduceMin>(::tflite::BuiltinOperator_REDUCE_MIN,
                                       OperatorType::kReduceMin));
+  ops.push_back(MakeUnique<ReduceAll>(::tflite::BuiltinOperator_REDUCE_ALL,
+                                      OperatorType::kAll));
   ops.push_back(MakeUnique<ReduceAny>(::tflite::BuiltinOperator_REDUCE_ANY,
                                       OperatorType::kAny));
   ops.push_back(

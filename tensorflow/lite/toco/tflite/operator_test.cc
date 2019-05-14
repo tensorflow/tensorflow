@@ -183,6 +183,7 @@ TEST_F(OperatorTest, BuiltinReducerOps) {
                                               OperatorType::kReduceMax);
   CheckReducerOperator<TensorFlowMinOperator>("REDUCE_MIN",
                                               OperatorType::kReduceMin);
+  CheckReducerOperator<TensorFlowAllOperator>("REDUCE_ALL", OperatorType::kAll);
   CheckReducerOperator<TensorFlowAnyOperator>("REDUCE_ANY", OperatorType::kAny);
 }
 
