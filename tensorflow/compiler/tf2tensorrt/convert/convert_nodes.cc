@@ -4665,6 +4665,83 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 }
 #endif  // CombinedNonMaxSuppression
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+Status ConvertResize(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"size", true}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+
+  // Get input tensor. Transpose it from NHWC to NCHW.
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, params->node_def.name());
+
+  // Get output size. It must constain two values i.e. [H_out, W_out]
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (weights.count() != 2) {
+    return errors::Unimplemented("Resize to shape=[] is not supported, at ",
+                                 node_def.name());
+  }
+  const int* weights_ptr = static_cast<int*>(weights.GetValues());
+
+  // Verify and consume node attributes.
+  TFAttrs attrs(node_def);
+  bool align_corners = attrs.get<bool>("align_corners");
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  // Verify resize mode. Initialize resize mode if supported.
+  nvinfer1::ResizeMode resize_mode;
+  if (node_def.op() == "ResizeBilinear") {
+    resize_mode = nvinfer1::ResizeMode::kLINEAR;
+  } else if (node_def.op() == "ResizeNearestNeighbor") {
+    resize_mode = nvinfer1::ResizeMode::kNEAREST;
+  } else {
+    return errors::Unimplemented(node_def.op(), " is not yet implemented at ",
+                                 node_def.name());
+  }
+
+  // return after validation if only validation is requested.
+  if (params->validation_only) return Status::OK();
+
+  // Tranpose tensor from NHWC to NCHW format.
+  TF_RETURN_IF_ERROR(
+      params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
+
+  // Calculate output dimensions.
+  // Given input dimensions [N, C, H, W] and output size [H_out, W_out],
+  // output dimensions equals [N, C, H_out, W_out]
+  nvinfer1::Dims output_dimensions;
+  output_dimensions.nbDims = tensor->getDimensions().nbDims;
+  for (int i = 0; i < output_dimensions.nbDims; ++i) {
+    output_dimensions.d[i] = tensor->getDimensions().d[i];
+  }
+  output_dimensions.d[output_dimensions.nbDims - 2] = weights_ptr[0];
+  output_dimensions.d[output_dimensions.nbDims - 1] = weights_ptr[1];
+
+  // Add resize layer.
+  nvinfer1::IResizeLayer* layer =
+      params->converter->network()->addResize(*tensor);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  // Set layer parameters.
+  layer->setResizeMode(resize_mode);
+  layer->setOutputDimensions(output_dimensions);
+  layer->setAlignCorners(align_corners);
+
+  // Get output tensor. Transpose it from NCHW to NHWC.
+  nvinfer1::ITensor* output = layer->getOutput(0);
+
+  TF_RETURN_IF_ERROR(
+      params->converter->TransposeTensor(output, {0, 2, 3, 1}, &output));
+  params->outputs->push_back(TRT_TensorOrWeights(output));
+  // Success
+  return Status::OK();
+}  // ConvertResize
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
+
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BatchMatMul"] = ConvertBatchMatMul;
@@ -4689,6 +4766,11 @@ static void RegisterValidatableOpConverters(
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
+    (*registration)[resize_mode] = ConvertResize;
+  }
+#endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Softmax"] = ConvertSoftmax;
