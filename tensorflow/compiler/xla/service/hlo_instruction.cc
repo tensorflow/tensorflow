@@ -1624,12 +1624,12 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
 }
 
 const HloInstruction* HloInstruction::operand(int64 i) const {
-  return operands_[i];
+  return operands_.at(i);
 }
 
 HloInstruction* HloInstruction::mutable_operand(int64 i) {
   CHECK(operands_[i] != nullptr);
-  return operands_[i];
+  return operands_.at(i);
 }
 
 int64 HloInstruction::operand_index(const HloInstruction* target) const {
