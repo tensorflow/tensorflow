@@ -168,9 +168,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2d(self):
-    if not compat.forward_compatible(2019, 6, 6):
-      self.skipTest("Skipping test for future functionality.")
-    self._RunTestOverParameters(self._TestFoldConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldConv2d)
 
   def testMultipleLayerConv2d(self,
                               relu=nn_ops.relu,
@@ -340,9 +339,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2dUnknownShape(self):
-    if not compat.forward_compatible(2019, 6, 6):
-      self.skipTest("Skipping test for future functionality.")
-    self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
   def _TestFoldFullyConnectedLayer(
       self, relu, relu_op_name, with_bypass, has_scaling, fused_batch_norm,
@@ -437,9 +435,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
-    if not compat.forward_compatible(2019, 6, 6):
-      self.skipTest("Skipping test for future functionality.")
-    self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
 
   def _TestFoldDepthwiseConv2d(self, relu, relu_op_name, with_bypass,
                                has_scaling, fused_batch_norm,
@@ -550,9 +547,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldDepthwiseConv2d(self):
-    if not compat.forward_compatible(2019, 6, 6):
-      self.skipTest("Skipping test for future functionality.")
-    self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
   def _TestFoldAtrousConv2d(self, relu, relu_op_name, with_bypass, has_scaling,
                             fused_batch_norm, freeze_batch_norm_delay,
@@ -669,9 +665,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldAtrousConv2d(self):
-    if not compat.forward_compatible(2019, 6, 6):
-      self.skipTest("Skipping test for future functionality.")
-    self._RunTestOverParameters(self._TestFoldAtrousConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldAtrousConv2d)
 
   def _TestCompareFoldAndUnfolded(self,
                                   relu,
