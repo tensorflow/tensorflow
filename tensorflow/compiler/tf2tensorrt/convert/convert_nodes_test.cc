@@ -1713,7 +1713,7 @@ void OpConverterTest::TestMatMulHelper(
   for (bool transpose_b : {false, true}) {
     Reset();
     NodeDef node_def = get_matmul(DT_FLOAT, /*transpose_a=*/false, transpose_b);
-    AddTestTensor("input", {1, 1, 2}, /*batch_size=*/1);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
     AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
       if (transpose_b) {
