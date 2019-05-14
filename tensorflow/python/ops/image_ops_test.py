@@ -272,6 +272,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
 
 class AdjustGamma(test_util.TensorFlowTestCase):
+
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_float32(self):
     """White image should be returned for gamma equal to zero"""
@@ -316,7 +317,9 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def _test_adjust_gamma_uint8(self, gamma):
     """Verifying the output with expected results for gamma
-    correction for uint8 images"""
+
+    correction for uint8 images
+    """
     with self.cached_session():
       x_np = np.random.uniform(0, 255, (8, 8)).astype(np.uint8)
       x = constant_op.constant(x_np, shape=x_np.shape)
@@ -334,7 +337,9 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def _test_adjust_gamma_float32(self, gamma):
     """Verifying the output with expected results for gamma
-    correction for float32 images"""
+
+    correction for float32 images
+    """
     with self.cached_session():
       x_np = np.random.uniform(0, 1.0, (8, 8))
       x = constant_op.constant(x_np, shape=x_np.shape)
@@ -357,37 +362,49 @@ class AdjustGamma(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_uint8(self):
     """White image should be returned for gamma equal
-    to zero for uint8 images"""
+
+    to zero for uint8 images
+    """
     self._test_adjust_gamma_uint8(gamma=0.0)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_uint8(self):
     """Verifying the output with expected results for gamma
-    correction with gamma equal to half for uint8 images"""
+
+    correction with gamma equal to half for uint8 images
+    """
     self._test_adjust_gamma_uint8(gamma=0.5)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_uint8(self):
     """Verifying the output with expected results for gamma
-    correction for uint8 images"""
+
+    correction for uint8 images
+    """
     self._test_adjust_gamma_uint8(gamma=1.0)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_float32(self):
     """Verifying the output with expected results for gamma
-    correction with gamma equal to half for float32 images"""
+
+    correction with gamma equal to half for float32 images
+    """
     self._test_adjust_gamma_float32(0.5)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_float32(self):
     """Verifying the output with expected results for gamma
-    correction with gamma equal to two for float32 images"""
+
+    correction with gamma equal to two for float32 images
+    """
     self._test_adjust_gamma_float32(1.0)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_float32(self):
     """White image should be returned for gamma equal
-    to zero for float32 images"""
+
+    to zero for float32 images
+    """
     self._test_adjust_gamma_float32(0.0)
 
 
@@ -5104,6 +5121,21 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
                                              dtypes.float32)
       image0, image1 = self.evaluate([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testExpandAnimations(self):
+    with self.cached_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(
+          gif0, dtype=dtypes.float32, expand_animations=False)
+      # image_ops.decode_png() handles GIFs and returns 3D tensors
+      animation = image_ops.decode_gif(gif0)
+      first_frame = array_ops.gather(animation, 0)
+      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+      image0, image1 = self.evaluate([image0, image1])
+      self.assertEqual(len(image0.shape), 3)
+      self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
 

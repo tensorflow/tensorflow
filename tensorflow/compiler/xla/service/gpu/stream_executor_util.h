@@ -57,9 +57,11 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // device while another thread is using it.
 tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
 
-// Creates a type-safe kernel which can be launched with stream.ThenLaunch.
+// Creates a kernel which can be launched with stream.ThenLaunch, such that
+// the types of the arguments provided for launch would have to match
+// types of the arguments provided at creation time.
 //
-// The kernel has a provided name, and is based from provided PTX in ptx,
+// The kernel has a name kernel_name, and is based from provided PTX in ptx,
 // and (optional) compiled PTX in cubin_data.
 // The canonical storage for both ptx and cubin_data should outlive the
 // lifetime of the kernel.
@@ -67,9 +69,10 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
 // This is a preferred API since it provides type safety for kernel launches.
 template <typename... Args>
 StatusOr<std::unique_ptr<se::TypedKernel<Args...>>> CreateTypedKernel(
-    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
+    absl::string_view kernel_name, absl::string_view ptx,
     absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec) {
-  se::MultiKernelLoaderSpec loader_spec(num_args);
+  auto kernel_base = absl::make_unique<se::TypedKernel<Args...>>(stream_exec);
+  se::MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
@@ -77,7 +80,6 @@ StatusOr<std::unique_ptr<se::TypedKernel<Args...>>> CreateTypedKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = absl::make_unique<se::TypedKernel<Args...>>(stream_exec);
   if (!stream_exec->GetKernel(loader_spec, kernel_base.get())) {
     return InternalError("Unable to load kernel '%s'", kernel_name);
   }
@@ -134,6 +136,14 @@ struct PtxCompilationOptions {
 StatusOr<std::vector<uint8>> CompilePtx(
     se::StreamExecutor* stream_exec, absl::string_view ptx,
     PtxCompilationOptions compile_ptx_options);
+
+// Same as CompilePtx, but caches the result, and returns unowned view of
+// the compiled binary.
+//
+// A copy of the string provided in ptx will be made.
+StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
+    se::StreamExecutor* executor, absl::string_view ptx,
+    PtxCompilationOptions compilation_options);
 
 // Returns a vector of potential locations of the CUDA root directory.
 // Searches through tensorflow CUDA locations AND through the CUDA location

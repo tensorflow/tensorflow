@@ -16,10 +16,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -129,34 +129,95 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TOKEN", TOKEN);
 
   // Shapes
-  py::class_<Shape>(m, "Shape")
+  py::class_<Shape> shape_class(m, "Shape");
+  shape_class
       .def_static(
-          "Tuple",
+          "tuple_shape",
           [](std::vector<Shape> shapes) -> Shape {
             return ShapeUtil::MakeTupleShape(shapes);
           },
-          "Makes a tuple shape.")
+          "Constructs a tuple shape.")
       .def_static(
-          "Array",
-          [](PrimitiveType type, std::vector<int64> dims,
-             absl::optional<std::vector<int64>> layout) -> Shape {
-            if (layout) {
-              return ShapeUtil::MakeShapeWithLayout(type, dims, *layout);
+          "array_shape",
+          [](PrimitiveType type, py::object dims_seq,
+             absl::optional<py::object> layout_seq) -> Shape {
+            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            if (layout_seq) {
+              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
             } else {
               Shape shape = ShapeUtil::MakeShape(type, dims);
               shape.clear_layout();
               return shape;
             }
           },
-          "Makes an array shape.", py::arg("type"), py::arg("dims"),
+          "Constructs an array shape.", py::arg("type"), py::arg("dims"),
+          py::arg("layout") = absl::nullopt)
+      .def_static(
+          "array_shape",
+          [](py::dtype dtype, py::object dims_seq,
+             absl::optional<py::object> layout_seq) -> Shape {
+            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            if (layout_seq) {
+              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+            } else {
+              Shape shape = ShapeUtil::MakeShape(type, dims);
+              shape.clear_layout();
+              return shape;
+            }
+          },
+          "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = absl::nullopt)
       .def("dimensions",
-           static_cast<const std::vector<int64>& (Shape::*)() const>(
-               &Shape::dimensions))
-      .def("element_type", &Shape::element_type)
+           [](const Shape& shape) -> py::tuple {
+             return IntSpanToTuple(shape.dimensions());
+           })
+      .def("xla_element_type", &Shape::element_type)
+      .def("element_type",
+           [](const Shape& shape) {
+             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+           })
+      .def("numpy_dtype",
+           [](const Shape& shape) {
+             if (shape.IsTuple()) {
+               return py::dtype("O");
+             }
+             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+           })
+      .def("is_tuple", &Shape::IsTuple)
+      .def("is_array", &Shape::IsArray)
+      .def("rank", &Shape::rank)
+      .def("to_serialized_proto",
+           [](const Shape& shape) {
+             ShapeProto proto = shape.ToProto();
+             return py::bytes(proto.SerializeAsString());
+           })
       .def("tuple_shapes",
-           static_cast<const std::vector<Shape>& (Shape::*)() const>(
-               &Shape::tuple_shapes))
+           [](const Shape& shape) {
+             return std::vector<Shape>(shape.tuple_shapes());
+           })
+      .def(
+          "with_major_to_minor_layout_if_absent",
+          [](const Shape& shape) {
+            Shape out = shape;
+            ShapeUtil::ForEachMutableSubshape(
+                &out, [](Shape* subshape, const ShapeIndex&) {
+                  if (!subshape->has_layout()) {
+                    LayoutUtil::SetToDefaultLayout(subshape);
+                  }
+                });
+            return out;
+          },
+          "Returns a copy of a shape with missing layouts set to "
+          "major-to-minor.")
+      .def("__eq__", [](const Shape& shape,
+                        const Shape& other) { return shape == other; })
+      .def("__ne__", [](const Shape& shape,
+                        const Shape& other) { return shape != other; })
+      .def("__hash__",
+           [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
       .def("__repr__", [](const Shape& shape) {
         return shape.ToString(/*print_layouts=*/true);
       });
@@ -171,10 +232,10 @@ PYBIND11_MODULE(xla_extension, m) {
             *program_shape.mutable_result() = result;
             return program_shape;
           }))
-      .def("Parameters",
+      .def("parameter_shapes",
            static_cast<const std::vector<Shape>& (ProgramShape::*)() const>(
                &ProgramShape::parameters))
-      .def("Result", &ProgramShape::result)
+      .def("result_shape", &ProgramShape::result)
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals
@@ -211,20 +272,25 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  py::class_<PyLocalClient>(m, "LocalClient")
-      .def_static("Get", &PyLocalClient::Get)
+  py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
+      .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
+                  py::arg("xla_platform_id"), py::arg("asynchronous"))
       .def("DeviceCount", &PyLocalClient::device_count)
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
-      .def_static("FromPython", &PyLocalBuffer::FromPython)
-      .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
-      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
-      .def("Delete", &PyLocalBuffer::Delete)
-      .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
-      .def("ToPython", &PyLocalBuffer::ToPython)
-      .def("shape", &PyLocalBuffer::on_host_shape);
+      .def_static("from_python", &PyLocalBuffer::FromPython)
+      .def_static("from_python_values", &PyLocalBuffer::FromPythonValues)
+      .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def("delete", &PyLocalBuffer::Delete)
+      .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("to_py", &PyLocalBuffer::ToPython)
+      .def("shape", &PyLocalBuffer::on_host_shape)
+      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("is_deleted", [](const PyLocalBuffer& buffer) {
+        return buffer.device_buffer() == nullptr;
+      });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
@@ -232,9 +298,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>())
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>());
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",
@@ -299,7 +365,12 @@ PYBIND11_MODULE(xla_extension, m) {
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
+  ops.def("AllReduce",
+          static_cast<XlaOp (*)(
+              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+              const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
   ops.def("AllToAll", &AllToAll);
+  ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));

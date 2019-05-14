@@ -1176,6 +1176,21 @@ class NNAPIDelegateKernel {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context, nnapi_->ANeuralNetworksCompilation_create(nn_model_.get(),
                                                              &compilation));
+
+      auto preference = StatefulNnApiDelegate::GetOptions(params->delegate)
+                            .execution_preference;
+      if (preference !=
+          StatefulNnApiDelegate::Options::ExecutionPreference::kUndefined) {
+        const int preference_result =
+            nnapi_->ANeuralNetworksCompilation_setPreference(compilation,
+                                                             preference);
+        if (preference_result != ANEURALNETWORKS_NO_ERROR) {
+          nnapi_->ANeuralNetworksCompilation_free(compilation);
+          compilation = nullptr;
+        }
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(context, preference_result);
+      }
+
       const int finish_result =
           nnapi_->ANeuralNetworksCompilation_finish(compilation);
       if (finish_result != ANEURALNETWORKS_NO_ERROR) {

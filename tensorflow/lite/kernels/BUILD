@@ -145,6 +145,7 @@ cc_library(
     name = "cpu_backend_gemm",
     srcs = [
         "cpu_backend_gemm_ruy.h",
+        "cpu_backend_gemm_custom_gemv.h",
     ] + select({
         "//tensorflow/lite/kernels:tflite_with_ruy": [],
         "//conditions:default": [
@@ -157,9 +158,12 @@ cc_library(
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
@@ -327,6 +331,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "reverse.cc",
         "reverse_sequence.cc",
+        "round.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -386,11 +391,13 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
+        ":kernel_util",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//third_party/eigen3",
+        "@gemmlowp",
     ],
 )
 
@@ -674,6 +681,21 @@ cc_test(
     name = "ceil_test",
     size = "small",
     srcs = ["ceil_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "round_test",
+    size = "small",
+    srcs = ["round_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],

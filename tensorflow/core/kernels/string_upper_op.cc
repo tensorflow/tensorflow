@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "unicode/unistr.h"  // TF:icu
-
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,9 +32,10 @@ class StringUpperOp : public OpKernel {
  public:
   explicit StringUpperOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding_));
-    OP_REQUIRES(
-        context, encoding_ != "" || encoding_ != "utf-8",
-        errors::InvalidArgument("only utf-8 or '' (no encoding) is supported, received ", encoding_));
+    OP_REQUIRES(context, encoding_.empty() || encoding_ == "utf-8",
+                errors::InvalidArgument(
+                    "only utf-8 or '' (no encoding) is supported, received ",
+                    encoding_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -46,10 +47,10 @@ class StringUpperOp : public OpKernel {
 
     const auto input = input_tensor->flat<string>();
     auto output = output_tensor->flat<string>();
-    if (encoding_ == "") {
+    if (encoding_.empty()) {
       for (int64 i = 0; i < input.size(); ++i) {
         StringPiece entry(input(i));
-        output(i) = str_util::Uppercase(entry);
+        output(i) = absl::AsciiStrToUpper(entry);
       }
     } else {
       // The validation of utf-8 has already been done in GetAttr above.
@@ -60,6 +61,7 @@ class StringUpperOp : public OpKernel {
       }
     }
   }
+
  private:
   string encoding_;
 };

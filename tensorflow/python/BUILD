@@ -1420,9 +1420,7 @@ tf_py_test(
     ],
     main = "platform/benchmark_test.py",
     tags = [
-        "manual",
         "no_pip",
-        "notap",
     ],
 )
 

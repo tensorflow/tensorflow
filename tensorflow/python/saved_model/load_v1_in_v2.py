@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
@@ -55,7 +58,7 @@ class _Initializer(tracking.CapturableResource):
         dtype=dtypes.resource, shape=[], name="unused_resource")
 
   def _initialize(self):
-    self._init_fn(*[path.asset_path for path in self._asset_paths])
+    return self._init_fn(*[path.asset_path for path in self._asset_paths])
 
 
 class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
@@ -89,11 +92,21 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     """Restores variables from the checkpoint."""
     if saver is not None:
       saver_def = saver.saver_def
+      filename_tensor = wrapped.graph.as_graph_element(
+          saver_def.filename_tensor_name)
+      # We both feed and fetch filename_tensor so we have an operation to use to
+      # feed into variable initializers (only relevant for v1 graph building).
       restore_fn = wrapped.prune(
-          feeds=[wrapped.graph.as_graph_element(
-              saver_def.filename_tensor_name)],
-          fetches=[wrapped.graph.as_graph_element(saver_def.restore_op_name)])
-      restore_fn(constant_op.constant(self._variables_path))
+          feeds=[filename_tensor],
+          fetches=[filename_tensor,
+                   wrapped.graph.as_graph_element(saver_def.restore_op_name)])
+      initializer, _ = restore_fn(constant_op.constant(self._variables_path))
+      if not ops.executing_eagerly_outside_functions():
+        for variable in wrapped.graph.get_collection_ref(
+            ops.GraphKeys.GLOBAL_VARIABLES):
+          # pylint: disable=protected-access
+          variable._initializer_op = initializer
+          # pylint: enable=protected-access
 
   def _extract_signatures(self, wrapped, meta_graph_def):
     """Creates ConcreteFunctions for signatures in `meta_graph_def`."""
@@ -105,11 +118,25 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         input_names = []
         input_specs = []
       # TODO(allenl): Support optional arguments
-      signature_fn = wrapped.prune(
-          feeds=[wrapped.graph.as_graph_element(inp.name)
-                 for inp in input_specs],
-          fetches={name: wrapped.graph.as_graph_element(out.name)
-                   for name, out in signature_def.outputs.items()})
+      feeds = [wrapped.graph.as_graph_element(inp.name) for inp in input_specs]
+      fetches = {name: out for name, out in signature_def.outputs.items()}
+      try:
+        signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
+      except lift_to_graph.UnliftableError as ex:
+        # Mutate the exception to add a bit more detail.
+        args = ex.args
+        if not args:
+          message = ""
+        else:
+          message = args[0]
+        message = (
+            ("A SavedModel signature needs an input for each placeholder the "
+             "signature's outputs use. An output for signature '{}' depends on "
+             "a placeholder which is not an input (i.e. the placeholder is not "
+             "fed a value).\n\n").format(signature_key)
+            + message)
+        ex.args = (message,) + args[1:]
+        raise
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
       if len(input_names) == 1:
@@ -134,6 +161,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(
           meta_graph_def) or monitored_session.Scaffold.default_local_init_op()
+      # Add a dummy Tensor we know we can fetch to add control dependencies to.
+      init_anchor = constant_op.constant(0., name="dummy_fetch")
 
     root = tracking.AutoTrackable()
     asset_feed_tensors = []
@@ -144,9 +173,19 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       asset_paths.append(tracking.TrackableAsset(value))
     init_fn = wrapped.prune(
         feeds=asset_feed_tensors,
-        fetches=[wrapped.graph.as_graph_element(init_op)])
+        fetches=[init_anchor, wrapped.graph.as_graph_element(init_op)])
     initializer = _Initializer(init_fn, asset_paths)
-    initializer._initialize()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    local_init_op, _ = initializer._initialize()
+    # pylint: enable=protected-access
+    with ops.init_scope():
+      if not context.executing_eagerly():
+        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, local_init_op)
+        for variable in wrapped.graph.get_collection_ref(
+            ops.GraphKeys.LOCAL_VARIABLES):
+          # pylint: disable=protected-access
+          variable._initializer_op = local_init_op
+          # pylint: enable=protected-access
     root.initializer = initializer
     root.asset_paths = asset_paths
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
@@ -154,6 +193,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
     root.variables = list(wrapped.graph.variables)
+    root.tensorflow_version = (
+        meta_graph_def.meta_info_def.tensorflow_version)
+    root.tensorflow_git_version = (
+        meta_graph_def.meta_info_def.tensorflow_git_version)
+    root.graph = wrapped.graph
+    root.prune = wrapped.prune
     return root
 
 

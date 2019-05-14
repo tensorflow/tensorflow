@@ -64,8 +64,9 @@ class AlignedAllocator {
   //    be queried cheaply, at runtime, from userspace, if needed.
   static constexpr std::size_t kAlignment = 64;
 
+  void operator=(const AlignedAllocator&) = delete;
   ~AlignedAllocator() {
-    RUY_DCHECK(fallback_blocks_.empty());
+    FreeAll();
     SystemAlignedFree(ptr_);
   }
 

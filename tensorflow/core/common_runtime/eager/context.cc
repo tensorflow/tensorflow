@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <vector>
+
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
@@ -148,15 +153,14 @@ Status EagerContext::SetAsyncForThread(bool async) {
   return Status::OK();
 }
 
-Status EagerContext::ClearCaches() {
+void EagerContext::ClearCaches() {
   // The executor stores pointers to kernels, so we need to make sure that no
   // async eager ops are still executing. We lock the cache during this time as
   // well.
   mutex_lock ml(cache_mu_);
-  TF_RETURN_IF_ERROR(executor_.WaitForAllPendingNodes());
+  executor_.WaitForAllPendingNodes().IgnoreError();
   gtl::STLDeleteValues(&kernel_cache_);
-
-  return Status::OK();
+  gtl::STLDeleteValues(&active_functions_);
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -208,6 +212,8 @@ void EagerContext::CloseRemoteContexts() {
 
 EagerContext::~EagerContext() {
 #if !defined(IS_MOBILE_PLATFORM)
+  ClearCaches();
+
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
@@ -225,8 +231,6 @@ EagerContext::~EagerContext() {
   CloseRemoteContexts();
 #endif  // !IS_MOBILE_PLATFORM
 
-  executor_.WaitForAllPendingNodes().IgnoreError();
-  ClearCaches().IgnoreError();
   rendezvous_->Unref();
 
   for (auto& thread : child_threads_) {
@@ -353,10 +357,43 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 }
 
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
-  mutex_lock l(functions_mu_);
-  TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+  {
+    mutex_lock l(cache_mu_);
+    if (gtl::FindPtrOrNull(active_functions_, fdef.signature().name()) ==
+        nullptr) {
+      gtl::InsertOrUpdate(&active_functions_, fdef.signature().name(),
+                          new std::vector<Fprint128>);
+    } else {
+      LOG(WARNING) << "Added two functions with the same name: "
+                   << fdef.signature().name();
+    }
+  }
+  {
+    mutex_lock l(functions_mu_);
+    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+    // TODO(fishx): Avoid holding lock when sending RPCs.
+    return MaybeRegisterFunctionRemotely(fdef);
+  }
+}
 
-  return MaybeRegisterFunctionRemotely(fdef);
+Status EagerContext::RemoveFunction(const string& func) {
+  {
+    mutex_lock l(cache_mu_);
+    auto cache_keys =
+        absl::WrapUnique(gtl::EraseKeyReturnValuePtr(&active_functions_, func));
+    if (cache_keys == nullptr) {
+      return errors::InvalidArgument("Tried to remove non-existent function '",
+                                     func, "'.");
+    }
+    for (auto& key : *cache_keys) {
+      delete gtl::EraseKeyReturnValuePtr(&kernel_cache_, key);
+    }
+  }
+  {
+    mutex_lock l(functions_mu_);
+    // TODO(fishx): Remove remote function as well.
+    return func_lib_def_.RemoveFunction(func);
+  }
 }
 
 KernelAndDevice* EagerContext::GetCachedKernel(Fprint128 cache_key) {
@@ -368,6 +405,11 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
   gtl::InsertOrUpdate(&kernel_cache_, cache_key, kernel);
+  auto* keys = gtl::FindPtrOrNull(active_functions_, kernel->name());
+  // The kernel name can be either a primitive op or a function.
+  if (keys != nullptr) {
+    keys->emplace_back(cache_key);
+  }
 }
 
 bool EagerContext::ShouldStoreGraphs() {
@@ -452,7 +494,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   devices_map_.clear();
 
   InitDeviceMapAndAsync();
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
 
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
@@ -517,12 +559,11 @@ Status EagerContext::InitializeRemote(
 
   InitDeviceMapAndAsync();
 
-  TF_RETURN_IF_ERROR(ClearCaches());
+  ClearCaches();
+  executor_.ClearError();
 
   keep_alive_secs_ = keep_alive_secs;
-
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
-
   // Only schedule a single closure.
   if (keep_alive_thread_ == nullptr) {
     keep_alive_thread_.reset(

@@ -420,17 +420,15 @@ class SequenceValueIterator : public ValueIterator {
   Py_ssize_t index_;
 };
 
-// Just return itself as a single item.
-class SparseTensorValueIterator : public ValueIterator {
+// Iterator that just returns a single python object.
+class SingleValueIterator : public ValueIterator {
  public:
-  explicit SparseTensorValueIterator(PyObject* tensor) : tensor_(tensor) {
-    Py_INCREF(tensor);
-  }
+  explicit SingleValueIterator(PyObject* x) : x_(x) { Py_INCREF(x); }
 
-  Safe_PyObjectPtr next() override { return std::move(tensor_); }
+  Safe_PyObjectPtr next() override { return std::move(x_); }
 
  private:
-  Safe_PyObjectPtr tensor_;
+  Safe_PyObjectPtr x_;
 };
 
 // Returns nullptr (to raise an exception) when next() is called.  Caller
@@ -538,7 +536,7 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
-    return absl::make_unique<SparseTensorValueIterator>(nested);
+    return absl::make_unique<SingleValueIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -552,6 +550,9 @@ ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
     if (PyErr_Occurred() || nested == nullptr) {
       return absl::make_unique<ErrorValueIterator>();
     }
+    ValueIteratorPtr result = absl::make_unique<SingleValueIterator>(nested);
+    Py_DECREF(nested);  // ValueIterator took ownership
+    return result;
   }
   return GetValueIterator(nested);
 }
@@ -734,18 +735,22 @@ bool AssertSameStructureHelper(
   if (check_composite_tensor_metadata && IsCompositeTensor(o1)) {
     if (!IsCompositeTensor(o2)) return false;
     static char _to_component_metadata[] = "_component_metadata";
-    PyObject* m1 = PyObject_CallMethod(o1, _to_component_metadata, nullptr);
+    Safe_PyObjectPtr m1(
+        PyObject_CallMethod(o1, _to_component_metadata, nullptr));
     if (PyErr_Occurred() || m1 == nullptr) return false;
-    PyObject* m2 = PyObject_CallMethod(o2, _to_component_metadata, nullptr);
-    if (PyErr_Occurred() || m2 == nullptr) return false;
-    if (PyObject_RichCompareBool(m1, m2, Py_NE)) {
+    Safe_PyObjectPtr m2(
+        PyObject_CallMethod(o2, _to_component_metadata, nullptr));
+    if (PyErr_Occurred() || m2 == nullptr) {
+      return false;
+    }
+    if (PyObject_RichCompareBool(m1.get(), m2.get(), Py_NE)) {
       *is_type_error = false;
       *error_msg = tensorflow::strings::StrCat(
           "The two CompositeTensors have different metadata. "
           "First CompositeTensor ",
-          PyObjectToString(o1), " has metadata ", PyObjectToString(m1),
+          PyObjectToString(o1), " has metadata ", PyObjectToString(m1.get()),
           ", while second structure ", PyObjectToString(o2), " has metadata ",
-          PyObjectToString(m2));
+          PyObjectToString(m2.get()));
       return false;
     }
   }

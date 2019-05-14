@@ -78,6 +78,10 @@ class HloRunner {
     // saved modules are coming from after the HLO pass pipeline, so triggering
     // another run will likely cause errors.
     bool run_hlo_passes = false;
+
+    // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
+    // Othewise, executes using xla::Executable::ExecuteOnStreams.
+    bool use_threads = false;
   };
 
   // intra_op_parallelism_threads: For the CPU backend only. It is the thread
@@ -169,19 +173,24 @@ class HloRunner {
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
-  //
-  // use_threads indicates whether this replicated computation will be executed
-  // with a thread-per-replica, vs using an implicitly async call such as
-  // Executable::ExecuteOnStreams.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      const ReplicatedExecuteOptions& options, bool use_threads = false);
+      const ReplicatedExecuteOptions& options);
 
   // Same as above, but with specified device assignment.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment, bool use_threads = false);
+      DeviceAssignment* device_assignment);
+
+  // Same as above, but with a reusable Executable.  This may update the profile
+  // information in *executable.
+  //
+  // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
+  // since we've already compiled the Executable.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      Executable* executable, const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.

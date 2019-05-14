@@ -21,8 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
@@ -397,9 +399,7 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->ClearCaches();
-}
+void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context->ClearCaches(); }
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -927,6 +927,11 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
   status->status = ctx->context->AddFunctionDef(function->fdef);
+}
+
+void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
+                               TF_Status* status) {
+  status->status = ctx->context->RemoveFunction(name);
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {

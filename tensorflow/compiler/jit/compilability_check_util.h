@@ -54,7 +54,7 @@ namespace tensorflow {
 class RecursiveCompilabilityChecker {
  public:
   // Aggregates information about what kinds of ops are allowed.
-  struct OperationFilter {
+  struct OperationFilter {  // TODO(lzr): Add AllowEverything() helper.
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
@@ -97,10 +97,9 @@ class RecursiveCompilabilityChecker {
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
 
-    // Whether the "Svd" op should be auto-clustered.  The XLA implemenation of
-    // this op has some performance (b/128001705) and possibly correctness
-    // (b/127344411) issues so we avoid auto-clustering it.
-    bool allow_svd_op;
+    // Whether ops known to be slow or to have correctness issues should be
+    // auto-clustered.
+    bool allow_slow_and_inaccurate_ops;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,
@@ -118,6 +117,11 @@ class RecursiveCompilabilityChecker {
                         FunctionLibraryRuntime* lib_runtime) {
     return IsCompilableCall(call_def, /*depth=*/0, lib_runtime);
   }
+
+  // Returns true if XLA supports this Op, but we don't want to cluster it (ie:
+  // due to performance or correctness concerns).
+  bool OpIsInaccurate(const Node& node);
+  bool OpIsSlow(const Node& node);
 
  private:
   bool IsCompilableNode(const Node& node, int depth,

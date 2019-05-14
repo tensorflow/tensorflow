@@ -320,6 +320,30 @@ std::vector<string> GetCudaRootCandidates(
   return potential_cuda_roots;
 }
 
+StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
+    se::StreamExecutor* executor, absl::string_view ptx,
+    PtxCompilationOptions compilation_options) {
+  using PtxCacheKey = std::tuple<se::StreamExecutor*, std::string,
+                                 PtxCompilationOptions::PtxOptionsTuple>;
+  static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
+  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+      *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
+
+  tensorflow::mutex_lock lock(ptx_cache_mutex);
+  PtxCacheKey cache_key{executor, std::string(ptx),
+                        compilation_options.ToTuple()};
+  auto it = ptx_cache.find(cache_key);
+  if (it == ptx_cache.end()) {
+    TF_ASSIGN_OR_RETURN(std::vector<uint8> compiled,
+                        CompilePtx(executor, ptx, compilation_options));
+    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
+  }
+
+  CHECK(it != ptx_cache.end());
+  const std::vector<uint8>& compiled = it->second;
+  return absl::MakeSpan(compiled);
+}
+
 StatusOr<std::vector<uint8>> CompilePtx(
     se::StreamExecutor* stream_exec, absl::string_view ptx,
     PtxCompilationOptions compile_ptx_options) {

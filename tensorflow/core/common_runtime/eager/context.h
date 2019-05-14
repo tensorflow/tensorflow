@@ -23,8 +23,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -121,7 +123,7 @@ class EagerContext : public core::RefCounted {
   }
 
   // Clears the kernel caches.
-  Status ClearCaches();
+  void ClearCaches();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
@@ -153,6 +155,8 @@ class EagerContext : public core::RefCounted {
   void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
 
   Status AddFunctionDef(const FunctionDef& fdef);
+
+  Status RemoveFunction(const string& func);
 
   KernelAndDevice* GetCachedKernel(Fprint128 cache_key);
 
@@ -286,6 +290,8 @@ class EagerContext : public core::RefCounted {
 
   mutex cache_mu_;
   std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
+      GUARDED_BY(cache_mu_);
+  std::unordered_map<string, std::vector<Fprint128>*> active_functions_
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.

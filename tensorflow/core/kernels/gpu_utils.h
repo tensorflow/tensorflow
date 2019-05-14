@@ -198,9 +198,8 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             absl::Span<const AutotuneResult> results);
 
 // Logs fused convolution results to customized back-storage.
-void LogFusedConvAutotuneResults(
-    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
-    const se::dnn::BatchDescriptor& input_desc,
+void LogFusedConvForwardAutotuneResults(
+    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,

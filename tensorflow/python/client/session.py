@@ -704,13 +704,15 @@ class BaseSession(SessionInterface):
       print(d.name)
     ```
 
-    Each element in the list has the following properties:
-     - `name`: A string with the full name of the device. ex:
+    Where:
+      Each element in the list has the following properties
+      name: A string with the full name of the device. ex:
           `/job:worker/replica:0/task:3/device:CPU:0`
-     - `device_type`: The type of the device (e.g. `CPU`, `GPU`, `TPU`.)
-     - `memory_limit`: The maximum amount of memory available on the device.
+      device_type: The type of the device (e.g. `CPU`, `GPU`, `TPU`.)
+      memory_limit: The maximum amount of memory available on the device.
           Note: depending on the device, it is possible the usable memory could
           be substantially less.
+
     Raises:
       tf.errors.OpError: If it encounters an error (e.g. session is in an
       invalid state, or network errors occur).

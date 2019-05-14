@@ -352,6 +352,21 @@ class _DefinedFunction(object):
     if self._definition is not None or self._c_func is not None:
       return
 
+    # Copy variable collections (by reference) from the parent graph such that
+    # name based variable sharing (e.g. via tf.make_template) works between the
+    # func graph and parent graph.
+    variable_keys = []
+    variable_keys.extend(ops.GraphKeys._VARIABLE_COLLECTIONS)  # pylint: disable=protected-access
+    variable_keys.append(vs._VARSTORE_KEY)  # pylint: disable=protected-access
+
+    collections_ref = {}
+    parent_collections_ref = ops.get_default_graph()._collections  # pylint: disable=protected-access
+    for key in variable_keys:
+      if key not in parent_collections_ref:
+        parent_collections_ref[key] = collections_ref[key] = []
+      else:
+        collections_ref[key] = parent_collections_ref[key]
+
     temp_graph = func_graph_from_py_func(
         self._func,
         self._arg_names,
@@ -359,6 +374,7 @@ class _DefinedFunction(object):
         self._func_name,
         self._capture_by_value,
         self._caller_device,
+        collections_ref=collections_ref,
         whitelisted_stateful_ops=self._whitelisted_stateful_ops,
         capture_resource_var_by_value=self._capture_resource_var_by_value)
 

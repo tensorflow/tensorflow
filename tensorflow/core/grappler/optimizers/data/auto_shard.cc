@@ -326,17 +326,16 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   // that dataset, in effect giving a piece to each worker. Finally, we remove
   // occurences from randomness from before that point in the graph (e.g. things
   // like ShuffleDataset) to ensure that `shard` returns a sensible result.
-
-  NodeDef sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
-  Status s = RecursivelyHandleOp(sink_node, num_workers, index, &flib, &graph,
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
+  Status s = RecursivelyHandleOp(*sink_node, num_workers, index, &flib, &graph,
                                  &nodes_to_delete);
 
   if (!s.ok() && errors::IsNotFound(s)) {
     LOG(WARNING) << "Cannot find shardable dataset, adding a shard node at "
                  << "the end of the dataset instead. This may have performance "
                  << "implications.";
-    TF_RETURN_IF_ERROR(AddShardNode(&graph, sink_node, num_workers, index));
+    TF_RETURN_IF_ERROR(AddShardNode(&graph, *sink_node, num_workers, index));
   } else if (!s.ok()) {
     return s;
   }

@@ -86,6 +86,7 @@ cuda_py_test(
     additional_deps = [":blocks_test_main_lib"],
     shard_count = 4,
     tags = [
+        "no_oss",  # TODO(b/132387200): Segfaulting
         "optonly",
     ],
 )

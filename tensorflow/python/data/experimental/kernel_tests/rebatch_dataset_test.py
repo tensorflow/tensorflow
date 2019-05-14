@@ -21,12 +21,15 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -337,6 +340,26 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                        for i in range(0, 32, 8)  # generates 4 elements
                        for _ in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testGroupByWindowBatching(self, drop_remainder):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[array_ops.constant(i, dtype=dtypes.int64)] * 3 for i in range(40)])
+    reduce_fn = lambda bucket_id, ds: ds.batch(
+        batch_size=10, drop_remainder=drop_remainder)
+    dataset = dataset.apply(
+        grouping.group_by_window(
+            key_func=lambda x: x[0] % 4, reduce_func=reduce_fn, window_size=10))
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=2)
+
+    self.assertEqual([[5, 3] if drop_remainder else [None, 3]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+    # pylint: disable=g-complex-comprehension
+    expected_output = [[[j + i * 4 + k * 20] * 3
+                        for i in range(5)]
+                       for j in range(4)
+                       for k in range(2)]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
 
 if __name__ == "__main__":
   test.main()

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -564,10 +567,12 @@ Status EagerLocalExecute(EagerOperation* op,
     }
     const string& device_name =
         device == nullptr ? unspecified_device_name : device->name();
-    if (ctx->LogDevicePlacement()) {
-      LOG(INFO) << "Executing op " << ndef.op() << " in device " << device_name;
-    } else {
-      VLOG(1) << "Executing op " << ndef.op() << " in device " << device_name;
+    if (ctx->LogDevicePlacement() || VLOG_IS_ON(1)) {
+      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
+                                   device_name);
+      if (!logging::LogToListeners(msg)) {
+        LOG(INFO) << msg;
+      }
     }
 
     FunctionLibraryRuntime* flr =
@@ -599,7 +604,7 @@ Status EagerLocalExecute(EagerOperation* op,
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name());
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
@@ -1059,9 +1064,12 @@ Status EagerExecute(EagerOperation* op,
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 
-  if (op->EagerContext()->LogDevicePlacement()) {
-    LOG(INFO) << "Executing op " << op->Name() << " in device "
-              << op->Device()->name();
+  if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 op->Device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
 
   return EagerRemoteExecute(op, retvals->data(), num_retvals);

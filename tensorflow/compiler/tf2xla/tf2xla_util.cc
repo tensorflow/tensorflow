@@ -773,4 +773,17 @@ Status PropagateConstIntoFunctionalNodes(
   return Status::OK();
 }
 
+Status PruneUnreachableFunctionsFromGraph(const Graph& g,
+                                          FunctionLibraryDefinition* fld) {
+  GraphDef graph_def;
+  g.ToGraphDef(&graph_def);
+  FunctionLibraryDefinition reachable_functions =
+      fld->ReachableDefinitions(graph_def);
+  for (const string& func_name : fld->ListFunctionNames()) {
+    if (!reachable_functions.Find(func_name)) {
+      TF_RETURN_IF_ERROR(fld->RemoveFunction(func_name));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace tensorflow

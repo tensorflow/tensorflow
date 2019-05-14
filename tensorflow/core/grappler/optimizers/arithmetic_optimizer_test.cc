@@ -163,11 +163,10 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
   EXPECT_EQ(output.node_size(), 5);
   const NodeDef* new_div = node_map.GetNode("div");
   ASSERT_NE(new_div, nullptr);
-  ASSERT_EQ(new_div->input_size(), 4);
+  ASSERT_EQ(new_div->input_size(), 3);
   EXPECT_EQ(new_div->input(0), "check1");
   EXPECT_EQ(new_div->input(1), "check1");
   EXPECT_EQ(new_div->input(2), "^assert1");
-  EXPECT_EQ(new_div->input(3), "^assert1");
 
   auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", bool_t}});
   EXPECT_EQ(tensors.size(), 1);
@@ -507,8 +506,8 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   const NodeDef* mul_node = node_map.GetNode(HoistMulName("Add_6"));
   ASSERT_NE(mul_node, nullptr);
   ASSERT_EQ(mul_node->input_size(), 2);
-  EXPECT_EQ(mul_node->input(0), "Placeholder");
-  EXPECT_EQ(mul_node->input(1), HoistAddName("Add_6"));
+  EXPECT_EQ(mul_node->input(0), HoistAddName("Add_6"));
+  EXPECT_EQ(mul_node->input(1), "Placeholder");
 
   const NodeDef* add_6_node = node_map.GetNode(HoistAddName("Add_6"));
   ASSERT_NE(add_6_node, nullptr);
@@ -1578,47 +1577,53 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
-                                   ops::Placeholder::Shape({8, 28, 28, 3}));
-  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f, {});
-  Output scaled_inputs =
-      ops::Multiply(s.WithOpName("scaled_inputs"), inputs, scale);
-  Output perm_nhwc_to_nchw =
-      ops::Const(s.WithOpName("perm_nhwc_to_nchw"), {0, 3, 1, 2}, {4});
-  Output inputs_nchw = ops::Transpose(s.WithOpName("inputs_nchw"),
-                                      scaled_inputs, perm_nhwc_to_nchw);
-  Output weights = ops::Const(s.WithOpName("weights"),
-                              Input::Initializer(127.0f, {5, 5, 3, 16}));
-  Output conv =
-      ops::Conv2D(s.WithOpName("conv"), inputs_nchw, weights, {1, 1, 1, 1},
-                  "VALID", ops::Conv2D::DataFormat("NCHW"));
-  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+  for (bool swap_inputs : {false, true}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                     ops::Placeholder::Shape({1, 28, 28, 3}));
+    Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f, {});
+    Output scaled_inputs = ops::Multiply(s.WithOpName("scaled_inputs"),
+                                         swap_inputs ? scale : inputs,
+                                         swap_inputs ? inputs : scale);
+    Output perm_nhwc_to_nchw =
+        ops::Const(s.WithOpName("perm_nhwc_to_nchw"), {0, 3, 1, 2}, {4});
+    Output inputs_nchw = ops::Transpose(s.WithOpName("inputs_nchw"),
+                                        scaled_inputs, perm_nhwc_to_nchw);
+    Output weights = ops::Const(s.WithOpName("weights"),
+                                Input::Initializer(127.0f, {5, 5, 3, 4}));
+    Output conv =
+        ops::Conv2D(s.WithOpName("conv"), inputs_nchw, weights, {1, 1, 1, 1},
+                    "VALID", ops::Conv2D::DataFormat("NCHW"));
+    Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
 
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GrapplerItem item;
+    item.fetch = {"outputs"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyFoldMultipleIntoConv(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+    //    LOG(INFO) << "Before:\n" << item.graph.DebugString();
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyFoldMultipleIntoConv(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  NodeMap node_map(&output);
+    //    LOG(INFO) << "After:\n"  << output.DebugString();
+    NodeMap node_map(&output);
+    // `conv` is now a folded convolution with scaled weights.
+    const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
+    ASSERT_NE(folded_conv, nullptr);
 
-  // `conv` is now a folded convolution with scaled weights.
-  const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
-  ASSERT_NE(folded_conv, nullptr);
+    const NodeDef* folded_conv_weights =
+        node_map.GetNode(folded_conv->input(1));
+    ASSERT_NE(folded_conv_weights, nullptr);
+    EXPECT_EQ(folded_conv_weights->op(), "Mul");
 
-  const NodeDef* folded_conv_weights = node_map.GetNode(folded_conv->input(1));
-  ASSERT_NE(folded_conv_weights, nullptr);
-  EXPECT_EQ(folded_conv_weights->op(), "Mul");
-
-  // Its input should be a transpose of `inputs`.
-  const NodeDef* transpose = node_map.GetNode(NodeName(folded_conv->input(0)));
-  ASSERT_NE(transpose, nullptr);
-  ASSERT_EQ(transpose->input_size(), 2);
-  EXPECT_EQ(transpose->input(0), "inputs");
+    // Its input should be a transpose of `inputs`.
+    const NodeDef* transpose =
+        node_map.GetNode(NodeName(folded_conv->input(0)));
+    ASSERT_NE(transpose, nullptr);
+    ASSERT_EQ(transpose->input_size(), 2);
+    EXPECT_EQ(transpose->input(0), "inputs");
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, NotFoldMulAcrossPreservedTranspose) {
@@ -1921,8 +1926,8 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddOpsOfIdenticalShape) {
   auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
   auto b = ops::Variable(s.WithOpName("b"), {2, 2}, DT_FLOAT);
   auto c = ops::Variable(s.WithOpName("c"), {2, 2}, DT_FLOAT);
-  auto add_ab = ops::Add(sx.WithOpName("Add_ab"), a, b);
-  auto add_abc = ops::Add(sy.WithOpName("Add_abc"), add_ab, c);
+  auto add_bc = ops::Add(sx.WithOpName("Add_bc"), b, c);
+  auto add_abc = ops::Add(sy.WithOpName("Add_abc"), a, add_bc);
 
   auto outputs = ops::Identity(s.WithOpName("outputs"), add_abc);
 
@@ -1948,9 +1953,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddOpsOfIdenticalShape) {
   //
   //     +
   //    / \
-  //   +   c      -->    AddN(a, b, c)
-  //  / \
-  // a   b
+  //   a   +         -->    AddN(a, b, c)
+  //      / \
+  //     b   c
   EXPECT_EQ(output.node_size(), 5);
 
   NodeMap node_map(&output);

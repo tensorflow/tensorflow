@@ -199,6 +199,9 @@ py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -700,6 +703,9 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+    tags = [
+        "no_pip",  # b/131691139
+    ],
 )
 
 py_library(
@@ -759,19 +765,20 @@ distribute_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/eager:test",
+    main = "moving_averages_test.py",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -799,6 +806,7 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_pip",  # b/131691139
     ],
     deps = [
         ":mirrored_strategy",
@@ -851,6 +859,7 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_pip",  # b/131691139
     ],
     deps = [
         ":single_loss_example",
@@ -910,6 +919,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_pip",  # b/131691139
         "no_windows_gpu",  # TODO(b/130551176)
     ],
 )
@@ -967,6 +977,9 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_test.py"],
     main = "saved_model_test.py",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
     deps = [
         ":combinations",
         ":model_combinations",

@@ -35,8 +35,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
   }
 
   /**
-   * The NNAPI delegate is singleton. Nothing to delete
-   * for now, so mark the handle invalid only.
+   * The NNAPI delegate is singleton. Nothing to delete for now, so mark the handle invalid only.
    */
   @Override
   public void close() {

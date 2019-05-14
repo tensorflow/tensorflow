@@ -18,6 +18,8 @@ load(
     ":cuda_configure.bzl",
     "make_copy_dir_rule",
     "make_copy_files_rule",
+    "to_list_of_strings",
+    "verify_build_defines",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -123,40 +125,31 @@ def auto_configure_fail(msg):
 # END cc_configure common functions (see TODO above).
 
 def _host_compiler_includes(repository_ctx, cc):
-    """Generates the cxx_builtin_include_directory entries for gcc inc dirs.
+    """Computed the list of gcc include directories.
 
     Args:
       repository_ctx: The repository context.
       cc: The path to the gcc host compiler.
 
     Returns:
-      A string containing the cxx_builtin_include_directory for each of the gcc
-      host compiler include directories, which can be added to the CROSSTOOL
-      file.
+      A list of gcc include directories.
     """
     inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
 
     # Add numpy headers
     inc_dirs.append("/usr/lib/python2.7/dist-packages/numpy/core/include")
 
-    entries = []
-    for inc_dir in inc_dirs:
-        entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
-
-    # define TENSORFLOW_USE_ROCM
-    entries.append("  unfiltered_cxx_flag: \"-DTENSORFLOW_USE_ROCM\"")
-
-    return "\n".join(entries)
+    return inc_dirs
 
 def _rocm_include_path(repository_ctx, rocm_config):
     """Generates the cxx_builtin_include_directory entries for rocm inc dirs.
 
     Args:
       repository_ctx: The repository context.
-      cc: The path to the gcc host compiler.
+      rocm_config: The path to the gcc host compiler.
 
     Returns:
-      A string containing the cxx_builtin_include_directory for each of the gcc
+      A string containing the Starlark string for each of the gcc
       host compiler include directories, which can be added to the CROSSTOOL
       file.
     """
@@ -198,10 +191,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/9.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/9.0.0/include")
 
-    inc_entries = []
-    for inc_dir in inc_dirs:
-        inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
-    return "\n".join(inc_entries)
+    return inc_dirs
 
 def _enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
@@ -675,20 +665,29 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     # Set up crosstool/
-    _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty", "%{win_linker_files}": ":empty"})
     cc = find_cc(repository_ctx)
-    host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
+    host_compiler_includes = to_list_of_strings(
+        _host_compiler_includes(repository_ctx, cc),
+    )
     rocm_defines = {
-        "%{rocm_include_path}": _rocm_include_path(
-            repository_ctx,
-            rocm_config,
+        "%{linker_files}": ":empty",
+        "%{win_linker_files}": ":empty",
+        "%{cxx_builtin_include_directories}": to_list_of_strings(
+            host_compiler_includes + _rocm_include_path(
+                repository_ctx,
+                rocm_config,
+            ),
         ),
-        "%{host_compiler_includes}": host_compiler_includes,
         "%{clang_path}": str(cc),
+        "%{unfiltered_compile_flags}": "\"-DTENSORFLOW_USE_ROCM\"",
     }
 
-    _tpl(repository_ctx, "crosstool:CROSSTOOL_hipcc", rocm_defines, out = "crosstool/CROSSTOOL")
+    # Set up crosstool/
+    verify_build_defines(rocm_defines)
+    _tpl(repository_ctx, "crosstool:BUILD", rocm_defines)
 
+    # No templating of cc_toolchain_config - use attributes and templatize the
+    # BUILD file.
     _tpl(
         repository_ctx,
         "crosstool:clang/bin/crosstool_wrapper_driver_rocm",
