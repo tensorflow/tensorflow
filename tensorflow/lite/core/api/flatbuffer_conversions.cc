@@ -512,6 +512,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_REDUCE_PROD:
+    case BuiltinOperator_REDUCE_ALL:
     case BuiltinOperator_REDUCE_ANY:
     case BuiltinOperator_SUM: {
       auto* params = allocator->AllocatePOD<TfLiteReducerParams>();

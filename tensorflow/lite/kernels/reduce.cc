@@ -229,6 +229,13 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus PrepareAll(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteBool);
+  return PrepareSimple(context, node);
+}
+
 TfLiteStatus PrepareAny(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -437,6 +444,7 @@ enum ReduceType {
   kMax,
   kMin,
   kAny,
+  kAll,
 };
 
 // Eval for determined input type and reduce type.
@@ -478,6 +486,12 @@ template <>
 TfLiteStatus EvalType<bool>(TfLiteContext* context, TfLiteNode* node,
                             OpContext* op_context, ReduceType reduce_type) {
   switch (reduce_type) {
+    case kAll:
+      return EvalLogic<bool>(context, node, op_context, true,
+                             [](const bool current, const bool in) -> bool {
+                               return in && current;
+                             });
+      break;
     case kAny:
       return EvalLogic<bool>(context, node, op_context, false,
                              [](const bool current, const bool in) -> bool {
@@ -620,6 +634,13 @@ TfLiteRegistration* Register_REDUCE_MIN_REF() {
   return &r;
 }
 
+TfLiteRegistration* Register_REDUCE_ALL_REF() {
+  static TfLiteRegistration r = {
+      reduce::Init, reduce::Free, reduce::PrepareAll,
+      reduce::EvalGeneric<reduce::kReference, reduce::kAll>};
+  return &r;
+}
+
 TfLiteRegistration* Register_REDUCE_ANY_REF() {
   static TfLiteRegistration r = {
       reduce::Init, reduce::Free, reduce::PrepareAny,
@@ -635,6 +656,7 @@ TfLiteRegistration* Register_REDUCE_PROD() {
 }
 TfLiteRegistration* Register_REDUCE_MAX() { return Register_REDUCE_MAX_REF(); }
 TfLiteRegistration* Register_REDUCE_MIN() { return Register_REDUCE_MIN_REF(); }
+TfLiteRegistration* Register_REDUCE_ALL() { return Register_REDUCE_ALL_REF(); }
 TfLiteRegistration* Register_REDUCE_ANY() { return Register_REDUCE_ANY_REF(); }
 
 }  // namespace builtin

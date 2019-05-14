@@ -101,6 +101,7 @@ TfLiteRegistration* Register_SUM();
 TfLiteRegistration* Register_REDUCE_PROD();
 TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_REDUCE_MIN();
+TfLiteRegistration* Register_REDUCE_ALL();
 TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
@@ -330,6 +331,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN(),
              /* min_version */ 1,
              /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_REDUCE_ALL, Register_REDUCE_ALL());
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),

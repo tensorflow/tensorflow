@@ -296,6 +296,7 @@ def generated_test_models():
         "pow",
         "range",
         "rank",
+        "reduce_all",
         "reduce_any",
         "reduce_max",
         "reduce_min",
