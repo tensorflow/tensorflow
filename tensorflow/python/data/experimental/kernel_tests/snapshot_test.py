@@ -114,6 +114,16 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase):
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
+  def testWriteSnapshotRepeatAfterwards(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
   def testWriteSnapshotMultiFileSuccessful(self):
     tmpdir = self.makeSnapshotDirectory()
 

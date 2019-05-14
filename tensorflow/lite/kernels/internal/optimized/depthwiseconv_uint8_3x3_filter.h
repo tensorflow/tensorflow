@@ -5803,7 +5803,6 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
     // x4 %[function_params]
 
     asm volatile(
-        // %bb.0:
         "ldp    w12, w11, [%[function_params], #" STR(DP_OFFSET_BIAS_INCREMENT) "]\n"
         "ldrsw  x9, [%[function_params], #" STR(DP_OFFSET_OUTPUT_DEPTH) "]\n"
         "ldr    w10, [%[function_params], #" STR(DP_OFFSET_DEPTH_MICRO_REPEATS) "]\n"
@@ -5895,9 +5894,10 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
         "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x15", "x16");
   }
 
-  static inline void Run(const uint8* filter_data, const int32* bias_data,
-                         int8* shuffled_filter_data, int32* adjusted_bias_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static void __attribute__((noinline))
+  Run(const uint8* filter_data, const int32* bias_data,
+      int8* shuffled_filter_data, int32* adjusted_bias_data,
+      const DepthwiseConvDotProdParams* function_params) {
     ProcessPerDepthNeon(filter_data, bias_data, shuffled_filter_data,
                         adjusted_bias_data, function_params);
   }
@@ -5993,6 +5993,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
             input_data_a = vld1q_u8(input_data_0);
             input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+            optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+            optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
             vst1q_s8(scratch_data_0, work_reg_a);
             vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6003,6 +6005,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
             input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
             input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+            optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+            optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
             vst1q_s8(scratch_data_0, work_reg_a_sp);
             vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6018,6 +6022,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
           work_reg_a = veorq_s8(work_reg_a, sign_bit);
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6030,6 +6036,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
           work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
 
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
           vst1q_s8(scratch_data_0, work_reg_a_sp);
           vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6052,6 +6060,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           work_reg_a = veorq_s8(work_reg_a, sign_bit);
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6084,6 +6094,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6244,6 +6256,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
                 input_data_a = vld1q_u8(input_data_0);
                 input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
                 vst1q_s8(scratch_data_0, work_reg_a);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6254,6 +6268,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
                 input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
                 input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
                 vst1q_s8(scratch_data_0, work_reg_a_sp);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6269,6 +6285,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6281,6 +6299,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
               work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a_sp);
               vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6303,6 +6323,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6335,6 +6357,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6377,6 +6401,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
                 input_data_a = vdupq_n_u8(-input_offset);
                 input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
                 vst1q_s8(scratch_data_0, work_reg_a);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6387,6 +6413,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
                 input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
                 input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+                optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
                 vst1q_s8(scratch_data_0, work_reg_a_sp);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6402,6 +6430,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6414,6 +6444,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
               work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a_sp);
               vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
@@ -6436,6 +6468,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6467,6 +6501,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0);
+              optimized_ops_prefetch_write_l1_keep(scratch_data_0 + 16);
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
@@ -6617,6 +6653,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           work_reg = vld1q_u8(input_block_data + input_block_offset);
           work_reg = vextq_s8(padding_reg, work_reg, 15);
           work_reg = veorq_s8(work_reg, sign_bit);
+          optimized_ops_prefetch_write_l1_keep(scratch_data);
           vst1q_s8(scratch_data, work_reg);
           copy_done += 15;
         }
@@ -6627,6 +6664,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vld1q_u8(input_block_data + input_block_offset + copy_done);
           work_reg = veorq_s8(work_reg, sign_bit);
           TFLITE_DCHECK_EQ((start_width + copy_done) % 16, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                               copy_done);
           vst1q_s8(scratch_data + start_width + copy_done, work_reg);
         }
 
@@ -6635,6 +6674,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vld1_u8(input_block_data + input_block_offset + copy_done);
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                               copy_done);
           vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
           copy_done += 8;
         }
@@ -6661,10 +6702,16 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                               copy_done);
           vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
         }
 
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                             copy_done);
+        optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                             copy_done + 8);
         vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
         vst1_s8(scratch_data + start_width + copy_done + 8, half_work_reg);
 
@@ -6689,6 +6736,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
                                         half_work_reg, 0);
           half_work_reg = vext_s8(vget_low_s8(padding_reg), half_work_reg, 7);
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          optimized_ops_prefetch_write_l1_keep(scratch_data);
           vst1_lane_8x4(scratch_data, half_work_reg, 0);
           copy_done += 3;
         }
@@ -6700,6 +6748,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
                             half_work_reg, 0);
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                               copy_done);
           vst1_lane_8x4(scratch_data + start_width + copy_done, half_work_reg,
                         0);
         }
@@ -6728,11 +6778,17 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                               copy_done);
           vst1_lane_8x4(scratch_data + start_width + copy_done, half_work_reg,
                         0);
           copy_done += 4;
         }
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                             copy_done);
+        optimized_ops_prefetch_write_l1_keep(scratch_data + start_width +
+                                             copy_done + 12);
         vst1_lane_8x4(scratch_data + start_width + copy_done, half_work_reg, 0);
         vst1_lane_8x4(scratch_data + start_width + copy_done + 4, half_work_reg,
                       0);
@@ -6768,9 +6824,15 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
         TFLITE_DCHECK_EQ(scratch_data_offset % 8, 0);
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset);
         vst1_s8(scratch_data_base + scratch_data_offset, half_work_reg);
 
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset + 4);
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset + 16);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 4,
                       half_work_reg, 0);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 8,
@@ -6807,10 +6869,16 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
         TFLITE_DCHECK_EQ(scratch_data_offset % 4, 0);
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset, half_work_reg,
                       0);
 
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset + 4);
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset + 16);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 4,
                       half_work_reg, 0);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 8,
@@ -6920,6 +6988,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vld1q_u8(input_block_data + input_block_offset + copy_done);
           work_reg = veorq_s8(work_reg, sign_bit);
           TFLITE_DCHECK_EQ(copy_done % 16, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
           vst1q_s8(scratch_data + copy_done, work_reg);
         }
 
@@ -6928,6 +6997,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vld1_u8(input_block_data + input_block_offset + copy_done);
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ(copy_done % 8, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
           vst1_s8(scratch_data + copy_done, half_work_reg);
           copy_done += 8;
         }
@@ -6952,11 +7022,14 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ(copy_done % 8, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
           vst1_s8(scratch_data + copy_done, half_work_reg);
           copy_done += 8;
         }
 
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
+        optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done + 8);
         vst1_s8(scratch_data + copy_done, half_work_reg);
         vst1_s8(scratch_data + copy_done + 8, half_work_reg);
 
@@ -6979,6 +7052,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
                             half_work_reg, 0);
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ(copy_done % 4, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
           vst1_lane_8x4(scratch_data + copy_done, half_work_reg, 0);
         }
 
@@ -7004,10 +7078,13 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
           TFLITE_DCHECK_EQ(copy_done % 4, 0);
+          optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
           vst1_lane_8x4(scratch_data + copy_done, half_work_reg, 0);
           copy_done += 4;
         }
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done);
+        optimized_ops_prefetch_write_l1_keep(scratch_data + copy_done + 12);
         vst1_lane_8x4(scratch_data + copy_done, half_work_reg, 0);
         vst1_lane_8x4(scratch_data + copy_done + 4, half_work_reg, 0);
         vst1_lane_8x4(scratch_data + copy_done + 8, half_work_reg, 0);
@@ -7030,10 +7107,14 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
         half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
         TFLITE_DCHECK_EQ(scratch_data_offset % 4, 0);
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset, half_work_reg,
                       0);
 
         // Trailing guard.
+        optimized_ops_prefetch_write_l1_keep(scratch_data_base +
+                                             scratch_data_offset + 8);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 4,
                       half_work_reg, 0);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset + 8,

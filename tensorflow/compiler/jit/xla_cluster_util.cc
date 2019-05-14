@@ -314,4 +314,8 @@ bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def) {
                           return name_attr_pair.second.has_func();
                         });
 }
+bool IsShapeConsumerOp(const Node& node) {
+  return node.type_string() == "Shape" || node.type_string() == "Rank" ||
+         node.type_string() == "Size";
+}
 }  // namespace tensorflow

@@ -71,66 +71,39 @@ class Backend(object):
     ]
 
   @abc.abstractmethod
-  def delete_buffer(self, c_buffer):
-    """Deletes buffer `c_buffer`."""
-
-  @abc.abstractmethod
   def make_tuple(self, c_buffers, device_ordinal):
     """Makes a tuple from a sequence of backend buffer objects."""
-
-  @abc.abstractmethod
-  def destructure_tuple(self, c_buffer):
-    """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
-  @abc.abstractmethod
-  def delete_executable(self, executable):
-    """Deletes an executable."""
-
-  @abc.abstractmethod
-  def execute(self, executable, args):
-    """Runs an executable without replication."""
-
-  @abc.abstractmethod
-  def execute_replicated(self, executable, per_replica_args):
-    """Runs an executable in a replicated manner."""
-
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None, asynchronous=False):
+  def __init__(self, platform, client):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
-      xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
-      asynchronous: A boolean; should we enable asynchronous execution?
-        (Experimental.)
+      client: An _xla.PyLocalClient object.
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(platform, xla_platform_id, asynchronous)
+    self.client = client
 
   def device_count(self):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.PyLocalBuffer.FromPython(pyval, self.client, device)
+    return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
   def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.PyLocalBuffer.FromPythonValues(pyvals_and_devices, self.client)
-
-  def delete_buffer(self, c_buffer):
-    c_buffer.Delete()
+    return _xla.PyLocalBuffer.from_python_values(pyvals_and_devices,
+                                                 self.client)
 
   def make_tuple(self, c_buffers, device_ordinal):
-    return _xla.PyLocalBuffer.MakeTuple(c_buffers, self.client, device_ordinal)
-
-  def destructure_tuple(self, c_buffer):
-    return c_buffer.DestructureTuple()
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -146,22 +119,17 @@ class LocalBackend(Backend):
     return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
                                         options, self.client)
 
-  def delete_executable(self, executable):
-    executable.Delete()
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    return executable.ExecutePerReplica(per_replica_args)
-
 
 def _cpu_backend_factory():
-  return LocalBackend(platform='cpu', xla_platform_id='Host', asynchronous=True)
+  client = _xla.LocalClient.Get(
+      platform='cpu', xla_platform_id='Host', asynchronous=True)
+  return LocalBackend(platform='cpu', client=client)
 
 
 def _gpu_backend_factory():
-  return LocalBackend(platform='gpu', xla_platform_id='CUDA')
+  client = _xla.LocalClient.Get(
+      platform='gpu', xla_platform_id='CUDA', asynchronous=False)
+  return LocalBackend(platform='gpu', client=client)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -215,30 +183,6 @@ def get_local_backend(name=None):
       raise RuntimeError('Unknown backend {}'.format(name))
 
   return list(backends.values())[-1]
-
-
-# Compatibility shims to support older clients.
-
-_default_platform_name = None
-
-
-def XlaLocalBackend():
-  # Deprecated. Use get_local_backend(platform_name).
-  return get_local_backend(_default_platform_name)
-
-
-def initialize_platform_name(platform_name):
-  """Deprecated. Use get_local_backend(platform_name)."""
-  if platform_name == 'Host':
-    platform_name = 'cpu'
-  elif platform_name == 'CUDA':
-    platform_name = 'gpu'
-
-  # Make sure the platform is valid by trying to instantiate it.
-  get_local_backend(platform_name)
-
-  global _default_platform_name
-  _default_platform_name = platform_name
 
 
 class OpMetadata(object):
@@ -364,18 +308,11 @@ class Buffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_buffer, backend, device):
-    self.c_buffer = c_buffer
-    self._backend = backend
-    self._device = device
-
   @staticmethod
   def from_pyval(pyval, device=0, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
-    pyval = require_numpy_array_layout(pyval)
-    cbuf = backend.buffer_from_pyval(pyval, device)
-    return Buffer(cbuf, backend, device)
+    return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
   def from_pyvals(pyvals_and_devices, backend=None):
@@ -391,45 +328,25 @@ class Buffer(object):
       A list of `Buffer` objects corresponding to `pyvals_and_devices`.
     """
     backend = backend or get_local_backend()
-    pyvals_and_devices = [(require_numpy_array_layout(pyval), device)
-                          for pyval, device in pyvals_and_devices]
-    cbufs = backend.buffers_from_pyvals(pyvals_and_devices)
-    return [
-        Buffer(cbuf, backend, device)
-        for cbuf, (_, device) in zip(cbufs, pyvals_and_devices)
-    ]
+    return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
   def make_tuple(buffers, backend=None, device=0):
     backend = backend or get_local_backend()
-    buf = backend.make_tuple([b.c_buffer for b in buffers],
-                             device_ordinal=device)
-    return Buffer(buf, backend, device)
+    return backend.make_tuple(buffers, device_ordinal=device)
 
-  def to_py(self):
-    return self.c_buffer.ToPython()
-
-  def shape(self):
-    return self.c_buffer.shape()
-
-  def device(self):
-    return self._device
-
-  def delete(self):
-    if self.c_buffer is not None:
-      self._backend.delete_buffer(self.c_buffer)
-      self.c_buffer = None
-
-  def destructure(self):
-    """Assuming a tuple buffer, unpack it into constituent tuple elements."""
-    assert self.c_buffer is not None
-    result = self._backend.destructure_tuple(self.c_buffer)
-    return tuple(
-        Buffer(sub_buffer, device=self._device, backend=self._backend)
-        for sub_buffer in result)
-
-  def is_deleted(self):
-    return self.c_buffer is None
+  # Buffer is not an instantiable type and exists only for its static methods.
+  # The underlying buffer objects are C++ object with the following
+  # API:
+  # def to_py(self):
+  # def shape(self) -> Shape:
+  # def device(self) -> int:
+  # def delete(self):
+  # def destructure(self) -> [Buffer]
+  # def is_deleted(self) -> bool:
+  #
+  # TODO(phawkins): remove Buffer and its static methods completely, have
+  # clients call methods on Backend to create buffers.
 
 
 # TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
@@ -444,17 +361,9 @@ def shape_from_pyval(pyval):
     if isinstance(pyval, tuple):
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      pyval = require_numpy_array_layout(pyval)
       return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
   return convert(pyval)
-
-
-def require_numpy_array_layout(value):
-  if isinstance(value, tuple):
-    return tuple(require_numpy_array_layout(x) for x in value)
-  else:
-    return np.require(value, requirements=['C', 'A'])
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -472,8 +381,7 @@ def transfer_to_infeed(value, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(
-      require_numpy_array_layout(value), device_ordinal)
+  backend.client.TransferToInfeed(value, device_ordinal)
 
 
 def transfer_from_outfeed(shape, device_ordinal=0):
@@ -572,8 +480,7 @@ class Computation(object):
     compile_options = compile_options or CompileOptions()
     if argument_shapes:
       compile_options.argument_layouts = argument_shapes
-    c = backend.compile(self.computation, compile_options)
-    return Executable(c, backend=backend)
+    return backend.compile(self.computation, compile_options)
 
   def GetProgramShape(self):
     return self._c_computation.GetProgramShape()
@@ -582,105 +489,66 @@ class Computation(object):
     return self._c_computation.GetProgramShape().result_shape()
 
 
-class Executable(object):
-  """Python wrapper for an XLA Executable."""
+# An Executable is a C++ class that duck types with the following API:
+# class Executable(object):
+#   def DeviceOrdinals(self) -> [int]:
+#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#     """Execute on many replicas with Buffer arguments and return value.
+#
+#     Args:
+#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
+#         comprises the arguments for execution on the i'th replica.
+#
+#     Returns:
+#       A list of the computation's outputs for each replica, as a Buffer. If
+#       a shallow sequence of arguments was passed in for `arguments`, then the
+#       sole, zero'th replica's output is returned instead, as a Buffer.
+#     """
+#
+# There are different implementations of Executable for the Local and XRT
+# backends.
 
-  def __init__(self, c_executable, backend=None):
-    self._c_executable = c_executable
-    self._device_ordinals = c_executable.DeviceOrdinals()
-    self._backend = backend
 
-  def DeviceOrdinals(self):
-    """Returns a list containing the device ordinals for each replica."""
-    return self._device_ordinals
+def execute_with_python_values(executable, arguments=(), backend=None):
+  """Execute on one replica with Python values as arguments and output."""
 
-  def Execute(self, arguments=(), check_for_deleted_args=True):
-    """Execute on one replica with Buffer arguments and return value."""
-    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
-      raise ValueError('Executing with deleted local buffer argument')
-    raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._backend.execute(self._c_executable, raw_args)
-    return Buffer(
-        output_buffer, backend=self._backend, device=self._device_ordinals[0])
+  backend = backend or get_local_backend()
 
-  def ExecutePerReplica(self, arguments=None):
-    """Execute on many replicas with Buffer arguments and return value.
+  def put(arg):
+    return Buffer.from_pyval(
+        arg, device=executable.DeviceOrdinals()[0], backend=backend)
 
-    Args:
-      arguments: A sequence of sequences of Buffers. The i'th inner sequence
-        comprises the arguments for execution on the i'th replica.
+  arguments = [put(arg) for arg in arguments]
+  return executable.Execute(arguments).to_py()
 
-    Returns:
-      A list of the computation's outputs for each replica, as a Buffer. If
-      a shallow sequence of arguments was passed in for `arguments`, then the
-      sole, zero'th replica's output is returned instead, as a Buffer.
-    """
-    if arguments is None:
-      arguments = ((),) * len(self._device_ordinals)
-    else:
-      arguments = [list(replica_args) for replica_args in arguments]
 
-    # Check arguments
-    for replica, replica_args in enumerate(arguments):
-      for arg in replica_args:
-        if arg.is_deleted():
-          raise ValueError('Executing with deleted local buffer argument')
-        if arg.device() != self._device_ordinals[replica]:
-          raise ValueError(
-              'Executing on device {} with argument from device {}'.format(
-                  self._device_ordinals[replica], arg.device()))
+def execute_with_python_values_replicated(executable, arguments, backend=None):
+  """Execute on many replicas with Python values as arguments and output.
 
-    # Pull out argument buffer handles
-    # pylint: disable=g-complex-comprehension
-    stripped_args = [
-        [arg.c_buffer for arg in replica_args] for replica_args in arguments
-    ]
+  Arguments:
+    executable: the program to run.
+    arguments: a list of lists of Python values indexed by
+      `[replica][arg_num]` to pass as inputs.
+    backend: the backend we are targeting.
 
-    # Execute
-    output_buffers = self._backend.execute_replicated(self._c_executable,
-                                                      stripped_args)
-
-    # Wrap output handles in Buffer instances
-    return tuple(
-        Buffer(
-            output_buffer,
-            backend=self._backend,
-            device=self._device_ordinals[replica])
-        for replica, output_buffer in enumerate(output_buffers))
-
-  def ExecuteWithPythonValues(self, arguments=()):
-    """Execute on one replica with Python values as arguments and output."""
-
-    def put(arg):
-      return Buffer.from_pyval(
-          arg, device=self._device_ordinals[0], backend=self._backend)
-
-    arguments = [put(arg) for arg in arguments]
-    return self.Execute(arguments).to_py()
-
-  def ExecuteWithPythonValuesPerReplica(self, arguments):
-    """Execute on many replicas with Python values as arguments and output.
-
-    Arguments:
-      arguments: a list of lists of Python values indexed by
-        `[replica][arg_num]` to pass as inputs.
-
-    Returns:
-      A list of python values, one per replica.
-    """
-    # pylint: disable=g-complex-comprehension
-    flat_args = [(arg, self._device_ordinals[replica])
-                 for replica, replica_args in enumerate(arguments)
-                 for arg in replica_args]
-    flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=self._backend)
-    arg_buffers = []
-    for replica_args in arguments:
-      arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-      flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-    return [out.to_py() for out in self.ExecutePerReplica(arg_buffers)]
-
-  def __del__(self):
-    self._backend.delete_executable(self._c_executable)
+  Returns:
+    A list of python values, one per replica.
+  """
+  backend = backend or get_local_backend()
+  device_ordinals = executable.DeviceOrdinals()
+  # pylint: disable=g-complex-comprehension
+  flat_args = [(arg, device_ordinals[replica])
+               for replica, replica_args in enumerate(arguments)
+               for arg in replica_args]
+  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  arg_buffers = []
+  for replica_args in arguments:
+    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
+    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
+  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -794,7 +662,6 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    value = require_numpy_array_layout(value)
     return ops.ConstantLiteral(self._builder, value)
 
   def ConstantF32Scalar(self, value):
@@ -1033,13 +900,8 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp that represents on each replica the sum of its group's values.
     """
-    if replica_groups is None:
-      replica_groups = []  # special value for XLA API
-    else:
-      replica_groups = [
-          _make_replica_group_proto(group) for group in replica_groups
-      ]
-    return ops.CrossReplicaSum(operand, replica_groups)
+    replica_groups_protos = _get_replica_groups_protos(replica_groups)
+    return ops.CrossReplicaSum(operand, replica_groups_protos)
 
   def Trans(self, operand):
     """Specialized matrix transpose op."""

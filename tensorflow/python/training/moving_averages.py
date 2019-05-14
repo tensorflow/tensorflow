@@ -80,21 +80,21 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     A tensor which if evaluated will compute and return the new moving average.
   """
 
-  def update_delta_fn(v, value, decay=decay):
-    decay = ops.convert_to_tensor(1.0 - decay, name="decay")
-    if decay.dtype != v.dtype.base_dtype:
-      decay = math_ops.cast(decay, v.dtype.base_dtype)
-    if zero_debias:
-      update_delta = _zero_debias(v, value, decay)
-    else:
-      update_delta = (v - value) * decay
-    return update_delta
-
-  def update_fn(v, update_delta):
-    return state_ops.assign_sub(v, update_delta, name=scope)
-
   with ops.name_scope(name, "AssignMovingAvg",
                       [variable, value, decay]) as scope:
+    decay = ops.convert_to_tensor(1.0 - decay, name="decay")
+    if decay.dtype != variable.dtype.base_dtype:
+      decay = math_ops.cast(decay, variable.dtype.base_dtype)
+
+    def update_fn(v, value):
+      return state_ops.assign_sub(v, (v - value) * decay, name=scope)
+
+    def update(strategy, v, value):
+      if zero_debias:
+        return _zero_debias(strategy, v, value, decay)
+      else:
+        return strategy.extended.update(v, update_fn, args=(value,))
+
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context:
       # In a replica context, we update variable using the mean of value across
@@ -102,14 +102,12 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       def merge_fn(strategy, v, value):
         value = strategy.extended.reduce_to(ds_reduce_util.ReduceOp.MEAN, value,
                                             v)
-        update_delta = update_delta_fn(v, value)
-        return strategy.extended.update(v, update_fn, args=(update_delta,))
+        return update(strategy, v, value)
 
       return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
       strategy = distribution_strategy_context.get_cross_replica_context()
-      update_delta = update_delta_fn(variable, value)
-      return strategy.extended.update(variable, update_fn, args=(update_delta,))
+      return update(strategy, variable, value)
 
 
 def weighted_moving_average(value,
@@ -176,7 +174,7 @@ def weighted_moving_average(value,
       return math_ops.div(numerator, denominator, name=scope.name)
 
 
-def _zero_debias(unbiased_var, value, decay):
+def _zero_debias(strategy, unbiased_var, value, decay):
   """Compute the delta required for a debiased Variable.
 
   All exponential moving averages initialized with Tensors are initialized to 0,
@@ -200,17 +198,16 @@ def _zero_debias(unbiased_var, value, decay):
   have occurred.
 
   Args:
+    strategy: `Strategy` used to create and update variables.
     unbiased_var: A Variable representing the current value of the unbiased EMA.
     value: A Tensor representing the most recent value.
     decay: A Tensor representing `1-decay` for the EMA.
 
   Returns:
-    The amount that the unbiased variable should be updated. Computing this
-    tensor will also update the shadow variables appropriately.
+    Operation which updates unbiased_var to the debiased moving average value.
   """
   with variable_scope.variable_scope(
-      unbiased_var.name[:-len(":0")], values=[unbiased_var, value,
-                                              decay]) as scope:
+      unbiased_var.name[:-len(":0")], values=[unbiased_var, value, decay]):
     with ops.init_scope():
       biased_initializer = init_ops.zeros_initializer()
       local_step_initializer = init_ops.zeros_initializer()
@@ -231,37 +228,32 @@ def _zero_debias(unbiased_var, value, decay):
         idx += 1
       return name + ("_%d" % idx)
 
-    strategy = distribution_strategy_context.get_strategy()
     with strategy.extended.colocate_vars_with(unbiased_var):
       biased_var = variable_scope.get_variable(
           _maybe_get_unique("biased"),
           initializer=biased_initializer,
           shape=unbiased_var.get_shape(),
           dtype=unbiased_var.dtype,
-          trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          trainable=False)
       local_step = variable_scope.get_variable(
           _maybe_get_unique("local_step"),
           shape=[],
           dtype=unbiased_var.dtype,
           initializer=local_step_initializer,
-          trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          trainable=False)
 
-    # Get an update ops for both shadow variables.
-    update_biased = state_ops.assign_sub(
-        biased_var, (biased_var - value) * decay, name=scope.name)
+  def update_fn(v, value, biased_var, local_step):
+    update_biased = state_ops.assign_sub(biased_var,
+                                         (biased_var - value) * decay)
     update_local_step = local_step.assign_add(1)
 
-    # Compute the value of the delta to update the unbiased EMA. Make sure to
-    # use the new values of the biased variable and the local step.
-    with ops.control_dependencies([update_biased, update_local_step]):
-      # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
-      unbiased_ema_delta = (
-          unbiased_var - biased_var.read_value() /
-          (1 - math_ops.pow(1.0 - decay, local_step.read_value())))
+    # This function gets `1 - decay`, so use `1.0 - decay` in the exponent.
+    bias_factor = 1 - math_ops.pow(1.0 - decay, update_local_step)
+    return state_ops.assign(
+        v, update_biased / bias_factor, name=ops.get_name_scope() + "/")
 
-    return unbiased_ema_delta
+  return strategy.extended.update(
+      unbiased_var, update_fn, args=(value, biased_var, local_step))
 
 
 @tf_export("train.ExponentialMovingAverage")
@@ -529,6 +521,7 @@ class ExponentialMovingAverage(object):
       conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
       global_step: global_step
     ```
+
     Args:
       moving_avg_variables: a list of variables that require to use of the
         moving average variable name to be restored. If None, it will default to

@@ -19,9 +19,9 @@ described below.
 You can create an HLO instruction which represents a custom-call via XLA's
 client API. This is not exposed via TensorFlow as of writing.
 
-For example, the following code uses a custom-call to compute `A[i] = B[i % 128]
-+ C[i]` on the CPU. (Of course you could -- and should! -- do this with regular
-HLO.)
+For example, the following code uses a custom-call to compute
+`A[i] = B[i % 128] + C[i]` on the CPU. (Of course you could -- and should! -- do
+this with regular HLO.)
 
 ```c++
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -191,12 +191,13 @@ of the custom call's output.
 
 In CPU code, we have a function `do_custom_call(const void** ins, void* out)`.
 `ins` is an array with just one element, which points to `param0`. The
-subbuffers of param0 are accessible by dereferencing that pointer.
+subbuffers of `param0` are accessible by dereferencing that pointer, and the
+subbuffers of `output_tuple` are accessible by dereferencing `out`.
 
 ### Tuples in GPU custom-calls
 
 In GPU code, we have a function `do_custom_call(..., void** buffers, ...)`. In
-this case `buffers` is a host array of *seven* device pointers, one for each
+this case `buffers` is a host array of *nine* device pointers, one for each
 nested buffer. To generate the flat list, we iterate over the parameters and
 output, and then do preorder traversal of their shapes. Concretely:
 
@@ -214,18 +215,20 @@ buffers[7] == output_subbuf0
 buffers[8] == output_subbuf1
 ```
 
-The `or null` part is significant. A sub-buffer of a tuple will be non-null in
-the `buffers` list if XLA is able to statically analyze the program and figure
-out the address of the sub-buffer. This is usually the case, but may not be in
-programs with control flow and/or `select` ops over tuples.
+The `or null` part is significant. A sub-buffer of an input tuple will be
+non-null in the `buffers` list if XLA is able to statically analyze the program
+and figure out the address of the sub-buffer. This is usually the case, but may
+not be in programs with control flow and/or `select` ops over tuples.
 
 A correct custom-call implementation that accepts a tuple as input must always
-handle null sub-buffers, by dereferencing the root tuple.
+handle null input sub-buffers, by dereferencing the root tuple.
 
 The rule is reversed for output buffers. The output sub-buffers will always be
-populated, but it's up to the op to populate the root tuple at the end.
+populated, but it's up to the custom call to populate the root tuple at the end.
 
-See the following code.
+See the following code.  Note that we leave out CUDA error handling for clarity,
+but you'll be thankful if you do it, because otherwise it can be hard to tell
+when a stream encounters an error.
 
 ```c++
 void do_custom_call(CUstream stream, void** buffers, const char* opaque,
@@ -272,13 +275,55 @@ void do_custom_call(CUstream stream, void** buffers, const char* opaque,
 
   // Fill the output tuple.
   void* outputs[2] = {buffers[7], buffers[8]};
-  cudaMemcpyAsync(outputs[6], outputs, sizeof(outputs), cudaMemcpyHostToDevice,
+  cudaMemcpyAsync(buffers[6], outputs, sizeof(outputs), cudaMemcpyHostToDevice,
                   stream);
 
-  // A cudaStreamSynchronize call is technically required here, because
-  // cudaMemcpyAsync may continue running after `outputs` goes out of scope.
-  // This synchronization is expensive.  One way you could work around this
-  // problem would be to make `outputs` a global variable and protect
-  // do_custom_call by a mutex.
+  // Necessary to force the cudaMemcpyAsync above to complete before `outputs`
+  // goes out of scope.  A sync is only necessary in the tuple output case, and
+  // see below for a way to avoid this.
+  cudaStreamSynchronize(stream);
 }
 ```
+
+The `cudaStreamSynchronize` at the end of the function is unfortunate, as it's
+not required in the non-tuple-output case, and it can be expensive.  One way to
+get around this would be to make `outputs` into a global variable and ensure
+that the previous cudaMemcpyAsync completed before overwriting the global and
+enqueueing another one.  This is sketched below.
+
+```
+void do_custom_call(CUstream stream, void** buffers, const char* opaque,
+                    size_t opaque_len) {
+
+  // ... Beginning of function is the same as above ...
+
+  // ... actually run the kernel ...
+
+  static std::atomic<bool> first_time{true};
+  static CUevent event;
+  static void* outputs[2];
+  if (first_time.fetch_and(false)) {
+    // First time running this function.  Initialize `event`.
+    cuEventCreate(&event, CU_EVENT_DISABLE_TIMING);
+  } else {
+    // Not first time running this function.  Wait for previous event to
+    // complete before touching `outputs`.
+    cuEventSynchronize(event);
+  }
+
+  // Fill the output tuple.
+  outputs[0] = buffers[7];
+  outputs[1] = buffers[8];
+  cudaMemcpyAsync(buffers[6], outputs, sizeof(outputs), cudaMemcpyHostToDevice,
+                  stream);
+
+  // Unblock `event` after the memcpy completes.
+  cuEventRecord(event, stream);
+}
+```
+
+This simple implementation would limit parallelism if you want to run this op on
+multiple GPUs concurrently (or on one GPU with multiple streams); in that case
+you might need multiple events and globals.  We have seen one implementation of
+this algorithm which keeps a pool of globals and events and periodically polls
+them (perhaps on each call to the op) to garbage collect.

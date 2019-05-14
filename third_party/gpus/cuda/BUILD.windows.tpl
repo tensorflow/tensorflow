@@ -1,3 +1,5 @@
+load(":build_defs.bzl", "cuda_header_library")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
@@ -35,12 +37,15 @@ config_setting(
     values = {"cpu": "freebsd"},
 )
 
-cc_library(
+# Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'
+# All clients including TensorFlow should use these directives.
+cuda_header_library(
     name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
-        %{cuda_headers}
+        ":cuda-include"
     ],
+    include_prefix = "third_party/gpus",
     includes = [
         ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
         "cuda/include",
@@ -70,6 +75,15 @@ cc_import(
     system_provided = 1,
 )
 
+cuda_header_library(
+    name = "cublas_virtual_headers",
+    hdrs = [":cublas-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cublas/include"],
+    strip_include_prefix = "cublas/include",
+    deps = [":cuda_headers"],
+)
+
 cc_import(
     name = "cublas",
     interface_library = "cuda/lib/%{cublas_lib}",
@@ -90,7 +104,10 @@ cc_import(
 
 cc_library(
     name = "cudnn_header",
-    includes = ["cuda/include"],
+    hdrs = [":cudnn-include"],
+    include_prefix = "third_party/gpus/cudnn",
+    strip_include_prefix = "cudnn/include",
+    deps = [":cuda_headers"],
 )
 
 cc_import(
@@ -117,13 +134,12 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_header_library(
     name = "cupti_headers",
-    hdrs = [
-        "cuda/cuda_config.h",
-        ":cuda-extras",
-    ],
+    hdrs = [":cuda-extras"],
+    include_prefix="third_party/gpus",
     includes = ["cuda/extras/CUPTI/include/"],
+    deps = [":cuda_headers"],
 )
 
 cc_import(

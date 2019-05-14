@@ -213,7 +213,7 @@ class MultiWorkerTestBase(test.TestCase):
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=0)
+    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=1)
     cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):

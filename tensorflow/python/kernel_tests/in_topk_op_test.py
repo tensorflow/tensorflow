@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -30,7 +29,7 @@ class InTopKTest(test.TestCase):
 
   def _validateInTopK(self, predictions, target, k, expected):
     np_ans = np.array(expected)
-    with self.cached_session():
+    with self.cached_session(use_gpu=True):
       precision = nn_ops.in_top_k(predictions, target, k)
       out = self.evaluate(precision)
       self.assertAllClose(np_ans, out)
@@ -63,12 +62,9 @@ class InTopKTest(test.TestCase):
     self._validateInTopK(predictions, target, 2, [False, False])
 
   def testBadTarget(self):
-    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
-    target = [0, 80000]
-    with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "target.*out of range"):
-        nn_ops.in_top_k(predictions, target, 2).eval()
+    predictions = [[0.1, 0.3, 0.2, 0.2], [0.1, 0.3, 0.2, 0.2]]
+    target = [2, 12345]  # must return False for invalid target
+    self._validateInTopK(predictions, target, 2, [True, False])
 
   def testTensorK(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -80,6 +76,7 @@ class InTopKTest(test.TestCase):
       out = self.evaluate(precision)
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(np_ans, precision)
+
 
 if __name__ == "__main__":
   test.main()

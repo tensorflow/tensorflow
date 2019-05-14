@@ -16,7 +16,7 @@ limitations under the License.
 // This file wraps cuda runtime calls with dso loader so that we don't need to
 // have explicit linking to libcuda.
 
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 

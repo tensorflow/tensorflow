@@ -21,8 +21,9 @@ limitations under the License.
 // TODO(silvasean): Put parts of this architecture description somewhere more
 // prominent.
 //
-// The 4 different matrix types are:
-// - Matrix<T>: This is a user-facing type on Ruy's external API boundary.
+// The 4 main matrix types are:
+// - Matrix<T>: This is a user-facing type on Ruy's external API boundary. It is
+// also used internally.
 // - DMatrix: This is a type-erased version of Matrix<T>. "D" = "dynamic".
 // - PMatrix: This represents a packed matrix, which requires tracking kernel
 // layout and row/column sums for quantization. It is type-erased.
@@ -43,7 +44,7 @@ limitations under the License.
 // RunKernel and RunPack, often in assembly code, which are the building blocks
 // that Ruy calls to perform matrix multiplication.  These are templated so that
 // only the requested types/Path's are actually emitted by the compiler.
-// - "middle-end" (impl.h) - this is the part of Ruy that orchestrates the
+// - "middle-end" (trmul.h) - this is the part of Ruy that orchestrates the
 // calls to the "back-end" optimized building blocks. This layer has to deal
 // with issues like cache locality and low-overhead multi-threading.
 //
@@ -71,10 +72,20 @@ limitations under the License.
 //
 // To present another structured view of our various matrix types, here's a
 // table:
-//                User matrices    Packed matrices
+//                Plain matrices   Packed matrices
 //             +----------------------------------
 // Templated   |  Matrix<T>        PackedMatrix<T>
 // Type-erased |  DMatrix          PMatrix
+//
+//
+// There is 1 additional matrix type not mentioned above, due to its low
+// importance:
+// - PrepackedMatrix: This is a user-facing version of PMatrix. It has the bare
+// minimum of fields needed for representing the raw data and sums buffers of a
+// packed matrix for the "advanced" explicit pre-packing API. This type plays no
+// role in Ruy's internals and can generally by ignored. The only reason it
+// exists is so that PMatrix is not exposed to users -- we prefer to keep the
+// internal matrix types hidden, even from "advanced" users.
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_INTERNAL_MATRIX_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_INTERNAL_MATRIX_H_

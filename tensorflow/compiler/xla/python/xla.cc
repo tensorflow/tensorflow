@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -274,22 +272,25 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  // The LocalClient object allows dynamic attributes to allow external backends
-  // (e.g., TPU) to stash private data in the client.
-  py::class_<PyLocalClient>(m, "LocalClient", py::dynamic_attr())
-      .def_static("Get", &PyLocalClient::Get)
+  py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
+      .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
+                  py::arg("xla_platform_id"), py::arg("asynchronous"))
       .def("DeviceCount", &PyLocalClient::device_count)
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
-      .def_static("FromPython", &PyLocalBuffer::FromPython)
-      .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
-      .def_static("MakeTuple", &PyLocalBuffer::MakeTuple)
-      .def("Delete", &PyLocalBuffer::Delete)
-      .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
-      .def("ToPython", &PyLocalBuffer::ToPython)
-      .def("shape", &PyLocalBuffer::on_host_shape);
+      .def_static("from_python", &PyLocalBuffer::FromPython)
+      .def_static("from_python_values", &PyLocalBuffer::FromPythonValues)
+      .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def("delete", &PyLocalBuffer::Delete)
+      .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("to_py", &PyLocalBuffer::ToPython)
+      .def("shape", &PyLocalBuffer::on_host_shape)
+      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("is_deleted", [](const PyLocalBuffer& buffer) {
+        return buffer.device_buffer() == nullptr;
+      });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
@@ -297,9 +298,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>())
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>());
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",

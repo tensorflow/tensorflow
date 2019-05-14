@@ -616,8 +616,10 @@ def streaming_restore(status, session=None):
     session = keras_backend.get_session()
   if isinstance(status, NameBasedSaverStatus):
     raise NotImplementedError(
-        "Streaming restore not supported from name-based checkpoints. File a "
-        "feature request if this limitation bothers you.")
+        "Streaming restore not supported from name-based checkpoints when "
+        "graph building. File a feature request if this limitation bothers "
+        "you. As a workaround, consider either using tf.train.Checkpoint to "
+        "load name-based checkpoints or enabling eager execution.")
   status.run_restore_ops(session=session)
   # pylint: disable=protected-access
   status._checkpoint.new_restore_ops_callback = (

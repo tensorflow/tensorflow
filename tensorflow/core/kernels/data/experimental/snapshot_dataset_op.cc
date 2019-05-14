@@ -302,6 +302,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return s;
           }
 
+          *end_of_sequence = false;
           experimental::SnapshotRecord record;
           record.ParseFromString(record_bytes);
 

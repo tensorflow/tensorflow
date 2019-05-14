@@ -62,10 +62,10 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   if targets:
     metric_results = model._handle_metrics(
         outputs,
-        return_weighted_and_unweighted_metrics=True,
         targets=targets,
         sample_weights=sample_weights,
-        masks=masks)
+        masks=masks,
+        return_weighted_and_unweighted_metrics=True)
 
   # Add metric results from the `add_metric` metrics.
   metric_results.extend([
@@ -183,7 +183,7 @@ def _model_loss(model,
         # Keep track of the stateful output loss result.
         output_losses.append(output_loss_metrics[i](output_loss))
 
-      total_loss += model.loss_weights_list[i] * output_loss
+      total_loss += model._loss_weights_list[i] * output_loss
 
     # Add regularization losses
     custom_losses = model.losses
@@ -339,12 +339,14 @@ def test_on_batch(model,
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
       inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
                                                                      model)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
       inputs = training_utils.cast_if_floating_to_model_input_dtypes(
           [ops.convert_to_tensor(val) for val in inputs], model)
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))

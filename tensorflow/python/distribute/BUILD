@@ -635,21 +635,22 @@ tf_xla_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
+    main = "input_lib_test.py",
+    deps = [
         ":mirrored_strategy",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -972,20 +973,36 @@ py_library(
     ],
 )
 
-distribute_py_test(
-    name = "saved_model_test",
-    size = "medium",
-    srcs = ["saved_model_test.py"],
-    main = "saved_model_test.py",
-    tags = [
-        "no_pip",  # b/131691139
-    ],
+py_library(
+    name = "saved_model_test_base",
+    srcs = ["saved_model_test_base.py"],
     deps = [
         ":combinations",
         ":model_combinations",
         ":strategy_combinations",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_save_load_test",
+    size = "medium",
+    srcs = ["saved_model_save_load_test.py"],
+    main = "saved_model_save_load_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_saved_model_test",
+    size = "medium",
+    srcs = ["keras_saved_model_test.py"],
+    main = "keras_saved_model_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
     ],
 )

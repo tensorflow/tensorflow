@@ -203,6 +203,7 @@ py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    python_version = "PY2",
     shard_count = 8,
     tags = [
         "no_gpu",  # b/127001953

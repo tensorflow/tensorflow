@@ -851,6 +851,17 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def remove_function(self, name):
+    """Remove a function from the context.
+
+    Once removed, the function cannot be executed anymore.
+
+    Args:
+      name: function signature name.
+    """
+    self.ensure_initialized()
+    pywrap_tensorflow.TFE_ContextRemoveFunction(self._handle, name)
+
   def has_function(self, name):
     """Check if a function `name` is registered."""
     self.ensure_initialized()
@@ -1621,6 +1632,11 @@ def set_server_def(server_def):
 def add_function(fdef):
   """Add a function definition to the context."""
   context().add_function(fdef)
+
+
+def remove_function(name):
+  """Remove a function from the context."""
+  context().remove_function(name)
 
 
 # Not every user creates a Context via context.context()

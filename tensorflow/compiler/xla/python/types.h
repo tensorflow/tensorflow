@@ -60,6 +60,9 @@ StatusOr<pybind11::object> LiteralToPython(std::unique_ptr<Literal> literal);
 // the Python value.
 // Requires the GIL.
 struct PythonBufferTree {
+  // Holds a reference to the arrays pointed to by `leaves`, since we may
+  // need to make a copy if the array is not in a C-style layout.
+  absl::InlinedVector<pybind11::object, 1> arrays;
   absl::InlinedVector<BorrowingLiteral, 1> leaves;
   Shape shape;
 };
@@ -170,9 +173,13 @@ struct type_caster<xla::BorrowingLiteral> {
  public:
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
+  // Pybind appears to keep type_casters alive until the callee has run.
+  pybind11::array array;
+
   bool load(handle handle, bool) {
-    pybind11::array array = pybind11::array::ensure(
-        handle, pybind11::array::c_style | pybind11::array::forcecast);
+    array = pybind11::array::ensure(
+        handle, pybind11::array::c_style |
+                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
     if (!array) return false;
     pybind11::buffer_info buffer_info = array.request();
 

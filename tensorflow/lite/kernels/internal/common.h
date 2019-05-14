@@ -46,7 +46,6 @@ limitations under the License.
 #endif
 
 #include "fixedpoint/fixedpoint.h"
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -96,7 +95,6 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
   //   return (array.colwise() + bias).cwiseMin(clamp_max).cwiseMin(clamp_max).
   // This turned out to severely regress performance: +4ms (i.e. 8%) on
   // MobileNet v2 / 1.0 / 224. So we keep custom NEON code for now.
-  gemmlowp::ScopedProfilingLabel label("BiasAndClamp");
   TFLITE_DCHECK_EQ((array_size % bias_size), 0);
 #ifdef USE_NEON
   float* array_ptr = array_data;
@@ -699,6 +697,16 @@ void optimized_ops_preload_l1_keep(const T* ptr) {
 #ifdef __GNUC__
   // builtin offered by GCC-compatible compilers including clang
   __builtin_prefetch(ptr, /* 0 means read */ 0, /* 3 means high locality */ 3);
+#else
+  (void)ptr;
+#endif
+}
+
+template <typename T>
+void optimized_ops_prefetch_write_l1_keep(const T* ptr) {
+#ifdef __GNUC__
+  // builtin offered by GCC-compatible compilers including clang
+  __builtin_prefetch(ptr, /* 1 means write */ 1, /* 3 means high locality */ 3);
 #else
   (void)ptr;
 #endif

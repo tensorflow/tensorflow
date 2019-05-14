@@ -1578,7 +1578,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
         const float bias = -input_zeropoint[i] * scale;
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -1689,7 +1689,7 @@ void PackWithScaling(const PackParams& params,
         auto input_ptr = input_data[i];
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -3151,7 +3151,7 @@ inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
-    output_data[idx] = exp(input_data[idx]);
+    output_data[idx] = std::exp(input_data[idx]);
   }
 }
 
@@ -3422,10 +3422,10 @@ inline void Mean(const tflite::MeanParams& op_params,
       temp_value = temp_value / num_elements_in_axis;
       if (ordinary_mean) {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value));
+            static_cast<uint8_t>(std::round(temp_value));
       } else {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            static_cast<uint8_t>(std::round(temp_value * scale + bias)) +
             output_zero_point;
       }
     }
@@ -3492,8 +3492,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       // TODO(b/116341117): Eliminate float and do this completely in 8bit.
       const float bias = -input_zero_point * scale * num_elements_in_axis + 0.5;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
-        const U value = static_cast<U>(round(temp_sum[idx] * scale + bias)) +
-                        output_zero_point;
+        const U value =
+            static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
+            output_zero_point;
         output_data[idx] = static_cast<T>(value);
       }
     } else {
@@ -3503,8 +3504,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                            static_cast<float>(num_elements_in_axis);
 
         // Convert to float value.
-        output_data[idx] = static_cast<T>(round(float_mean * scale + bias)) +
-                           output_zero_point;
+        output_data[idx] =
+            static_cast<T>(std::round(float_mean * scale + bias)) +
+            output_zero_point;
       }
     }
   }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <initializer_list>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
