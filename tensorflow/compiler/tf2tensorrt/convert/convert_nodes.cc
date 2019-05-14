@@ -4194,8 +4194,10 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  const bool transpose_a = attrs.get<bool>("adj_x");
-  const bool transpose_b = attrs.get<bool>("adj_y");
+  if (attrs.get<bool>("adj_x") || attrs.get<bool>("adj_y")) {
+    return errors::InvalidArgument("TensorRT cannot adjoint inputs.");
+  }
+
   // Removes the batch dimension from weights.
   const auto remove_weights_batch_dim =
       [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
@@ -4214,10 +4216,10 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
           TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
         }
         // Create tensor and reshape if necessary.
-        nvinfer1::ITensor* t;
+        nvinfer1::ITensor* t{nullptr};
         TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
             input, dims, params->validation_only, &t));
-        *tensor = std::move(TRT_TensorOrWeights{t});
+        *tensor = TRT_TensorOrWeights{t};
         return Status::OK();
       };
 
@@ -4226,8 +4228,12 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
   TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
 
-  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
-                             transpose_b, node_def.name());
+  if (params->validation_only) {
+    return Status::OK();
+  }
+
+  return ConvertMatMulHelper(params, tensor_l, tensor_r, /*transpose_a=*/false,
+                             /*transpose_b=*/false, node_def.name());
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {

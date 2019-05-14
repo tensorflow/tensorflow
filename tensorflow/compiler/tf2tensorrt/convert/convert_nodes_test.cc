@@ -1677,9 +1677,14 @@ void OpConverterTest::TestMatMulHelper(
       AddTestTensor("input", {2}, /*batch_size=*/1);
       AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
-        RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension");
+        if (transpose_a || transpose_b) {
+          RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                     "TensorRT cannot adjoint inputs.");
+        } else {
+          RunValidationAndConversion(
+              node_def, error::INVALID_ARGUMENT,
+              "Input weight attempts to broadcast across batch dimension");
+        }
         continue;
       } else if (transpose_a) {
         RunValidationAndConversion(
@@ -1711,9 +1716,14 @@ void OpConverterTest::TestMatMulHelper(
     AddTestTensor("input", {1, 1, 2}, /*batch_size=*/1);
     AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
-      RunValidationAndConversion(
-          node_def, error::INVALID_ARGUMENT,
-          "Input weight attempts to broadcast across batch dimension");
+      if (transpose_b) {
+        RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                   "TensorRT cannot adjoint inputs.");
+      } else {
+        RunValidationAndConversion(
+            node_def, error::INVALID_ARGUMENT,
+            "Input weight attempts to broadcast across batch dimension");
+      }
       continue;
     }
     RunValidationAndConversion(node_def);
@@ -1800,8 +1810,8 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
   }
 
   // Get the NodeDef for BatchMatMul.
-  auto get_matmul_nodedef = [](DataType dtype, bool transpose_a,
-                               bool transpose_b) -> NodeDef {
+  auto get_batch_matmul_nodedef = [](DataType dtype, bool transpose_a,
+                                     bool transpose_b) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), dtype);
     auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
@@ -1812,7 +1822,25 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
     return matmul.operation.node()->def();
   };
 
-  TestMatMulHelper(get_matmul_nodedef, "BatchMatMul");
+  {
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false,
+                                                /*transpose_b=*/false);
+    AddTestTensor("input", {1, 3}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {1, 3, 1}, {1, 2, 3});
+
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 1}, output.tensor()->getDimensions());
+    const DataVec input_data{{"input", test::AsTensor<float>({0, 1, 2})}};
+    DataVec output_data{{"my_matmul", ConstructTensor<float>(1, 1)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(8));
+  }
+
+  TestMatMulHelper(get_batch_matmul_nodedef, "BatchMatMul");
 }
 
 template <DataType dtype>
