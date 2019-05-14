@@ -30,6 +30,119 @@
 
 using namespace mlir;
 
+namespace {
+/// A simple compositional matcher for AffineExpr
+///
+/// Example usage:
+///
+/// ```c++
+///    AffineExprMatcher x, C, m;
+///    AffineExprMatcher pattern1 = ((x % C) * m) + x;
+///    AffineExprMatcher pattern2 = x + ((x % C) * m);
+///    if (pattern1.match(expr) || pattern2.match(expr)) {
+///      ...
+///    }
+/// ```
+class AffineExprMatcherStorage;
+class AffineExprMatcher {
+public:
+  AffineExprMatcher();
+  AffineExprMatcher(const AffineExprMatcher &other);
+
+  AffineExprMatcher operator+(AffineExprMatcher other) {
+    return AffineExprMatcher(AffineExprKind::Add, *this, other);
+  }
+  AffineExprMatcher operator*(AffineExprMatcher other) {
+    return AffineExprMatcher(AffineExprKind::Mul, *this, other);
+  }
+  AffineExprMatcher floorDiv(AffineExprMatcher other) {
+    return AffineExprMatcher(AffineExprKind::FloorDiv, *this, other);
+  }
+  AffineExprMatcher ceilDiv(AffineExprMatcher other) {
+    return AffineExprMatcher(AffineExprKind::CeilDiv, *this, other);
+  }
+  AffineExprMatcher operator%(AffineExprMatcher other) {
+    return AffineExprMatcher(AffineExprKind::Mod, *this, other);
+  }
+
+  AffineExpr match(AffineExpr expr);
+  AffineExpr matched();
+  Optional<int> getMatchedConstantValue();
+
+private:
+  AffineExprMatcher(AffineExprKind k, AffineExprMatcher a, AffineExprMatcher b);
+  AffineExprKind kind; // only used to match in binary op cases.
+  // A shared_ptr allows multiple references to same matcher storage without
+  // worrying about ownership or dealing with an arena. To be cleaned up if we
+  // go with this.
+  std::shared_ptr<AffineExprMatcherStorage> storage;
+};
+
+class AffineExprMatcherStorage {
+public:
+  AffineExprMatcherStorage() {}
+  AffineExprMatcherStorage(const AffineExprMatcherStorage &other)
+      : subExprs(other.subExprs.begin(), other.subExprs.end()),
+        matched(other.matched) {}
+  AffineExprMatcherStorage(ArrayRef<AffineExprMatcher> exprs)
+      : subExprs(exprs.begin(), exprs.end()) {}
+  AffineExprMatcherStorage(AffineExprMatcher &a, AffineExprMatcher &b)
+      : subExprs({a, b}) {}
+  llvm::SmallVector<AffineExprMatcher, 0> subExprs;
+  AffineExpr matched;
+};
+} // namespace
+
+AffineExprMatcher::AffineExprMatcher()
+    : kind(AffineExprKind::Constant), storage(new AffineExprMatcherStorage()) {}
+
+AffineExprMatcher::AffineExprMatcher(const AffineExprMatcher &other)
+    : kind(other.kind), storage(other.storage) {}
+
+Optional<int> AffineExprMatcher::getMatchedConstantValue() {
+  if (auto cst = storage->matched.dyn_cast<AffineConstantExpr>())
+    return cst.getValue();
+  return None;
+}
+
+AffineExpr AffineExprMatcher::match(AffineExpr expr) {
+  if (kind > AffineExprKind::LAST_AFFINE_BINARY_OP) {
+    if (storage->matched)
+      if (storage->matched != expr)
+        return AffineExpr();
+    storage->matched = expr;
+    return storage->matched;
+  }
+  if (kind != expr.getKind()) {
+    return AffineExpr();
+  }
+  if (auto bin = expr.dyn_cast<AffineBinaryOpExpr>()) {
+    if (!storage->subExprs.empty() &&
+        !storage->subExprs[0].match(bin.getLHS())) {
+      return AffineExpr();
+    }
+    if (!storage->subExprs.empty() &&
+        !storage->subExprs[1].match(bin.getRHS())) {
+      return AffineExpr();
+    }
+    if (storage->matched)
+      if (storage->matched != expr)
+        return AffineExpr();
+    storage->matched = expr;
+    return storage->matched;
+  }
+  llvm_unreachable("binary expected");
+}
+
+AffineExpr AffineExprMatcher::matched() { return storage->matched; }
+
+AffineExprMatcher::AffineExprMatcher(AffineExprKind k, AffineExprMatcher a,
+                                     AffineExprMatcher b)
+    : kind(k), storage(new AffineExprMatcherStorage(a, b)) {
+  storage->subExprs.push_back(a);
+  storage->subExprs.push_back(b);
+}
+
 //===----------------------------------------------------------------------===//
 // SDBMExpr
 //===----------------------------------------------------------------------===//
@@ -198,53 +311,22 @@ AffineExpr SDBMExpr::getAsAffineExpr() const {
 
 Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
   struct Converter : public AffineExprVisitor<Converter, SDBMExpr> {
-    // Try matching the definition of the stripe operation as x - x mod C where
-    // `pos` should match "x" and `neg` should match "- (x mod C)".
-    SDBMExpr matchStripeAddPattern(AffineExpr pos, AffineExpr neg) {
-      // Check that the "pos" part is a variable expression and that the "neg"
-      // part is a mul expression.
-      auto convertedLHS = visit(pos);
-      if (!convertedLHS || !convertedLHS.isa<SDBMPositiveExpr>())
-        return {};
-
-      auto outerBinExpr = neg.dyn_cast<AffineBinaryOpExpr>();
-      if (!outerBinExpr || outerBinExpr.getKind() != AffineExprKind::Mul)
-        return {};
-
-      // In affine mul expressions, the constant part is always on the RHS.
-      // If there had been two constants, they would have been folded away.
-      assert(!outerBinExpr.getLHS().isa<AffineConstantExpr>() &&
-             "expected a constant on the RHS of an affine mul expression");
-      // Check if the RHS of mul is -1.
-      auto multiplierExpr =
-          outerBinExpr.getRHS().dyn_cast<AffineConstantExpr>();
-      if (!multiplierExpr || multiplierExpr.getValue() != -1)
-        return {};
-
-      // Check if the LHS of mul is ("pos" mod constant).
-      auto binExpr = outerBinExpr.getLHS().dyn_cast<AffineBinaryOpExpr>();
-      if (!binExpr || binExpr.getKind() != AffineExprKind::Mod ||
-          !binExpr.getRHS().isa<AffineConstantExpr>())
-        return {};
-
-      if (convertedLHS != visit(binExpr.getLHS()))
-        return {};
-
-      // If all checks pass, we have a stripe.
-      return SDBMStripeExpr::get(
-          convertedLHS.cast<SDBMPositiveExpr>(),
-          visit(binExpr.getRHS()).cast<SDBMConstantExpr>());
-    }
-
     SDBMExpr visitAddExpr(AffineBinaryOpExpr expr) {
       // Attempt to recover a stripe expression.  Because AffineExprs don't have
       // a first-class difference kind, we check for both x + -1 * (x mod C) and
       // -1 * (x mod C) + x cases.
-      if (auto stripe = matchStripeAddPattern(expr.getLHS(), expr.getRHS()))
-        return stripe;
-      if (auto stripe = matchStripeAddPattern(expr.getRHS(), expr.getLHS()))
-        return stripe;
-
+      AffineExprMatcher x, C, m;
+      AffineExprMatcher pattern1 = ((x % C) * m) + x;
+      AffineExprMatcher pattern2 = x + ((x % C) * m);
+      if ((pattern1.match(expr) && m.getMatchedConstantValue() == -1) ||
+          (pattern2.match(expr) && m.getMatchedConstantValue() == -1)) {
+        if (auto convertedLHS = visit(x.matched())) {
+          // TODO(ntv): return convertedLHS.stripe(C);
+          return SDBMStripeExpr::get(
+              convertedLHS.cast<SDBMPositiveExpr>(),
+              visit(C.matched()).cast<SDBMConstantExpr>());
+        }
+      }
       auto lhs = visit(expr.getLHS()), rhs = visit(expr.getRHS());
       if (!lhs || !rhs)
         return {};
@@ -277,39 +359,20 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       return {};
     }
 
-    // Try matching the stripe pattern "(x floordiv C) * C" where `lhs`
-    // corresponds to "(x floordiv C)" and `rhs` corresponds to "C".
-    SDBMExpr matchStripeMulPattern(AffineExpr lhs, AffineExpr rhs) {
-      // Check if LHS is a floordiv expression and rhs is a constant.
-      auto lhsBinary = lhs.dyn_cast<AffineBinaryOpExpr>();
-      auto rhsConstant = rhs.dyn_cast<AffineConstantExpr>();
-      if (!lhsBinary || !rhsConstant ||
-          lhsBinary.getKind() != AffineExprKind::FloorDiv)
-        return {};
-
-      // Check if the floordiv divides by the constant equal to RHS.
-      auto lhsRhsConstant = lhsBinary.getRHS().dyn_cast<AffineConstantExpr>();
-      if (!lhsRhsConstant || lhsRhsConstant != rhsConstant)
-        return {};
-
-      // Check if LHS can be converted to a single variable.
-      SDBMExpr converted = visit(lhsBinary.getLHS());
-      if (!converted)
-        return {};
-      auto varConverted = converted.dyn_cast<SDBMPositiveExpr>();
-      if (!varConverted)
-        return {};
-
-      // If all checks pass, we have a stripe.
-      return SDBMStripeExpr::get(
-          varConverted, SDBMConstantExpr::get(varConverted.getContext(),
-                                              rhsConstant.getValue()));
-    }
-
     SDBMExpr visitMulExpr(AffineBinaryOpExpr expr) {
       // Attempt to recover a stripe expression "x # C = (x floordiv C) * C".
-      if (auto stripe = matchStripeMulPattern(expr.getLHS(), expr.getRHS()))
-        return stripe;
+      AffineExprMatcher x, C;
+      AffineExprMatcher pattern = (x.floorDiv(C)) * C;
+      if (pattern.match(expr)) {
+        if (SDBMExpr converted = visit(x.matched())) {
+          if (auto varConverted = converted.dyn_cast<SDBMPositiveExpr>())
+            // TODO(ntv): return varConverted.stripe(C.getConstantValue());
+            return SDBMStripeExpr::get(
+                varConverted,
+                SDBMConstantExpr::get(varConverted.getContext(),
+                                      C.getMatchedConstantValue().getValue()));
+        }
+      }
 
       auto lhs = visit(expr.getLHS()), rhs = visit(expr.getRHS());
       if (!lhs || !rhs)
