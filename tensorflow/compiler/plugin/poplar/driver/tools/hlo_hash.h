@@ -46,10 +46,9 @@ class HloHash {
 
   void HashModule();
   void SanitizeHloModuleProto(HloModuleProto*, const HloModule*);
-  uint64 SanitizeHloComputationProto(HloComputationProto*,
-                                     const HloComputation*, uint64);
+  uint64 SanitizeHloComputationProto(HloComputationProto*, uint64);
   uint64 SanitizeHloInstructionProto(HloInstructionProto*, uint64);
-  void SanitizeComputeProgramShape(ProgramShapeProto*, const HloComputation*);
+  void SanitizeComputeProgramShape(ProgramShapeProto*);
 
   void PatchInstructionReferences(HloInstructionProto*,
                                   const std::map<uint64, uint64>&);

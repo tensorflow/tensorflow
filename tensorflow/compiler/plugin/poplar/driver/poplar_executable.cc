@@ -202,68 +202,6 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
 
   auto iomap = InputOutputAliasingMap(hlo_module.get());
 
-  // Verify poplar streams match module inputs and outputs
-  std::set<std::string> input_stream;
-  std::set<std::string> output_stream;
-  for (auto s : engine->listStreams()) {
-    auto stream_name = s.substr(0, s.size() - 1);
-    if (s.back() == '+') {
-      input_stream.insert(stream_name);
-    } else {
-      output_stream.insert(stream_name);
-    }
-  }
-
-  const auto& root = hlo_module->entry_computation()->root_instruction();
-  const uint64 num_outputs =
-      root->shape().IsTuple() ? ShapeUtil::TupleElementCount(root->shape()) : 1;
-
-  for (uint64 o = 0; o < num_outputs; o++) {
-    auto leaves = 1;
-    if (root->shape().IsTuple()) {
-      leaves = CountShapes(ShapeUtil::GetTupleElementShape(root->shape(), o));
-    }
-    for (int l = 0; l < leaves; l++) {
-      auto stream_name = GetOutputCopyHandle(o, l);
-      if (output_stream.count(stream_name) == 0) {
-        return xla::FailedPrecondition(
-            "Couldn't find output stream %s when loading executable",
-            stream_name);
-      }
-      output_stream.erase(stream_name);
-    }
-  }
-
-  if (output_stream.size() > 0) {
-    return xla::FailedPrecondition(
-        "Extra output stream %s when loading executable",
-        *(output_stream.begin()));
-  }
-
-  const auto& params =
-      hlo_module->entry_computation()->parameter_instructions();
-  for (uint64 i = 0; i < params.size(); i++) {
-    auto leaves = 1;
-    if (params[i]->shape().IsTuple()) {
-      leaves = CountShapes(params[i]->shape());
-    }
-    for (int l = 0; l < leaves; l++) {
-      auto stream_name = GetInputCopyHandle(i, l);
-      if (input_stream.count(stream_name) == 0) {
-        return xla::FailedPrecondition(
-            "Couldn't find input stream %s when loading executable",
-            stream_name);
-      }
-      input_stream.erase(stream_name);
-    }
-  }
-
-  if (input_stream.size() > 0) {
-    return xla::FailedPrecondition(
-        "Extra input stream %s when loading executable",
-        *(input_stream.begin()));
-  }
-
   auto executable = new PoplarExecutable(
       std::move(hlo_module), std::move(profile_printer),
       std::move(profile_index_map), std::move(engine), std::move(iomap), false,

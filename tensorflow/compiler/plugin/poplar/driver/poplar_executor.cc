@@ -37,7 +37,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/public/version.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -738,7 +740,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
     VLOG(1) << "Report option: " << opt.first << " = " << opt.second;
   }
 
-  // Cache Target hash
+  // Generate Target hash
   std::vector<int64> poplar_target;
   const auto& target = poplar_device_.getTarget();
   poplar_target.push_back(target.getNumTiles());
@@ -748,6 +750,16 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   poplar_target.push_back(target.getTilesPerIPU());
   poplar_target.push_back(target.getNumIPUs());
   poplar_target.push_back((unsigned)target.getTargetType());
+
+  // Generate Options hash
+  std::string config_proto_str;
+  tensorflow::SerializeToStringDeterministic(current_config_,
+                                             &config_proto_str);
+  poplar_target.push_back(std::hash<string>()(config_proto_str));
+
+  // Generate compiler hashes
+  poplar_target.push_back(std::hash<string>()(tf_git_version()));
+  poplar_target.push_back(std::hash<string>()(poplar::packageHash()));
 
   for (int64 h : poplar_target) {
     poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);

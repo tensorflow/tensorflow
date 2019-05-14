@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
 #include <map>
+#include <queue>
 
 namespace xla {
 namespace poplarplugin {
@@ -48,7 +49,6 @@ void HloHash::HashModule() {
   tensorflow::SerializeToStringDeterministic(proto, &proto_str_);
 
   hash_ = std::hash<string>()(proto_str_);
-  hash_ = Hash64Combine(hash_, module_->config().seed());
   hash_ = Hash64Combine(hash_, module_->config().argument_count());
   hash_ = Hash64Combine(hash_, module_->config().resource_input_count());
   std::string s_inputs = absl::StrJoin(module_->config().input_mapping(), ",");
@@ -67,25 +67,53 @@ void HloHash::SanitizeHloModuleProto(HloModuleProto* proto,
 
   std::map<uint64, uint64> computation_id_map;
 
-  // TODO Sort the computations into reliable post order
+  // Generate a reliable post order for the computations
+  std::vector<HloComputation*> computation_list;
+  std::set<HloComputation*> computation_set;
+
+  std::queue<HloComputation*> comp_queue;
+  comp_queue.push(module->entry_computation());
+  while (!comp_queue.empty()) {
+    HloComputation* comp = comp_queue.front();
+
+    computation_list.push_back(comp);
+    computation_set.insert(comp);
+    comp_queue.pop();
+
+    for (auto* inst : comp->MakeInstructionPostOrder()) {
+      for (auto* called_comp : inst->called_computations()) {
+        if (computation_set.count(called_comp) == 0) {
+          comp_queue.push(called_comp);
+        }
+      }
+    }
+  }
+
+  // Reorganise the computations in the proto into the reliable order, any
+  // orphan computations will go to the end of the list
+  for (uint64 serial_id = 0; serial_id < computation_list.size(); serial_id++) {
+    auto comp_id = computation_list[serial_id]->unique_id();
+    if (proto->computations(serial_id).id() != comp_id) {
+      for (uint64 i = serial_id + 1; i < computation_list.size(); i++) {
+        if (proto->computations(i).id() == comp_id) {
+          auto c = proto->mutable_computations(i);
+          proto->mutable_computations(serial_id)->Swap(c);
+          break;
+        }
+      }
+    }
+  }
 
   // Serialize the computations
-  uint64 serial_id = 0;
-  for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+  for (auto comp_id = 0; comp_id < proto->computations().size(); comp_id++) {
     HloComputationProto* computation_proto =
-        proto->mutable_computations(serial_id);
-    CHECK_EQ(computation_proto->name(), computation->name());
-    auto old_id =
-        SanitizeHloComputationProto(computation_proto, computation, serial_id);
-    computation_id_map[old_id] = serial_id;
-    if (computation->name() == module->entry_computation()->name()) {
-      *proto->mutable_host_program_shape() = computation_proto->program_shape();
-    }
-    serial_id++;
+        proto->mutable_computations(comp_id);
+    auto old_id = SanitizeHloComputationProto(computation_proto, comp_id);
+    computation_id_map[old_id] = comp_id;
   }
 
   // Patch up computation IDs with the renumbered ones
-  for (uint64 comp_id = 0; comp_id < serial_id; comp_id++) {
+  for (auto comp_id = 0; comp_id < proto->computations().size(); comp_id++) {
     HloComputationProto* computation_proto =
         proto->mutable_computations(comp_id);
     for (uint64 inst_id = 0; inst_id < computation_proto->instructions().size();
@@ -96,14 +124,15 @@ void HloHash::SanitizeHloModuleProto(HloModuleProto* proto,
     }
   }
 
-  // Serialize entry_computation_name
+  // Patch up entry computation id and name
+  proto->set_entry_computation_id(
+      computation_id_map[proto->entry_computation_id()]);
   std::string entry_computation_name =
       std::to_string(proto->entry_computation_id());
   proto->set_entry_computation_name(entry_computation_name);
 }
 
 uint64 HloHash::SanitizeHloComputationProto(HloComputationProto* proto,
-                                            const HloComputation* computation,
                                             uint64 new_id) {
   uint64 old_id = proto->id();
 
@@ -115,25 +144,24 @@ uint64 HloHash::SanitizeHloComputationProto(HloComputationProto* proto,
   std::map<uint64, uint64> instruction_id_map;
 
   // Serialize the instructions
-  uint64 serial_id = 0;
-  for (const HloInstruction* instruction :
-       computation->MakeInstructionPostOrder()) {
+  for (uint64 inst_id = 0; inst_id < proto->instructions().size(); inst_id++) {
     HloInstructionProto* instruction_proto =
-        proto->mutable_instructions(serial_id);
-    CHECK_EQ(instruction_proto->name(), instruction->name());
-    auto old_id = SanitizeHloInstructionProto(instruction_proto, serial_id);
-    instruction_id_map[old_id] = serial_id;
-    serial_id++;
+        proto->mutable_instructions(inst_id);
+    auto old_id = SanitizeHloInstructionProto(instruction_proto, inst_id);
+    instruction_id_map[old_id] = inst_id;
   }
 
   // Patch up instruction IDs with the renumbered ones
-  for (uint64 id = 0; id < serial_id; id++) {
+  for (uint64 id = 0; id < proto->instructions().size(); id++) {
     HloInstructionProto* instruction_proto = proto->mutable_instructions(id);
     PatchInstructionReferences(instruction_proto, instruction_id_map);
   }
 
+  // Patch root instruction ID
+  proto->set_root_id(instruction_id_map[proto->root_id()]);
+
   // Serialize the shape
-  SanitizeComputeProgramShape(proto->mutable_program_shape(), computation);
+  SanitizeComputeProgramShape(proto->mutable_program_shape());
 
   return old_id;
 }
@@ -154,13 +182,10 @@ uint64 HloHash::SanitizeHloInstructionProto(HloInstructionProto* proto,
   return old_id;
 }
 
-void HloHash::SanitizeComputeProgramShape(ProgramShapeProto* program_shape,
-                                          const HloComputation* computation) {
+void HloHash::SanitizeComputeProgramShape(ProgramShapeProto* program_shape) {
   // Replace parameter names with unique ids
-  for (auto* param_instruction : computation->parameter_instructions()) {
-    uint64 serial_id = param_instruction->parameter_number();
-    std::string name = std::to_string(serial_id);
-    program_shape->set_parameter_names(serial_id, name);
+  for (auto id = 0; id < program_shape->parameter_names().size(); id++) {
+    program_shape->set_parameter_names(id, std::to_string(id));
   }
 }
 
